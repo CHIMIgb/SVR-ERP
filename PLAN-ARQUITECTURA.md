@@ -1,34 +1,41 @@
-# PLAN DE IMPLEMENTACION: Arquitectura SVR-ERP
+# PLAN DE IMPLEMENTACION: SVR-ERP Monorepo
 
-## Resumen del Cambio
+## Vision General
 
-El proyecto tiene problemas criticos de arquitectura (data.ts monolitico, cero code splitting, 39/41 archivos client-side) que causan errores FATAL de Turbopack. Ademas, el proyecto se migrara a **React Native con Expo**.
-
-### Orden de ejecucion
+Transformar el proyecto SVR-ERP de un monolito frontend en un **Monorepo industrial** con separacion clara de responsabilidades:
 
 ```
-Fase 1  →  Fase 2  →  Fase 3 (MIGRACION)  →  Fase 4 (UI en RN)
- 10 min    1-2 hrs      dias-semanas            semanas
+SVR-ERP/
+├── apps/
+│   ├── web/                    # Next.js 16 (Frontend)
+│   └── api/                    # NestJS + Prisma (Backend)
+├── packages/
+│   └── shared/                 # Tipos, schemas, enums, constantes compartidas
+├── AGENTS.md
+├── PLAN-ARQUITECTURA.md
+└── .opencode/
 ```
 
-**Por que este orden:**
-- **Fase 1** (limpieza): rapido, sin riesgo, reduce ruido inmediato
-- **Fase 2** (dividir data.ts): los tipos y datos son **agnosticos a la plataforma** - sirven tal cual en React Native
-- **Fase 3** (migracion): el foco principal del proyecto
-- **Fase 4** (UI en RN): se rehace la interfaz con componentes nativos (FlatList, StyleSheet, Navigation)
+### Stack Tecnologico
 
-**Lo que NO se migra del proyecto web (se rehace en RN):**
-- Todo Tailwind CSS / estilos web
-- Componentes UI (Modal, WorkerCard, etc.) - se rehacen con View/Text/StyleSheet
-- Context providers - se reemplazan con Expo Router o React Navigation
-- Keyframes CSS - se reemplazan con Animated o react-native-reanimated
-- PageHeader, SearchInput, StatsCard (Fase 2 original) - se rehacen en RN
+| Capa | Tecnologia | Version |
+|------|-----------|---------|
+| Frontend | Next.js (App Router, Turbopack) | 16.x |
+| UI | Tailwind CSS v4 | 4.x |
+| Backend | NestJS | 11.x |
+| ORM | Prisma | 6.x |
+| Base de datos | PostgreSQL | 16+ |
+| Auth | JWT (access + refresh tokens) | - |
+| Validacion (shared) | Zod | 3.x |
+| Lenguaje | TypeScript (strict mode) | 5.x |
 
-**Lo que SI se reutiliza directamente:**
-- Todas las interfaces TypeScript (Maquina, Trabajador, Proyecto, etc.)
-- Todos los datos mock
-- Logica de negocio (formatCurrency, calculos de nomina, etc.)
-- Estructura de navegacion (24 pantallas mapean a screens)
+### Orden de Ejecucion
+
+```
+Fase 1  →  Fase 2  →  Fase 3  →  Fase 4  →  Fase 5  →  Fase 6
+Limpieza   Data      Monorepo   Backend    Frontend   Integracion
+10 min     1-2 hrs   2-3 hrs    1-2 sem    2-3 sem    continuo
+```
 
 ---
 
@@ -42,12 +49,10 @@ Fase 1  →  Fase 2  →  Fase 3 (MIGRACION)  →  Fase 4 (UI en RN)
 [ELIMINAR] tailwind.config.ts
   - Archivo obsoleto: Tailwind v4 ignora este archivo completamente
   - Los tokens ya estan definidos correctamente en globals.css via @theme {}
-  - Turbopack aun resolve este archivo en el grafo de modulos sin usarlo
 
 [MODIFICAR] package.json
   - Eliminar "framer-motion": "^12.38.0" de dependencies
   - Confirmado: 0 imports en todo el codigo fuente
-  - Paquete pesado (~300KB+) que Turbopack analiza innecesariamente
 ```
 
 ### Orden de Ejecucion
@@ -55,389 +60,796 @@ Fase 1  →  Fase 2  →  Fase 3 (MIGRACION)  →  Fase 4 (UI en RN)
 1. Eliminar `tailwind.config.ts`
 2. Eliminar `framer-motion` de `package.json`
 3. Ejecutar `npm install` para actualizar lockfile
-4. Verificar que `npm run dev` funciona y las vistas se siguen renderizando correctamente
-
-### Impacto
-
-- **Turbopack:** Reduce el grafo de modulos que debe resolver
-- **Velocidad:** `npm install` sera mas rapido sin framer-motion
-- **Riesgo:** Nulo - ninguno de estos archivos se usa en codigo fuente
+4. Verificar que `npm run dev` funciona
 
 ---
 
 ## FASE 2: Dividir el monolito `data.ts`
 
-> *Impacto: Prepara los tipos y datos para la migracion a React Native. Los tipos son agnosticos a la plataforma y se reutilizan directamente.*
+> *Impacto: Prepara los tipos y datos para el monorepo. Los tipos van a packages/shared.*
 
-### Archivos Afectados
+### Archivos a Crear
 
 ```
-[CREAR] src/types/index.ts
-  - Re-exportar todos los tipos desde archivos de dominio
-  - Contenido: export * from './maquinaria'
-  - Contenido: export * from './trabajadores'
-  - Contenido: export * from './proyectos'
-  - etc.
-  - ~15 lineas
-
 [CREAR] src/types/maquinaria.ts
-  - Interface Maquina (lineas 1-126 de data.ts)
-  - Interface ChecklistPreoperacional (lineas 624-691)
-  - Interface DespachoMaquina (lineas 1235-1267)
-  - ~100 lineas
+  - Maquina, ChecklistPreoperacional, DespachoMaquina
 
 [CREAR] src/types/trabajadores.ts
-  - Type CategoriaPuesto (linea 127)
-  - Interface Permiso (lineas 129-138)
-  - Interface Trabajador (lineas 139-171)
-  - Interface BitacoraRentaDiaria (lineas 172-199)
-  - Interface HorasExtraDetalle (lineas 692-703)
-  - Interface RegistroAsistencia (lineas 704-731)
-  - Interface DiaAsistenciaSemana (lineas 732-743)
-  - Interface AsistenciaSemanalTrabajador (lineas 744-754)
-  - ~130 lineas
+  - CategoriaPuesto, Permiso, Trabajador, BitacoraRentaDiaria,
+    HorasExtraDetalle, RegistroAsistencia, DiaAsistenciaSemana,
+    AsistenciaSemanalTrabajador
 
 [CREAR] src/types/proyectos.ts
-  - Interface HitoProgreso (lineas 452-457)
-  - Interface Proyecto (lineas 458-558)
-  - Interface APUItem (lineas 1168-1174)
-  - Interface APUTemplate (lineas 1175-1234)
-  - ~120 lineas
+  - HitoProgreso, Proyecto, APUItem, APUTemplate
 
 [CREAR] src/types/operaciones.ts
-  - Interface CargaCombustible (lineas 559-623)
-  - Interface ArticuloInventario (lineas 942-958)
-  - Interface RegistroMantenimiento (lineas 959-974)
-  - Interface Cliente (lineas 975-988)
-  - Interface Cotizacion (lineas 989-1002)
-  - Interface Transaccion (lineas 1003-1017)
-  - Interface Documento (lineas 1018-1048)
-  - Interface Incidente (lineas 1049-1064)
-  - Interface Bitacora (lineas 1065-1078)
-  - Interface LecturaHorometro (lineas 1079-1093)
-  - Interface ReporteCampo (lineas 1094-1167)
-  - Interface RegistroCriba (lineas 1268-1286)
-  - ~200 lineas
+  - CargaCombustible, ArticuloInventario, RegistroMantenimiento,
+    Cliente, Cotizacion, Transaccion, Documento, Incidente, Bitacora,
+    LecturaHorometro, ReporteCampo, RegistroCriba
+
+[CREAR] src/types/index.ts
+  - Barrel re-export de todos los tipos
 
 [CREAR] src/lib/mock-data/maquinaria.ts
-  - Export array maquinaria (lineas 28-126)
-  - Export array checklistsPreoperacionales (lineas 641-691)
-  - Export array despachosFlota (lineas 1243-1267)
-  - ~200 lineas
+  - arrays: maquinaria, checklistsPreoperacionales, despachosFlota
 
 [CREAR] src/lib/mock-data/trabajadores.ts
-  - Export array trabajadores (lineas 283-451)
-  - Export array bitacorasRentaData (lineas 200-282)
-  - Export array registrosAsistencia (lineas 755-870)
-  - Export array asistenciaSemanalData (lineas 871-941)
-  - ~500 lineas
+  - arrays: trabajadores, bitacorasRentaData, registrosAsistencia,
+    asistenciaSemanalData
 
 [CREAR] src/lib/mock-data/proyectos.ts
-  - Export array proyectos (lineas 480-558)
-  - ~80 lineas
+  - arrays: proyectos, apuTemplates
 
 [CREAR] src/lib/mock-data/operaciones.ts
-  - Export array cargasCombustible (lineas 576-640)
-  - Export array inventario (lineas 953-958)
-  - Export array mantenimiento (lineas 970-974)
-  - Export array clientes (lineas 984-988)
-  - Export array cotizaciones (lineas 998-1002)
-  - Export array finanzas (lineas 1012-1017)
-  - Export array documentos (lineas 1029-1048)
-  - Export array incidentes (lineas 1060-1064)
-  - Export array operaciones (lineas 1074-1078)
-  - Export array lecturasHorometro (lineas 1088-1093)
-  - Export array reportesCampo (lineas 1108-1167)
-  - Export array registrosCriba (lineas 1280-1286)
-  - Export array apuTemplates (lineas 1184-1234)
-  - ~400 lineas
+  - arrays: cargasCombustible, inventario, mantenimiento, clientes,
+    cotizaciones, finanzas, documentos, incidentes, operaciones,
+    lecturasHorometro, reportesCampo, registrosCriba
 
 [MODIFICAR] src/lib/data.ts
-  - Reemplazar TODO el contenido por re-exports desde los nuevos modulos
-  - Contenido final: ~25 lineas de re-exports
-  - Ejemplo:
-    export type { Maquina, ChecklistPreoperacional, ... } from '@/types/maquinaria'
-    export { maquinaria, checklistsPreoperacionales, ... } from '@/lib/mock-data/maquinaria'
-  - Esto mantiene compatibilidad: los 28 archivos que importan de @/lib/data no necesitan cambiar
-
-[MODIFICAR] 28 archivos que importan de @/lib/data (OPCIONAL, fase 2)
-  - Despues de verificar que los re-exports funcionan, se pueden actualizar los imports
-  - para apuntar directamente a los modulos especificos:
-    - import { Maquina } from '@/types/maquinaria'
-    - import { maquinaria } from '@/lib/mock-data/maquinaria'
-  - Esto mejora el tree-shaking pero NO es urgente
+  - Reemplazar TODO el contenido por ~25 lineas de re-exports
 ```
 
 ### Orden de Ejecucion
 
-1. Crear archivos de tipos (`src/types/*.ts`) - no tienen dependencias
-2. Crear archivos de mock data (`src/lib/mock-data/*.ts`) - dependen de tipos
-3. Modificar `src/lib/data.ts` para que re-exporte todo
-4. Verificar que `npm run dev` funciona sin errores
-5. Verificar que todas las vistas siguen renderizando correctamente
-6. (Opcional) Actualizar imports en los 28 archivos para apuntar a modulos especificos
-
-### Impacto
-
-- **Turbopack:** Un cambio en `trabajadores` solo re-compila `mock-data/trabajadores.ts` y sus 6 dependientes, no los 28 archivos
-- **Granularidad:** El grafo de modulos se divide de 1 nodo gigante a ~8 nodos pequenos
-- **Mantenibilidad:** Los tipos estan organizados por dominio, los datos estan separados por entidad
+1. Crear archivos de tipos (`src/types/*.ts`)
+2. Crear archivos de mock data (`src/lib/mock-data/*.ts`)
+3. Modificar `src/lib/data.ts` para re-exportar todo
+4. Verificar `npm run dev` sin errores
+5. Verificar que todas las vistas siguen renderizando
 
 ---
 
-## FASE 3: Migrar a React Native con Expo
+## FASE 3: Estructurar el Monorepo
 
-> *Impacto: Migracion completa de la plataforma web a movil nativo.*
+> *Impacto: Reorganizar el proyecto para soportar frontend + backend + paquetes compartidos.*
 
-### Stack de la nueva app
-
-```
-Runtime:        Expo SDK 52+ (managed workflow)
-Navigation:     Expo Router (file-based routing, similar a Next.js App Router)
-UI:             React Native StyleSheet + Custom Components
-Estado:         Zustand o React Context (ligero)
-Datos:          Los mismos types y mock-data de la Fase 2 se copian tal cual
-Iconos:         @expo/vector-icons o lucide-react-native
-Animaciones:    react-native-reanimated
-```
-
-### Estructura del proyecto Expo
+### Estructura Objetivo
 
 ```
-svr-erp-mobile/
-  app/                          # Expo Router (file-based routing)
-    _layout.tsx                 # Root layout (providers, font loading)
-    index.tsx                   # Login/landing
-    (auth)/
-      login.tsx
-    (dashboard)/
-      _layout.tsx               # Dashboard layout (sidebar/drawer + providers)
-      dashboard/
-        index.tsx               # Panel principal
-      asistencia/
-        index.tsx
-      maquinaria/
-        index.tsx
-      nomina/
-        index.tsx
-      trabajadores/
-        index.tsx
-      ... (24 pantallas, una por dominio)
-  components/
-    ui/                         # Componentes base reutilizables
-      Button.tsx
-      Card.tsx
-      Input.tsx
-      Modal.tsx
-      PageHeader.tsx
-      SearchInput.tsx
-      StatsCard.tsx
-      Badge.tsx
-      Avatar.tsx
-    layout/                     # Layout components
-      Sidebar.tsx               # Drawer lateral o bottom tabs
-      Topbar.tsx
-    workers/                    # Worker domain components
-    machinery/                  # Machinery domain components
-    projects/                   # Project domain components
-  lib/
-    utils.ts                    # formatCurrency, formatDate, cn (adaptado para RN)
-    colors.ts                   # Paleta de colores (tokens)
-    spacing.ts                  # Escala de espaciado
-    typography.ts               # Tipografias
-  types/                        # Copiados directamente de la Fase 2
-    index.ts
-    maquinaria.ts
-    trabajadores.ts
-    proyectos.ts
-    operaciones.ts
-  data/                         # Copiados directamente de la Fase 2
-    mock-data/
-      maquinaria.ts
-      trabajadores.ts
-      proyectos.ts
-      operaciones.ts
-  assets/                       # Iconos, imagenes, fuentes
-    fonts/
-    images/
-  app.json                      # Configuracion de Expo
-  package.json
-  tsconfig.json
+SVR-ERP/
+├── apps/
+│   ├── web/                        # Next.js 16 Frontend
+│   │   ├── src/
+│   │   │   ├── app/                # App Router (pages + layouts)
+│   │   │   ├── components/         # Componentes UI
+│   │   │   ├── lib/                # Utilidades, hooks, contexts
+│   │   │   ├── styles/             # Estilos separados (*.styles.ts)
+│   │   │   └── theme/              # Tokens de diseno
+│   │   ├── public/
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── next.config.ts
+│   │   └── tailwind.config.ts      # (no, v4 usa globals.css)
+│   │
+│   └── api/                        # NestJS Backend
+│       ├── src/
+│       │   ├── main.ts
+│       │   ├── app.module.ts
+│       │   ├── prisma/             # PrismaModule + PrismaService
+│       │   ├── auth/               # AuthModule (login, register, refresh, logout)
+│       │   ├── common/             # Guards, filters, decorators, constants
+│       │   │   ├── guards/
+│       │   │   ├── filters/
+│       │   │   ├── decorators/
+│       │   │   └── constants/
+│       │   └── modules/            # Modulos de negocio
+│       │       ├── users/
+│       │       ├── workers/        # trabajadores
+│       │       ├── machinery/      # maquinaria
+│       │       ├── projects/       # proyectos
+│       │       ├── attendance/     # asistencia
+│       │       ├── payroll/        # nomina
+│       │       ├── fuel/           # combustible
+│       │       ├── maintenance/    # mantenimiento
+│       │       ├── inventory/      # inventario
+│       │       ├── clients/        # clientes
+│       │       ├── quotes/         # cotizaciones
+│       │       ├── finance/        # finanzas
+│       │       ├── collections/    # cobranza
+│       │       ├── operations/     # operaciones
+│       │       ├── gps/            # GPS tracking
+│       │       ├── documents/      # documentos
+│       │       ├── incidents/      # incidentes
+│       │       ├── reports/        # reportes
+│       │       └── suppliers/      # proveedores
+│       ├── prisma/
+│       │   ├── schema.prisma
+│       │   └── seed.ts
+│       ├── package.json
+│       ├── tsconfig.json
+│       └── nest-cli.json
+│
+├── packages/
+│   └── shared/                     # Paquete compartido
+│       ├── src/
+│       │   ├── types/              # Interfaces TypeScript
+│       │   │   ├── index.ts
+│       │   │   ├── maquinaria.ts
+│       │   │   ├── trabajadores.ts
+│       │   │   ├── proyectos.ts
+│       │   │   └── operaciones.ts
+│       │   ├── schemas/            # Schemas Zod (validacion)
+│       │   │   ├── index.ts
+│       │   │   ├── maquinaria.schema.ts
+│       │   │   ├── trabajadores.schema.ts
+│       │   │   └── ...
+│       │   ├── constants/          # Enums, constantes, labels
+│       │   │   ├── index.ts
+│       │   │   ├── roles.ts
+│       │   │   ├── statuses.ts
+│       │   │   └── ...
+│       │   └── utils/              # Funciones puras compartidas
+│       │       ├── currency.ts     # formatCurrency
+│       │       ├── date.ts         # formatDate
+│       │       └── index.ts
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── .env                            # Variables de entorno (gitignored)
+├── .env.example                    # Template
+├── .gitignore
+├── package.json                    # Root workspace config
+├── tsconfig.base.json              # Config TS compartida
+├── turbo.json                      # Turborepo config (opcional)
+├── AGENTS.md
+└── PLAN-ARQUITECTURA.md
 ```
 
-### Mapeo de pantallas web a RN
+### Configuracion del Workspace
 
-| Web (Next.js) | React Native (Expo Router) | Notas |
-|---------------|---------------------------|-------|
-| `(dashboard)/layout.tsx` | `(dashboard)/_layout.tsx` | Drawer o Bottom Tabs en vez de Sidebar |
-| `Sidebar.tsx` | `Sidebar.tsx` o `(drawer)` | Expo Router supports drawers |
-| `Topbar.tsx` | `Topbar.tsx` o header de pantalla | Header de React Navigation |
-| `Modal.tsx` | `Modal.tsx` | `react-native` Modal o custom bottom sheet |
-| `Toast.tsx` | `Toast.tsx` | `react-native-reanimated` para animar |
-| `page.tsx` (cada vista) | `index.tsx` (cada pantalla) | Mismo nombre de carpeta |
-| `WorkerCard.tsx` | `WorkerCard.tsx` | View + StyleSheet en vez de div + Tailwind |
-| `MachineCard.tsx` | `MachineCard.tsx` | Igual pero nativo |
-| `LiquidacionModal.tsx` | `LiquidacionModal.tsx` | Bottom sheet o Modal nativo |
+```json
+// package.json raiz
+{
+  "name": "svr-erp",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:web": "turbo dev --filter=web",
+    "dev:api": "turbo dev --filter=api",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "db:migrate": "turbo db:migrate --filter=api",
+    "db:seed": "turbo db:seed --filter=api",
+    "db:studio": "turbo db:studio --filter=api"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}
+```
 
-### Orden de Ejecucion
+```json
+// turbo.json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "dev": { "cache": false, "persistent": true },
+    "build": { "dependsOn": ["^build"], "outputs": [".next/**", "dist/**"] },
+    "lint": {},
+    "typecheck": { "dependsOn": ["^build"] }
+  }
+}
+```
 
-1. `npx create-expo-app svr-erp-mobile --template tabs` (o blank + Expo Router)
-2. Configurar Expo Router, fuentes, y tema de colores
-3. Copiar `types/` y `data/` de la Fase 2 sin modificar
-4. Crear componentes base (`Button`, `Card`, `Input`, `Modal`)
-5. Migrar layout (drawer/navigation + providers)
-6. Migrar pantallas de mayor a menor complejidad:
-   - Dashboard principal (resumen)
-   - Trabajadores (CRUD basico)
-   - Asistencia (tablas + GPS)
-   - Maquinaria (cards + telemetry)
-   - Nomina (calculos + recibos)
-   - Resto de pantallas
-7. Agregar navegacion completa entre pantallas
-8. Testing en Android/iOS (Expo Go o emulador)
+### Pasos de Ejecucion
 
-### Consideraciones de UI movil
+1. Crear estructura de directorios `apps/web/`, `apps/api/`, `packages/shared/`
+2. Mover el codigo actual de Next.js a `apps/web/`
+3. Crear `packages/shared/` con tipos, schemas y utilidades
+4. Configurar workspaces en package.json raiz
+5. Configurar Turborepo (turbo.json)
+6. Configurar path aliases compartidos
+7. Verificar que `turbo dev` levanta el frontend
 
-- **No hay sidebar fijo** - usar Bottom Tabs (5 tabs max) o Drawer
-- **Las tablas grandes** se convierten en FlatList con scroll vertical
-- **Los modales** se convierten en Bottom Sheets o modales nativos
-- **El mapa GPS** usa `react-native-maps` en vez de tiles web
-- **Los formularios** se adaptan a teclado nativo (KeyboardAvoidingView)
-- **Pull-to-refresh** en listas en vez de boton manual
-- **Touch targets** minimo 44x44px (WCAG movil)
+### Migracion de Codigo
+
+```
+[MOVER] src/ → apps/web/src/
+[MOVER] public/ → apps/web/public/
+[MOVER] next.config.ts → apps/web/next.config.ts
+[MOVER] tsconfig.json → apps/web/tsconfig.json
+[MOVER] package.json → apps/web/package.json (solo deps del frontend)
+
+[CREAR] packages/shared/src/types/*.ts
+  - Mover de apps/web/src/types/ a packages/shared/src/types/
+
+[CREAR] packages/shared/src/utils/currency.ts
+  - Extraer formatCurrency de los archivos donde esta duplicado
+
+[CREAR] packages/shared/src/utils/date.ts
+  - Extraer formatDate de los archivos donde esta duplicado
+
+[CREAR] packages/shared/src/constants/
+  - Crear enums y constantes compartidas
+```
 
 ---
 
-## FASE 4: UI y componentes en React Native
+## FASE 4: Backend - NestJS + Prisma
 
-> *Impacto: Construir la interfaz movil completa con componentes nativos reutilizables.*
+> *Impacto: Construir la capa de API REST con autenticacion JWT, RBAC, y modulos por dominio.*
 
-### Componentes UI base a crear
+### 4.1 Configuracion Inicial
 
 ```
-[CREAR] components/ui/Button.tsx
-  - Variantes: primary, secondary, outline, ghost, danger
-  - Tamanos: sm, md, lg
-  - Estados: default, disabled, loading (con ActivityIndicator)
-  - Props: title, onPress, variant, size, loading, disabled, icon
+[CREAR] apps/api/src/main.ts
+  - Bootstrap con ValidationPipe global, CORS, AllExceptionsFilter
 
-[CREAR] components/ui/Card.tsx
-  - Contenedor con sombra, border-radius, padding
-  - Props: children, style, onPress (opcional)
+[CREAR] apps/api/src/app.module.ts
+  - ConfigModule, PrismaModule, AuthModule
 
-[CREAR] components/ui/Input.tsx
-  - TextInput con label, placeholder, error message
-  - Props: label, value, onChangeText, placeholder, error, secureTextEntry
+[CREAR] apps/api/src/prisma/prisma.module.ts
+  - Modulo global con PrismaService
 
-[CREAR] components/ui/Modal.tsx
-  - Modal nativo con overlay, titulo, contenido, acciones
-  - Alternativa: Bottom Sheet con @gorhom/bottom-sheet
+[CREAR] apps/api/src/prisma/prisma.service.ts
+  - Extiende PrismaClient con enableShutdownHooks, cleanDatabase
 
-[CREAR] components/ui/PageHeader.tsx
-  - Titulo + subtitulo + boton de accion
-  - Props: title, subtitle, actionTitle, onAction
-
-[CREAR] components/ui/SearchInput.tsx
-  - TextInput con icono de busqueda
-  - Props: value, onChangeText, placeholder
-
-[CREAR] components/ui/StatsCard.tsx
-  - KPI card con icono, valor, tendencia
-  - Props: title, value, icon, trend, color
-
-[CREAR] components/ui/Badge.tsx
-  - Etiqueta de estado (activo, inactivo, pendiente, etc.)
-  - Props: label, color, size
-
-[CREAR] components/ui/Avatar.tsx
-  - Iniciales del usuario o imagen
-  - Props: name, imageUrl, size
-
-[CREAR] components/ui/EmptyState.tsx
-  - Estado vacio con icono y mensaje
-  - Props: icon, title, message, actionTitle, onAction
-
-[CREAR] components/ui/LoadingSpinner.tsx
-  - ActivityIndicator centrado con opcion de texto
-  - Props: text, size
+[CREAR] apps/api/prisma/schema.prisma
+  - Modelos base: User, Role, UserRole, RefreshToken, RevokedToken
+  - UUIDs para PKs, snake_case en columnas, campos de auditoria
+  - Soft deletes en entidades principales (deletedAt)
 ```
 
-### Tema de colores (tokens)
+### 4.2 Modulo de Autenticacion
 
-```typescript
-// lib/colors.ts
-export const colors = {
-  primary: '#f97316',
-  primaryDark: '#ea580c',
-  primaryLight: '#fbbf24',
-  secondary: '#0f172a',
-  background: '#f8fafc',
-  surface: '#ffffff',
-  border: '#e2e8f0',
-  text: '#0f172a',
-  textSecondary: '#64748b',
-  textMuted: '#94a3b8',
-  success: '#22c55e',
-  warning: '#eab308',
-  error: '#ef4444',
-  info: '#3b82f6',
+```
+[CREAR] apps/api/src/auth/auth.module.ts
+  - JwtModule (access + refresh), PassportModule, global JwtAuthGuard
+
+[CREAR] apps/api/src/auth/auth.controller.ts
+  - POST /auth/register   (Public)
+  - POST /auth/login      (Public)
+  - POST /auth/refresh    (Public)
+  - POST /auth/logout     (Protected)
+  - GET  /auth/me         (Protected)
+
+[CREAR] apps/api/src/auth/auth.service.ts
+  - register, login, refresh (rotation), logout (revoke + blacklist)
+
+[CREAR] apps/api/src/auth/dto/
+  - register.dto.ts, login.dto.ts, refresh.dto.ts
+  - class-validator: @IsString, @IsEmail, @MinLength, @IsUUID
+
+[CREAR] apps/api/src/auth/strategies/
+  - jwt.strategy.ts (access token)
+  - jwt-refresh.strategy.ts (refresh token)
+
+[CREAR] apps/api/src/common/guards/
+  - jwt-auth.guard.ts (global, con @Public() escape hatch)
+  - roles.guard.ts (RBAC)
+
+[CREAR] apps/api/src/common/decorators/
+  - public.decorator.ts (@Public)
+  - roles.decorator.ts (@Roles(...))
+
+[CREAR] apps/api/src/common/filters/
+  - all-exceptions.filter.ts
+  - Formato: { success: boolean, data?: any, error?: { code, message, details } }
+
+[CREAR] apps/api/src/common/constants/
+  - roles.ts (enum de roles: ADMIN, GERENTE, OPERADOR, etc.)
+```
+
+### 4.3 Modulos de Negocio (patron repetido)
+
+Cada modulo sigue esta estructura:
+
+```
+apps/api/src/modules/{domain}/
+├── {domain}.module.ts          #@Module con controller + service
+├── {domain}.controller.ts      #Endpoints REST
+├── {domain}.service.ts         #Logica de negocio
+├── dto/
+│   ├── create-{domain}.dto.ts  #DTO de creacion (class-validator)
+│   ├── update-{domain}.dto.ts  #DTO de actualizacion
+│   └── query-{domain}.dto.ts   #DTO de filtros/paginacion
+└── entities/
+    └── {domain}.entity.ts      #Tipo de respuesta (opional, Prisma genera esto)
+```
+
+### Modulos a Crear
+
+| Modulo | Modelo Prisma | Endpoints Principales |
+|--------|---------------|----------------------|
+| `workers` | Worker | CRUD, lista, busqueda |
+| `machinery` | Machine | CRUD, estado, GPS |
+| `projects` | Project | CRUD, progreso, APU |
+| `attendance` | Attendance | registro, historial, resumen semanal |
+| `payroll` | Payroll | periodos, pagos, recibos |
+| `fuel` | FuelCharge | registro, historial por maquina |
+| `maintenance` | Maintenance | registro, historial, alertas |
+| `inventory` | InventoryItem | CRUD, stock, alertas |
+| `clients` | Client | CRUD |
+| `quotes` | Quote | CRUD, items, aprobar |
+| `finance` | Transaction | ingresos, egresos, historial |
+| `collections` | Collection | cuentas por cobrar, pagos |
+| `operations` | Operation | asignaciones, historial |
+| `gps` | GpsReading | ultima posicion, historial |
+| `documents` | Document | upload, categorias |
+| `incidents` | Incident | registro, prioridad |
+| `reports` | Report | generacion, historial |
+| `suppliers` | Supplier | CRUD |
+
+### 4.4 Prisma Schema - Modelos de Negocio
+
+```prisma
+// Ejemplo: Workers
+model Worker {
+  id              String   @id @default(uuid()) @db.Uuid
+  nombre          String
+  apellidoPaterno String
+  apellidoMaterno String?
+  rfc             String?  @unique
+  puesto          String
+  categoria       String   // Operador, Oficinista, Chofer, etc.
+  sueldoFiscal    Decimal  @db.Decimal(10, 2)
+  sueldoEfectivo  Decimal  @db.Decimal(10, 2)
+  metodoPago      String   // Banco, Efectivo
+  status          String   @default("activo")
+  telefono        String?
+  email           String?
+  fotoUrl         String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Relaciones
+  attendances     Attendance[]
+  payrolls        Payroll[]
+  bitacoras       BitacoraRenta[]
+
+  @@map("workers")
 }
 ```
 
 ### Orden de Ejecucion
 
-1. Definir tokens de color, spacing, typography
-2. Crear componentes base (Button, Card, Input)
-3. Crear componentes de layout (PageHeader, SearchInput)
-4. Crear componentes de feedback (Modal, Toast, EmptyState, LoadingSpinner)
-5. Crear componentes de dominio (WorkerCard, MachineCard, StatsCard)
-6. Integrar en las pantallas migradas de la Fase 3
-7. Testing visual en Android/iOS
+1. Configurar NestJS + Prisma + PostgreSQL
+2. Crear schema.prisma con modelos base
+3. Ejecutar `prisma migrate dev`
+4. Crear modulo Auth con JWT
+5. Crear guards y decorators (RBAC)
+6. Crear AllExceptionsFilter
+7. Crear modulos de negocio (uno por uno, empezando por workers)
+8. Ejecutar `prisma db seed` con datos iniciales
+9. Probar endpoints con curl o Postman
 
-### Impacto
+### Contracto de Respuesta Universal
 
-- **Codebase limpio:** Componentes bien separados por responsabilidad
-- **Reutilizacion:** Los componentes UI se usan en todas las 24 pantallas
-- **Consistencia:** Tokens de diseno centralizados
-- **Testing:** Cada componente se puede probar en aislamiento
+```typescript
+// Todas las respuestas del API usan este formato:
+{
+  success: true,
+  data: { /* payload */ }
+}
+
+// Errores:
+{
+  success: false,
+  error: {
+    code: "VALIDATION_ERROR",
+    message: "El campo nombre es requerido",
+    details: [{ field: "nombre", message: "Required" }]
+  }
+}
+```
+
+---
+
+## FASE 5: Frontend - Estandarizacion y Componentes Reutilizables
+
+> *Impacto: Unificar estilos, crear sistema de componentes consistente, eliminar todo hardcodeado.*
+
+### 5.1 Theme System - Tokens Globales
+
+```
+[CREAR] apps/web/src/app/globals.css
+  - Definir todos los tokens en @theme {}
+  - Colores: primary, secondary, success, warning, error, info, slate
+  - Tipografia: font-sans (Inter), font-display (Space Grotesk)
+  - Spacing: escala consistente
+  - Border radius: sm, md, lg, xl, 2xl
+  - Shadows: sm, md, lg
+  - Componentes base: .btn-primary, .card, .input-base
+  - Animaciones: slideInRight, fadeScaleIn
+
+REGLAS ESTRICTAS:
+  - NADA de colores hardcodeados en componentes
+  - NADA de spacing hardcodeado
+  - Todo usa los tokens del theme
+  - clsx/merge para clases condicionales via cn()
+```
+
+### 5.2 Componentes UI Base
+
+Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
+
+```
+[CREAR] apps/web/src/components/ui/
+  ├── Button/
+  │   ├── Button.tsx              # Variantes: primary, secondary, outline, ghost, danger
+  │   ├── Button.styles.ts        # Estilos separados
+  │   └── index.ts
+  ├── Card/
+  │   ├── Card.tsx                # Contenedor con sombra, padding, optional onPress
+  │   ├── Card.styles.ts
+  │   └── index.ts
+  ├── Input/
+  │   ├── Input.tsx               # Label, placeholder, error, disabled, icon
+  │   ├── Input.styles.ts
+  │   └── index.ts
+  ├── Select/
+  │   ├── Select.tsx              # Dropdown nativo con label
+  │   ├── Select.styles.ts
+  │   └── index.ts
+  ├── Badge/
+  │   ├── Badge.tsx               # Variantes: success, warning, error, info, neutral
+  │   ├── Badge.styles.ts
+  │   └── index.ts
+  ├── Modal/
+  │   ├── Modal.tsx               # Overlay + backdrop blur + animation
+  │   ├── Modal.styles.ts
+  │   └── index.ts
+  ├── ModalField/
+  │   ├── ModalField.tsx          # Label wrapper para campos en modales
+  │   └── index.ts
+  ├── PageHeader/
+  │   ├── PageHeader.tsx          # Titulo + subtitulo + boton de accion
+  │   ├── PageHeader.styles.ts
+  │   └── index.ts
+  ├── SearchInput/
+  │   ├── SearchInput.tsx         # Input con icono de busqueda
+  │   ├── SearchInput.styles.ts
+  │   └── index.ts
+  ├── StatsCard/
+  │   ├── StatsCard.tsx           # KPI card con icono, valor, tendencia
+  │   ├── StatsCard.styles.ts
+  │   └── index.ts
+  ├── EmptyState/
+  │   ├── EmptyState.tsx          # Estado vacio con icono y CTA
+  │   ├── EmptyState.styles.ts
+  │   └── index.ts
+  ├── Avatar/
+  │   ├── Avatar.tsx              # Iniciales o imagen
+  │   ├── Avatar.styles.ts
+  │   └── index.ts
+  └── Table/
+      ├── Table.tsx               # Wrapper de tabla con header/body
+      ├── Table.styles.ts
+      └── index.ts
+```
+
+### 5.3 Componentes de Layout
+
+```
+[CREAR] apps/web/src/components/layout/
+  ├── Sidebar/
+  │   ├── Sidebar.tsx             # Navegacion colapsable con grupos
+  │   ├── Sidebar.styles.ts
+  │   └── index.ts
+  ├── Topbar/
+  │   ├── Topbar.tsx              # Barra superior con busqueda, notificaciones, user menu
+  │   ├── Topbar.styles.ts
+  │   └── index.ts
+  ├── Toast/
+  │   ├── Toast.tsx               # Sistema de notificaciones toast
+  │   ├── Toast.styles.ts
+  │   └── index.ts
+  └── NotificationContext/
+      ├── NotificationContext.tsx  # Context de notificaciones
+      └── index.ts
+```
+
+### 5.4 Componentes de Dominio
+
+```
+[CREAR] apps/web/src/components/workers/
+  ├── WorkerCard/
+  │   ├── WorkerCard.tsx          # Tarjeta expandible del trabajador
+  │   ├── WorkerCard.styles.ts
+  │   └── index.ts
+  ├── LiquidacionModal/
+  │   ├── LiquidacionModal.tsx    # Modal de liquidacion/finalizacion
+  │   ├── LiquidacionModal.styles.ts
+  │   └── index.ts
+  ├── BitacorasRentaModal/
+  │   ├── BitacorasRentaModal.tsx # Modal de bitacoras de renta diaria
+  │   ├── BitacorasRentaModal.styles.ts
+  │   └── index.ts
+  ├── AsistenciaGpsModal/
+  │   ├── AsistenciaGpsModal.tsx  # Modal de detalle GPS asistencia
+  │   ├── AsistenciaGpsModal.styles.ts
+  │   └── index.ts
+  ├── RecibosNominaModal/
+  │   ├── RecibosNominaModal.tsx  # Modal de recibos de nomina
+  │   ├── RecibosNominaModal.styles.ts
+  │   └── index.ts
+  └── EmailPreviewModal/
+      ├── EmailPreviewModal.tsx   # Modal de preview/envio de email
+      ├── EmailPreviewModal.styles.ts
+      └── index.ts
+
+[CREAR] apps/web/src/components/machinery/
+  ├── MachineCard/
+  │   ├── MachineCard.tsx         # Tarjeta de maquina con status, fuel, GPS
+  │   ├── MachineCard.styles.ts
+  │   └── index.ts
+
+[CREAR] apps/web/src/components/projects/
+  ├── ProjectCard/
+  │   ├── ProjectCard.tsx         # Tarjeta de proyecto con progreso
+  │   ├── ProjectCard.styles.ts
+  │   └── index.ts
+  └── ProjectDetailsModal/
+      ├── ProjectDetailsModal.tsx # Modal de detalle del proyecto
+      ├── ProjectDetailsModal.styles.ts
+      └── index.ts
+```
+
+### 5.5 Patron de Estilos Separados
+
+```typescript
+// Component.styles.ts
+import { css } from 'styled-components'; // O classes con cn()
+
+// Cada archivo de estilos exporta clases nombradas
+export const inputClasses = {
+  wrapper: 'flex flex-col gap-1.5',
+  label: 'text-xs font-semibold uppercase tracking-wider text-slate-500',
+  input: cn(
+    'w-full px-4 py-3 rounded-xl border border-slate-200',
+    'text-sm font-medium text-slate-900 bg-slate-50',
+    'focus:outline-none focus:border-primary/50 focus:bg-white',
+    'transition-all duration-200'
+  ),
+  error: 'text-xs font-medium text-red-500',
+  disabled: 'opacity-50 cursor-not-allowed',
+};
+```
+
+### 5.6 Responsive Design
+
+```css
+/* Breakpoints definidos en globals.css @theme {} */
+/* Tailwind v4 breakpoints por defecto:
+   sm: 640px (movil landscape)
+   md: 768px (tablet portrait)
+   lg: 1024px (tablet landscape / desktop)
+   xl: 1280px (desktop grande)
+*/
+
+/* Reglas responsive:
+   1. Mobile-first: estilos base = movil, sm/md/lg = desktop
+   2. Sidebar colapsable en lg, drawer en movil
+   3. Tablas: scroll horizontal en movil, completas en desktop
+   4. Grids: 1 col movil, 2 col tablet, 3-4 col desktop
+   5. Cards: stack en movil, grid en desktop
+   6. Modales: full-screen en movil, centered en desktop
+   7. Touch targets: min 44x44px en movil
+   8. Font sizes: base en movil, lg en desktop (via text-xs md:text-sm)
+*/
+```
+
+### 5.7 Hooks Personalizados
+
+```
+[CREAR] apps/web/src/lib/hooks/
+  ├── useDebounce.ts              # Debounce para busquedas
+  ├── useMediaQuery.ts            # Deteccion de breakpoints
+  ├── useClickOutside.ts          # Cerrar modales/dropdowns
+  ├── useLocalStorage.ts          # Persistencia local
+  └── useToast.ts                 # Hook para mostrar toasts
+
+[CREAR] apps/web/src/lib/contexts/
+  ├── ToastContext.tsx             # Provider global de toasts
+  └── NotificationContext.tsx      # Provider global de notificaciones
+```
+
+### 5.8 Utilidades Compartidas
+
+```typescript
+// apps/web/src/lib/utils.ts
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+// Currency (DEBE usar Intl, NUNCA toFixed)
+export const formatCurrency = (value: number): string =>
+  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
+
+// Date
+export const formatDate = (date: Date | string): string =>
+  new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date));
+
+export const formatDateTime = (date: Date | string): string =>
+  new Intl.DateTimeFormat('es-MX', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  }).format(new Date(date));
+```
+
+### Orden de Ejecucion
+
+1. Definir tokens de theme en globals.css
+2. Crear cn() utility
+3. Crear componentes base (Button, Card, Input, Select)
+4. Crear componentes de layout (Sidebar, Topbar, Toast)
+5. Crear componentes de feedback (Modal, EmptyState, LoadingSpinner)
+6. Crear componentes de dominio (WorkerCard, MachineCard, ProjectCard)
+7. Crear hooks (useDebounce, useMediaQuery, useToast)
+8. Crear contexts (ToastContext, NotificationContext)
+9. Eliminar estilos inline hardcodeados en todas las paginas
+10. Verificar responsive en 3 breakpoints
+
+---
+
+## FASE 6: Integracion Frontend-Backend
+
+> *Impacto: Conectar el frontend con la API real, eliminar datos mock, implementar auth.*
+
+### 6.1 API Client
+
+```
+[CREAR] apps/web/src/lib/api/client.ts
+  - Base URL desde env variable
+  - Auto-inyeccion de Authorization header (access token)
+  - Interceptor 401 → intentar refresh → retry
+  - Formato de error consistente (ApiError class)
+  - Retry automatico en errores de red
+
+[CREAR] apps/web/src/lib/api/auth.api.ts
+  - login, register, refresh, logout, me
+
+[CREAR] apps/web/src/lib/api/workers.api.ts
+  - CRUD de trabajadores
+
+[CREAR] apps/web/src/lib/api/machinery.api.ts
+  - CRUD de maquinaria
+
+// ... un archivo por dominio
+```
+
+### 6.2 Estado Global
+
+```typescript
+// Auth store con persistencia
+[CREAR] apps/web/src/lib/stores/useAuthStore.ts
+  - user, tokens (access + refresh), isAuthenticated
+  - login(), logout(), refresh()
+  - Persistencia en localStorage
+  - Auto-refresh antes de expirar
+```
+
+### 6.3 Paginas con Datos Reales
+
+Cada pagina del dashboard se migra de mock data a API calls:
+
+```typescript
+// Patron de carga en Server Components (cuando aplique)
+async function WorkersPage() {
+  const workers = await api.workers.list();
+  return <WorkerList workers={workers} />;
+}
+
+// Patron con React Query (para Client Components)
+function WorkersPage() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['workers'],
+    queryFn: api.workers.list,
+  });
+  if (isLoading) return <LoadingSpinner />;
+  if (error) return <ErrorState />;
+  return <WorkerList workers={data} />;
+}
+```
+
+### 6.4 Formularios con Validacion
+
+```typescript
+// Schemas Zod compartidos (packages/shared/src/schemas/)
+import { z } from 'zod';
+
+export const workerSchema = z.object({
+  nombre: z.string().min(1, 'El nombre es requerido'),
+  apellidoPaterno: z.string().min(1, 'El apellido es requerido'),
+  puesto: z.string().min(1, 'El puesto es requerido'),
+  sueldoFiscal: z.number().positive('El sueldo debe ser positivo'),
+  sueldoEfectivo: z.number().positive(),
+});
+
+// En el frontend:
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+function WorkerForm() {
+  const form = useForm({ resolver: zodResolver(workerSchema) });
+  // ...
+}
+```
+
+### Orden de Ejecucion
+
+1. Crear API client con refresh token rotation
+2. Crear auth store con persistencia
+3. Crear hooks de API por dominio
+4. Migrar paginas de mock data a API calls
+5. Implementar formularios con Zod + react-hook-form
+6. Eliminar src/lib/data.ts y src/lib/mock-data/ (ya no se necesitan)
+7. Testing end-to-end
 
 ---
 
 ## Resumen de Impacto por Fase
 
-| Fase | Que hace | Que reutiliza | Que se rehace | Tiempo est. |
-|------|----------|---------------|---------------|-------------|
-| 1 | Limpiar deps muertas | Nada | Nada | 10 min |
-| 2 | Dividir data.ts en modulos | Tipos + datos en RN | Nada | 1-2 hrs |
-| 3 | Migrar a Expo + Expo Router | Types, data, logica de negocio | Layout, navegacion | dias-semanas |
-| 4 | Construir UI nativa | Nada (se rehace con StyleSheet) | Todos los componentes UI | semanas |
+| Fase | Que hace | Tiempo est. | Dependencias |
+|------|----------|-------------|--------------|
+| 1 | Limpiar deps muertas | 10 min | Ninguna |
+| 2 | Dividir data.ts en modulos | 1-2 hrs | Fase 1 |
+| 3 | Estructurar monorepo | 2-3 hrs | Fase 2 |
+| 4 | Backend NestJS + Prisma | 1-2 sem | Fase 3 |
+| 5 | Estandarizar frontend + UI components | 2-3 sem | Fase 3 |
+| 6 | Integracion frontend-backend | continuo | Fases 4+5 |
 
-### Lo que se transfiere sin cambios
+### Lo que se mantiene del proyecto actual
+- Todas las interfaces TypeScript (se mueven a packages/shared)
+- Todos los datos mock (temporalmente, hasta que el backend este listo)
+- Logica de negocio (formatCurrency, calculos de nomina)
+- Estructura de navegacion (24 paginas del dashboard)
 
-- 27 interfaces TypeScript (Maquina, Trabajador, Proyecto, etc.)
-- 21 arrays de datos mock
-- Logica de formatCurrency, formatDate
-- Calculos de nomina, liquidacion, etc.
+### Lo que se crea desde cero
+- Backend completo (NestJS + Prisma + PostgreSQL)
+- Paquete compartido (packages/shared)
+- Sistema de autenticacion JWT
+- Componentes UI estandarizados con estilos separados
+- Theme system con tokens globales
+- API client con refresh token rotation
+- Responsive design para todos los breakpoints
 
-### Lo que se rehace en React Native
-
-- 41 archivos de componentes UI (Tailwind -> StyleSheet)
-- Layout y navegacion (Next.js App Router -> Expo Router)
-- Animaciones (CSS keyframes -> react-native-reanimated)
-- Estado global (React Context -> Zustand o Context nativo)
+---
 
 ## Verificacion Post-Implementacion
 
-### Fase 1-2 (web):
-1. `npm run dev` inicia sin errores
-2. Navegar a cada vista funciona correctamente
-3. Los errores FATAL de Turbopack ya no aparecen
+### Por Fase:
+1. **Fase 1**: `npm run dev` sin errores, vistas renderizan
+2. **Fase 2**: 0 errores de import, todos los tipos accesibles
+3. **Fase 3**: `turbo dev` levanta frontend, estructura limpia
+4. **Fase 4**: API responde en todos los endpoints, auth funciona
+5. **Fase 5**: Componentes reutilizables, responsive en 3 breakpoints, 0 estilos inline
+6. **Flujo completo**: Login → Dashboard → CRUD trabajadores → Verificar persistencia
 
-### Fase 3-4 (React Native):
-1. `npx expo start` inicia sin errores
-2. Navegar entre pantallas funciona (drawer/tabs)
-3. Cada pantalla muestra los datos correctos
-4. Modales y sheets se abren/cierran correctamente
-5. Pull-to-refresh funciona en listas
-6. Teclado no bloquea formularios
-7. Testing en Android (Expo Go) y iOS (Simulator)
+### Checklist de Calidad:
+- [ ] 0 errores TypeScript en todo el monorepo
+- [ ] Todos los colores usan tokens del theme (0 hardcodeados)
+- [ ] Todos los spacings usan tokens (0 valores mágicos)
+- [ ] Responsive funciona en 3 breakpoints (movil, tablet, desktop)
+- [ ] Modales abren/cierran correctamente
+- [ ] Formularios validan con Zod
+- [ ] Auth funciona (login, refresh, logout)
+- [ ] API tiene RBAC (roles guard)
+- [ ] Errores muestran feedback al usuario (toasts)
+- [ ] Loading states en todas las operaciones async
+- [ ] Empty states cuando no hay datos
