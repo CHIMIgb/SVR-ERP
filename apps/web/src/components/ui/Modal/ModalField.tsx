@@ -45,10 +45,10 @@ export function ModalField({
 /* ── Clases reutilizables para inputs dentro de modales ── */
 
 export const modalInputClass =
-  'w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full h-10 sm:h-11 px-3 sm:px-4 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const modalSelectClass =
-  'w-full h-11 px-4 pr-10 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 appearance-none focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full h-10 sm:h-11 px-3 sm:px-4 pr-10 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-900 appearance-none focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const modalTextareaClass =
-  'w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 resize-none disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 resize-none disabled:opacity-50 disabled:cursor-not-allowed';

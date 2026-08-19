@@ -4,7 +4,7 @@ export const dataTableClasses = {
 
   /* ── Header ── */
   thead: '',
-  th: 'px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap text-white',
+  th: 'px-3 sm:px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap text-white',
 
   /* ── Header Colors (naranja alternado) ── */
   thOdd: 'bg-primary',
@@ -15,7 +15,7 @@ export const dataTableClasses = {
   trInteractive: 'hover:bg-slate-50/80 cursor-pointer',
   trEven: 'bg-white',
   trOdd: 'bg-slate-50/30',
-  td: 'px-4 py-3.5 text-sm text-slate-700 whitespace-nowrap',
+  td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-slate-700 whitespace-nowrap',
   tdRight: 'text-right',
   tdCenter: 'text-center',
 
