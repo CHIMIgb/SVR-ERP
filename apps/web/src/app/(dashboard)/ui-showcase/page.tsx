@@ -6,7 +6,10 @@ import {
   Users, Truck, HardHat, FileText, DollarSign, TrendingUp,
   AlertCircle, CheckCircle, Clock, Eye, Settings,
   LayoutDashboard, Mail, Phone, MapPin, Calendar,
-  BarChart3, Activity, Loader2,
+  BarChart3, Activity, Loader2, Upload, Copy, Printer,
+  RefreshCw, ExternalLink, Share2, Link, Unlock, Lock,
+  Send, Zap, Star, Heart, Archive, RotateCcw, PencilLine,
+  CircleCheck, CircleX, CircleAlert, Info, CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -159,6 +162,88 @@ export default function UIShowcasePage() {
               <Button variant="outline">Outline</Button>
               <Button variant="ghost">Ghost</Button>
               <Button variant="danger">Danger</Button>
+              <Button variant="success">Success</Button>
+              <Button variant="warning">Warning</Button>
+              <Button variant="info">Info</Button>
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Acciones CRUD (Colores Semanticos)
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="success" icon={<Plus size={16} />}>
+                Crear
+              </Button>
+              <Button variant="warning" icon={<PencilLine size={16} />}>
+                Editar
+              </Button>
+              <Button variant="danger" icon={<Trash2 size={16} />}>
+                Eliminar
+              </Button>
+              <Button variant="info" icon={<Eye size={16} />}>
+                Ver Detalle
+              </Button>
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Con Iconos
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button icon={<Plus size={16} />}>Nuevo Registro</Button>
+              <Button icon={<Save size={16} />} iconPosition="right">
+                Guardar Cambios
+              </Button>
+              <Button variant="danger" icon={<Trash2 size={16} />}>
+                Eliminar
+              </Button>
+              <Button variant="outline" icon={<Download size={16} />}>
+                Descargar
+              </Button>
+              <Button variant="success" icon={<Upload size={16} />}>
+                Subir Archivo
+              </Button>
+              <Button variant="warning" icon={<Edit size={16} />}>
+                Modificar
+              </Button>
+              <Button variant="info" icon={<Eye size={16} />}>
+                Ver Detalle
+              </Button>
+              <Button variant="outline" icon={<Printer size={16} />}>
+                Imprimir
+              </Button>
+              <Button variant="ghost" icon={<Copy size={16} />}>
+                Copiar
+              </Button>
+              <Button variant="ghost" icon={<Share2 size={16} />}>
+                Compartir
+              </Button>
+              <Button variant="outline" icon={<ExternalLink size={16} />}>
+                Abrir
+              </Button>
+              <Button variant="outline" icon={<RefreshCw size={16} />}>
+                Actualizar
+              </Button>
+              <Button variant="outline" icon={<Send size={16} />}>
+                Enviar
+              </Button>
+              <Button variant="outline" icon={<Archive size={16} />}>
+                Archivar
+              </Button>
+              <Button variant="ghost" icon={<RotateCcw size={16} />}>
+                Restaurar
+              </Button>
+              <Button variant="outline" icon={<Link size={16} />}>
+                Copiar Enlace
+              </Button>
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Iconos por Tamano
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="sm" icon={<Plus size={14} />}>Small</Button>
+              <Button size="md" icon={<Plus size={16} />}>Medium</Button>
+              <Button size="lg" icon={<Plus size={18} />}>Large</Button>
             </div>
 
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
@@ -179,29 +264,140 @@ export default function UIShowcasePage() {
             </div>
 
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-              Con Iconos
-            </h3>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button icon={<Plus size={16} />} iconPosition="left">
-                Nuevo Registro
-              </Button>
-              <Button icon={<Save size={16} />} iconPosition="right">
-                Guardar Cambios
-              </Button>
-              <Button variant="danger" icon={<Trash2 size={16} />}>
-                Eliminar
-              </Button>
-              <Button variant="outline" icon={<Download size={16} />}>
-                Descargar
-              </Button>
-            </div>
-
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
               Full Width
             </h3>
             <Button fullWidth icon={<Settings size={16} />}>
               Configuracion Completa
             </Button>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Iconos ──────────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Iconos - Catalogo lucide-react
+          </h2>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Acciones CRUD
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Plus size={20} />, name: 'Plus', uso: 'Crear' },
+                { icon: <PencilLine size={20} />, name: 'PencilLine', uso: 'Editar' },
+                { icon: <Edit size={20} />, name: 'Edit', uso: 'Modificar' },
+                { icon: <Trash2 size={20} />, name: 'Trash2', uso: 'Eliminar' },
+                { icon: <Eye size={20} />, name: 'Eye', uso: 'Ver' },
+                { icon: <Save size={20} />, name: 'Save', uso: 'Guardar' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Navegacion y Enlaces
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <ExternalLink size={20} />, name: 'ExternalLink', uso: 'Abrir enlace' },
+                { icon: <Link size={20} />, name: 'Link', uso: 'Copiar enlace' },
+                { icon: <Share2 size={20} />, name: 'Share2', uso: 'Compartir' },
+                { icon: <Download size={20} />, name: 'Download', uso: 'Descargar' },
+                { icon: <Upload size={20} />, name: 'Upload', uso: 'Subir' },
+                { icon: <Copy size={20} />, name: 'Copy', uso: 'Copiar' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Estados y Feedback
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <CircleCheck size={20} />, name: 'CircleCheck', uso: 'Exito' },
+                { icon: <CircleX size={20} />, name: 'CircleX', uso: 'Error' },
+                { icon: <CircleAlert size={20} />, name: 'CircleAlert', uso: 'Alerta' },
+                { icon: <Info size={20} />, name: 'Info', uso: 'Info' },
+                { icon: <AlertCircle size={20} />, name: 'AlertCircle', uso: 'Error critico' },
+                { icon: <CheckCircle size={20} />, name: 'CheckCircle', uso: 'Completado' },
+                { icon: <Info size={20} />, name: 'Info', uso: 'Informacion' },
+                { icon: <Loader2 size={20} />, name: 'Loader2', uso: 'Spinner' },
+                { icon: <Clock size={20} />, name: 'Clock', uso: 'Tiempo/Pendiente' },
+                { icon: <RefreshCw size={20} />, name: 'RefreshCw', uso: 'Refrescar' },
+                { icon: <RotateCcw size={20} />, name: 'RotateCcw', uso: 'Restaurar' },
+                { icon: <Zap size={20} />, name: 'Zap',uso: 'Accion rapida' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Dominio del Negocio
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Users size={20} />, name: 'Users', uso: 'Trabajadores' },
+                { icon: <Truck size={20} />, name: 'Truck', uso: 'Maquinaria' },
+                { icon: <HardHat size={20} />, name: 'HardHat', uso: 'Proyectos' },
+                { icon: <DollarSign size={20} />, name: 'DollarSign', uso: 'Finanzas' },
+                { icon: <TrendingUp size={20} />, name: 'TrendingUp', uso: 'Tendencia+' },
+                { icon: <BarChart3 size={20} />, name: 'BarChart3', uso: 'Reportes' },
+                { icon: <Activity size={20} />, name: 'Activity', uso: 'Actividad' },
+                { icon: <FileText size={20} />, name: 'FileText', uso: 'Documentos' },
+                { icon: <Calendar size={20} />, name: 'Calendar', uso: 'Fechas' },
+                { icon: <Search size={20} />, name: 'Search', uso: 'Buscar' },
+                { icon: <Filter size={20} />, name: 'Filter', uso: 'Filtrar' },
+                { icon: <Settings size={20} />, name: 'Settings', uso: 'Configuracion' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Comunicacion y Acciones
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Mail size={20} />, name: 'Mail', uso: 'Correo' },
+                { icon: <Phone size={20} />, name: 'Phone', uso: 'Telefono' },
+                { icon: <MapPin size={20} />, name: 'MapPin', uso: 'Ubicacion' },
+                { icon: <Send size={20} />, name: 'Send', uso: 'Enviar' },
+                { icon: <Printer size={20} />, name: 'Printer', uso: 'Imprimir' },
+                { icon: <Archive size={20} />, name: 'Archive', uso: 'Archivar' },
+                { icon: <Lock size={20} />, name: 'Lock', uso: 'Bloquear' },
+                { icon: <Unlock size={20} />, name: 'Unlock', uso: 'Desbloquear' },
+                { icon: <Star size={20} />, name: 'Star', uso: 'Favorito' },
+                { icon: <Heart size={20} />, name: 'Heart', uso: 'Me gusta' },
+                { icon: <LayoutDashboard size={20} />, name: 'LayoutDashboard', uso: 'Dashboard' },
+                { icon: <CheckCircle2 size={20} />, name: 'CheckCircle2', uso: 'Confirmado' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </Card>
       </section>
