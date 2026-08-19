@@ -3,15 +3,23 @@
 import { cn } from '@/lib/utils';
 import { dataTableClasses } from './DataTable.styles';
 
+export type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'slate' | 'primary';
+
 export interface Column<T> {
   key: string;
   header: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
-  /** Si es true, la celda se alinea a la derecha (para acciones) */
+  /** Alineacion de la celda */
   align?: 'left' | 'center' | 'right';
-  /** Ancho fijo de la columna (ej: '120px', '8rem') */
+  /** Ancho minimo de la columna (ej: '120px', '8rem') */
+  minWidth?: string;
+  /** Ancho fijo de la columna */
   width?: string;
+  /** No permitir wrap del contenido */
+  nowrap?: boolean;
+  /** Color del header de esta columna */
+  headerColor?: HeaderColor;
 }
 
 export interface DataTableProps<T> {
@@ -23,8 +31,8 @@ export interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
   maxBodyHeight?: string;
   className?: string;
-  /** Texto fijo para la columna de acciones en el header */
-  actionHeader?: string;
+  /** Permitir scroll horizontal */
+  scrollX?: boolean;
 }
 
 export function DataTable<T>({
@@ -36,6 +44,7 @@ export function DataTable<T>({
   onRowClick,
   maxBodyHeight,
   className,
+  scrollX = true,
 }: DataTableProps<T>) {
   if (loading) {
     return (
@@ -64,27 +73,31 @@ export function DataTable<T>({
   return (
     <div className={cn(dataTableClasses.container, className)}>
       <div
-        className={dataTableClasses.scrollWrapper}
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
+        className={cn(scrollX && 'overflow-x-auto')}
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
       >
-        <table className={dataTableClasses.table}>
+        <table className={cn(dataTableClasses.table, 'table-fixed')} style={{ minWidth: '100%' }}>
           <colgroup>
             {columns.map((col) => (
-              <col key={col.key} style={col.width ? { width: col.width } : undefined} />
+              <col
+                key={col.key}
+                style={{ width: col.width ?? col.minWidth ?? 'auto' }}
+              />
             ))}
           </colgroup>
-          <thead className={dataTableClasses.headerGroup}>
-            <tr className={dataTableClasses.headerRow}>
+          <thead className="sticky top-0 z-10">
+            <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    col.align === 'right'
-                      ? dataTableClasses.headerCellAction
-                      : dataTableClasses.headerCell,
+                    dataTableClasses.headerCell,
+                    col.align === 'right' && dataTableClasses.headerCellRight,
+                    col.align === 'center' && dataTableClasses.headerCellCenter,
+                    col.headerColor && headerColorMap[col.headerColor],
                     col.className
                   )}
-                  style={col.width ? { minWidth: col.width } : undefined}
+                  style={col.minWidth ? { minWidth: col.minWidth } : undefined}
                 >
                   {col.header}
                 </th>
@@ -106,9 +119,10 @@ export function DataTable<T>({
                   <td
                     key={col.key}
                     className={cn(
-                      col.align === 'right'
-                        ? dataTableClasses.cellAction
-                        : dataTableClasses.cell,
+                      dataTableClasses.cell,
+                      col.align === 'right' && dataTableClasses.cellRight,
+                      col.align === 'center' && dataTableClasses.cellCenter,
+                      col.nowrap && 'whitespace-nowrap',
                       col.className
                     )}
                   >
@@ -123,3 +137,16 @@ export function DataTable<T>({
     </div>
   );
 }
+
+/* ── Header color map ── */
+
+const headerColorMap: Record<HeaderColor, string> = {
+  default: dataTableClasses.headerDefault,
+  blue: dataTableClasses.headerBlue,
+  green: dataTableClasses.headerGreen,
+  amber: dataTableClasses.headerAmber,
+  red: dataTableClasses.headerRed,
+  purple: dataTableClasses.headerPurple,
+  slate: dataTableClasses.headerSlate,
+  primary: dataTableClasses.headerPrimary,
+};

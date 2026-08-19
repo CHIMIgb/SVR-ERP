@@ -51,14 +51,14 @@ const sampleOptions = [
 ];
 
 const sampleWorkers = [
-  { id: "1", nombre: "Carlos Hernandez", puesto: "Operador", estado: "Activo", telefono: "55 1234 5678" },
-  { id: "2", nombre: "Maria Lopez", puesto: "Tecnico", estado: "Inactivo", telefono: "55 8765 4321" },
-  { id: "3", nombre: "Juan Perez", puesto: "Supervisor", estado: "Activo", telefono: "55 1122 3344" },
-  { id: "4", nombre: "Ana Garcia", puesto: "Mecanico", estado: "Permiso", telefono: "55 5566 7788" },
-  { id: "5", nombre: "Roberto Diaz", puesto: "Operador", estado: "Activo", telefono: "55 9900 1122" },
-  { id: "6", nombre: "Laura Martinez", puesto: "Chofer", estado: "Activo", telefono: "55 3344 5566" },
-  { id: "7", nombre: "Miguel Santos", puesto: "Mecanico", estado: "Inactivo", telefono: "55 7788 9900" },
-  { id: "8", nombre: "Sofia Ramirez", puesto: "Oficinista", estado: "Activo", telefono: "55 2233 4455" },
+  { id: "1", nombre: "Carlos Hernandez", puesto: "Operador", estado: "Activo", telefono: "55 1234 5678", rfc: "HERC850101ABC", sueldoFiscal: 12500, sueldoEfectivo: 8500, fechaIngreso: "15/03/2021", bodega: "Bodega Central" },
+  { id: "2", nombre: "Maria Lopez", puesto: "Tecnico", estado: "Inactivo", telefono: "55 8765 4321", rfc: "LOPM900515DEF", sueldoFiscal: 15000, sueldoEfectivo: 10500, fechaIngreso: "22/07/2022", bodega: "Bodega Norte" },
+  { id: "3", nombre: "Juan Perez", puesto: "Supervisor", estado: "Activo", telefono: "55 1122 3344", rfc: "PEPJ750820GHI", sueldoFiscal: 18000, sueldoEfectivo: 13000, fechaIngreso: "10/01/2020", bodega: "Bodega Central" },
+  { id: "4", nombre: "Ana Garcia", puesto: "Mecanico", estado: "Permiso", telefono: "55 5566 7788", rfc: "GARA880305JKL", sueldoFiscal: 14000, sueldoEfectivo: 9800, fechaIngreso: "05/11/2023", bodega: "Bodega Sur" },
+  { id: "5", nombre: "Roberto Diaz", puesto: "Operador", estado: "Activo", telefono: "55 9900 1122", rfc: "DIRR920612MNO", sueldoFiscal: 12500, sueldoEfectivo: 8500, fechaIngreso: "18/09/2021", bodega: "Bodega Central" },
+  { id: "6", nombre: "Laura Martinez", puesto: "Chofer", estado: "Activo", telefono: "55 3344 5566", rfc: "MABL850228PQR", sueldoFiscal: 11000, sueldoEfectivo: 7800, fechaIngreso: "01/06/2022", bodega: "Bodega Norte" },
+  { id: "7", nombre: "Miguel Santos", puesto: "Mecanico", estado: "Inactivo", telefono: "55 7788 9900", rfc: "SARM790415STU", sueldoFiscal: 14000, sueldoEfectivo: 9800, fechaIngreso: "12/02/2020", bodega: "Bodega Sur" },
+  { id: "8", nombre: "Sofia Ramirez", puesto: "Oficinista", estado: "Activo", telefono: "55 2233 4455", rfc: "RASS910830VWX", sueldoFiscal: 13000, sueldoEfectivo: 9200, fechaIngreso: "25/12/2023", bodega: "Bodega Central" },
 ];
 
 interface WorkerRow {
@@ -67,16 +67,51 @@ interface WorkerRow {
   puesto: string;
   estado: string;
   telefono: string;
+  rfc: string;
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  fechaIngreso: string;
+  bodega: string;
 }
 
 const workerColumns: Column<WorkerRow>[] = [
-  { key: "nombre", header: "Nombre", width: "200px" },
-  { key: "puesto", header: "Puesto", width: "140px" },
-  { key: "telefono", header: "Telefono", width: "140px" },
+  { key: "nombre", header: "Nombre Completo", headerColor: "slate", minWidth: "200px" },
+  { key: "puesto", header: "Puesto", headerColor: "blue", minWidth: "130px" },
+  { key: "telefono", header: "Telefono", headerColor: "green", minWidth: "130px", nowrap: true },
+  { key: "rfc", header: "RFC", headerColor: "amber", minWidth: "140px", nowrap: true },
+  {
+    key: "sueldoFiscal",
+    header: "Sueldo Fiscal",
+    headerColor: "purple",
+    minWidth: "130px",
+    align: "right",
+    nowrap: true,
+    render: (row) => (
+      <span className="font-semibold text-slate-800">
+        {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(row.sueldoFiscal)}
+      </span>
+    ),
+  },
+  {
+    key: "sueldoEfectivo",
+    header: "Sueldo Efectivo",
+    headerColor: "primary",
+    minWidth: "130px",
+    align: "right",
+    nowrap: true,
+    render: (row) => (
+      <span className="font-semibold text-green-600">
+        {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(row.sueldoEfectivo)}
+      </span>
+    ),
+  },
+  { key: "fechaIngreso", header: "Fecha Ingreso", headerColor: "blue", minWidth: "120px", nowrap: true },
+  { key: "bodega", header: "Bodega", headerColor: "green", minWidth: "140px" },
   {
     key: "estado",
     header: "Estado",
-    width: "120px",
+    headerColor: "red",
+    minWidth: "110px",
     render: (row) => (
       <Badge
         variant={
@@ -96,7 +131,8 @@ const workerColumns: Column<WorkerRow>[] = [
     key: "acciones",
     header: "Acciones",
     align: "right",
-    width: "200px",
+    minWidth: "220px",
+    nowrap: true,
     render: () => (
       <div className="flex items-center justify-end gap-1">
         <Button variant="info" size="sm" icon={<Eye size={14} />}>
@@ -828,21 +864,21 @@ export default function UIShowcasePage() {
           </h2>
 
           <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-            Con Acciones (Scroll + Header Sticky)
+            10 Columnas + Colores de Header
           </h3>
           <p className="text-xs text-slate-400 -mt-3">
-            Header fijo al hacer scroll vertical. Scroll horizontal automatico en movil. Botones de accion alineados a la derecha.
+            Headers con colores por dominio. Scroll horizontal automatico. Contenido centrado con whitespace-nowrap.
           </p>
           <DataTable<WorkerRow>
             columns={workerColumns}
             data={sampleWorkers}
             keyExtractor={(w) => w.id}
             onRowClick={(w) => console.log("Clicked:", w.nombre)}
-            maxBodyHeight="320px"
+            maxBodyHeight="400px"
           />
 
           <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-2">
-            Sin Scroll (Tabla Completa)
+            Sin Scroll (Tabla Reducida)
           </h3>
           <DataTable<WorkerRow>
             columns={workerColumns}
