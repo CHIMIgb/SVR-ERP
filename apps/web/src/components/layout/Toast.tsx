@@ -1,91 +1,195 @@
-"use client";
+'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle2, AlertTriangle, XCircle, X } from 'lucide-react';
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { ToastItem, ToastType, ToastPosition, ToastTransition, ToastOptions, ToastContextValue } from './Toast.types';
+import { positionClasses, typeClasses, transitionClasses, toastClasses } from './Toast.styles';
 
-// ── Types ──────────────────────────────────────────────────────────────────
-type ToastType = 'success' | 'warning' | 'error' | 'info';
+/* ── Iconos por tipo ── */
 
-interface Toast {
-  id: number;
-  message: string;
-  type: ToastType;
-}
+const typeIcons: Record<ToastType, React.ReactNode> = {
+  success: <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />,
+  error: <XCircle className="w-5 h-5 text-red-500 shrink-0" />,
+  warning: <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />,
+  info: <Info className="w-5 h-5 text-blue-500 shrink-0" />,
+};
 
-interface ToastContextValue {
-  showToast: (message: string, type?: ToastType) => void;
-}
+/* ── Defaults ── */
 
-// ── Context ────────────────────────────────────────────────────────────────
-const ToastContext = createContext<ToastContextValue>({ showToast: () => {} });
+const DEFAULT_POSITION: ToastPosition = 'top-right';
+const DEFAULT_TRANSITION: ToastTransition = 'fadeIn';
+const DEFAULT_DURATION = 4000;
+
+/* ── Context ── */
+
+const ToastContext = createContext<ToastContextValue>({
+  showToast: () => {},
+  success: () => {},
+  error: () => {},
+  warning: () => {},
+  info: () => {},
+  dismiss: () => {},
+  dismissAll: () => {},
+});
 
 export function useToast() {
   return useContext(ToastContext);
 }
 
-// ── Provider + Container ───────────────────────────────────────────────────
-export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  let counter = 0;
+/* ── Toast Component ── */
 
-  const showToast = useCallback((message: string, type: ToastType = 'success') => {
-    const id = Date.now() + counter++;
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3500);
-  }, []);
+function ToastItemComponent({
+  toast,
+  onDismiss,
+}: {
+  toast: ToastItem;
+  onDismiss: (id: number) => void;
+}) {
+  const [progress, setProgress] = useState(100);
+  const startTime = useRef(Date.now());
+  const pausedAt = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-  const dismiss = (id: number) =>
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  // Animacion de progreso
+  const tick = useCallback(() => {
+    if (pausedAt.current !== null) return;
+    const elapsed = Date.now() - startTime.current;
+    const remaining = Math.max(0, 100 - (elapsed / toast.duration) * 100);
+    setProgress(remaining);
+    if (remaining > 0) {
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      onDismiss(toast.id);
+    }
+  }, [toast.duration, toast.id, onDismiss]);
 
-  const styles: Record<ToastType, { bg: string; icon: React.ReactNode }> = {
-    success: {
-      bg: 'bg-slate-900 border-green-500/30',
-      icon: <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />,
-    },
-    warning: {
-      bg: 'bg-slate-900 border-amber-500/30',
-      icon: <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />,
-    },
-    error: {
-      bg: 'bg-slate-900 border-red-500/30',
-      icon: <XCircle className="w-5 h-5 text-red-400 shrink-0" />,
-    },
-    info: {
-      bg: 'bg-slate-900 border-blue-500/30',
-      icon: <CheckCircle2 className="w-5 h-5 text-blue-400 shrink-0" />,
-    },
+  // Iniciar progreso
+  useState(() => {
+    startTime.current = Date.now();
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  });
+
+  const handleMouseEnter = () => {
+    pausedAt.current = Date.now();
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
   };
 
+  const handleMouseLeave = () => {
+    if (pausedAt.current !== null) {
+      const pausedDuration = Date.now() - pausedAt.current;
+      startTime.current += pausedDuration;
+      pausedAt.current = null;
+      rafRef.current = requestAnimationFrame(tick);
+    }
+  };
+
+  const colors = typeClasses[toast.type];
+
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <div
+      className={cn(
+        toastClasses.base,
+        colors.bg,
+        colors.border,
+        transitionClasses[toast.transition]
+      )}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      role="alert"
+    >
+      {typeIcons[toast.type]}
+      <span className={toastClasses.message}>{toast.message}</span>
+      <button
+        onClick={() => onDismiss(toast.id)}
+        className={toastClasses.closeButton}
+        aria-label="Cerrar"
+      >
+        <X size={14} />
+      </button>
+
+      {/* Barra de progreso */}
+      {toast.progress && (
+        <div className="absolute bottom-0 left-0 right-0 h-1 rounded-b-xl overflow-hidden bg-transparent">
+          <div
+            className={cn('h-full transition-none rounded-full', colors.progress)}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Provider ── */
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const counterRef = useRef(0);
+
+  const dismiss = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const dismissAll = useCallback(() => {
+    setToasts([]);
+  }, []);
+
+  const showToast = useCallback(
+    (message: string, type: ToastType = 'success', options: ToastOptions = {}) => {
+      const id = Date.now() + counterRef.current++;
+      const toast: ToastItem = {
+        id,
+        message,
+        type,
+        position: options.position ?? DEFAULT_POSITION,
+        transition: options.transition ?? DEFAULT_TRANSITION,
+        duration: options.duration ?? DEFAULT_DURATION,
+        progress: options.progress ?? true,
+      };
+      setToasts((prev) => [...prev, toast]);
+
+      // Auto-dismiss basado en duracion (el progreso lo maneja visualmente)
+      if (options.duration === 0) return; // No auto-dismiss
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, toast.duration + 500); // +500ms buffer para la animacion
+    },
+    []
+  );
+
+  const success = useCallback((msg: string, opts?: ToastOptions) => showToast(msg, 'success', opts), [showToast]);
+  const error = useCallback((msg: string, opts?: ToastOptions) => showToast(msg, 'error', opts), [showToast]);
+  const warning = useCallback((msg: string, opts?: ToastOptions) => showToast(msg, 'warning', opts), [showToast]);
+  const info = useCallback((msg: string, opts?: ToastOptions) => showToast(msg, 'info', opts), [showToast]);
+
+  // Agrupar toasts por posicion
+  const toastsByPosition = toasts.reduce<Record<string, ToastItem[]>>((acc, toast) => {
+    (acc[toast.position] ??= []).push(toast);
+    return acc;
+  }, {});
+
+  return (
+    <ToastContext.Provider value={{ showToast, success, error, warning, info, dismiss, dismissAll }}>
       {children}
 
-      {/* Toast Container */}
-      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`
-              flex items-center gap-3 px-4 py-3 rounded-2xl border shadow-2xl
-              text-white text-sm font-semibold max-w-sm w-full
-              pointer-events-auto
-              animate-[slideInRight_0.3s_ease-out]
-              ${styles[t.type].bg}
-            `}
-          >
-            {styles[t.type].icon}
-            <span className="flex-1 leading-snug">{t.message}</span>
-            <button
-              onClick={() => dismiss(t.id)}
-              className="text-white/40 hover:text-white transition-colors ml-2"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
-      </div>
+      {/* Renderizar contenedores por posicion */}
+      {(Object.entries(toastsByPosition) as [ToastPosition, ToastItem[]][]).map(([position, items]) => (
+        <div
+          key={position}
+          className={cn(
+            'fixed z-[9999] flex flex-col gap-3 pointer-events-none',
+            positionClasses[position]
+          )}
+        >
+          {items.map((toast) => (
+            <ToastItemComponent key={toast.id} toast={toast} onDismiss={dismiss} />
+          ))}
+        </div>
+      ))}
     </ToastContext.Provider>
   );
 }

@@ -24,6 +24,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/components/ui/Modal";
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from "@/components/ui/Modal";
+import { useToast } from "@/components/layout/Toast";
+import type { ToastPosition, ToastTransition } from "@/components/layout/Toast.types";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -93,6 +95,7 @@ const workerColumns: Column<WorkerRow>[] = [
 export default function UIShowcasePage() {
   const [activeTab, setActiveTab] = useState("general");
   const [searchValue, setSearchValue] = useState("");
+  const toast = useToast();
 
   // Modal states
   const [basicModalOpen, setBasicModalOpen] = useState(false);
@@ -100,12 +103,30 @@ export default function UIShowcasePage() {
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
+  // Toast demo states
+  const [toastPosition, setToastPosition] = useState<ToastPosition>("top-right");
+  const [toastTransition, setToastTransition] = useState<ToastTransition>("fadeIn");
+
   const handleFormSubmit = () => {
     setFormSubmitting(true);
     setTimeout(() => {
       setFormSubmitting(false);
       setFormModalOpen(false);
     }, 1500);
+  };
+
+  const fireToast = (type: 'success' | 'error' | 'warning' | 'info') => {
+    const messages: Record<string, string> = {
+      success: 'Trabajador guardado correctamente',
+      error: 'Error al eliminar el registro',
+      warning: 'Campos obligatorios vacios',
+      info: 'Datos actualizados del servidor',
+    };
+    toast.showToast(messages[type], type, {
+      position: toastPosition,
+      transition: toastTransition,
+      progress: true,
+    });
   };
 
   return (
@@ -806,6 +827,95 @@ export default function UIShowcasePage() {
           </ModalField>
         </div>
       </FormModal>
+
+      {/* ── Toasts ─────────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Toasts - Notificaciones
+          </h2>
+
+          {/* Posiciones */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Posiciones
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {(['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'] as ToastPosition[]).map((pos) => (
+                <Button
+                  key={pos}
+                  variant={toastPosition === pos ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setToastPosition(pos)}
+                >
+                  {pos}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Transiciones */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Transiciones
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {(['fadeIn', 'bounceIn', 'swingInverted', 'popUp', 'topBounce', 'bounceInDown', 'bounceInUp'] as ToastTransition[]).map((t) => (
+                <Button
+                  key={t}
+                  variant={toastTransition === t ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setToastTransition(t)}
+                >
+                  {t}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Botones de toast */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Tipos de Toast
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="success" onClick={() => fireToast('success')}>
+                Success (Crear)
+              </Button>
+              <Button variant="warning" onClick={() => fireToast('warning')}>
+                Warning (Editar)
+              </Button>
+              <Button variant="danger" onClick={() => fireToast('error')}>
+                Error (Eliminar)
+              </Button>
+              <Button variant="info" onClick={() => fireToast('info')}>
+                Info (Mostrar)
+              </Button>
+            </div>
+          </div>
+
+          {/* Todos los toasts de una vez */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Prueba Rapida
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  toast.success('Operacion completada', { position: toastPosition, transition: toastTransition });
+                  setTimeout(() => toast.error('Algo fallo', { position: toastPosition, transition: toastTransition }), 200);
+                  setTimeout(() => toast.warning('Revisa los campos', { position: toastPosition, transition: toastTransition }), 400);
+                  setTimeout(() => toast.info('Datos sincronizados', { position: toastPosition, transition: toastTransition }), 600);
+                }}
+              >
+                Lanzar los 4 tipos
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }

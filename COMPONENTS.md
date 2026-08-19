@@ -262,7 +262,7 @@ import type { ButtonProps } from '@/components/ui/Button';
 
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
-| `variant` | `'primary' \| 'secondary' \| 'outline' \| 'ghost' \| 'danger'` | `'primary'` | Variante visual del boton |
+| `variant` | `'primary' \| 'secondary' \| 'outline' \| 'ghost' \| 'danger' \| 'success' \| 'warning' \| 'info'` | `'primary'` | Variante visual del boton |
 | `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del boton |
 | `loading` | `boolean` | `false` | Muestra spinner y deshabilita el boton |
 | `icon` | `React.ReactNode` | `undefined` | Icono a mostrar junto al texto |
@@ -281,6 +281,9 @@ Tambien extiende todas las props nativas de `<button>` (`React.ButtonHTMLAttribu
 | `outline` | Sin fondo, borde gris (`border-2 border-slate-200`), texto gris |
 | `ghost` | Sin fondo ni borde, texto gris, solo background en hover |
 | `danger` | Fondo rojo (`bg-red-500`), texto blanco, sombra roja sutil |
+| `success` | Fondo verde (`bg-green-500`), texto blanco — usar para **crear** registros |
+| `warning` | Fondo amarillo (`bg-amber-500`), texto blanco — usar para **editar** registros |
+| `info` | Fondo azul (`bg-blue-500`), texto blanco — usar para **mostrar** informacion |
 
 #### Tamanos
 
@@ -1815,34 +1818,130 @@ import { ModalField, modalInputClass } from '@/components/ui/Modal';
 
 ### 6.4 Toast
 
-Sistema de notificaciones toast (pop-ups temporales). Exporta el provider y el hook `useToast`.
+Sistema completo de notificaciones con 6 posiciones, 4 tipos y 7 transiciones. Incluye barra de progreso, pausa al hover y auto-dismiss.
 
-**Archivo:** `src/components/layout/Toast.tsx`
+**Archivos:**
+- `src/components/layout/Toast.tsx` — Provider + Componente
+- `src/components/layout/Toast.types.ts` — Tipos TypeScript
+- `src/components/layout/Toast.styles.ts` — Clases de posicion y animacion
 
 **Importacion:**
 ```tsx
 import { useToast } from '@/components/layout/Toast';
 ```
 
-#### Uso
+#### API del hook
 
-```tsx
-const { showToast } = useToast();
+```ts
+const { showToast, success, error, warning, info, dismiss, dismissAll } = useToast();
 
-showToast('Trabajador guardado correctamente', 'success');
-showToast('Error al eliminar el registro', 'error');
-showToast('Advertencia: campos obligatorios vacios', 'warning');
-showToast('Correo enviado exitosamente', 'info');
+// Metodos abreviados (mismo efecto que showToast)
+success('Trabajador guardado', { position: 'top-right', transition: 'bounceIn' });
+error('Error al eliminar', { position: 'bottom-left' });
+warning('Campos vacios', { position: 'top-center' });
+info('Datos actualizados', { position: 'bottom-right' });
+
+// Metodo generico
+showToast('Mensaje', 'success', { position, transition, duration, progress });
+
+// Control manual
+dismiss(id);     // Cerrar un toast especifico
+dismissAll();    // Cerrar todos
 ```
 
-#### Tipos de toast
+#### Posiciones
 
-| Tipo | Icono | Estilo |
-|------|-------|--------|
-| `success` | `CheckCircle2` (verde) | Borde verde, fondo oscuro |
-| `warning` | `AlertTriangle` (amber) | Borde amber, fondo oscuro |
-| `error` | `XCircle` (rojo) | Borde rojo, fondo oscuro |
-| `info` | `CheckCircle2` (azul) | Borde azul, fondo oscuro |
+| Posicion | Descripcion |
+|----------|-------------|
+| `top-left` | Esquina superior izquierda |
+| `top-center` | Centro superior |
+| `top-right` | Esquina superior derecha (default) |
+| `bottom-left` | Esquina inferior izquierda |
+| `bottom-center` | Centro inferior |
+| `bottom-right` | Esquina inferior derecha |
+
+#### Tipos de Toast
+
+| Tipo | Icono | Color | Uso en SVR-ERP |
+|------|-------|-------|----------------|
+| `success` | `CheckCircle2` | Verde | **Crear** registros |
+| `warning` | `AlertTriangle` | Amarillo | **Editar** registros |
+| `error` | `XCircle` | Rojo | **Eliminar** registros |
+| `info` | `Info` | Azul | **Mostrar** informacion |
+
+#### Transiciones
+
+| Transicion | Efecto |
+|------------|--------|
+| `fadeIn` | Desvanecimiento con desplazamiento suave (default) |
+| `bounceIn` | Rebote con escala (elastic bounce) |
+| `swingInverted` | Balanceo desde la derecha con rotacion |
+| `popUp` | Expansion desde abajo con overshoot |
+| `topBounce` | Rebote vertical desde arriba |
+| `bounceInDown` | Caida desde arriba con rebote multiple |
+| `bounceInUp` | Salto desde abajo con rebote multiple |
+
+#### ToastOptions
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `position` | `ToastPosition` | `'top-right'` | Posicion del contenedor |
+| `transition` | `ToastTransition` | `'fadeIn'` | Animacion de entrada |
+| `duration` | `number` | `4000` | Duracion en ms (0 = no auto-dismiss) |
+| `progress` | `boolean` | `true` | Mostrar barra de progreso |
+
+#### Ejemplo basico
+
+```tsx
+import { useToast } from '@/components/layout/Toast';
+
+function MiComponente() {
+  const toast = useToast();
+
+  return (
+    <Button onClick={() => toast.success('Guardado correctamente')}>
+      Guardar
+    </Button>
+  );
+}
+```
+
+#### Ejemplo avanzado
+
+```tsx
+const toast = useToast();
+
+// Toast de exito con posicion y transicion personalizadas
+toast.success('Trabajador creado', {
+  position: 'top-center',
+  transition: 'bounceIn',
+  duration: 5000,
+  progress: true,
+});
+
+// Toast de error sin auto-dismiss
+toast.error('Error critico del servidor', {
+  position: 'bottom-center',
+  transition: 'swingInverted',
+  duration: 0,  // No se cierra solo
+});
+
+// Lanzar los 4 tipos secuencialmente
+toast.success('Creado', { position: 'top-right', transition: 'fadeIn' });
+setTimeout(() => toast.warning('Editado', { position: 'top-right', transition: 'bounceIn' }), 200);
+setTimeout(() => toast.error('Eliminado', { position: 'top-right', transition: 'popUp' }), 400);
+setTimeout(() => toast.info('Informacion', { position: 'top-right', transition: 'topBounce' }), 600);
+```
+
+#### Funcionalidades
+
+- **Barra de progreso**: Muestra tiempo restante visualmente.
+- **Pausa al hover**: Se detiene cuando el mouse esta sobre el toast.
+- **Posiciones multiples**: 6 posiciones, cada una renderiza su propio contenedor.
+- **7 transiciones**: Animaciones CSS con cubic-bezier para efectos suaves.
+- **Colores semanticos**: Verde (crear), Amarillo (editar), Rojo (eliminar), Azul (info).
+- **Dismiss manual**: Boton X o llamada a `dismiss(id)`.
+- **Close con Escape**: Opcional, configurable.
 
 ---
 

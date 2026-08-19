@@ -8,6 +8,9 @@ export const buttonClasses = {
     outline: 'border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100',
     ghost: 'text-slate-600 hover:bg-slate-100 active:bg-slate-200',
     danger: 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 shadow-sm',
+    success: 'bg-green-500 text-white hover:bg-green-600 active:bg-green-700 shadow-sm',
+    warning: 'bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700 shadow-sm',
+    info: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 shadow-sm',
   },
   sizes: {
     sm: 'h-8 px-3 text-xs gap-1.5 rounded-lg',

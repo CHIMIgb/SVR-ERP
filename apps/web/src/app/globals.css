@@ -92,6 +92,56 @@ body {
   to { opacity: 1; transform: scale(1); }
 }
 
+/* ── Toast Transitions ── */
+
+@keyframes toastFadeIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toastBounceIn {
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 1; transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes toastSwingInverted {
+  0% { opacity: 0; transform: translateX(100%) rotate(3deg); transform-origin: top right; }
+  60% { opacity: 1; transform: translateX(-8px) rotate(-1deg); }
+  80% { transform: translateX(4px) rotate(0.5deg); }
+  100% { opacity: 1; transform: translateX(0) rotate(0); }
+}
+
+@keyframes toastPopUp {
+  0% { opacity: 0; transform: scale(0.4) translateY(20px); }
+  60% { opacity: 1; transform: scale(1.08) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toastTopBounce {
+  0% { opacity: 0; transform: translateY(-100%); }
+  50% { opacity: 1; transform: translateY(8px); }
+  70% { transform: translateY(-3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastBounceInDown {
+  0% { opacity: 0; transform: translateY(-100%) scale(0.8); }
+  40% { opacity: 1; transform: translateY(12px) scale(1.02); }
+  65% { transform: translateY(-4px) scale(0.98); }
+  85% { transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toastBounceInUp {
+  0% { opacity: 0; transform: translateY(100%) scale(0.8); }
+  40% { opacity: 1; transform: translateY(-12px) scale(1.02); }
+  65% { transform: translateY(4px) scale(0.98); }
+  85% { transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ── Legacy component classes (deprecated, use new UI components) ── */
 @layer components {
   .btn-primary {
