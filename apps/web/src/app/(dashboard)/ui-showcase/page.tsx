@@ -45,7 +45,7 @@ import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui
 import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
 import { SearchBar, FilterPanel, ActiveFilters } from "@/components/ui/SearchBar";
 import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
-import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, PolarAreaChart, ScatterChart, RadialBarChart } from "@/components/ui/Charts";
+import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -1951,15 +1951,16 @@ export default function UIShowcasePage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                  Area Polar
+                  Radar (Radar)
                 </h3>
-                <PolarAreaChart
-                  title="Uso por Bodega"
+                <RadarChartComponent
+                  title="Habilidades del Equipo"
                   data={[
-                    { label: 'Central', value: 85 },
-                    { label: 'Norte', value: 62 },
-                    { label: 'Sur', value: 45 },
-                    { label: 'Oriente', value: 70 },
+                    { label: 'Excavacion', value: 85 },
+                    { label: 'Velocidad', value: 72 },
+                    { label: 'Seguridad', value: 95 },
+                    { label: 'Eficiencia', value: 68 },
+                    { label: 'Mantenimiento', value: 78 },
                   ]}
                   height={200}
                 />
@@ -1972,7 +1973,7 @@ export default function UIShowcasePage() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
                   Grafica de Puntos (Scatter)
                 </h3>
-                <ScatterChart
+                <ScatterChartComponent
                   title="Velocidad vs Combustible"
                   subtitle="Relacion entre velocidad y consumo"
                   points={[
@@ -1992,7 +1993,7 @@ export default function UIShowcasePage() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
                   Barras Radiales
                 </h3>
-                <RadialBarChart
+                <RadialBarChartComponent
                   title="Metas del Trimestre"
                   data={[
                     { label: 'Produccion', value: 85 },

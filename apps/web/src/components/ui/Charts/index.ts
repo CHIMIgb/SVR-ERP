@@ -4,17 +4,20 @@ export {
   AreaChart,
   PieChart,
   DoughnutChart,
-  PolarAreaChart,
-  ScatterChart,
-  RadialBarChart,
+  RadarChartComponent,
+  RadialBarChartComponent,
+  ScatterChartComponent,
 } from './Charts';
 
 export type {
   ChartDataPoint,
-  ScatterPoint,
   MultiSeriesData,
-  ChartProps,
-  MultiChartProps,
+  BarChartProps,
+  LineChartProps,
+  AreaChartProps,
+  PieChartProps,
+  RadarChartProps,
+  RadialBarChartProps,
+  ScatterPoint,
   ScatterChartProps,
-  RadialBarProps,
 } from './Charts';
