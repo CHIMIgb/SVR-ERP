@@ -45,6 +45,7 @@ import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui
 import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
 import { SearchBar, FilterPanel, ActiveFilters } from "@/components/ui/SearchBar";
 import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
+import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, PolarAreaChart, ScatterChart, RadialBarChart } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -1846,6 +1847,159 @@ export default function UIShowcasePage() {
                   machines={mockMachines}
                   selectedId={selectedMachine?.id}
                   onSelect={setSelectedMachine}
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Charts ──────────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Graficas - Visualizacion de Datos
+          </h2>
+
+          <div className="space-y-6">
+            {/* Bar Chart */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Grafica de Barras
+              </h3>
+              <BarChart
+                title="Produccion Mensual"
+                subtitle="Unidades producidas por mes"
+                data={[
+                  { label: 'Ene', value: 120 },
+                  { label: 'Feb', value: 85 },
+                  { label: 'Mar', value: 145 },
+                  { label: 'Abr', value: 98 },
+                  { label: 'May', value: 170 },
+                  { label: 'Jun', value: 132 },
+                ]}
+                height={200}
+                showLegend
+              />
+            </div>
+
+            {/* Line + Area Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Grafica de Lineas
+                </h3>
+                <LineChart
+                  title="Ingresos vs Egresos"
+                  subtitle="Comparativa mensual"
+                  labels={['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun']}
+                  series={[
+                    { name: 'Ingresos', data: [45, 52, 38, 65, 58, 72] },
+                    { name: 'Egresos', data: [30, 35, 28, 42, 38, 48] },
+                  ]}
+                  height={200}
+                />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Grafica de Area
+                </h3>
+                <AreaChart
+                  title="Horas de Maquinaria"
+                  subtitle="Uso diario por tipo"
+                  labels={['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']}
+                  series={[
+                    { name: 'Excavadoras', data: [8, 6, 9, 7, 10, 4] },
+                    { name: 'Bulldozers', data: [5, 7, 4, 8, 6, 3] },
+                  ]}
+                  height={200}
+                />
+              </div>
+            </div>
+
+            {/* Pie + Doughnut + Polar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Grafica Circular (Pie)
+                </h3>
+                <PieChart
+                  title="Distribucion por Tipo"
+                  data={[
+                    { label: 'Excavadoras', value: 35 },
+                    { label: 'Bulldozers', value: 25 },
+                    { label: 'Camiones', value: 20 },
+                    { label: 'Grúas', value: 12 },
+                    { label: 'Otros', value: 8 },
+                  ]}
+                  height={200}
+                />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Grafica Dona (Doughnut)
+                </h3>
+                <DoughnutChart
+                  title="Estado de Maquinaria"
+                  data={[
+                    { label: 'Activa', value: 42 },
+                    { label: 'Mantenimiento', value: 8 },
+                    { label: 'Inactiva', value: 5 },
+                  ]}
+                  height={200}
+                />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Area Polar
+                </h3>
+                <PolarAreaChart
+                  title="Uso por Bodega"
+                  data={[
+                    { label: 'Central', value: 85 },
+                    { label: 'Norte', value: 62 },
+                    { label: 'Sur', value: 45 },
+                    { label: 'Oriente', value: 70 },
+                  ]}
+                  height={200}
+                />
+              </div>
+            </div>
+
+            {/* Scatter + RadialBar */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Grafica de Puntos (Scatter)
+                </h3>
+                <ScatterChart
+                  title="Velocidad vs Combustible"
+                  subtitle="Relacion entre velocidad y consumo"
+                  points={[
+                    { x: 10, y: 25, label: 'M1' },
+                    { x: 20, y: 45, label: 'M2' },
+                    { x: 35, y: 60, label: 'M3' },
+                    { x: 15, y: 30, label: 'M4' },
+                    { x: 40, y: 75, label: 'M5' },
+                    { x: 25, y: 50, label: 'M6' },
+                    { x: 30, y: 55, label: 'M7' },
+                    { x: 45, y: 80, label: 'M8' },
+                  ]}
+                  height={200}
+                />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Barras Radiales
+                </h3>
+                <RadialBarChart
+                  title="Metas del Trimestre"
+                  data={[
+                    { label: 'Produccion', value: 85 },
+                    { label: 'Eficiencia', value: 72 },
+                    { label: 'Seguridad', value: 95 },
+                  ]}
+                  height={200}
                 />
               </div>
             </div>

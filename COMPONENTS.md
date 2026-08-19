@@ -2774,3 +2774,223 @@ import { StatusBadge, LiveIndicator } from '@/components/ui/GpsTracking';
 - La aplicacion no trackea ubicacion en tiempo real.
 - Se necesita un mapa real (usar Leaflet/Mapbox en su lugar).
 - Los datos son estaticos (no cambian en tiempo real).
+
+---
+
+## 11. Charts - Visualizacion de Datos
+
+8 tipos de graficas SVG puras, responsive, con hover effects y tooltips.
+
+### 11.1 BarChart
+
+Grafica de barras verticales con grid, labels y tooltips.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `data` | `ChartDataPoint[]` | — | Datos a graficar |
+| `title` | `string` | — | Titulo de la grafica |
+| `subtitle` | `string` | — | Subtitulo |
+| `height` | `number` | `250` | Altura en px |
+| `showGrid` | `boolean` | `true` | Mostrar lineas de grid |
+| `showLabels` | `boolean` | `true` | Mostrar labels en eje X |
+| `showLegend` | `boolean` | `false` | Mostrar leyenda |
+
+#### Import
+
+```tsx
+import { BarChart } from '@/components/ui/Charts';
+```
+
+#### Ejemplo
+
+```tsx
+<BarChart
+  title="Produccion Mensual"
+  data={[
+    { label: 'Ene', value: 120 },
+    { label: 'Feb', value: 85 },
+    { label: 'Mar', value: 145 },
+  ]}
+  height={200}
+  showLegend
+/>
+```
+
+### 11.2 LineChart
+
+Grafica de lineas con multiples series.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `labels` | `string[]` | — | Labels del eje X |
+| `series` | `MultiSeriesData[]` | — | Series de datos |
+| `title` | `string` | — | Titulo |
+| `subtitle` | `string` | — | Subtitulo |
+| `height` | `number` | `250` | Altura en px |
+| `showGrid` | `boolean` | `true` | Mostrar grid |
+| `showLegend` | `boolean` | `true` | Mostrar leyenda |
+
+#### Import
+
+```tsx
+import { LineChart } from '@/components/ui/Charts';
+```
+
+#### Ejemplo
+
+```tsx
+<LineChart
+  title="Ingresos vs Egresos"
+  labels={['Ene', 'Feb', 'Mar', 'Abr']}
+  series={[
+    { name: 'Ingresos', data: [45, 52, 38, 65] },
+    { name: 'Egresos', data: [30, 35, 28, 42] },
+  ]}
+/>
+```
+
+### 11.3 AreaChart
+
+Grafica de area con relleno semitransparente.
+
+#### Props
+
+Misma estructura que `LineChart`.
+
+#### Import
+
+```tsx
+import { AreaChart } from '@/components/ui/Charts';
+```
+
+### 11.4 PieChart
+
+Grafica circular con porcentajes visibles.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `data` | `ChartDataPoint[]` | — | Datos |
+| `title` | `string` | — | Titulo |
+| `height` | `number` | `250` | Altura |
+| `showLegend` | `boolean` | `true` | Leyenda |
+
+#### Import
+
+```tsx
+import { PieChart } from '@/components/ui/Charts';
+```
+
+### 11.5 DoughnutChart
+
+Grafica de dona con total centrado.
+
+#### Import
+
+```tsx
+import { DoughnutChart } from '@/components/ui/Charts';
+```
+
+### 11.6 PolarAreaChart
+
+Area polar con circulos de referencia.
+
+#### Import
+
+```tsx
+import { PolarAreaChart } from '@/components/ui/Charts';
+```
+
+### 11.7 ScatterChart
+
+Grafica de puntos para correlaciones.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `points` | `ScatterPoint[]` | — | Puntos (x, y, label?) |
+| `title` | `string` | — | Titulo |
+| `height` | `number` | `250` | Altura |
+
+#### Import
+
+```tsx
+import { ScatterChart } from '@/components/ui/Charts';
+```
+
+### 11.8 RadialBarChart
+
+Barras radiales circulares concéntricas.
+
+#### Import
+
+```tsx
+import { RadialBarChart } from '@/components/ui/Charts';
+```
+
+### 11.9 Colores por Defecto
+
+```
+#ed8238  #3d9b6e  #557fb5  #d4963a  #c75450
+#8b5cf6  #ec4899  #14b8a6  #f97316  #6366f1
+```
+
+Cada punto de datos puede tener un `color` custom.
+
+### 11.10 Cuando usar
+
+- **BarChart**: Comparar cantidades entre categorias.
+- **LineChart**: Tendencias a lo largo del tiempo.
+- **AreaChart**: Volumen acumulado o tendencia con relleno.
+- **PieChart**: Proporciones de un total (pocas categorias).
+- **DoughnutChart**: Proporciones con total visible.
+- **PolarAreaChart**: Comparar categorias con dimension radial.
+- **ScatterChart**: Correlacion entre dos variables.
+- **RadialBarChart**: Metas o progreso circular.
+
+### 11.11 No usar cuando
+
+- Mas de 10 categorias en Pie/Doughnut (usar BarChart).
+- Datos negativos en Pie/Doughnut/Polar (usar Line/Bar).
+- Series con mas de 5 lineas (usar legend select).
+
+---
+
+## 12. Reglas de Overflow Protection
+
+Todos los componentes UI protegen contra desbordamiento de contenido.
+
+### 12.1 Patron General
+
+| Proteccion | Clase CSS | Uso |
+|------------|-----------|-----|
+| **Recortar contenido** | `overflow-hidden` | Containers que no deben crecer |
+| **Truncar texto** | `truncate` | Texto largo que debe cortarse con `...` |
+| **Romper palabras** | `break-words` | Texto largo que debe saltar de linea |
+| **Minimo ancho** | `min-w-0` | Flex children que pueden crecer indefinidamente |
+| **No encoger** | `shrink-0` | Elementos que no deben cambiar de tamano |
+
+### 12.2 Componentes Protegidos
+
+| Componente | Proteccion Aplicada |
+|------------|---------------------|
+| **Card** | `overflow-hidden` en base |
+| **StatsCard** | `overflow-hidden` + `truncate` en value/label |
+| **PageHeader** | `min-w-0 flex-1` en titulo + `truncate` |
+| **Badge** | `overflow-hidden max-w-full` |
+| **Button** | `overflow-hidden min-w-0` + `truncate` en children |
+| **EmptyState** | `overflow-hidden` + `break-words` |
+| **Modal** | `max-h-[90vh]` + `overflow-y-auto` en body |
+| **DataTable** | `overflow-auto` en scroll container |
+| **Tabs** | `overflow-x-auto` en tab list |
+| **GpsTracking** | `min-w-0 truncate` en panel values |
+
+### 12.3 Regla de Oro
+
+> **TODO componente debe evitar que el texto o contenido salga de sus limites.** Usar `overflow-hidden` en containers, `truncate` en texto de una sola linea, `break-words` en texto multilinea, `min-w-0` en flex children, y `shrink-0` en iconos/badges que no deben cambiar de tamano. El contenido se desplaza o trunca en lugar de romper el layout.
