@@ -38,6 +38,7 @@ import { useToast } from "@/components/layout/Toast";
 import type { ToastPosition, ToastTransition } from "@/components/layout/Toast.types";
 import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
+import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 
 /* ────────────────────────────────────────────────────────────────
@@ -890,6 +891,25 @@ export default function UIShowcasePage() {
             data={[]}
             keyExtractor={() => ""}
             emptyText="No se encontraron trabajadores"
+          />
+
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-4 border-t border-slate-100 mt-4">
+            Con Paginacion
+          </h3>
+          <p className="text-xs text-slate-400 -mt-2">
+            Tabla con paginacion completa: avanzar, retroceder, saltar al inicio/fin.
+          </p>
+          <DataTable<WorkerRow>
+            columns={workerColumns}
+            data={sampleWorkers.slice(0, 4)}
+            keyExtractor={(w) => w.id}
+          />
+          <Pagination
+            currentPage={3}
+            totalPages={10}
+            totalRecords={98}
+            pageSize={10}
+            onPageChange={(page) => console.log("Page:", page)}
           />
         </Card>
       </section>
