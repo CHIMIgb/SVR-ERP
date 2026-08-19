@@ -329,7 +329,7 @@ export default function UIShowcasePage() {
                 { icon: <CircleCheck size={20} />, name: 'CircleCheck', uso: 'Exito' },
                 { icon: <CircleX size={20} />, name: 'CircleX', uso: 'Error' },
                 { icon: <CircleAlert size={20} />, name: 'CircleAlert', uso: 'Alerta' },
-                { icon: <Info size={20} />, name: 'Info', uso: 'Info' },
+                { icon: <Info size={20} />, name: 'InfoCircle', uso: 'Info' },
                 { icon: <AlertCircle size={20} />, name: 'AlertCircle', uso: 'Error critico' },
                 { icon: <CheckCircle size={20} />, name: 'CheckCircle', uso: 'Completado' },
                 { icon: <Info size={20} />, name: 'Info', uso: 'Informacion' },
