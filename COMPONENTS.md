@@ -1572,13 +1572,16 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 ### 5.1 DataTable
 
-Tabla de datos generica con soporte para columnas custom, estados de carga y vacio, y filas clickeables.
+Tabla de datos generica con scroll horizontal/vertical, header sticky, columnas adaptables al contenido y headers con colores semanticos por dominio.
 
-**Archivo:** `src/components/ui/DataTable/DataTable.tsx`
+**Archivos:**
+- `src/components/ui/DataTable/DataTable.tsx` — Componente principal
+- `src/components/ui/DataTable/DataTable.styles.ts` — Clases de estilos
+- `src/components/ui/DataTable/index.ts` — Re-exports
 
 **Importacion:**
 ```tsx
-import { DataTable, type Column } from '@/components/ui/DataTable';
+import { DataTable, type Column, type HeaderColor } from '@/components/ui/DataTable';
 ```
 
 #### Props
@@ -1591,18 +1594,69 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 | `loading` | `boolean` | `false` | Muestra skeleton de carga |
 | `emptyText` | `string` | `'No hay registros'` | Texto cuando no hay datos |
 | `onRowClick` | `(item: T) => void` | `undefined` | Callback al hacer click en una fila |
-| `maxBodyHeight` | `string` | `undefined` | Altura maxima del body con scroll (ej: `"400px"`) |
+| `maxBodyHeight` | `string` | `'400px'` | Altura maxima del body con scroll vertical |
+| `className` | `string` | `undefined` | Clases adicionales del container |
 
 #### Tipo Column<T>
 
 ```ts
 interface Column<T> {
-  key: string;            // Clave del campo en el objeto de datos
-  header: string;         // Texto del encabezado de columna
-  render?: (item: T) => React.ReactNode;  // Renderizado custom (opcional)
-  className?: string;     // Clases adicionales para la columna
+  key: string;                              // Clave del campo en el objeto
+  header: string;                           // Texto del encabezado
+  render?: (item: T) => React.ReactNode;    // Renderizado custom de celda
+  className?: string;                       // Clases adicionales
+  align?: 'left' | 'center' | 'right';     // Alineacion del contenido
+  minWidth?: string;                        // Ancho minimo (ej: '120px')
+  nowrap?: boolean;                         // No romper contenido
+  headerColor?: HeaderColor;                // Color del header
 }
 ```
+
+#### Tipo HeaderColor
+
+```ts
+type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'slate' | 'primary';
+```
+
+#### Colores de Header
+
+| Color | Fondo | Texto | Uso recomendado |
+|-------|-------|-------|-----------------|
+| `default` | `bg-slate-50` | `text-slate-500` | Columnas genericas |
+| `blue` | `bg-blue-50` | `text-blue-600` | Contacto, estructura, fechas |
+| `green` | `bg-green-50` | `text-green-600` | Ubicacion, bodega |
+| `amber` | `bg-amber-50` | `text-amber-600` | RFC, identificacion fiscal |
+| `red` | `bg-red-50` | `text-red-600` | Estado, alertas |
+| `purple` | `bg-purple-50` | `text-purple-600` | Valores economicos |
+| `slate` | `bg-slate-100` | `text-slate-600` | Datos personales |
+| `primary` | `bg-primary/5` | `text-primary` | Valores destacados,.Brand |
+
+#### Arquitectura de Scroll
+
+```
+┌─── container (rounded-xl border bg-white) ──────────────┐
+│ ┌─── overflow-auto (H + V) ───────────────────────────┐ │
+│ │                                                      │ │
+│ │  ┌─── thead (sticky top-0 z-10) ─────────────────┐  │ │
+│ │  │  NOM (slate) │ PUE (blue) │ RFC (amber) │ ... │  │ │
+│ │  └────────────────────────────────────────────────┘  │ │
+│ │                                                      │ │
+│ │  ┌─── tbody (scroll vertical) ────────────────────┐  │ │
+│ │  │  Carlos    │ Operador  │ HERC85...  │ ...      │  │ │
+│ │  │  Maria     │ Tecnico   │ LOPM90...  │ ...      │  │ │
+│ │  │  Juan      │ Supervis  │ PEPJ75...  │ ...      │  │ │
+│ │  └────────────────────────────────────────────────┘  │ │
+│ └──────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Reglas criticas:**
+- **UNA sola tabla** (`<table>`) — header y body comparten el mismo layout de columnas (siempre alineados).
+- **`table-layout: auto`** — el navegador calcula el ancho de columna basado en el contenido, no al reves.
+- **`overflow: auto`** en el wrapper — un solo scroll para ambas direcciones (H + V).
+- **`sticky top-0 z-10`** en `<thead>` — header se queda fijo al hacer scroll vertical.
+- **`whitespace-nowrap`** en celdas — el contenido nunca se rompe, cada columna mantiene su texto completo.
+- **Zona segura** — `px-4` (16px) de padding en cada celda, contenido siempre centrado.
 
 #### Estados
 
@@ -1615,10 +1669,10 @@ interface Column<T> {
 #### Diseno visual
 
 - Container: `rounded-xl border border-slate-200 bg-white`
-- Header: fondo `slate-50`, texto uppercase, `text-[10px] font-black`
+- Header: fondo segun `headerColor`, texto uppercase, `text-[10px] font-black`, `tracking-widest`
 - Filas: bordes `slate-100`, alternating rows (even/odd)
 - Filas interactivas: `hover:bg-slate-50/80 cursor-pointer`
-- Celdas: `px-4 py-3.5 text-sm text-slate-700`
+- Celdas: `px-4 py-3.5 text-sm text-slate-700 whitespace-nowrap`
 
 #### Ejemplo basico
 
@@ -1643,77 +1697,117 @@ const columns: Column<Trabajador>[] = [
 />
 ```
 
-#### Ejemplo avanzado
+#### Ejemplo avanzado — 10 columnas con headers coloridos + acciones
 
 ```tsx
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Eye, Edit } from 'lucide-react';
+import { Eye, PencilLine, Trash2 } from 'lucide-react';
 
 interface TrabajadorRow {
   id: string;
   nombre: string;
   puesto: string;
+  telefono: string;
+  rfc: string;
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  fechaIngreso: string;
+  bodega: string;
   estado: string;
 }
 
 const columns: Column<TrabajadorRow>[] = [
-  { key: 'nombre', header: 'Nombre' },
-  { key: 'puesto', header: 'Puesto' },
+  // Datos personales (slate)
+  { key: 'nombre', header: 'Nombre Completo', headerColor: 'slate', minWidth: '200px' },
+  // Contacto (blue)
+  { key: 'puesto', header: 'Puesto', headerColor: 'blue', minWidth: '130px' },
+  { key: 'telefono', header: 'Telefono', headerColor: 'green', minWidth: '130px', nowrap: true },
+  // Identificacion fiscal (amber)
+  { key: 'rfc', header: 'RFC', headerColor: 'amber', minWidth: '140px', nowrap: true },
+  // Valores economicos (purple + primary)
+  {
+    key: 'sueldoFiscal',
+    header: 'Sueldo Fiscal',
+    headerColor: 'purple',
+    minWidth: '130px',
+    align: 'right',
+    nowrap: true,
+    render: (row) => (
+      <span className="font-semibold text-slate-800">
+        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(row.sueldoFiscal)}
+      </span>
+    ),
+  },
+  {
+    key: 'sueldoEfectivo',
+    header: 'Sueldo Efectivo',
+    headerColor: 'primary',
+    minWidth: '130px',
+    align: 'right',
+    nowrap: true,
+    render: (row) => (
+      <span className="font-semibold text-green-600">
+        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(row.sueldoEfectivo)}
+      </span>
+    ),
+  },
+  // Fechas y ubicacion (blue + green)
+  { key: 'fechaIngreso', header: 'Fecha Ingreso', headerColor: 'blue', minWidth: '120px', nowrap: true },
+  { key: 'bodega', header: 'Bodega', headerColor: 'green', minWidth: '140px' },
+  // Estado (red)
   {
     key: 'estado',
     header: 'Estado',
+    headerColor: 'red',
+    minWidth: '110px',
     render: (row) => (
       <Badge
-        variant={
-          row.estado === 'Activo' ? 'success' :
-          row.estado === 'Inactivo' ? 'error' : 'warning'
-        }
+        variant={row.estado === 'Activo' ? 'success' : row.estado === 'Inactivo' ? 'error' : 'warning'}
         dot
       >
         {row.estado}
       </Badge>
     ),
   },
+  // Acciones (alineadas a la derecha)
   {
     key: 'acciones',
     header: 'Acciones',
+    align: 'right',
+    minWidth: '220px',
+    nowrap: true,
     render: () => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" icon={<Eye size={14} />}>
+      <div className="flex items-center justify-end gap-1">
+        <Button variant="info" size="sm" icon={<Eye size={14} />}>
           Ver
         </Button>
-        <Button variant="ghost" size="sm" icon={<Edit size={14} />}>
+        <Button variant="warning" size="sm" icon={<PencilLine size={14} />}>
           Editar
+        </Button>
+        <Button variant="danger" size="sm" icon={<Trash2 size={14} />}>
+          Eliminar
         </Button>
       </div>
     ),
   },
 ];
 
+// Tabla completa con scroll vertical (8 filas)
 <DataTable<TrabajadorRow>
   columns={columns}
-  data={filteredWorkers}
+  data={trabajadores}
   keyExtractor={(w) => w.id}
   onRowClick={(w) => console.log('Clicked:', w.nombre)}
   maxBodyHeight="400px"
 />
 
-// Estado de carga
+// Tabla reducida sin scroll
 <DataTable<TrabajadorRow>
   columns={columns}
-  data={[]}
-  keyExtractor={() => ''}
-  loading
-/>
-
-// Estado vacio con texto custom
-<DataTable<TrabajadorRow>
-  columns={columns}
-  data={[]}
-  keyExtractor={() => ''}
-  emptyText="No se encontraron trabajadores con los filtros aplicados"
+  data={trabajadores.slice(0, 3)}
+  keyExtractor={(w) => w.id}
 />
 ```
 
@@ -1721,13 +1815,17 @@ const columns: Column<TrabajadorRow>[] = [
 
 - Listas de datos tabulares (trabajadores, maquinaria, proyectos, etc.).
 - Cualquier vista que requiera mostrar registros en formato de tabla.
-- Datos que necesitan renderizado custom en celdas (badges, botones, etc.).
+- Datos que necesitan renderizado custom en celdas (badges, botones de accion, moneda).
+- Tablas con muitas columnas que necesitan scroll horizontal.
+- Tablas largas que necesitan scroll vertical con header fijo.
 
 #### No usar cuando
 
 - No usar para listas simples sin columnas — usar un `<ul>` con estilos.
 - No usar para datos que no son tabulares — usar cards o listas.
 - No abusar de `render` en todas las columnas — solo usarlo cuando el default `String(value)` no es suficiente.
+- No usar `minWidth` excesivamente grande — el contenido debe definir el ancho, no al reves.
+- No usar sin `keyExtractor` — cada fila necesita una key unica.
 
 ---
 
