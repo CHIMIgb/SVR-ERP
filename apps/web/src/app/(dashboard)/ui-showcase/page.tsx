@@ -604,8 +604,8 @@ export default function UIShowcasePage() {
                 { icon: <Trash2 size={20} />, name: 'Trash2', uso: 'Eliminar' },
                 { icon: <Eye size={20} />, name: 'Eye', uso: 'Ver' },
                 { icon: <Save size={20} />, name: 'Save', uso: 'Guardar' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -624,8 +624,8 @@ export default function UIShowcasePage() {
                 { icon: <Download size={20} />, name: 'Download', uso: 'Descargar' },
                 { icon: <Upload size={20} />, name: 'Upload', uso: 'Subir' },
                 { icon: <Copy size={20} />, name: 'Copy', uso: 'Copiar' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -650,8 +650,8 @@ export default function UIShowcasePage() {
                 { icon: <RefreshCw size={20} />, name: 'RefreshCw', uso: 'Refrescar' },
                 { icon: <RotateCcw size={20} />, name: 'RotateCcw', uso: 'Restaurar' },
                 { icon: <Zap size={20} />, name: 'Zap',uso: 'Accion rapida' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -676,8 +676,8 @@ export default function UIShowcasePage() {
                 { icon: <Search size={20} />, name: 'Search', uso: 'Buscar' },
                 { icon: <Filter size={20} />, name: 'Filter', uso: 'Filtrar' },
                 { icon: <Settings size={20} />, name: 'Settings', uso: 'Configuracion' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -713,8 +713,8 @@ export default function UIShowcasePage() {
                 { icon: <FileBadge size={20} />, name: 'FileBadge', uso: 'Documentacion' },
                 { icon: <BarChart3 size={20} />, name: 'BarChart3', uso: 'Reportes' },
                 { icon: <Settings size={20} />, name: 'Settings', uso: 'Configuracion' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -731,8 +731,8 @@ export default function UIShowcasePage() {
                 { icon: <BellDot size={20} />, name: 'BellDot', uso: 'Notificacion nueva' },
                 { icon: <BellRing size={20} />, name: 'BellRing', uso: 'Alerta activa' },
                 { icon: <BellOff size={20} />, name: 'BellOff', uso: 'Silenciar' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -757,8 +757,8 @@ export default function UIShowcasePage() {
                 { icon: <Heart size={20} />, name: 'Heart', uso: 'Me gusta' },
                 { icon: <LayoutDashboard size={20} />, name: 'LayoutDashboard', uso: 'Dashboard' },
                 { icon: <CheckCircle2 size={20} />, name: 'CheckCircle2', uso: 'Confirmado' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -785,8 +785,8 @@ export default function UIShowcasePage() {
                 { icon: <Route size={20} />, name: 'Route', uso: 'Ruta' },
                 { icon: <Road size={20} />, name: 'Road', uso: 'Carretera' },
                 { icon: <Signpost size={20} />, name: 'Signpost', uso: 'Señal' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -807,8 +807,8 @@ export default function UIShowcasePage() {
                 { icon: <Gauge size={20} />, name: 'Gauge', uso: 'Presion/Horometro' },
                 { icon: <Droplet size={20} />, name: 'Droplet', uso: 'Sin liquido' },
                 { icon: <Wind size={20} />, name: 'Wind', uso: 'Viento/Aire' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -835,8 +835,8 @@ export default function UIShowcasePage() {
                 { icon: <Weight size={20} />, name: 'Weight', uso: 'Peso' },
                 { icon: <Wrench size={20} />, name: 'WrenchOff', uso: 'Sin mantenimiento' },
                 { icon: <Wrench size={20} />, name: 'WrenchToolbox', uso: 'Caja de herramientas' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -858,8 +858,8 @@ export default function UIShowcasePage() {
                 { icon: <Boxes size={20} />, name: 'Boxes', uso: 'Bodega/Almacen' },
                 { icon: <Truck size={20} />, name: 'TruckMat', uso: 'Transporte materiales' },
                 { icon: <Settings size={20} />, name: 'SettingsFactory', uso: 'Planta/Industrial' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
@@ -880,8 +880,8 @@ export default function UIShowcasePage() {
                 { icon: <Wind size={20} />, name: 'Wind', uso: 'Viento' },
                 { icon: <Droplets size={20} />, name: 'Droplets', uso: 'Lluvia/Agua' },
                 { icon: <Flame size={20} />, name: 'Flame', uso: 'Sol/Calor' },
-              ].map((item) => (
-                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              ].map((item, index) => (
+                <div key={`icon-${item.name}-${item.uso}-${index}`} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
                   <p className="text-[10px] text-slate-400">{item.uso}</p>
