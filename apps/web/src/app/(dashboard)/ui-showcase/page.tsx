@@ -498,11 +498,9 @@ export default function UIShowcasePage() {
                 { icon: <PackageOpen size={20} />, name: 'PackageOpen', uso: 'Paquete abierto' },
                 { icon: <PackageSearch size={20} />, name: 'PackageSearch', uso: 'Buscar paquete' },
                 { icon: <Box size={20} />, name: 'Box', uso: 'Caja' },
-                { icon: <Boxes size={20} />, name: 'Boxes', uso: 'Cajas (multiples)' },
-                { icon: <Package size={20} />, name: 'Package', uso: 'Material/Paquete' },
                 { icon: <Boxes size={20} />, name: 'Boxes', uso: 'Bodega/Almacen' },
-                { icon: <Truck size={20} />, name: 'Truck', uso: 'Edificio/Planta' },
-                { icon: <Settings size={20} />, name: 'Settings', uso: 'Planta/Industrial' },
+                { icon: <Truck size={20} />, name: 'TruckMat', uso: 'Transporte materiales' },
+                { icon: <Settings size={20} />, name: 'SettingsFactory', uso: 'Planta/Industrial' },
               ].map((item) => (
                 <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
