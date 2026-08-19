@@ -43,6 +43,7 @@ import { useToast } from "@/components/layout/Toast";
 import type { ToastPosition, ToastTransition } from "@/components/layout/Toast.types";
 import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
+import { Grid } from "@/components/ui/Grid";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -1932,6 +1933,51 @@ export default function UIShowcasePage() {
                   </Container>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Grid */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Grid - Layouts Responsivos
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Columnas fijas</p>
+                <Grid columns={4} gap="md">
+                  {['A', 'B', 'C', 'D'].map((item) => (
+                    <div key={item} className="h-12 bg-primary/10 rounded-lg flex items-center justify-center text-xs font-semibold text-primary">
+                      {item}
+                    </div>
+                  ))}
+                </Grid>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Responsive: 1 col movil, 2 tablet, 4 desktop</p>
+                <Grid columns={{ sm: 1, md: 2, lg: 4 }} gap="md">
+                  {['1', '2', '3', '4'].map((item) => (
+                    <div key={item} className="h-12 bg-success/10 rounded-lg flex items-center justify-center text-xs font-semibold text-success">
+                      {item}
+                    </div>
+                  ))}
+                </Grid>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Gaps: xs (8px) | sm (12px) | md (16px) | lg (24px) | xl (32px)</p>
+                <div className="flex flex-wrap gap-4">
+                  {(['xs', 'sm', 'md', 'lg', 'xl'] as const).map((g) => (
+                    <div key={g} className="text-center">
+                      <Grid columns={2} gap={g}>
+                        <div className="w-12 h-8 bg-info/20 rounded" />
+                        <div className="w-12 h-8 bg-info/20 rounded" />
+                        <div className="w-12 h-8 bg-info/20 rounded" />
+                        <div className="w-12 h-8 bg-info/20 rounded" />
+                      </Grid>
+                      <p className="text-[10px] font-bold text-slate-400 mt-1">{g}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

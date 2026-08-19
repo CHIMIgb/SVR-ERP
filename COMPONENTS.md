@@ -21,7 +21,7 @@
 3. [Componentes de Layout](#3-componentes-de-layout)
    - [PageHeader](#31-pageheader)
    - [SearchInput](#32-searchinput)
-   - [Tabs](#33-tabs)
+   - [Grid](#33-grid)
    - [Stack](#34-stack)
    - [Container](#35-container)
    - [Divider](#36-divider)
@@ -984,6 +984,101 @@ function DetalleMaquinaria() {
 - No usar para navegacion principal del sitio (usar Sidebar).
 - No usar mas de 5-6 tabs — si hay mas, reconsiderar la informacion architecture.
 - No usar `TabPanel` sin envolver en `Tabs` — el contexto de `TabsContext` es necesario.
+
+---
+
+### 3.3 Grid
+
+Sistema de grillas para layouts responsivos. Soporta columnas fijas, columnas por breakpoint, gaps personalizados y alineacion.
+
+**Archivo:** `src/components/ui/Grid/Grid.tsx`
+
+**Importacion:**
+```tsx
+import { Grid } from '@/components/ui/Grid';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `columns` | `GridColumns \| ResponsiveColumns` | `1` | Numero de columnas |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Espaciado entre celdas |
+| `rowGap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Espaciado vertical (opcional) |
+| `columnGap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Espaciado horizontal (opcional) |
+| `alignItems` | `'start' \| 'center' \| 'end' \| 'stretch'` | `undefined` | Alineacion vertical de celdas |
+| `justifyItems` | `'start' \| 'center' \| 'end' \| 'stretch'` | `undefined` | Alineacion horizontal de celdas |
+| `as` | `'div' \| 'section' \| 'article' \| 'ul' \| 'ol'` | `'div'` | Elemento HTML |
+
+#### Columnas
+
+Puede ser un numero fijo:
+
+```tsx
+<Grid columns={4} gap="md">
+  <Card>A</Card>
+  <Card>B</Card>
+  <Card>C</Card>
+  <Card>D</Card>
+</Grid>
+```
+
+O un objeto responsive por breakpoint:
+
+```tsx
+<Grid columns={{ sm: 1, md: 2, lg: 4 }} gap="md">
+  <Card>A</Card>
+  <Card>B</Card>
+  <Card>C</Card>
+  <Card>D</Card>
+</Grid>
+```
+
+#### Tamanos de gap
+
+| Gap | Valor |
+|-----|-------|
+| `none` | 0px |
+| `xs` | 8px |
+| `sm` | 12px |
+| `md` | 16px |
+| `lg` | 24px |
+| `xl` | 32px |
+
+#### Ejemplos
+
+**Grid de KPIs (1 col movil, 2 tablet, 4 desktop):**
+
+```tsx
+<Grid columns={{ sm: 1, md: 2, lg: 4 }} gap="md">
+  <StatsCard icon={<Users size={22} />} value="1,248" label="Trabajadores" />
+  <StatsCard icon={<Truck size={22} />} value="36" label="Unidades" />
+  <StatsCard icon={<DollarSign size={22} />} value="$2.4M" label="Ingresos" />
+  <StatsCard icon={<Activity size={22} />} value="87%" label="Eficiencia" />
+</Grid>
+```
+
+**Grid con gaps separados:**
+
+```tsx
+<Grid columns={3} rowGap="lg" columnGap="sm">
+  <div>Item 1</div>
+  <div>Item 2</div>
+  <div>Item 3</div>
+</Grid>
+```
+
+#### Cuando usar
+
+- Layouts de dashboard con KPIs, cards o formularios.
+- Listados de tarjetas que deben adaptarse a diferentes tamanos de pantalla.
+- Reemplazar clases de Tailwind como `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`.
+
+#### No usar cuando
+
+- Para una sola columna simple — usar `Stack`.
+- Para alinear elementos en una sola fila sin grid — usar `Stack direction="horizontal"`.
+- Cuando se necesita control total de areas especificas — usar CSS Grid directo.
 
 ---
 
