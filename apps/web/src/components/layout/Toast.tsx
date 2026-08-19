@@ -95,7 +95,8 @@ function ToastItemComponent({
         toastClasses.base,
         colors.bg,
         colors.border,
-        transitionClasses[toast.transition]
+        transitionClasses[toast.transition],
+        'relative overflow-hidden'
       )}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -113,9 +114,9 @@ function ToastItemComponent({
 
       {/* Barra de progreso */}
       {toast.progress && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 rounded-b-xl overflow-hidden bg-transparent">
+        <div className="absolute bottom-0 left-0 right-0 h-1">
           <div
-            className={cn('h-full transition-none rounded-full', colors.progress)}
+            className={cn('h-full transition-none', colors.progress)}
             style={{ width: `${progress}%` }}
           />
         </div>
