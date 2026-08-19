@@ -40,6 +40,8 @@ import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
+import { LiveIndicator, StatusBadge, SpeedGauge, TrackingPanel, GpsTimeline, GpsMap, MachineList } from "@/components/ui/GpsTracking";
+import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -146,6 +148,116 @@ const workerColumns: Column<WorkerRow>[] = [
   },
 ];
 
+/* ── GPS Mock Data ── */
+
+const mockMachines: GpsMachine[] = [
+  {
+    id: 'exc-001',
+    name: 'EXC-001',
+    type: 'Excavadora CAT 320',
+    status: 'moving',
+    lat: 19.4326,
+    lng: -99.1332,
+    speed: 12,
+    heading: 45,
+    fuel: 78,
+    temperature: 82,
+    hours: 2450,
+    lastUpdate: 'Hace 5s',
+    operator: 'Carlos Hernandez',
+    project: 'Proyecto Reforma',
+  },
+  {
+    id: 'bul-002',
+    name: 'BUL-002',
+    type: 'Bulldozer D6',
+    status: 'idle',
+    lat: 19.4356,
+    lng: -99.1362,
+    speed: 0,
+    heading: 0,
+    fuel: 45,
+    temperature: 75,
+    hours: 1820,
+    lastUpdate: 'Hace 2m',
+    operator: 'Maria Lopez',
+    project: 'Proyecto Reforma',
+  },
+  {
+    id: 'cam-003',
+    name: 'CAM-003',
+    type: 'Camion Volvo A30G',
+    status: 'moving',
+    lat: 19.4296,
+    lng: -99.1302,
+    speed: 35,
+    heading: 180,
+    fuel: 92,
+    temperature: 78,
+    hours: 3100,
+    lastUpdate: 'Hace 3s',
+    operator: 'Juan Perez',
+    project: 'Puente Viaducto',
+  },
+  {
+    id: 'gru-004',
+    name: 'GRU-004',
+    type: 'Grúa Liebherr LTM 1100',
+    status: 'alert',
+    lat: 19.4386,
+    lng: -99.1392,
+    speed: 0,
+    heading: 90,
+    fuel: 15,
+    temperature: 95,
+    hours: 4200,
+    lastUpdate: 'Hace 10s',
+    operator: 'Ana Garcia',
+    project: 'Torre Santa Fe',
+  },
+  {
+    id: 'ret-005',
+    name: 'RET-005',
+    type: 'Retroexcavadora CAT 420',
+    status: 'offline',
+    lat: 19.4266,
+    lng: -99.1272,
+    speed: 0,
+    heading: 0,
+    fuel: 0,
+    temperature: 0,
+    hours: 980,
+    lastUpdate: 'Hace 3h',
+    operator: undefined,
+    project: undefined,
+  },
+  {
+    id: 'cil-006',
+    name: 'CIL-006',
+    type: 'Compactadora CAT CS56',
+    status: 'moving',
+    lat: 19.4316,
+    lng: -99.1352,
+    speed: 8,
+    heading: 270,
+    fuel: 65,
+    temperature: 79,
+    hours: 1560,
+    lastUpdate: 'Hace 2s',
+    operator: 'Roberto Diaz',
+    project: 'Periférico Sur',
+  },
+];
+
+const mockTimeline = [
+  { time: '14:32:05', text: 'Inicio de jornada en Proyecto Reforma', speed: 0 },
+  { time: '14:45:12', text: 'Movimiento hacia zona de excavacion', speed: 8 },
+  { time: '15:10:30', text: 'Operacion de excavacion activa', speed: 0 },
+  { time: '15:45:18', text: 'Traslado de material a zona de acopio', speed: 12 },
+  { time: '16:02:44', text: 'Parada para abastecimiento de combustible', speed: 0 },
+  { time: '16:20:00', text: 'Retorno a zona de trabajo', speed: 10 },
+];
+
 /* ────────────────────────────────────────────────────────────────
    Page
    ──────────────────────────────────────────────────────────────── */
@@ -164,6 +276,9 @@ export default function UIShowcasePage() {
   // Toast demo states
   const [toastPosition, setToastPosition] = useState<ToastPosition>("top-right");
   const [toastTransition, setToastTransition] = useState<ToastTransition>("fadeIn");
+
+  // GPS demo state
+  const [selectedMachine, setSelectedMachine] = useState<GpsMachine | null>(mockMachines[0]);
 
   const handleFormSubmit = () => {
     setFormSubmitting(true);
@@ -199,6 +314,82 @@ export default function UIShowcasePage() {
           </Button>
         }
       />
+
+      {/* ── Paleta de Colores ──────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Paleta de Colores
+          </h2>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Colores de Marca
+            </h3>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+              {[
+                { name: 'Primary', value: '#d97b2f', tailwind: 'primary' },
+                { name: 'Primary Dark', value: '#b86520', tailwind: 'primary-dark' },
+                { name: 'Primary Light', value: '#e9a85e', tailwind: 'primary-light' },
+                { name: 'Secondary', value: '#1e293b', tailwind: 'secondary' },
+                { name: 'Sidebar', value: '#1e293b', tailwind: 'sidebar' },
+              ].map((color) => (
+                <div key={color.name} className="flex flex-col items-center gap-2">
+                  <div
+                    className="w-full h-16 rounded-xl shadow-sm border border-slate-100"
+                    style={{ backgroundColor: color.value }}
+                  />
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{color.name}</p>
+                  <p className="text-[10px] font-mono text-slate-400">{color.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Colores Semanticos
+            </h3>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {[
+                { name: 'Success', value: '#3d9b6e', dark: '#2f7d56' },
+                { name: 'Warning', value: '#d4963a', dark: '#b87e2c' },
+                { name: 'Error', value: '#c75450', dark: '#a93e3a' },
+                { name: 'Info', value: '#557fb5', dark: '#4569a0' },
+              ].map((color) => (
+                <div key={color.name} className="flex flex-col items-center gap-2">
+                  <div className="flex w-full h-16 rounded-xl overflow-hidden shadow-sm border border-slate-100">
+                    <div className="flex-1" style={{ backgroundColor: color.value }} />
+                    <div className="flex-1" style={{ backgroundColor: color.dark }} />
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{color.name}</p>
+                  <p className="text-[10px] font-mono text-slate-400">{color.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Uso de Colores Semanticos
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-xl bg-green-50 border border-green-200">
+                <p className="text-xs font-bold text-green-700">Crear / Success</p>
+                <p className="text-[10px] text-green-600 mt-1">Nuevos registros, confirmaciones</p>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+                <p className="text-xs font-bold text-amber-700">Editar / Warning</p>
+                <p className="text-[10px] text-amber-600 mt-1">Modificaciones, pendientes</p>
+              </div>
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200">
+                <p className="text-xs font-bold text-red-700">Eliminar / Error</p>
+                <p className="text-[10px] text-red-600 mt-1">Eliminaciones, errores criticos</p>
+              </div>
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
+                <p className="text-xs font-bold text-blue-700">Ver / Info</p>
+                <p className="text-[10px] text-blue-600 mt-1">Detalles, informativos</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </section>
 
       {/* ── Buttons ──────────────────────────────────────────────── */}
       <section>
@@ -1494,6 +1685,86 @@ export default function UIShowcasePage() {
                   <p className="text-[10px] font-mono font-bold text-primary">{item.token}</p>
                   <p className="text-xs font-semibold text-slate-700 mt-0.5">{item.value}</p>
                   <p className="text-[10px] text-slate-400">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── GPS Tracking Components ──────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            GPS Tracking - Monitoreo en Tiempo Real
+          </h2>
+
+          <div className="space-y-4">
+            {/* Live Indicator */}
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Indicador en Vivo
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <LiveIndicator />
+              <StatusBadge status="moving" />
+              <StatusBadge status="idle" />
+              <StatusBadge status="offline" />
+              <StatusBadge status="alert" />
+            </div>
+
+            {/* Map + Panel Layout */}
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Mapa de Seguimiento
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Map */}
+              <div className="lg:col-span-2">
+                <GpsMap
+                  machines={mockMachines}
+                  selectedId={selectedMachine?.id}
+                  onSelect={setSelectedMachine}
+                  height="350px"
+                />
+              </div>
+
+              {/* Machine List */}
+              <div>
+                <MachineList
+                  machines={mockMachines}
+                  selectedId={selectedMachine?.id}
+                  onSelect={setSelectedMachine}
+                />
+              </div>
+            </div>
+
+            {/* Tracking Panel + Timeline */}
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Panel de Detalle + Timeline
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {selectedMachine && (
+                <TrackingPanel machine={selectedMachine} />
+              )}
+
+              <Card className="p-4">
+                <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                  <Activity size={16} className="text-primary" />
+                  Historial de Actividad
+                </h4>
+                <GpsTimeline events={mockTimeline} />
+              </Card>
+            </div>
+
+            {/* Speed Gauges */}
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Medidor de Velocidad
+            </h3>
+            <div className="flex flex-wrap items-center gap-6">
+              {mockMachines.slice(0, 4).map((m) => (
+                <div key={m.id} className="flex flex-col items-center gap-2">
+                  <SpeedGauge speed={m.speed} />
+                  <span className="text-xs font-bold text-slate-700">{m.name}</span>
+                  <StatusBadge status={m.status} />
                 </div>
               ))}
             </div>

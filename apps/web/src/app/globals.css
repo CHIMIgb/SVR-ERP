@@ -1,22 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Brand Colors ── */
-  --color-primary: #f97316;
-  --color-primary-dark: #ea580c;
-  --color-primary-light: #fbbf24;
-  --color-secondary: #0f172a;
-  --color-sidebar: #0f172a;
+  /* ── Brand Colors (Refined Palette) ── */
+  --color-primary: #d97b2f;
+  --color-primary-dark: #b86520;
+  --color-primary-light: #e9a85e;
+  --color-secondary: #1e293b;
+  --color-sidebar: #1e293b;
 
-  /* ── Semantic Colors ── */
-  --color-success: #22c55e;
-  --color-success-dark: #16a34a;
-  --color-warning: #f59e0b;
-  --color-warning-dark: #d97706;
-  --color-error: #ef4444;
-  --color-error-dark: #dc2626;
-  --color-info: #3b82f6;
-  --color-info-dark: #2563eb;
+  /* ── Semantic Colors (Refined) ── */
+  --color-success: #3d9b6e;
+  --color-success-dark: #2f7d56;
+  --color-warning: #d4963a;
+  --color-warning-dark: #b87e2c;
+  --color-error: #c75450;
+  --color-error-dark: #a93e3a;
+  --color-info: #557fb5;
+  --color-info-dark: #4569a0;
 
   /* ── Semantic Surfaces ── */
   --color-surface: #ffffff;
@@ -40,8 +40,8 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  --shadow-primary: 0 4px 14px 0 rgb(249 115 22 / 0.25);
-  --shadow-primary-lg: 0 10px 25px 0 rgb(249 115 22 / 0.3);
+  --shadow-primary: 0 4px 14px 0 rgb(217 123 47 / 0.25);
+  --shadow-primary-lg: 0 10px 25px 0 rgb(217 123 47 / 0.3);
 
   /* ── Animations ── */
   --animate-fade-in: fade-in 0.2s ease-out;
