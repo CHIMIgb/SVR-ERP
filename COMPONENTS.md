@@ -22,6 +22,9 @@
    - [PageHeader](#31-pageheader)
    - [SearchInput](#32-searchinput)
    - [Tabs](#33-tabs)
+   - [Stack](#34-stack)
+   - [Container](#35-container)
+   - [Divider](#36-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -40,6 +43,7 @@
    - [Patron de Estilos Separados](#71-patron-de-estilos-separados)
    - [Convenciones de Nomenclatura](#72-convenciones-de-nomenclatura)
    - [Responsive Design](#73-responsive-design)
+8. [Reglas de Espaciado y Zona Segura](#8-reglas-de-espaciado-y-zona-segura)
 
 ---
 
@@ -979,6 +983,150 @@ function DetalleMaquinaria() {
 - No usar para navegacion principal del sitio (usar Sidebar).
 - No usar mas de 5-6 tabs — si hay mas, reconsiderar la informacion architecture.
 - No usar `TabPanel` sin envolver en `Tabs` — el contexto de `TabsContext` es necesario.
+
+---
+
+### 3.4 Stack
+
+Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
+
+**Archivo:** `src/components/ui/Stack/Stack.tsx`
+
+**Importacion:**
+```tsx
+import { Stack } from '@/components/ui/Stack';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `direction` | `'vertical' \| 'horizontal'` | `'vertical'` | Direccion del stack |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Espaciado entre elementos |
+| `align` | `'start' \| 'center' \| 'end' \| 'stretch'` | `'stretch'` | Alineacion transversal |
+| `wrap` | `boolean` | `false` | Permitir wrap en horizontal |
+| `as` | `'div' \| 'section' \| 'article' \| 'nav' \| 'ul' \| 'ol'` | `'div'` | Elemento HTML a renderizar |
+
+#### Tamanos de gap
+
+| Gap | Valor | Uso tipico |
+|-----|-------|------------|
+| `none` | 0px | Sin espaciado |
+| `xs` | 4px | Espaciado minimo |
+| `sm` | 8px | Elementos muy cercanos |
+| `md` | 16px | Espaciado estandar (default) |
+| `lg` | 24px | Entre secciones |
+| `xl` | 32px | Separacion amplia |
+
+#### Ejemplo
+
+```tsx
+import { Stack } from '@/components/ui/Stack';
+
+// Stack vertical (reemplaza space-y-4)
+<Stack gap="md">
+  <Card>Item 1</Card>
+  <Card>Item 2</Card>
+  <Card>Item 3</Card>
+</Stack>
+
+// Stack horizontal (reemplaza flex gap-4)
+<Stack direction="horizontal" gap="sm">
+  <Button>A</Button>
+  <Button>B</Button>
+  <Button>C</Button>
+</Stack>
+
+// Stack centrado
+<Stack gap="lg" align="center">
+  <Icon />
+  <Text />
+</Stack>
+```
+
+---
+
+### 3.5 Container
+
+Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
+
+**Archivo:** `src/components/ui/Container/Container.tsx`
+
+**Importacion:**
+```tsx
+import { Container } from '@/components/ui/Container';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| 'full'` | `'xl'` | Max-width del contenedor |
+| `padding` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Padding interno |
+| `center` | `boolean` | `true` | Centrar horizontalmente |
+| `as` | `'div' \| 'section' \| 'article' \| 'main' \| 'aside'` | `'div'` | Elemento HTML |
+
+#### Max-widths
+
+| Size | Max-width |
+|------|-----------|
+| `sm` | 640px |
+| `md` | 768px |
+| `lg` | 1024px |
+| `xl` | 1280px |
+| `full` | 100% |
+
+#### Ejemplo
+
+```tsx
+import { Container } from '@/components/ui/Container';
+
+// Contenedor centrado con padding de 24px
+<Container size="xl" padding="md">
+  <h1>Mi Pagina</h1>
+</Container>
+
+// Contenedor estrecho para formularios
+<Container size="md" padding="lg">
+  <Form />
+</Container>
+```
+
+---
+
+### 3.6 Divider
+
+Separador visual horizontal con soporte para labels y variantes de borde.
+
+**Archivo:** `src/components/ui/Divider/Divider.tsx`
+
+**Importacion:**
+```tsx
+import { Divider } from '@/components/ui/Divider';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `variant` | `'solid' \| 'dashed' \| 'dotted'` | `'solid'` | Estilo del borde |
+| `spacing` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Espaciado vertical |
+| `label` | `string` | `undefined` | Texto centrado en el divisor |
+
+#### Ejemplo
+
+```tsx
+import { Divider } from '@/components/ui/Divider';
+
+// Linea simple
+<Divider />
+
+// Divider con label
+<Divider label="O seccion" />
+
+// Variante dashed con spacing amplio
+<Divider variant="dashed" spacing="lg" />
+```
 
 ---
 
@@ -2075,3 +2223,83 @@ Iconos mas utilizados en SVR-ERP (todos de `lucide-react`):
 | `Settings` | `import { Settings } from 'lucide-react'` | Configuracion |
 | `Bell` | `import { Bell } from 'lucide-react'` | Notificaciones |
 | `Mail` | `import { Mail } from 'lucide-react'` | Correo |
+
+---
+
+## 8. Reglas de Espaciado y Zona Segura
+
+**REGLA CRITICA:** Todos los componentes y paginas deben respetar un sistema de espaciado consistente para crear una "zona segura" visual. Esto garantiza que el contenido nunca toque los bordes de la pantalla ni entre si de manera desordenada.
+
+### 8.1 Zona Segura de Pagina
+
+Toda pagina del dashboard debe usar el patron:
+
+```tsx
+<div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+  <PageHeader ... />
+  <section>...</section>
+  <section>...</section>
+</div>
+```
+
+- **`p-6`** (24px): Padding de pagina — el contenido nunca toca los bordes de la pantalla.
+- **`space-y-6`** (24px): Separacion entre secciones.
+- **`bg-slate-50`**: Fondo consistente en todas las paginas.
+
+### 8.2 Zona Segura de Cards
+
+Las cards internas deben usar:
+
+```tsx
+<Card className="space-y-6">     {/* Card con spacing interno */}
+  <h2>Titulo</h2>
+  <div className="space-y-4">    {/* Contenido */}
+    ...
+  </div>
+</Card>
+```
+
+- **`p-6`** o **`padding="md"`** en Card: Padding interno de 24px.
+- **`space-y-4`** o **`space-y-6`**: Entre elementos dentro de la card.
+- **`gap-4`** o **`gap-6`**: En grids dentro de cards.
+
+### 8.3 Tokens de Spacing (CSS Variables)
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `--spacing-page` | 24px | Padding de pagina |
+| `--spacing-section` | 24px | Entre secciones |
+| `--spacing-card` | 24px | Dentro de cards |
+| `--spacing-card-sm` | 16px | Card padding sm |
+| `--spacing-card-lg` | 32px | Card padding lg |
+| `--spacing-inline` | 12px | Entre elementos inline |
+| `--spacing-stack` | 16px | Stack vertical |
+| `--spacing-stack-sm` | 8px | Stack apretado |
+| `--spacing-stack-lg` | 24px | Stack amplio |
+| `--spacing-field` | 16px | Entre campos de formulario |
+| `--spacing-field-gap` | 6px | Entre label e input |
+
+### 8.4 Sombras
+
+| Clase | Uso |
+|-------|-----|
+| `shadow-sm` | Cards en reposo, elementos sutiles |
+| `shadow-md` | Cards con hover, dropdowns |
+| `shadow-lg` | Modales, popovers |
+| `shadow-xl` | Modales grandes, overlays |
+| `shadow-primary` | Botones primarios, CTAs |
+
+### 8.5 Border Radius
+
+| Clase | Valor | Uso |
+|-------|-------|-----|
+| `rounded-sm` | 6px | Badges, tags pequenos |
+| `rounded-md` | 8px | Inputs, botones sm |
+| `rounded-lg` | 12px | Cards, botones |
+| `rounded-xl` | 16px | Cards principales, modales |
+| `rounded-2xl` | 24px | Modales, paneles |
+| `rounded-full` | Infinito | Avatares, botones circulares |
+
+### 8.5 Regla de Oro
+
+> **Todo componente debe tener:** margin/padding suficiente para no pegarse a los bordes de su contenedor, y spacing consistente con los elementos vecinos. Usar `Stack` o `space-y-*` para separacion vertical, y `gap-*` o `Stack direction="horizontal"` para separacion horizontal. **NUNCA** usar valores magicos como `mt-[13px]` o `px-[17px]` — siempre usar los tokens del theme o las clases de Tailwind estandar.

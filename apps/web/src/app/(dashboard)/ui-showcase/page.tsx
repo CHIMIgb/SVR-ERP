@@ -36,6 +36,9 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/components/ui/Moda
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from "@/components/ui/Modal";
 import { useToast } from "@/components/layout/Toast";
 import type { ToastPosition, ToastTransition } from "@/components/layout/Toast.types";
+import { Stack } from "@/components/ui/Stack";
+import { Container } from "@/components/ui/Container";
+import { Divider } from "@/components/ui/Divider";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -1240,6 +1243,181 @@ export default function UIShowcasePage() {
               >
                 Lanzar los 4 tipos
               </Button>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Layout y Spacing ────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Layout y Spacing - Sistema de Zona Segura
+          </h2>
+
+          {/* Safe Zone */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Zona Segura (Safe Zone)
+            </h3>
+            <div className="bg-slate-100 rounded-xl p-6 border-2 border-dashed border-slate-300">
+              <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                <p className="text-sm text-slate-600">
+                  <strong>Regla:</strong> Todas las paginas usan <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">p-6</code> (24px) de padding. Las secciones se separan con <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">space-y-6</code> (24px). Las cards internas usan <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">p-6</code> o <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">p-4</code>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Stack */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Stack - Espaciado Consistente
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Vertical (gap-4)</p>
+                <Stack gap="md">
+                  <div className="h-10 bg-primary/10 rounded-lg flex items-center px-3 text-xs font-semibold text-primary">Item 1</div>
+                  <div className="h-10 bg-primary/10 rounded-lg flex items-center px-3 text-xs font-semibold text-primary">Item 2</div>
+                  <div className="h-10 bg-primary/10 rounded-lg flex items-center px-3 text-xs font-semibold text-primary">Item 3</div>
+                </Stack>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Horizontal (gap-4)</p>
+                <Stack direction="horizontal" gap="md">
+                  <div className="h-10 bg-info/10 rounded-lg flex items-center px-3 text-xs font-semibold text-info">A</div>
+                  <div className="h-10 bg-info/10 rounded-lg flex items-center px-3 text-xs font-semibold text-info">B</div>
+                  <div className="h-10 bg-info/10 rounded-lg flex items-center px-3 text-xs font-semibold text-info">C</div>
+                </Stack>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-400">Gaps: xs (4px) | sm (8px) | md (16px) | lg (24px) | xl (32px)</p>
+              <div className="flex flex-wrap gap-4">
+                {(['xs', 'sm', 'md', 'lg', 'xl'] as const).map((g) => (
+                  <div key={g} className="text-center">
+                    <Stack gap={g}>
+                      <div className="w-12 h-4 bg-primary rounded" />
+                      <div className="w-12 h-4 bg-primary rounded" />
+                      <div className="w-12 h-4 bg-primary rounded" />
+                    </Stack>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1">{g}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Container */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Container - Max Widths
+            </h3>
+            <div className="space-y-2">
+              {(['sm', 'md', 'lg', 'xl', 'full'] as const).map((s) => (
+                <div key={s} className="bg-slate-50 rounded-lg p-2">
+                  <Container size={s} padding="none">
+                    <div className="bg-primary/10 border border-primary/20 rounded-lg p-2 text-center text-xs font-semibold text-primary">
+                      max-w-{s}
+                    </div>
+                  </Container>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Divider - Separadores
+            </h3>
+            <div className="space-y-1">
+              <p className="text-sm text-slate-600">Contenido antes del divisor</p>
+              <Divider />
+              <p className="text-sm text-slate-600">Contenido despues del divisor</p>
+            </div>
+            <div className="space-y-1">
+              <Divider variant="dashed" />
+              <p className="text-sm text-slate-600">Variante dashed</p>
+            </div>
+            <div className="space-y-1">
+              <Divider variant="dotted" />
+              <p className="text-sm text-slate-600">Variante dotted</p>
+            </div>
+            <Divider label="Seccion" />
+            <p className="text-sm text-slate-600">Divider con label centrado</p>
+          </div>
+
+          {/* Sombras */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Sombras
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              {[
+                { shadow: 'shadow-none', label: 'Ninguna' },
+                { shadow: 'shadow-sm', label: 'Small' },
+                { shadow: 'shadow-md', label: 'Medium' },
+                { shadow: 'shadow-lg', label: 'Large' },
+                { shadow: 'shadow-xl', label: 'X-Large' },
+                { shadow: 'shadow-primary', label: 'Primary' },
+              ].map((item) => (
+                <div key={item.label} className="flex flex-col items-center gap-2">
+                  <div className={`w-full h-16 bg-white rounded-xl ${item.shadow} border border-slate-100`} />
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Border Radius */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Border Radius
+            </h3>
+            <div className="flex flex-wrap items-end gap-4">
+              {[
+                { radius: 'rounded-sm', label: 'sm (6px)' },
+                { radius: 'rounded-md', label: 'md (8px)' },
+                { radius: 'rounded-lg', label: 'lg (12px)' },
+                { radius: 'rounded-xl', label: 'xl (16px)' },
+                { radius: 'rounded-2xl', label: '2xl (24px)' },
+                { radius: 'rounded-full', label: 'full' },
+              ].map((item) => (
+                <div key={item.label} className="flex flex-col items-center gap-2">
+                  <div className={`w-16 h-16 bg-primary/10 border-2 border-primary/30 ${item.radius}`} />
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Spacing Tokens */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Spacing Tokens (CSS Variables)
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {[
+                { token: '--spacing-page', value: '24px', desc: 'Padding de pagina' },
+                { token: '--spacing-section', value: '24px', desc: 'Entre secciones' },
+                { token: '--spacing-card', value: '24px', desc: 'Dentro de cards' },
+                { token: '--spacing-card-sm', value: '16px', desc: 'Card padding sm' },
+                { token: '--spacing-card-lg', value: '32px', desc: 'Card padding lg' },
+                { token: '--spacing-inline', value: '12px', desc: 'Entre inline' },
+                { token: '--spacing-stack', value: '16px', desc: 'Stack vertical' },
+                { token: '--spacing-stack-sm', value: '8px', desc: 'Stack apretado' },
+                { token: '--spacing-stack-lg', value: '24px', desc: 'Stack amplio' },
+                { token: '--spacing-field', value: '16px', desc: 'Entre campos' },
+                { token: '--spacing-field-gap', value: '6px', desc: 'Label a input' },
+              ].map((item) => (
+                <div key={item.token} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-[10px] font-mono font-bold text-primary">{item.token}</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5">{item.value}</p>
+                  <p className="text-[10px] text-slate-400">{item.desc}</p>
+                </div>
+              ))}
             </div>
           </div>
         </Card>
