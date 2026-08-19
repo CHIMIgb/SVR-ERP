@@ -1,0 +1,1653 @@
+# Guia de Componentes UI - SVR-ERP
+
+> Referencia definitiva para todos los componentes reutilizables del sistema SVR-ERP.
+> Todos los componentes estan construidos con **Tailwind CSS v4**, **React 19** y **TypeScript**.
+
+---
+
+## Tabla de Contenidos
+
+1. [Fundamentos](#1-fundamentos)
+   - [Utilidad cn()](#11-utilidad-cn)
+   - [Tokens de Tema](#12-tokens-de-tema)
+   - [Iconografia](#13-iconografia)
+   - [Patron de Archivos](#14-patron-de-archivos)
+2. [Componentes Base](#2-componentes-base)
+   - [Button](#21-button)
+   - [Card](#22-card)
+   - [Input](#23-input)
+   - [Select](#24-select)
+   - [Badge](#25-badge)
+3. [Componentes de Layout](#3-componentes-de-layout)
+   - [PageHeader](#31-pageheader)
+   - [SearchInput](#32-searchinput)
+   - [Tabs](#33-tabs)
+4. [Componentes de Feedback](#4-componentes-de-feedback)
+   - [StatsCard](#41-statscard)
+   - [EmptyState](#42-emptystate)
+   - [Avatar](#43-avatar)
+5. [Componentes de Datos](#5-componentes-de-datos)
+   - [DataTable](#51-datatable)
+6. [Componentes de Layout (Sistema)](#6-componentes-de-layout-sistema)
+   - [Modal](#61-modal)
+   - [Toast](#62-toast)
+   - [NotificationContext](#63-notificationcontext)
+7. [Guia de Estilos](#7-guia-de-estilos)
+   - [Patron de Estilos Separados](#71-patron-de-estilos-separados)
+   - [Convenciones de Nomenclatura](#72-convenciones-de-nomenclatura)
+   - [Responsive Design](#73-responsive-design)
+
+---
+
+## 1. Fundamentos
+
+### 1.1 Utilidad cn()
+
+Funcion centralizada para componer clases de Tailwind de forma segura. Combina `clsx` (clases condicionales) con `tailwind-merge` (resuelve conflictos de Tailwind).
+
+**Ubicacion:** `src/lib/utils.ts`
+
+```ts
+import { cn } from '@/lib/utils';
+
+// Ejemplo
+cn(
+  'px-4 py-2',
+  isActive && 'bg-primary text-white',
+  disabled && 'opacity-50 pointer-events-none',
+  className // permite override externo
+);
+```
+
+**Reglas:**
+- Siempre usar `cn()` en vez de concatenar strings de clases manualmente.
+- Siempre incluir `className` como ultimo argumento para permitir override.
+- Las clases de Tailwind conflictuales se resuelven automaticamente (ej: `px-4` gana sobre `px-2`).
+
+### 1.2 Tokens de Tema
+
+Todos los tokens estan definidos en `src/app/globals.css` dentro del bloque `@theme {}` de Tailwind CSS v4.
+
+> **IMPORTANTE:** `tailwind.config.ts` es codigo muerto de v3. No editarlo ni referenciarlo.
+
+#### Colores de Marca
+
+| Token | Valor CSS | Uso en Tailwind |
+|-------|-----------|-----------------|
+| `primary` | `#f97316` | `bg-primary`, `text-primary` |
+| `primary-dark` | `#ea580c` | `bg-primary-dark`, `hover:bg-primary-dark` |
+| `primary-light` | `#fbbf24` | `bg-primary-light`, `text-primary-light` |
+| `secondary` | `#0f172a` | `bg-secondary`, `text-secondary` |
+| `sidebar` | `#0f172a` | `bg-sidebar` |
+
+#### Colores Semanticos
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `success` | `#22c55e` | Estados exitosos, completados |
+| `success-dark` | `#16a34a` | Hover de exito |
+| `warning` | `#f59e0b` | Advertencias, pendientes |
+| `warning-dark` | `#d97706` | Hover de advertencia |
+| `error` | `#ef4444` | Errores, eliminar, peligro |
+| `error-dark` | `#dc2626` | Hover de error |
+| `info` | `#3b82f6` | Informacion, enlace |
+| `info-dark` | `#2563eb` | Hover de informacion |
+
+#### Superficies
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `surface` | `#ffffff` | Fondo principal |
+| `surface-alt` | `#f8fafc` | Fondo alternativo |
+| `surface-elevated` | `#ffffff` | Superficies elevadas (modales, dropdowns) |
+
+#### Bordes Redondeados
+
+| Token | Valor | Tailwind |
+|-------|-------|----------|
+| `radius-sm` | `0.375rem` (6px) | `rounded-sm` |
+| `radius-md` | `0.5rem` (8px) | `rounded-md` |
+| `radius-lg` | `0.75rem` (12px) | `rounded-lg` |
+| `radius-xl` | `1rem` (16px) | `rounded-xl` |
+| `radius-2xl` | `1.5rem` (24px) | `rounded-2xl` |
+| `radius-full` | `9999px` | `rounded-full` |
+
+#### Sombras
+
+| Token | Tailwind | Uso recomendado |
+|-------|----------|-----------------|
+| `shadow-sm` | `shadow-sm` | Cards en reposo |
+| `shadow-md` | `shadow-md` | Cards en hover |
+| `shadow-lg` | `shadow-lg` | Elementos elevados |
+| `shadow-xl` | `shadow-xl` | Modales |
+| `shadow-primary` | `shadow-primary` | Botones primary |
+| `shadow-primary-lg` | `shadow-primary-lg` | Botones primary en hover |
+
+#### Tipografia
+
+| Token | Fuente | Tailwind |
+|-------|--------|----------|
+| `font-sans` | Inter | `font-sans` (default) |
+| `font-display` | Space Grotesk | `font-display` |
+
+#### Animaciones
+
+| Token | Keyframe | Tailwind | Duracion |
+|-------|----------|----------|----------|
+| `fade-in` | `opacity: 0 -> 1` | `animate-fade-in` | 200ms |
+| `slide-up` | `translateY(8px) -> 0` | `animate-slide-up` | 300ms |
+| `slide-down` | `translateY(-8px) -> 0` | `animate-slide-down` | 300ms |
+| `scale-in` | `scale(0.95) -> 1` | `animate-scale-in` | 200ms |
+
+Keyframes adicionales (no en `@theme`, usados con notacion arbitraria):
+- `slideInRight` — para toasts: `animate-[slideInRight_0.3s_ease-out]`
+- `fadeScaleIn` — para modales: `animate-[fadeScaleIn_0.2s_ease-out]`
+
+### 1.3 Iconografia
+
+Todos los iconos provienen de **lucide-react**. Nunca se usa el import barrel (`import * from 'lucide-react'`).
+
+**Reglas obligatorias:**
+- Importar iconos individualmente: `import { Plus, Save } from 'lucide-react'`
+- Un solo color: usar `currentColor` (default) o un color explicito via className
+- Tamanos consistentes: `size={16}` (sm), `size={18}` (md), `size={24}` (lg)
+- Preferir estilo outline/minimalistico (la mayoria de lucide-react ya lo es)
+
+**Ejemplo correcto:**
+```tsx
+import { Plus, Trash2, Download } from 'lucide-react';
+
+<Button icon={<Plus size={16} />} iconPosition="left">
+  Nuevo Registro
+</Button>
+
+<Button variant="danger" icon={<Trash2 size={16} />}>
+  Eliminar
+</Button>
+```
+
+**Ejemplo incorrecto:**
+```tsx
+// NUNCA importar el barrel completo
+import * as Icons from 'lucide-react';
+
+// NUNCA usar inline styles para color
+<Plus style={{ color: '#f97316' }} />
+```
+
+### 1.4 Patron de Archivos
+
+Cada componente UI sigue la misma estructura de archivos:
+
+```
+Componente/
+  Componente.tsx       # Logica y JSX del componente
+  Componente.styles.ts # Objeto de clases de Tailwind (exportado como {Nombre}Classes)
+  index.ts             # Re-exports del componente y sus tipos
+```
+
+**Estructura de un archivo de estilos:**
+```ts
+export const buttonClasses = {
+  base: 'clases base del componente',
+  disabled: 'clases para estado deshabilitado',
+  loading: 'clases para estado de carga',
+  variants: {
+    primary: 'clases de variante primary',
+    secondary: 'clases de variante secondary',
+    // ...
+  },
+  sizes: {
+    sm: 'clases de tamano pequeno',
+    md: 'clases de tamano mediano',
+    lg: 'clases de tamano grande',
+  },
+};
+```
+
+**Estructura de un componente:**
+```tsx
+'use client';
+
+import { forwardRef } from 'react';
+import { cn } from '@/lib/utils';
+import { componenteClasses } from './Componente.styles';
+
+export interface ComponenteProps extends React.HtmlHTMLAttributes<HTMLElement> {
+  // Props custom
+}
+
+export const Componente = forwardRef<HTMLElement, ComponenteProps>(
+  ({ prop1 = 'default', className, children, ...props }, ref) => {
+    return (
+      <element
+        ref={ref}
+        className={cn(
+          componenteClasses.base,
+          componenteClasses.variants[prop1],
+          className // SIEMPRE al final para permitir override
+        )}
+        {...props}
+      >
+        {children}
+      </element>
+    );
+  }
+);
+
+Componente.displayName = 'Componente';
+```
+
+---
+
+## 2. Componentes Base
+
+### 2.1 Button
+
+Boton reutilizable con multiples variantes, tamanos, estados y soporte para iconos.
+
+**Archivo:** `src/components/ui/Button/Button.tsx`
+
+**Importacion:**
+```tsx
+import { Button } from '@/components/ui/Button';
+import type { ButtonProps } from '@/components/ui/Button';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `variant` | `'primary' \| 'secondary' \| 'outline' \| 'ghost' \| 'danger'` | `'primary'` | Variante visual del boton |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del boton |
+| `loading` | `boolean` | `false` | Muestra spinner y deshabilita el boton |
+| `icon` | `React.ReactNode` | `undefined` | Icono a mostrar junto al texto |
+| `iconPosition` | `'left' \| 'right'` | `'left'` | Posicion del icono relativa al texto |
+| `fullWidth` | `boolean` | `false` | El boton ocupa todo el ancho disponible |
+| `disabled` | `boolean` | `false` | Deshabilita el boton |
+
+Tambien extiende todas las props nativas de `<button>` (`React.ButtonHTMLAttributes<HTMLButtonElement>`).
+
+#### Variantes
+
+| Variante | Descripcion visual |
+|----------|-------------------|
+| `primary` | Fondo naranja (`bg-primary`), texto blanco, sombra naranja sutil, efecto hover con elevacion |
+| `secondary` | Fondo gris claro (`bg-slate-100`), texto gris oscuro |
+| `outline` | Sin fondo, borde gris (`border-2 border-slate-200`), texto gris |
+| `ghost` | Sin fondo ni borde, texto gris, solo background en hover |
+| `danger` | Fondo rojo (`bg-red-500`), texto blanco, sombra roja sutil |
+
+#### Tamanos
+
+| Tamano | Altura | Padding horizontal | Texto | Border radius |
+|--------|--------|-------------------|-------|---------------|
+| `sm` | `h-8` (32px) | `px-3` | `text-xs` | `rounded-lg` |
+| `md` | `h-11` (44px) | `px-5` | `text-sm` | `rounded-xl` |
+| `lg` | `h-13` (52px) | `px-7` | `text-base` | `rounded-xl` |
+
+#### Ejemplo basico
+
+```tsx
+<Button>Guardar</Button>
+
+<Button variant="danger">Eliminar</Button>
+
+<Button loading>Cargando...</Button>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Plus, Save, Trash2, Download } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+
+// Boton con icono a la izquierda
+<Button icon={<Plus size={16} />} iconPosition="left">
+  Nuevo Registro
+</Button>
+
+// Boton danger con icono
+<Button variant="danger" icon={<Trash2 size={16} />}>
+  Eliminar Trabajador
+</Button>
+
+// Boton full width en un form
+<Button fullWidth icon={<Save size={16} />} loading={isSaving}>
+  Guardar Cambios
+</Button>
+
+// Grupo de botones con acciones
+<div className="flex gap-3">
+  <Button variant="outline" icon={<Download size={16} />}>
+    Exportar
+  </Button>
+  <Button icon={<Plus size={16} />}>
+    Nuevo
+  </Button>
+</div>
+```
+
+#### Cuando usar
+
+- Cualquier accion que el usuario pueda ejecutar (guardar, eliminar, exportar, crear, etc.)
+- Acciones secundarias (variant `outline` o `ghost`)
+- Acciones destructivas (variant `danger`)
+
+#### No usar cuando
+
+- No usar como enlace — usar `<Link>` de Next.js con estilos de Tailwind directamente.
+- No anidar botones dentro de otros botones.
+- No usar `variant="primary"` para multiples botones en la misma fila — solo el boton principal debe ser primary.
+
+---
+
+### 2.2 Card
+
+Contenedor base para agrupar contenido con bordes, sombra y padding consistente.
+
+**Archivo:** `src/components/ui/Card/Card.tsx`
+
+**Importacion:**
+```tsx
+import { Card } from '@/components/ui/Card';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `padding` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Espaciado interno de la tarjeta |
+| `interactive` | `boolean` | `false` | Habilita efecto hover (sombra + borde) y cursor pointer |
+
+Tambien extiende todas las props nativas de `<div>` (`React.HTMLAttributes<HTMLDivElement>`).
+
+#### Variantes de padding
+
+| Padding | Clase Tailwind | Espaciado |
+|---------|---------------|-----------|
+| `none` | *(sin padding)* | 0 |
+| `sm` | `p-4` | 16px |
+| `md` | `p-6` | 24px |
+| `lg` | `p-8` | 32px |
+
+#### Estados
+
+| Estado | Visual |
+|--------|--------|
+| Default | Fondo blanco, borde `slate-200`, `shadow-sm` |
+| Interactive (hover) | `shadow-md`, borde `slate-300`, cursor pointer |
+
+#### Ejemplo basico
+
+```tsx
+<Card>
+  <p>Contenido de la tarjeta</p>
+</Card>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Card } from '@/components/ui/Card';
+import { Eye, Edit } from 'lucide-react';
+
+// Card interactiva con padding pequeno
+<Card interactive padding="sm">
+  <div className="flex items-center gap-3">
+    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+      <Eye size={20} />
+    </div>
+    <div>
+      <p className="text-sm font-semibold text-slate-900">Titulo</p>
+      <p className="text-xs text-slate-500">Descripcion</p>
+    </div>
+  </div>
+</Card>
+
+// Card como contenedor de seccion
+<Card className="space-y-4">
+  <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+    Seccion de Configuracion
+  </h2>
+  <Input label="Campo" placeholder="Valor" />
+  <Button>Guardar</Button>
+</Card>
+```
+
+#### Cuando usar
+
+- Envolver contenido en secciones de pagina.
+- Crear paneles de informacion agrupada.
+- Tarjetas de navegacion o resumen (con `interactive`).
+
+#### No usar cuando
+
+- No usar para layouts completos de pagina (usar `<div>` con grid/flex directamente).
+- No envolver un `<Card>` dentro de otro `<Card>` con el mismo padding — anidar cards solo cuando es visualmente necesario.
+
+---
+
+### 2.3 Input
+
+Campo de entrada de texto con soporte para label, iconos y mensajes de error.
+
+**Archivo:** `src/components/ui/Input/Input.tsx`
+
+**Importacion:**
+```tsx
+import { Input } from '@/components/ui/Input';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | `undefined` | Etiqueta del campo (aparece arriba, uppercase) |
+| `error` | `string` | `undefined` | Mensaje de error (cambia borde a rojo) |
+| `icon` | `React.ReactNode` | `undefined` | Icono a mostrar dentro del campo |
+| `iconPosition` | `'left' \| 'right'` | `'left'` | Posicion del icono |
+
+Tambien extiende todas las props nativas de `<input>` (`React.InputHTMLAttributes<HTMLInputElement>`).
+
+#### Estados
+
+| Estado | Visual |
+|--------|--------|
+| Default | Fondo `slate-50`, borde `slate-200`, alto `h-11` |
+| Focus | Fondo blanco, borde `primary/50`, ring `primary/10` |
+| Error | Borde `red-300`, focus borde `red-500`, focus ring `red-100` |
+| Disabled | `opacity-50`, `cursor-not-allowed` |
+
+#### Ejemplo basico
+
+```tsx
+<Input label="Nombre" placeholder="Escribe tu nombre..." />
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Mail, Phone, Lock } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
+
+// Input con icono a la izquierda
+<Input
+  label="Correo Electronico"
+  placeholder="correo@ejemplo.com"
+  icon={<Mail size={16} />}
+  iconPosition="left"
+  type="email"
+/>
+
+// Input con icono a la derecha
+<Input
+  label="Telefono"
+  placeholder="10 digitos"
+  icon={<Phone size={16} />}
+  iconPosition="right"
+/>
+
+// Input con error de validacion
+<Input
+  label="Contrasena"
+  type="password"
+  placeholder="Minimo 8 caracteres"
+  icon={<Lock size={16} />}
+  error="La contrasena debe tener al menos 8 caracteres"
+/>
+
+// Input deshabilitado
+<Input label="ID de Trabajador" value="TRB-001" disabled />
+```
+
+#### Cuando usar
+
+- Campos de texto en formularios (nombre, correo, telefono, password, etc.)
+- Campos de busqueda que requieren label visible.
+- Cualquier input que necesite validacion visual con errores.
+
+#### No usar cuando
+
+- No usar para busquedas con debounce — usar `SearchInput`.
+- No usar para seleccion multiple — usar `Select`.
+- No usar sin label a menos que el contexto sea obvio (dentro de un form con placeholder claro).
+
+---
+
+### 2.4 Select
+
+Campo de seleccion desplegable con label, opciones y manejo de errores.
+
+**Archivo:** `src/components/ui/Select/Select.tsx`
+
+**Importacion:**
+```tsx
+import { Select } from '@/components/ui/Select';
+import type { SelectOption } from '@/components/ui/Select';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | `undefined` | Etiqueta del campo (uppercase) |
+| `error` | `string` | `undefined` | Mensaje de error de validacion |
+| `options` | `SelectOption[]` | *(requerido)* | Lista de opciones disponibles |
+| `placeholder` | `string` | `'Seleccionar...'` | Texto del placeholder por defecto |
+
+Tambien extiende todas las props nativas de `<select>` (`React.SelectHTMLAttributes<HTMLSelectElement>`).
+
+#### Tipo SelectOption
+
+```ts
+interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+```
+
+#### Estados
+
+| Estado | Visual |
+|--------|--------|
+| Default | Fondo `slate-50`, borde `slate-200`, chevron abajo |
+| Focus | Fondo blanco, borde `primary/50`, ring `primary/10` |
+| Error | Borde `red-300`, focus borde `red-500` |
+| Disabled | `opacity-50`, `cursor-not-allowed` |
+
+#### Ejemplo basico
+
+```tsx
+<Select
+  label="Puesto"
+  options={[
+    { value: 'operador', label: 'Operador' },
+    { value: 'mecanico', label: 'Mecanico' },
+    { value: 'supervisor', label: 'Supervisor' },
+  ]}
+/>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Select } from '@/components/ui/Select';
+
+// Select con opciones deshabilitadas y placeholder custom
+<Select
+  label="Maquinaria Asignada"
+  placeholder="Seleccionar maquinaria..."
+  options={[
+    { value: 'M001', label: 'M001 - Excavadora CAT 320' },
+    { value: 'M002', label: 'M002 - Bulldozer D6' },
+    { value: 'M003', label: 'M003 - Grua Liebherr', disabled: true },
+    { value: 'M004', label: 'M004 - Kenworth Volteo' },
+  ]}
+/>
+
+// Select con error
+<Select
+  label="Proyecto"
+  options={[
+    { value: 'p1', label: 'Fraccionamiento Valle Sur' },
+    { value: 'p2', label: 'Obra Toluca C2' },
+  ]}
+  error="Debe seleccionar un proyecto"
+/>
+
+// Select deshabilitado
+<Select
+  label="Estado"
+  options={[{ value: 'activo', label: 'Activo' }]}
+  disabled
+/>
+```
+
+#### Cuando usar
+
+- Seleccionar una opcion de una lista predefinida (puesto, proyecto, estado, etc.)
+- Formularios con opciones que no necesitan busqueda.
+- Cuando el numero de opciones es manageable (menos de ~20).
+
+#### No usar cuando
+
+- No usar para mas de 20 opciones sin busqueda — considerar un combobox o busqueda.
+- No usar como substituto de un input de busqueda.
+- No usar para seleccion multiple — este componente solo soporta un solo valor.
+
+---
+
+### 2.5 Badge
+
+Etiqueta visual compacta para mostrar estados, categorias o indicadores.
+
+**Archivo:** `src/components/ui/Badge/Badge.tsx`
+
+**Importacion:**
+```tsx
+import { Badge } from '@/components/ui/Badge';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `variant` | `'primary' \| 'success' \| 'warning' \| 'error' \| 'info' \| 'neutral'` | `'neutral'` | Variante de color |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del badge |
+| `dot` | `boolean` | `false` | Muestra un punto indicador antes del texto |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del badge |
+
+#### Variantes
+
+| Variante | Fondo | Texto | Dot | Uso tipico |
+|----------|-------|-------|-----|------------|
+| `primary` | `bg-orange-100` | `text-orange-700` | `bg-orange-500` | Estado activo, principal |
+| `success` | `bg-green-100` | `text-green-700` | `bg-green-500` | Completado, aprobado |
+| `warning` | `bg-amber-100` | `text-amber-700` | `bg-amber-500` | Pendiente, en revision |
+| `error` | `bg-red-100` | `text-red-700` | `bg-red-500` | Error, rechazado, inactivo |
+| `info` | `bg-blue-100` | `text-blue-700` | `bg-blue-500` | Informativo, en proceso |
+| `neutral` | `bg-slate-100` | `text-slate-600` | `bg-slate-400` | Sin estado, generico |
+
+#### Tamanos
+
+| Tamano | Padding | Texto |
+|--------|---------|-------|
+| `sm` | `px-2 py-0.5` | `text-[10px]` |
+| `md` | `px-2.5 py-1` | `text-xs` |
+| `lg` | `px-3 py-1` | `text-sm` |
+
+#### Ejemplo basico
+
+```tsx
+<Badge variant="success">Activo</Badge>
+<Badge variant="error">Inactivo</Badge>
+<Badge variant="warning" dot>Pendiente</Badge>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Badge } from '@/components/ui/Badge';
+
+// Badges en una tabla
+<table>
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Estado</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Carlos Hernandez</td>
+      <td>
+        <Badge variant="success" dot size="sm">
+          Activo
+        </Badge>
+      </td>
+    </tr>
+    <tr>
+      <td>Maria Lopez</td>
+      <td>
+        <Badge variant="error" dot size="sm">
+          Inactivo
+        </Badge>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+// Badge con conteo (como badge de notificacion)
+<div className="flex items-center gap-2">
+  <span>Notificaciones</span>
+  <Badge variant="error" size="sm">5</Badge>
+</div>
+```
+
+#### Cuando usar
+
+- Mostrar estados de registros (Activo/Inactivo, Pendiente/Completado, etc.).
+- Indicadores de tipo o categoria.
+- Contadores inline junto a labels.
+- Cualquier texto que necesite enfasis visual con color contextual.
+
+#### No usar cuando
+
+- No usar para textos largos — el badge es para etiquetas cortas.
+- No abusar de los puntos `dot` — usarlos solo cuando el estado necesita atencion visual.
+- No usar `primary` como variante por defecto — `neutral` es mas apropiado para estados genericos.
+
+---
+
+## 3. Componentes de Layout
+
+### 3.1 PageHeader
+
+Encabezado estandar para todas las paginas del dashboard. Muestra titulo, subtitulo y un area de accion opcional.
+
+**Archivo:** `src/components/ui/PageHeader/PageHeader.tsx`
+
+**Importacion:**
+```tsx
+import { PageHeader } from '@/components/ui/PageHeader';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `title` | `string` | *(requerido)* | Titulo principal de la pagina |
+| `subtitle` | `string` | `undefined` | Subtitulo descriptivo debajo del titulo |
+| `action` | `React.ReactNode` | `undefined` | Elemento de accion (boton, grupo de botones, etc.) |
+
+#### Ejemplo basico
+
+```tsx
+<PageHeader title="Trabajadores" />
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Plus, Download } from 'lucide-react';
+
+<PageHeader
+  title="Trabajadores"
+  subtitle="Gestion de personal y control de asistencia"
+  action={
+    <div className="flex gap-3">
+      <Button variant="outline" icon={<Download size={16} />}>
+        Exportar
+      </Button>
+      <Button icon={<Plus size={16} />}>
+        Nuevo Trabajador
+      </Button>
+    </div>
+  }
+/>
+```
+
+#### Cuando usar
+
+- Al inicio de cada pagina del dashboard.
+- Cuando se necesita un titulo consistente en todas las vistas.
+
+#### No usar cuando
+
+- No usar dentro de modales o cards — solo para encabezados de pagina.
+- No duplicar el titulo si ya hay un breadcrumb o nav que lo muestra.
+
+---
+
+### 3.2 SearchInput
+
+Campo de busqueda con icono de lupa, boton de limpiar y debounce integrado.
+
+**Archivo:** `src/components/ui/SearchInput/SearchInput.tsx`
+
+**Importacion:**
+```tsx
+import { SearchInput } from '@/components/ui/SearchInput';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | *(no controlado)* | Valor controlado del input |
+| `placeholder` | `string` | `'Buscar...'` | Texto placeholder |
+| `onChange` | `(value: string) => void` | `undefined` | Callback en cada cambio de valor |
+| `onSearch` | `(value: string) => void` | `undefined` | Callback con debounce (para busquedas) |
+| `debounceMs` | `number` | `300` | Milisegundos de debounce para `onSearch` |
+
+#### Comportamiento
+
+- **Controlado vs No controlado:** Si se pasa `value`, funciona como componente controlado. Si no, mantiene su estado interno.
+- **Debounce:** `onSearch` se ejecuta despues de `debounceMs` milisegundos sin cambios en el valor.
+- **Boton limpiar:** Aparece automaticamente cuando hay texto, limpia el valor y ejecuta los callbacks con string vacio.
+
+#### Ejemplo basico
+
+```tsx
+const [busqueda, setBusqueda] = useState('');
+
+<SearchInput
+  value={busqueda}
+  onChange={setBusqueda}
+  placeholder="Buscar trabajadores..."
+/>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { SearchInput } from '@/components/ui/SearchInput';
+import { useState } from 'react';
+
+function PaginaMaquinaria() {
+  const [busqueda, setBusqueda] = useState('');
+
+  const handleSearch = (query: string) => {
+    // Se ejecuta despues de 300ms sin cambios
+    fetchMaquinaria(query);
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      <SearchInput
+        value={busqueda}
+        onChange={setBusqueda}
+        onSearch={handleSearch}
+        placeholder="Buscar por nombre, ID o operador..."
+        debounceMs={500}
+      />
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Filtrar listas de registros en tiempo real.
+- Busquedas que necesitan debounce para evitar llamadas excesivas.
+- Cualquier campo de busqueda visual con icono de lupa.
+
+#### No usar cuando
+
+- No usar para campos de formulario que no son busqueda — usar `Input`.
+- No usar sin debounce para busquedas que involucran API calls.
+
+---
+
+### 3.3 Tabs
+
+Navegacion por pestanas con soporte para iconos, conteos y contenido condicional.
+
+**Archivo:** `src/components/ui/Tabs/Tabs.tsx`
+
+**Importacion:**
+```tsx
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+```
+
+#### Props de Tabs
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `tabs` | `Tab[]` | *(requerido)* | Lista de pestanas disponibles |
+| `defaultTab` | `string` | Primera tab | Key de la tab activa por defecto (no controlado) |
+| `value` | `string` | `undefined` | Key de la tab activa (controlado) |
+| `onChange` | `(key: string) => void` | `undefined` | Callback al cambiar de tab |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido (debe incluir `TabPanel`) |
+
+#### Props de TabPanel
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `tabKey` | `string` | *(requerido)* | Key que vincula el panel con su tab |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del panel |
+
+#### Tipo Tab
+
+```ts
+interface Tab {
+  key: string;     // Identificador unico
+  label: string;   // Texto visible en la pestana
+  icon?: React.ReactNode;  // Icono opcional a la izquierda del label
+  count?: number;  // Numero a la derecha del label (en badge gris)
+}
+```
+
+#### Ejemplo basico
+
+```tsx
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+
+<Tabs tabs={[
+  { key: 'info', label: 'Informacion' },
+  { key: 'historial', label: 'Historial' },
+]}>
+  <TabPanel tabKey="info">
+    <p>Contenido de informacion</p>
+  </TabPanel>
+  <TabPanel tabKey="historial">
+    <p>Contenido de historial</p>
+  </TabPanel>
+</Tabs>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { Settings, FileText, Clock } from 'lucide-react';
+import { Card } from '@/components/ui/Card';
+import { useState } from 'react';
+
+function DetalleMaquinaria() {
+  const [activeTab, setActiveTab] = useState('general');
+
+  return (
+    <Tabs
+      tabs={[
+        { key: 'general', label: 'General', icon: <Settings size={16} /> },
+        { key: 'detalles', label: 'Detalles', icon: <FileText size={16} /> },
+        { key: 'historial', label: 'Historial', icon: <Clock size={16} />, count: 12 },
+      ]}
+      value={activeTab}
+      onChange={setActiveTab}
+    >
+      <TabPanel tabKey="general">
+        <Card padding="md">
+          <p className="text-sm text-slate-700">Informacion principal de la maquinaria.</p>
+        </Card>
+      </TabPanel>
+      <TabPanel tabKey="detalles">
+        <Card padding="md">
+          <p className="text-sm text-slate-700">Especificaciones tecnicas y mantenimiento.</p>
+        </Card>
+      </TabPanel>
+      <TabPanel tabKey="historial">
+        <Card padding="md">
+          <p className="text-sm text-slate-700">Registro de movimientos y cambios.</p>
+        </Card>
+      </TabPanel>
+    </Tabs>
+  );
+}
+```
+
+#### Cuando usar
+
+- Navegar entre secciones de una misma pagina (detalles, historial, configuracion).
+- Filtrar contenido por categoria dentro de un modulo.
+- Mostrar multiples vistas sin navegar a otra pagina.
+
+#### No usar cuando
+
+- No usar para navegacion principal del sitio (usar Sidebar).
+- No usar mas de 5-6 tabs — si hay mas, reconsiderar la informacion architecture.
+- No usar `TabPanel` sin envolver en `Tabs` — el contexto de `TabsContext` es necesario.
+
+---
+
+## 4. Componentes de Feedback
+
+### 4.1 StatsCard
+
+Tarjeta de estadisticas con icono, valor numerico, label y trend indicativo.
+
+**Archivo:** `src/components/ui/StatsCard/StatsCard.tsx`
+
+**Importacion:**
+```tsx
+import { StatsCard } from '@/components/ui/StatsCard';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `icon` | `React.ReactNode` | *(requerido)* | Icono de la estadistica |
+| `value` | `string \| number` | *(requerido)* | Valor numerico o texto a mostrar |
+| `label` | `string` | *(requerido)* | Descripcion de la metrica |
+| `color` | `'primary' \| 'success' \| 'warning' \| 'error' \| 'info' \| 'neutral'` | `'primary'` | Color del icono y fondo del icono |
+| `trend` | `'up' \| 'down' \| 'neutral'` | `undefined` | Direccion del trend (flecha) |
+| `trendValue` | `string` | `undefined` | Texto del trend (ej: "+12%", "-5%") |
+| `onClick` | `() => void` | `undefined` | Hace la tarjeta clickeable |
+
+#### Colores del icono
+
+| Color | Fondo icono | Texto icono |
+|-------|------------|-------------|
+| `primary` | `bg-primary/10` | `text-primary` |
+| `success` | `bg-green-100` | `text-green-600` |
+| `warning` | `bg-amber-100` | `text-amber-600` |
+| `error` | `bg-red-100` | `text-red-600` |
+| `info` | `bg-blue-100` | `text-blue-600` |
+| `neutral` | `bg-slate-100` | `text-slate-500` |
+
+#### Trends
+
+| Trend | Icono | Colores |
+|-------|-------|---------|
+| `up` | `TrendingUp` | Texto verde, fondo verde claro |
+| `down` | `TrendingDown` | Texto rojo, fondo rojo claro |
+| `neutral` | `Minus` | Texto gris, fondo gris claro |
+
+#### Ejemplo basico
+
+```tsx
+import { StatsCard } from '@/components/ui/StatsCard';
+import { Users } from 'lucide-react';
+
+<StatsCard
+  icon={<Users size={22} />}
+  value="1,248"
+  label="Trabajadores Activos"
+/>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { StatsCard } from '@/components/ui/StatsCard';
+import { Users, Truck, DollarSign, Activity } from 'lucide-react';
+
+// Grid de estadisticas del dashboard
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<Users size={22} />}
+    value="1,248"
+    label="Trabajadores Activos"
+    color="primary"
+    trend="up"
+    trendValue="+12%"
+  />
+  <StatsCard
+    icon={<Truck size={22} />}
+    value="36"
+    label="Unidades Operando"
+    color="success"
+    trend="up"
+    trendValue="+3"
+  />
+  <StatsCard
+    icon={<DollarSign size={22} />}
+    value="$2.4M"
+    label="Ingresos del Mes"
+    color="warning"
+    trend="down"
+    trendValue="-5%"
+  />
+  <StatsCard
+    icon={<Activity size={22} />}
+    value="87%"
+    label="Eficiencia General"
+    color="info"
+    trend="neutral"
+    trendValue="0%"
+  />
+</div>
+
+// StatsCard clickeable
+<StatsCard
+  icon={<Users size={22} />}
+  value="24"
+  label="Trabajadores"
+  color="primary"
+  onClick={() => router.push('/trabajadores')}
+/>
+```
+
+#### Cuando usar
+
+- Dashboard principal con metricas resumen.
+- KPIs en la parte superior de paginas de modulo.
+- Resumenes de datos en cualquier vista de administracion.
+
+#### No usar cuando
+
+- No usar para datos detallados — usar `DataTable`.
+- No usar sin icono — el icono es parte fundamental del diseno.
+- No abusar de los trends — solo mostrarlos cuando hay datos comparativos reales.
+
+---
+
+### 4.2 EmptyState
+
+Mensaje visual para cuando no hay datos disponibles. Incluye icono, titulo, subtitulo y accion opcional.
+
+**Archivo:** `src/components/ui/EmptyState/EmptyState.tsx`
+
+**Importacion:**
+```tsx
+import { EmptyState } from '@/components/ui/EmptyState';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `icon` | `React.ReactNode` | `<FileSearch size={36} />` | Icono a mostrar (dentro de circulo naranja) |
+| `title` | `string` | `'No hay registros'` | Titulo del estado vacio |
+| `subtitle` | `string` | `'No se encontraron resultados para tu busqueda.'` | Mensaje descriptivo |
+| `action` | `React.ReactNode` | `undefined` | Elemento de accion (boton) |
+
+#### Ejemplo basico
+
+```tsx
+import { EmptyState } from '@/components/ui/EmptyState';
+
+<EmptyState />
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
+import { AlertCircle, Filter } from 'lucide-react';
+
+// Empty state con accion personalizada
+<EmptyState
+  icon={<AlertCircle size={36} />}
+  title="Sin resultados"
+  subtitle="No se encontraron registros que coincidan con los filtros aplicados."
+  action={
+    <Button variant="outline" icon={<Filter size={16} />}>
+      Limpiar Filtros
+    </Button>
+  }
+/>
+
+// Empty state en una tabla vacia
+<DataTable
+  columns={columns}
+  data={[]}
+  keyExtractor={() => ''}
+  emptyText="No hay trabajadores registrados"
+/>
+
+// Empty state personalizado para una busqueda
+<EmptyState
+  title="Sin coincidencias"
+  subtitle="Intenta con otros terminos de busqueda o revisa los filtros."
+  action={
+    <Button variant="ghost" onClick={() => clearFilters()}>
+      Limpiar busqueda
+    </Button>
+  }
+/>
+```
+
+#### Cuando usar
+
+- Tablas o listas sin datos.
+- Resultados de busqueda sin coincidencias.
+- Estados iniciales de modulos nuevos.
+- Despues de aplicar filtros que no devuelven resultados.
+
+#### No usar cuando
+
+- No usar para errores de conexion — usar un componente de error dedicado.
+- No usar dentro de modales que ainda estan cargando — usar un skeleton/spinner.
+
+---
+
+### 4.3 Avatar
+
+Representacion visual de un usuario con iniciales automaticas o imagen. Asigna colores automaticamente basandose en el hash del nombre.
+
+**Archivo:** `src/components/ui/Avatar/Avatar.tsx`
+
+**Importacion:**
+```tsx
+import { Avatar } from '@/components/ui/Avatar';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `name` | `string` | `''` | Nombre del usuario (para iniciales y color auto) |
+| `src` | `string` | `undefined` | URL de la imagen del avatar |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del avatar |
+| `color` | `'primary' \| 'success' \| 'warning' \| 'error' \| 'info' \| 'neutral'` | *(auto)* | Color explicito (sobreescribe el auto) |
+
+#### Tamanos
+
+| Tamano | Dimensiones | Texto |
+|--------|------------|-------|
+| `sm` | `w-8 h-8` (32px) | `text-xs` |
+| `md` | `w-10 h-10` (40px) | `text-sm` |
+| `lg` | `w-14 h-14` (56px) | `text-lg` |
+
+#### Colores (cuando se especifican o se usan como fallback)
+
+| Color | Fondo | Texto |
+|-------|-------|-------|
+| `primary` | `bg-primary/10` | `text-primary` |
+| `success` | `bg-green-100` | `text-green-600` |
+| `warning` | `bg-amber-100` | `text-amber-600` |
+| `error` | `bg-red-100` | `text-red-600` |
+| `info` | `bg-blue-100` | `text-blue-600` |
+| `neutral` | `bg-slate-100` | `text-slate-500` |
+
+#### Asignacion automatica de color
+
+Cuando no se especifica `color`, el componente calcula un hash del `name` y selecciona un color del pool `['primary', 'success', 'warning', 'info', 'error']`. Esto garantiza que cada nombre tenga un color consistente pero distribuido.
+
+#### Ejemplo basico
+
+```tsx
+<Avatar name="Carlos Hernandez" />
+<Avatar name="Maria Lopez" size="lg" />
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Avatar } from '@/components/ui/Avatar';
+
+// Avatares con iniciales (auto-color)
+<div className="flex items-center gap-4">
+  <Avatar name="Carlos Hernandez" />       {/* CH - color auto */}
+  <Avatar name="Maria Lopez" />            {/* ML - color auto */}
+  <Avatar name="Juan Perez" />             {/* JP - color auto */}
+  <Avatar name="Ana Garcia" size="lg" />   {/* AG - tamano grande */}
+</div>
+
+// Avatares con imagen
+<Avatar name="Carlos" src="/avatars/carlos.jpg" size="md" />
+
+// Avatares con color explicito
+<Avatar name="CS" color="primary" size="lg" />
+
+// Avatar en una lista de usuarios
+<div className="flex items-center gap-3">
+  <Avatar name="Carlos Hernandez" size="sm" />
+  <div>
+    <p className="text-sm font-semibold text-slate-900">Carlos Hernandez</p>
+    <p className="text-xs text-slate-500">Operador</p>
+  </div>
+</div>
+```
+
+#### Cuando usar
+
+- Listas de usuarios o trabajadores.
+- Comentarios o actividades de usuario.
+- Headers de perfil de usuario.
+- Cualquier lugar que necesite identificar visualmente a una persona.
+
+#### No usar cuando
+
+- No usar para logos de empresa o iconos genericos — usar un `<div>` con estilo propio.
+- No usar `src` y `name` juntos sin contexto — si hay imagen, las iniciales no se muestran.
+
+---
+
+## 5. Componentes de Datos
+
+### 5.1 DataTable
+
+Tabla de datos generica con soporte para columnas custom, estados de carga y vacio, y filas clickeables.
+
+**Archivo:** `src/components/ui/DataTable/DataTable.tsx`
+
+**Importacion:**
+```tsx
+import { DataTable, type Column } from '@/components/ui/DataTable';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `columns` | `Column<T>[]` | *(requerido)* | Definicion de columnas |
+| `data` | `T[]` | *(requerido)* | Datos a mostrar |
+| `keyExtractor` | `(item: T) => string` | *(requerido)* | Funcion para obtener la key unica de cada fila |
+| `loading` | `boolean` | `false` | Muestra skeleton de carga |
+| `emptyText` | `string` | `'No hay registros'` | Texto cuando no hay datos |
+| `onRowClick` | `(item: T) => void` | `undefined` | Callback al hacer click en una fila |
+| `maxBodyHeight` | `string` | `undefined` | Altura maxima del body con scroll (ej: `"400px"`) |
+
+#### Tipo Column<T>
+
+```ts
+interface Column<T> {
+  key: string;            // Clave del campo en el objeto de datos
+  header: string;         // Texto del encabezado de columna
+  render?: (item: T) => React.ReactNode;  // Renderizado custom (opcional)
+  className?: string;     // Clases adicionales para la columna
+}
+```
+
+#### Estados
+
+| Estado | Descripcion |
+|--------|-------------|
+| **Loading** | Muestra 5 filas de skeleton animadas (`animate-pulse bg-slate-200`) |
+| **Vacio** | Muestra `emptyText` centrado con padding |
+| **Con datos** | Renderiza la tabla con filas alternas (white / slate-50/30) |
+
+#### Diseno visual
+
+- Container: `rounded-xl border border-slate-200 bg-white`
+- Header: fondo `slate-50`, texto uppercase, `text-[10px] font-black`
+- Filas: bordes `slate-100`, alternating rows (even/odd)
+- Filas interactivas: `hover:bg-slate-50/80 cursor-pointer`
+- Celdas: `px-4 py-3.5 text-sm text-slate-700`
+
+#### Ejemplo basico
+
+```tsx
+import { DataTable, type Column } from '@/components/ui/DataTable';
+
+interface Trabajador {
+  id: string;
+  nombre: string;
+  puesto: string;
+}
+
+const columns: Column<Trabajador>[] = [
+  { key: 'nombre', header: 'Nombre' },
+  { key: 'puesto', header: 'Puesto' },
+];
+
+<DataTable<Trabajador>
+  columns={columns}
+  data={trabajadores}
+  keyExtractor={(t) => t.id}
+/>
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Eye, Edit } from 'lucide-react';
+
+interface TrabajadorRow {
+  id: string;
+  nombre: string;
+  puesto: string;
+  estado: string;
+}
+
+const columns: Column<TrabajadorRow>[] = [
+  { key: 'nombre', header: 'Nombre' },
+  { key: 'puesto', header: 'Puesto' },
+  {
+    key: 'estado',
+    header: 'Estado',
+    render: (row) => (
+      <Badge
+        variant={
+          row.estado === 'Activo' ? 'success' :
+          row.estado === 'Inactivo' ? 'error' : 'warning'
+        }
+        dot
+      >
+        {row.estado}
+      </Badge>
+    ),
+  },
+  {
+    key: 'acciones',
+    header: 'Acciones',
+    render: () => (
+      <div className="flex gap-1">
+        <Button variant="ghost" size="sm" icon={<Eye size={14} />}>
+          Ver
+        </Button>
+        <Button variant="ghost" size="sm" icon={<Edit size={14} />}>
+          Editar
+        </Button>
+      </div>
+    ),
+  },
+];
+
+<DataTable<TrabajadorRow>
+  columns={columns}
+  data={filteredWorkers}
+  keyExtractor={(w) => w.id}
+  onRowClick={(w) => console.log('Clicked:', w.nombre)}
+  maxBodyHeight="400px"
+/>
+
+// Estado de carga
+<DataTable<TrabajadorRow>
+  columns={columns}
+  data={[]}
+  keyExtractor={() => ''}
+  loading
+/>
+
+// Estado vacio con texto custom
+<DataTable<TrabajadorRow>
+  columns={columns}
+  data={[]}
+  keyExtractor={() => ''}
+  emptyText="No se encontraron trabajadores con los filtros aplicados"
+/>
+```
+
+#### Cuando usar
+
+- Listas de datos tabulares (trabajadores, maquinaria, proyectos, etc.).
+- Cualquier vista que requiera mostrar registros en formato de tabla.
+- Datos que necesitan renderizado custom en celdas (badges, botones, etc.).
+
+#### No usar cuando
+
+- No usar para listas simples sin columnas — usar un `<ul>` con estilos.
+- No usar para datos que no son tabulares — usar cards o listas.
+- No abusar de `render` en todas las columnas — solo usarlo cuando el default `String(value)` no es suficiente.
+
+---
+
+## 6. Componentes de Layout (Sistema)
+
+Estos componentes son parte del layout general de la aplicacion y estan en `src/components/layout/`. No son parte del catalogo de componentes reutilizables pero son esenciales para entender la arquitectura.
+
+### 6.1 Modal
+
+Modal generico con overlay, header, contenido y botones de accion. Tambien exporta `ModalField`, `inputClass` y `selectClass`.
+
+**Archivo:** `src/components/layout/Modal.tsx`
+
+**Importacion:**
+```tsx
+import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `isOpen` | `boolean` | *(requerido)* | Controla la visibilidad del modal |
+| `onClose` | `() => void` | *(requerido)* | Callback al cerrar (overlay, Escape, boton cancelar) |
+| `onConfirm` | `() => void` | *(requerido)* | Callback al confirmar |
+| `title` | `string` | *(requerido)* | Titulo del modal |
+| `confirmLabel` | `string` | `'Guardar'` | Texto del boton de confirmacion |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del modal |
+
+#### Funcionalidades
+
+- Cierra con tecla `Escape`.
+- Cierra al hacer click en el overlay (fondo oscuro).
+- Animacion de entrada con `fadeScaleIn`.
+- Backdrop blur en el overlay.
+
+#### Uso de ModalField, inputClass, selectClass
+
+```tsx
+<Modal isOpen={open} onClose={() => setOpen(false)} onConfirm={handleSave} title="Nuevo Trabajador">
+  <ModalField label="Nombre">
+    <input className={inputClass} placeholder="Nombre completo" />
+  </ModalField>
+  <ModalField label="Puesto">
+    <select className={selectClass}>
+      <option>Operador</option>
+      <option>Mecanico</option>
+    </select>
+  </ModalField>
+</Modal>
+```
+
+> **Nota:** Estos estilos (`inputClass`, `selectClass`) son estilos inline legacy. Para nuevos componentes, usar los componentes `Input` y `Select` del catalogo UI.
+
+---
+
+### 6.2 Toast
+
+Sistema de notificaciones toast (pop-ups temporales). Exporta el provider y el hook `useToast`.
+
+**Archivo:** `src/components/layout/Toast.tsx`
+
+**Importacion:**
+```tsx
+import { useToast } from '@/components/layout/Toast';
+```
+
+#### Uso
+
+```tsx
+const { showToast } = useToast();
+
+showToast('Trabajador guardado correctamente', 'success');
+showToast('Error al eliminar el registro', 'error');
+showToast('Advertencia: campos obligatorios vacios', 'warning');
+showToast('Correo enviado exitosamente', 'info');
+```
+
+#### Tipos de toast
+
+| Tipo | Icono | Estilo |
+|------|-------|--------|
+| `success` | `CheckCircle2` (verde) | Borde verde, fondo oscuro |
+| `warning` | `AlertTriangle` (amber) | Borde amber, fondo oscuro |
+| `error` | `XCircle` (rojo) | Borde rojo, fondo oscuro |
+| `info` | `CheckCircle2` (azul) | Borde azul, fondo oscuro |
+
+---
+
+### 6.3 NotificationContext
+
+Contexto para el centro de alertas/notificaciones del Topbar. Provee estado global de notificaciones con operaciones CRUD basicas.
+
+**Archivo:** `src/components/layout/NotificationContext.tsx`
+
+**Importacion:**
+```tsx
+import { useNotifications } from '@/components/layout/NotificationContext';
+```
+
+#### API del hook
+
+```ts
+const {
+  notifications,      // Notification[]
+  unreadCount,        // number
+  addNotification,    // (notif: Omit<Notification, 'id' | 'fecha' | 'leido'>) => void
+  markAsRead,         // (id: string) => void
+  markAllAsRead,      // () => void
+  clearNotifications, // () => void
+} = useNotifications();
+```
+
+#### Tipo Notification
+
+```ts
+interface Notification {
+  id: string;
+  titulo: string;
+  mensaje: string;
+  tipo: 'alerta' | 'info' | 'correo';
+  fecha: string;
+  leido: boolean;
+  destinatario?: string;
+  asunto?: string;
+  plantillaHtml?: string;
+}
+```
+
+---
+
+## 7. Guia de Estilos
+
+### 7.1 Patron de Estilos Separados
+
+Todos los componentes UI siguen el patron **estilos separados**:
+
+```
+Componente/
+  Componente.tsx        # Logica y JSX
+  Componente.styles.ts  # Objeto de clases Tailwind
+  index.ts              # Re-exports
+```
+
+**Beneficios:**
+- Separacion clara entre logica y presentacion.
+- Los estilos se pueden inspectar/importar independientemente.
+- Facilita el refactoring de estilos sin tocar la logica.
+- El objeto de estilos es un contrato visual claro y documentado.
+
+**Regla:** Nunca colocar clases de Tailwind directamente en el JSX del componente cuando son parte del diseno base. Siempre van en el archivo `.styles.ts`.
+
+Excepciones: clases condicionales dinamicas o clases que vienen del consumidor via `className`.
+
+### 7.2 Convenciones de Nomenclatura
+
+| Elemento | Convencion | Ejemplo |
+|----------|-----------|---------|
+| Objeto de estilos | `{nombre}Classes` | `buttonClasses`, `cardClasses` |
+| Keys del objeto | camelCase descriptivo | `base`, `variants`, `sizes`, `disabled` |
+| Variantes | Nombres semanticos | `primary`, `success`, `danger` |
+| Tamanos | `sm`, `md`, `lg` | `sm: 'h-8 ...'` |
+| Interfaces | `{Nombre}Props` | `ButtonProps`, `CardProps` |
+| Types | `{Nombre}{Propiedad}` | `ButtonVariant`, `ButtonSize` |
+
+### 7.3 Responsive Design
+
+Los componentes UI son responsivos por defecto usando las breakpoints de Tailwind:
+
+- **sm** (640px): Dispositivos moviles grandes
+- **md** (768px): Tablets
+- **lg** (1024px): Desktop
+- **xl** (1280px): Desktop grande
+
+**Patron comun en PageHeader:**
+```tsx
+// Se apila en moviles, se horizontaliza en desktop
+'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4'
+```
+
+**Grid responsivo en paginas:**
+```tsx
+// 1 col en moviles, 2 en tablets, 4 en desktop
+'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4'
+```
+
+---
+
+## Apendice: Paleta Completa de Iconos
+
+Iconos mas utilizados en SVR-ERP (todos de `lucide-react`):
+
+| Icono | Import | Uso tipico |
+|-------|--------|------------|
+| `Plus` | `import { Plus } from 'lucide-react'` | Agregar registro |
+| `Save` | `import { Save } from 'lucide-react'` | Guardar cambios |
+| `Trash2` | `import { Trash2 } from 'lucide-react'` | Eliminar |
+| `Edit` | `import { Edit } from 'lucide-react'` | Editar registro |
+| `Eye` | `import { Eye } from 'lucide-react'` | Ver detalle |
+| `Download` | `import { Download } from 'lucide-react'` | Exportar/descargar |
+| `Search` | `import { Search } from 'lucide-react'` | Buscar |
+| `Filter` | `import { Filter } from 'lucide-react'` | Filtrar |
+| `X` | `import { X } from 'lucide-react'` | Cerrar/cancelar |
+| `Check` | `import { Check } from 'lucide-react'` | Confirmar/completado |
+| `AlertCircle` | `import { AlertCircle } from 'lucide-react'` | Error/alerta |
+| `CheckCircle2` | `import { CheckCircle2 } from 'lucide-react'` | Exito |
+| `AlertTriangle` | `import { AlertTriangle } from 'lucide-react'` | Advertencia |
+| `Loader2` | `import { Loader2 } from 'lucide-react'` | Loading spinner |
+| `ChevronDown` | `import { ChevronDown } from 'lucide-react'` | Dropdown |
+| `FileSearch` | `import { FileSearch } from 'lucide-react'` | Estado vacio |
+| `TrendingUp` | `import { TrendingUp } from 'lucide-react'` | Trend positivo |
+| `TrendingDown` | `import { TrendingDown } from 'lucide-react'` | Trend negativo |
+| `Users` | `import { Users } from 'lucide-react'` | Personal/trabajadores |
+| `Truck` | `import { Truck } from 'lucide-react'` | Maquinaria/flota |
+| `HardHat` | `import { HardHat } from 'lucide-react'` | Proyectos |
+| `Banknote` | `import { Banknote } from 'lucide-react'` | Finanzas/nomina |
+| `Settings` | `import { Settings } from 'lucide-react'` | Configuracion |
+| `Bell` | `import { Bell } from 'lucide-react'` | Notificaciones |
+| `Mail` | `import { Mail } from 'lucide-react'` | Correo |
