@@ -477,7 +477,7 @@ export default function UIShowcasePage() {
                 { icon: <Scale size={20} />, name: 'Scale', uso: 'Bascula' },
                 { icon: <Weight size={20} />, name: 'Weight', uso: 'Peso' },
                 { icon: <Wrench size={20} />, name: 'WrenchOff', uso: 'Sin mantenimiento' },
-                { icon: <Wrench size={20} />, name: 'Wrench', uso: 'Caja de herramientas' },
+                { icon: <Wrench size={20} />, name: 'WrenchToolbox', uso: 'Caja de herramientas' },
               ].map((item) => (
                 <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
