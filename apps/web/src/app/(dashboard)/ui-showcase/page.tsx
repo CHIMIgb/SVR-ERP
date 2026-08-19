@@ -41,7 +41,7 @@ import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
-import { LiveIndicator, StatusBadge, SpeedGauge, TrackingPanel, GpsTimeline, GpsMap, MachineList } from "@/components/ui/GpsTracking";
+import { LiveIndicator, StatusBadge, SpeedGauge, GpsTimeline, GpsMap, MachineList } from "@/components/ui/GpsTracking";
 import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
 import { SearchBar, FilterPanel, ActiveFilters } from "@/components/ui/SearchBar";
 import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
@@ -1859,23 +1859,13 @@ export default function UIShowcasePage() {
               </div>
             </div>
 
-            {/* Tracking Panel + Timeline */}
+            {/* Timeline */}
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-              Panel de Detalle + Timeline
+              Historial de Actividad
             </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {selectedMachine && (
-                <TrackingPanel machine={selectedMachine} />
-              )}
-
-              <Card className="p-4">
-                <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <Activity size={16} className="text-primary" />
-                  Historial de Actividad
-                </h4>
-                <GpsTimeline events={mockTimeline} />
-              </Card>
-            </div>
+            <Card className="p-4">
+              <GpsTimeline events={mockTimeline} />
+            </Card>
 
             {/* Speed Gauges */}
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">

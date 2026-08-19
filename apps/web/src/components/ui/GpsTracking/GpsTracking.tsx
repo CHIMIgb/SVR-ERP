@@ -94,8 +94,8 @@ export function MachineMarker({ machine, isSelected, onClick, x, y }: MachineMar
       <div
         className={cn(
           gpsClasses.markerIcon,
-          machine.status === 'offline' ? 'bg-slate-300' : 'bg-primary',
-          isSelected && 'ring-2 ring-primary ring-offset-2'
+          config.color,
+          isSelected && 'ring-2 ring-white ring-offset-2'
         )}
       >
         <Truck size={20} className="text-white" />
