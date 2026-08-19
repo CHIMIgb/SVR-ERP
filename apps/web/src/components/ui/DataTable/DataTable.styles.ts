@@ -3,20 +3,18 @@ export const dataTableClasses = {
   container: 'w-full rounded-xl border border-slate-200 bg-white',
 
   /* ── Header ── */
-  thead: 'bg-slate-50',
-  th: 'px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap border-b border-slate-100',
-  thRight: 'text-right',
-  thCenter: 'text-center',
+  thead: '',
+  th: 'px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap',
 
-  /* ── Header Colors ── */
-  thDefault: 'bg-slate-50 text-slate-500',
-  thBlue: 'bg-blue-50 text-blue-600',
-  thGreen: 'bg-green-50 text-green-600',
-  thAmber: 'bg-amber-50 text-amber-600',
-  thRed: 'bg-red-50 text-red-600',
-  thPurple: 'bg-purple-50 text-purple-600',
-  thSlate: 'bg-slate-100 text-slate-600',
-  thPrimary: 'bg-primary/5 text-primary',
+  /* ── Header Colors (solidos, texto blanco) ── */
+  thDefault: 'bg-slate-500 text-white',
+  thBlue: 'bg-blue-500 text-white',
+  thGreen: 'bg-emerald-500 text-white',
+  thAmber: 'bg-amber-500 text-white',
+  thRed: 'bg-red-500 text-white',
+  thPurple: 'bg-purple-500 text-white',
+  thSlate: 'bg-slate-600 text-white',
+  thPrimary: 'bg-primary text-white',
 
   /* ── Body ── */
   tr: 'border-b border-slate-100 last:border-0 transition-colors',

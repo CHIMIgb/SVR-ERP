@@ -77,8 +77,6 @@ export function DataTable<T>({
                   key={col.key}
                   className={cn(
                     dataTableClasses.th,
-                    col.align === 'right' && dataTableClasses.thRight,
-                    col.align === 'center' && dataTableClasses.thCenter,
                     col.headerColor && headerColorMap[col.headerColor],
                     col.className
                   )}
