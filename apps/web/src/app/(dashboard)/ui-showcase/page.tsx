@@ -41,7 +41,7 @@ import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
-import { LiveIndicator, StatusBadge, SpeedGauge, GpsTimeline, GpsMap, MachineList } from "@/components/ui/GpsTracking";
+import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
 import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
 import { SearchBar, FilterPanel, ActiveFilters } from "@/components/ui/SearchBar";
 import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
@@ -252,15 +252,6 @@ const mockMachines: GpsMachine[] = [
   },
 ];
 
-const mockTimeline = [
-  { time: '14:32:05', text: 'Inicio de jornada en Proyecto Reforma', speed: 0 },
-  { time: '14:45:12', text: 'Movimiento hacia zona de excavacion', speed: 8 },
-  { time: '15:10:30', text: 'Operacion de excavacion activa', speed: 0 },
-  { time: '15:45:18', text: 'Traslado de material a zona de acopio', speed: 12 },
-  { time: '16:02:44', text: 'Parada para abastecimiento de combustible', speed: 0 },
-  { time: '16:20:00', text: 'Retorno a zona de trabajo', speed: 10 },
-];
-
 /* ────────────────────────────────────────────────────────────────
    Page
    ──────────────────────────────────────────────────────────────── */
@@ -399,9 +390,9 @@ export default function UIShowcasePage() {
             </h3>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
               {[
-                { name: 'Primary', value: '#d97b2f', tailwind: 'primary' },
-                { name: 'Primary Dark', value: '#b86520', tailwind: 'primary-dark' },
-                { name: 'Primary Light', value: '#e9a85e', tailwind: 'primary-light' },
+                { name: 'Primary', value: '#e8793a', tailwind: 'primary' },
+                { name: 'Primary Dark', value: '#d46828', tailwind: 'primary-dark' },
+                { name: 'Primary Light', value: '#f0a060', tailwind: 'primary-light' },
                 { name: 'Secondary', value: '#1e293b', tailwind: 'secondary' },
                 { name: 'Sidebar', value: '#1e293b', tailwind: 'sidebar' },
               ].map((color) => (
@@ -1857,28 +1848,6 @@ export default function UIShowcasePage() {
                   onSelect={setSelectedMachine}
                 />
               </div>
-            </div>
-
-            {/* Timeline */}
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-              Historial de Actividad
-            </h3>
-            <Card className="p-4">
-              <GpsTimeline events={mockTimeline} />
-            </Card>
-
-            {/* Speed Gauges */}
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-              Medidor de Velocidad
-            </h3>
-            <div className="flex flex-wrap items-center gap-6">
-              {mockMachines.slice(0, 4).map((m) => (
-                <div key={m.id} className="flex flex-col items-center gap-2">
-                  <SpeedGauge speed={m.speed} />
-                  <span className="text-xs font-bold text-slate-700">{m.name}</span>
-                  <StatusBadge status={m.status} />
-                </div>
-              ))}
             </div>
           </div>
         </Card>
