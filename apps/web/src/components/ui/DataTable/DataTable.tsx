@@ -12,10 +12,10 @@ export interface Column<T> {
   className?: string;
   /** Alineacion de la celda */
   align?: 'left' | 'center' | 'right';
-  /** Ancho minimo de la columna (ej: '120px', '8rem') */
-  minWidth?: string;
-  /** Ancho fijo de la columna */
+  /** Ancho fijo de la columna (ej: '120px', '8rem') */
   width?: string;
+  /** Ancho minimo de la columna */
+  minWidth?: string;
   /** No permitir wrap del contenido */
   nowrap?: boolean;
   /** Color del header de esta columna */
@@ -31,8 +31,6 @@ export interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
   maxBodyHeight?: string;
   className?: string;
-  /** Permitir scroll horizontal */
-  scrollX?: boolean;
 }
 
 export function DataTable<T>({
@@ -42,10 +40,10 @@ export function DataTable<T>({
   loading = false,
   emptyText = 'No hay registros',
   onRowClick,
-  maxBodyHeight,
+  maxBodyHeight = '400px',
   className,
-  scrollX = true,
 }: DataTableProps<T>) {
+  /* ── Loading skeleton ── */
   if (loading) {
     return (
       <div className={cn(dataTableClasses.container, className)}>
@@ -62,6 +60,7 @@ export function DataTable<T>({
     );
   }
 
+  /* ── Empty state ── */
   if (data.length === 0) {
     return (
       <div className={cn(dataTableClasses.container, className)}>
@@ -70,83 +69,94 @@ export function DataTable<T>({
     );
   }
 
+  /* ── Table ── */
   return (
     <div className={cn(dataTableClasses.container, className)}>
-      <div
-        className={cn(scrollX && 'overflow-x-auto')}
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
-      >
-        <table className={cn(dataTableClasses.table, 'table-fixed')} style={{ minWidth: '100%' }}>
-          <colgroup>
-            {columns.map((col) => (
-              <col
-                key={col.key}
-                style={{ width: col.width ?? col.minWidth ?? 'auto' }}
-              />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10">
+      {/* Scroll horizontal envuelve TODO (header + body) */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" style={{ minWidth: 'max-content' }}>
+          {/* ── Header (fuera del scroll vertical) ── */}
+          <thead className={dataTableClasses.thead}>
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    dataTableClasses.headerCell,
-                    col.align === 'right' && dataTableClasses.headerCellRight,
-                    col.align === 'center' && dataTableClasses.headerCellCenter,
+                    dataTableClasses.th,
+                    col.align === 'right' && dataTableClasses.thRight,
+                    col.align === 'center' && dataTableClasses.thCenter,
                     col.headerColor && headerColorMap[col.headerColor],
                     col.className
                   )}
-                  style={col.minWidth ? { minWidth: col.minWidth } : undefined}
+                  style={{ minWidth: col.minWidth ?? col.width ?? '120px' }}
                 >
                   {col.header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
-            {data.map((item, index) => (
-              <tr
-                key={keyExtractor(item)}
-                onClick={() => onRowClick?.(item)}
-                className={cn(
-                  dataTableClasses.row,
-                  index % 2 === 0 ? dataTableClasses.rowEven : dataTableClasses.rowOdd,
-                  onRowClick && dataTableClasses.rowInteractive
-                )}
-              >
-                {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className={cn(
-                      dataTableClasses.cell,
-                      col.align === 'right' && dataTableClasses.cellRight,
-                      col.align === 'center' && dataTableClasses.cellCenter,
-                      col.nowrap && 'whitespace-nowrap',
-                      col.className
-                    )}
-                  >
-                    {col.render ? col.render(item) : String((item as Record<string, unknown>)[col.key] ?? '')}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
         </table>
+
+        {/* Scroll vertical envuelve SOLO el body */}
+        <div
+          className="overflow-y-auto"
+          style={{ maxHeight: maxBodyHeight }}
+        >
+          <table className="w-full text-sm" style={{ minWidth: 'max-content' }}>
+            <colgroup>
+              {columns.map((col) => (
+                <col
+                  key={col.key}
+                  style={{ width: col.width ?? col.minWidth ?? '120px' }}
+                />
+              ))}
+            </colgroup>
+            <tbody>
+              {data.map((item, index) => (
+                <tr
+                  key={keyExtractor(item)}
+                  onClick={() => onRowClick?.(item)}
+                  className={cn(
+                    dataTableClasses.tr,
+                    index % 2 === 0 ? dataTableClasses.trEven : dataTableClasses.trOdd,
+                    onRowClick && dataTableClasses.trInteractive
+                  )}
+                >
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className={cn(
+                        dataTableClasses.td,
+                        col.align === 'right' && dataTableClasses.tdRight,
+                        col.align === 'center' && dataTableClasses.tdCenter,
+                        col.nowrap && 'whitespace-nowrap',
+                        col.className
+                      )}
+                      style={{ minWidth: col.minWidth ?? col.width ?? '120px' }}
+                    >
+                      {col.render
+                        ? col.render(item)
+                        : String((item as Record<string, unknown>)[col.key] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
 /* ── Header color map ── */
-
 const headerColorMap: Record<HeaderColor, string> = {
-  default: dataTableClasses.headerDefault,
-  blue: dataTableClasses.headerBlue,
-  green: dataTableClasses.headerGreen,
-  amber: dataTableClasses.headerAmber,
-  red: dataTableClasses.headerRed,
-  purple: dataTableClasses.headerPurple,
-  slate: dataTableClasses.headerSlate,
-  primary: dataTableClasses.headerPrimary,
+  default: dataTableClasses.thDefault,
+  blue: dataTableClasses.thBlue,
+  green: dataTableClasses.thGreen,
+  amber: dataTableClasses.thAmber,
+  red: dataTableClasses.thRed,
+  purple: dataTableClasses.thPurple,
+  slate: dataTableClasses.thSlate,
+  primary: dataTableClasses.thPrimary,
 };
