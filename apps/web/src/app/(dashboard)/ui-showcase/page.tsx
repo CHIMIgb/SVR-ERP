@@ -20,6 +20,8 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { Avatar } from "@/components/ui/Avatar";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -530,6 +532,70 @@ export default function UIShowcasePage() {
                 </Button>
               }
             />
+          </div>
+        </Card>
+      </section>
+
+      {/* ── LoadingState ────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Estados de Carga
+          </h2>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              LoadingState - Centrado
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card padding="md">
+                <LoadingState size="sm" text="Cargando datos..." />
+              </Card>
+              <Card padding="md">
+                <LoadingState size="md" text="Sincronizando informacion..." />
+              </Card>
+              <Card padding="md">
+                <LoadingState size="lg" text="Preparando sistema..." />
+              </Card>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Skeleton - Placeholder de Contenido
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Texto (3 lineas)</p>
+                <Skeleton variant="text" lines={3} />
+              </div>
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Titulo</p>
+                <Skeleton variant="title" lines={2} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Avatar + Texto (Fila)</p>
+              <Skeleton variant="row" />
+              <Skeleton variant="row" />
+              <Skeleton variant="row" />
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tarjeta KPI</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Skeleton variant="card" />
+                <Skeleton variant="card" />
+                <Skeleton variant="card" />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tabla (5 filas)</p>
+              <Skeleton variant="table" lines={5} />
+            </div>
           </div>
         </Card>
       </section>
