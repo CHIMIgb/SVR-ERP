@@ -11,7 +11,6 @@ export interface Column<T> {
   render?: (item: T) => React.ReactNode;
   className?: string;
   align?: 'left' | 'center' | 'right';
-  width?: string;
   minWidth?: string;
   nowrap?: boolean;
   headerColor?: HeaderColor;
@@ -64,11 +63,14 @@ export function DataTable<T>({
 
   return (
     <div className={cn(dataTableClasses.container, className)}>
-      {/* Scroll horizontal SOLO dentro de este componente */}
-      <div className="overflow-x-auto max-w-full">
-        {/* Header table */}
-        <table className="w-full text-sm border-collapse">
-          <thead className={dataTableClasses.thead}>
+      {/* Scroll horizontal + vertical envuelven UNA SOLA tabla */}
+      <div
+        className="overflow-auto"
+        style={{ maxHeight: maxBodyHeight }}
+      >
+        <table className="w-full text-sm border-collapse" style={{ tableLayout: 'auto' }}>
+          {/* Header sticky — se queda fijo arriba al hacer scroll vertical */}
+          <thead className={cn(dataTableClasses.thead, 'sticky top-0 z-10')}>
             <tr>
               {columns.map((col) => (
                 <th
@@ -80,62 +82,43 @@ export function DataTable<T>({
                     col.headerColor && headerColorMap[col.headerColor],
                     col.className
                   )}
-                  style={{ minWidth: col.minWidth ?? col.width ?? '120px' }}
                 >
                   {col.header}
                 </th>
               ))}
             </tr>
           </thead>
+          <tbody>
+            {data.map((item, index) => (
+              <tr
+                key={keyExtractor(item)}
+                onClick={() => onRowClick?.(item)}
+                className={cn(
+                  dataTableClasses.tr,
+                  index % 2 === 0 ? dataTableClasses.trEven : dataTableClasses.trOdd,
+                  onRowClick && dataTableClasses.trInteractive
+                )}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={cn(
+                      dataTableClasses.td,
+                      col.align === 'right' && dataTableClasses.tdRight,
+                      col.align === 'center' && dataTableClasses.tdCenter,
+                      col.nowrap && 'whitespace-nowrap',
+                      col.className
+                    )}
+                  >
+                    {col.render
+                      ? col.render(item)
+                      : String((item as Record<string, unknown>)[col.key] ?? '')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
         </table>
-
-        {/* Body scroll vertical */}
-        <div
-          className="overflow-y-auto"
-          style={{ maxHeight: maxBodyHeight }}
-        >
-          <table className="w-full text-sm border-collapse">
-            <colgroup>
-              {columns.map((col) => (
-                <col
-                  key={col.key}
-                  style={{ width: col.width ?? col.minWidth ?? '120px' }}
-                />
-              ))}
-            </colgroup>
-            <tbody>
-              {data.map((item, index) => (
-                <tr
-                  key={keyExtractor(item)}
-                  onClick={() => onRowClick?.(item)}
-                  className={cn(
-                    dataTableClasses.tr,
-                    index % 2 === 0 ? dataTableClasses.trEven : dataTableClasses.trOdd,
-                    onRowClick && dataTableClasses.trInteractive
-                  )}
-                >
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className={cn(
-                        dataTableClasses.td,
-                        col.align === 'right' && dataTableClasses.tdRight,
-                        col.align === 'center' && dataTableClasses.tdCenter,
-                        col.nowrap && 'whitespace-nowrap',
-                        col.className
-                      )}
-                      style={{ minWidth: col.minWidth ?? col.width ?? '120px' }}
-                    >
-                      {col.render
-                        ? col.render(item)
-                        : String((item as Record<string, unknown>)[col.key] ?? '')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );
