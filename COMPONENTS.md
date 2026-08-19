@@ -22,9 +22,10 @@
    - [PageHeader](#31-pageheader)
    - [SearchInput](#32-searchinput)
    - [Grid](#33-grid)
-   - [Stack](#34-stack)
-   - [Container](#35-container)
-   - [Divider](#36-divider)
+   - [Center](#34-center)
+   - [Stack](#35-stack)
+   - [Container](#36-container)
+   - [Divider](#37-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1082,7 +1083,66 @@ O un objeto responsive por breakpoint:
 
 ---
 
-### 3.4 Stack
+### 3.4 Center
+
+Componente para centrar contenido vertical y/o horizontalmente. Util para estados vacios, loaders, iconos centrados y contenido dentro de contenedores.
+
+**Archivo:** `src/components/ui/Center/Center.tsx`
+
+**Importacion:**
+```tsx
+import { Center } from '@/components/ui/Center';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `axis` | `'both' \| 'vertical' \| 'horizontal'` | `'both'` | Eje de centrado |
+| `inline` | `boolean` | `false` | Usar `inline-flex` en lugar de `flex` |
+| `as` | `'div' \| 'span' \| 'section' \| 'article' \| 'main' \| 'header' \| 'footer'` | `'div'` | Elemento HTML |
+
+#### Ejemplos
+
+**Centrado completo:**
+
+```tsx
+<Center className="h-64">
+  <EmptyState title="Sin resultados" />
+</Center>
+```
+
+**Solo vertical:**
+
+```tsx
+<Center axis="vertical" className="h-32">
+  <p>Texto centrado verticalmente</p>
+</Center>
+```
+
+**Inline (dentro de texto):**
+
+```tsx
+<p>
+  Estado: <Center inline axis="both"><Badge>Activo</Badge></Center>
+</p>
+```
+
+#### Cuando usar
+
+- Estados vacios o de carga dentro de contenedores.
+- Iconos o badges centrados dentro de cards.
+- Contenido que debe estar perfectamente centrado sin hacks de margin.
+
+#### No usar cuando
+
+- Para alinear texto — usar clases de Tailwind como `text-center`.
+- Para layouts de una sola dimension con multiples elementos — usar `Stack`.
+- Para grillas — usar `Grid`.
+
+---
+
+### 3.5 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1142,7 +1202,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.5 Container
+### 3.6 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1190,7 +1250,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.6 Divider
+### 3.7 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

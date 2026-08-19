@@ -44,6 +44,7 @@ import type { ToastPosition, ToastTransition } from "@/components/layout/Toast.t
 import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
 import { Grid } from "@/components/ui/Grid";
+import { Center } from "@/components/ui/Center";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -1976,6 +1977,47 @@ export default function UIShowcasePage() {
                       <p className="text-[10px] font-bold text-slate-400 mt-1">{g}</p>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Center - Centrado de Contenido
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Centrado total (vertical + horizontal)</p>
+                <Center className="h-32 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
+                  <div className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                    Contenido centrado
+                  </div>
+                </Center>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-400">Vertical</p>
+                  <Center axis="vertical" className="h-24 bg-slate-50 rounded-lg border border-slate-200 border-dashed">
+                    <div className="bg-success/10 text-success px-3 py-1.5 rounded text-xs font-semibold">
+                      Vertical
+                    </div>
+                  </Center>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-400">Horizontal</p>
+                  <Center axis="horizontal" className="h-24 bg-slate-50 rounded-lg border border-slate-200 border-dashed">
+                    <div className="bg-info/10 text-info px-3 py-1.5 rounded text-xs font-semibold">
+                      Horizontal
+                    </div>
+                  </Center>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-400">Inline</p>
+                  <p className="text-sm text-slate-600">
+                    Texto con badge <Center inline axis="both"><span className="bg-warning/10 text-warning px-2 py-0.5 rounded text-xs font-semibold">inline</span></Center> centrado.
+                  </p>
                 </div>
               </div>
             </div>

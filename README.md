@@ -111,6 +111,7 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Stack` | Espaciado vertical/horizontal consistente | `<Stack gap="md">...</Stack>` |
 | `Container` | Max-width centrado con padding | `<Container size="xl">...</Container>` |
 | `Grid` | Layouts responsivos de columnas | `<Grid columns={{ sm: 1, lg: 4 }}>...</Grid>` |
+| `Center` | Centrar contenido vertical/horizontal | `<Center className="h-32">...</Center>` |
 | `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
 | `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |
