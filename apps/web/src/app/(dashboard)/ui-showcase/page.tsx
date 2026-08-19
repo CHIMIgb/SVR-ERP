@@ -75,14 +75,13 @@ interface WorkerRow {
 }
 
 const workerColumns: Column<WorkerRow>[] = [
-  { key: "nombre", header: "Nombre Completo", headerColor: "slate", minWidth: "200px" },
-  { key: "puesto", header: "Puesto", headerColor: "blue", minWidth: "130px" },
-  { key: "telefono", header: "Telefono", headerColor: "green", minWidth: "130px", nowrap: true },
-  { key: "rfc", header: "RFC", headerColor: "amber", minWidth: "140px", nowrap: true },
+  { key: "nombre", header: "Nombre Completo", minWidth: "200px" },
+  { key: "puesto", header: "Puesto", minWidth: "130px" },
+  { key: "telefono", header: "Telefono", minWidth: "130px", nowrap: true },
+  { key: "rfc", header: "RFC", minWidth: "140px", nowrap: true },
   {
     key: "sueldoFiscal",
     header: "Sueldo Fiscal",
-    headerColor: "purple",
     minWidth: "130px",
     align: "right",
     nowrap: true,
@@ -95,7 +94,6 @@ const workerColumns: Column<WorkerRow>[] = [
   {
     key: "sueldoEfectivo",
     header: "Sueldo Efectivo",
-    headerColor: "primary",
     minWidth: "130px",
     align: "right",
     nowrap: true,
@@ -105,12 +103,11 @@ const workerColumns: Column<WorkerRow>[] = [
       </span>
     ),
   },
-  { key: "fechaIngreso", header: "Fecha Ingreso", headerColor: "blue", minWidth: "120px", nowrap: true },
-  { key: "bodega", header: "Bodega", headerColor: "green", minWidth: "140px" },
+  { key: "fechaIngreso", header: "Fecha Ingreso", minWidth: "120px", nowrap: true },
+  { key: "bodega", header: "Bodega", minWidth: "140px" },
   {
     key: "estado",
     header: "Estado",
-    headerColor: "red",
     minWidth: "110px",
     render: (row) => (
       <Badge
@@ -130,11 +127,10 @@ const workerColumns: Column<WorkerRow>[] = [
   {
     key: "acciones",
     header: "Acciones",
-    align: "right",
     minWidth: "220px",
     nowrap: true,
     render: () => (
-      <div className="flex items-center justify-end gap-1">
+      <div className="flex items-center justify-center gap-1">
         <Button variant="info" size="sm" icon={<Eye size={14} />}>
           Ver
         </Button>

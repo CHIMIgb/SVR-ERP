@@ -4,17 +4,11 @@ export const dataTableClasses = {
 
   /* ── Header ── */
   thead: '',
-  th: 'px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap',
+  th: 'px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap text-white',
 
-  /* ── Header Colors (solidos, texto blanco) ── */
-  thDefault: 'bg-slate-500 text-white',
-  thBlue: 'bg-blue-500 text-white',
-  thGreen: 'bg-emerald-500 text-white',
-  thAmber: 'bg-amber-500 text-white',
-  thRed: 'bg-red-500 text-white',
-  thPurple: 'bg-purple-500 text-white',
-  thSlate: 'bg-slate-600 text-white',
-  thPrimary: 'bg-primary text-white',
+  /* ── Header Colors (naranja alternado) ── */
+  thOdd: 'bg-primary',
+  thEven: 'bg-primary-dark',
 
   /* ── Body ── */
   tr: 'border-b border-slate-100 last:border-0 transition-colors',

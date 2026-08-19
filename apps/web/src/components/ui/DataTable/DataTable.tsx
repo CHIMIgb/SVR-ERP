@@ -3,8 +3,6 @@
 import { cn } from '@/lib/utils';
 import { dataTableClasses } from './DataTable.styles';
 
-export type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'slate' | 'primary';
-
 export interface Column<T> {
   key: string;
   header: string;
@@ -13,7 +11,6 @@ export interface Column<T> {
   align?: 'left' | 'center' | 'right';
   minWidth?: string;
   nowrap?: boolean;
-  headerColor?: HeaderColor;
 }
 
 export interface DataTableProps<T> {
@@ -70,14 +67,14 @@ export function DataTable<T>({
       >
         <table className="w-full text-sm border-collapse" style={{ tableLayout: 'auto' }}>
           {/* Header sticky — se queda fijo arriba al hacer scroll vertical */}
-          <thead className={cn(dataTableClasses.thead, 'sticky top-0 z-10')}>
+          <thead className="sticky top-0 z-20">
             <tr>
-              {columns.map((col) => (
+              {columns.map((col, index) => (
                 <th
                   key={col.key}
                   className={cn(
                     dataTableClasses.th,
-                    col.headerColor && headerColorMap[col.headerColor],
+                    index % 2 === 0 ? dataTableClasses.thOdd : dataTableClasses.thEven,
                     col.className
                   )}
                 >
@@ -121,14 +118,3 @@ export function DataTable<T>({
     </div>
   );
 }
-
-const headerColorMap: Record<HeaderColor, string> = {
-  default: dataTableClasses.thDefault,
-  blue: dataTableClasses.thBlue,
-  green: dataTableClasses.thGreen,
-  amber: dataTableClasses.thAmber,
-  red: dataTableClasses.thRed,
-  purple: dataTableClasses.thPurple,
-  slate: dataTableClasses.thSlate,
-  primary: dataTableClasses.thPrimary,
-};
