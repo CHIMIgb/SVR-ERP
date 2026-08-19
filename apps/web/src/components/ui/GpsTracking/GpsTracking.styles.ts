@@ -29,25 +29,25 @@ export const gpsClasses = {
   panel:
     'bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden',
   panelHeader:
-    'px-4 py-3 border-b border-slate-100 flex items-center justify-between',
+    'px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3 min-w-0',
   panelBody:
-    'p-4 space-y-3',
+    'p-4 space-y-3 overflow-hidden',
   panelRow:
-    'flex items-center justify-between py-2 border-b border-slate-50 last:border-0',
+    'flex items-center justify-between py-2 border-b border-slate-50 last:border-0 gap-2 min-w-0',
   panelLabel:
-    'text-xs text-slate-500',
+    'text-xs text-slate-500 shrink-0',
   panelValue:
-    'text-sm font-semibold text-slate-800',
+    'text-sm font-semibold text-slate-800 truncate min-w-0',
 
   /* ── Status Badges ── */
   statusMoving:
-    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold',
+    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold shrink-0',
   statusIdle:
-    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold',
+    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold shrink-0',
   statusOffline:
-    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-semibold',
+    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-semibold shrink-0',
   statusAlert:
-    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold',
+    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold shrink-0',
 
   /* ── Speed Gauge ── */
   gauge:
@@ -77,5 +77,5 @@ export const gpsClasses = {
   timelineTime:
     'text-[10px] font-semibold text-slate-400 uppercase',
   timelineText:
-    'text-sm text-slate-700 mt-0.5',
+    'text-sm text-slate-700 mt-0.5 break-words',
 };

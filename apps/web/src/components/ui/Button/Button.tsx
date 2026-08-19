@@ -52,7 +52,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {!loading && icon && iconPosition === 'left' && (
           <span className="shrink-0">{icon}</span>
         )}
-        {children && <span>{children}</span>}
+        {children && <span className="truncate">{children}</span>}
         {!loading && icon && iconPosition === 'right' && (
           <span className="shrink-0">{icon}</span>
         )}

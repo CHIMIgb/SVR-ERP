@@ -390,9 +390,9 @@ export default function UIShowcasePage() {
             </h3>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
               {[
-                { name: 'Primary', value: '#e8793a', tailwind: 'primary' },
-                { name: 'Primary Dark', value: '#d46828', tailwind: 'primary-dark' },
-                { name: 'Primary Light', value: '#f0a060', tailwind: 'primary-light' },
+                { name: 'Primary', value: '#ed8238', tailwind: 'primary' },
+                { name: 'Primary Dark', value: '#d96e28', tailwind: 'primary-dark' },
+                { name: 'Primary Light', value: '#f5a860', tailwind: 'primary-light' },
                 { name: 'Secondary', value: '#1e293b', tailwind: 'secondary' },
                 { name: 'Sidebar', value: '#1e293b', tailwind: 'sidebar' },
               ].map((color) => (

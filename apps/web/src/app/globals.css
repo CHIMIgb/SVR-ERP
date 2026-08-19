@@ -2,9 +2,9 @@
 
 @theme {
   /* ── Brand Colors ── */
-  --color-primary: #e8793a;
-  --color-primary-dark: #d46828;
-  --color-primary-light: #f0a060;
+  --color-primary: #ed8238;
+  --color-primary-dark: #d96e28;
+  --color-primary-light: #f5a860;
   --color-secondary: #1e293b;
   --color-sidebar: #1e293b;
 
@@ -40,8 +40,8 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  --shadow-primary: 0 4px 14px 0 rgb(232 121 58 / 0.25);
-  --shadow-primary-lg: 0 10px 25px 0 rgb(232 121 58 / 0.3);
+  --shadow-primary: 0 4px 14px 0 rgb(237 130 56 / 0.25);
+  --shadow-primary-lg: 0 10px 25px 0 rgb(237 130 56 / 0.3);
 
   /* ── Animations ── */
   --animate-fade-in: fade-in 0.2s ease-out;
