@@ -26,12 +26,16 @@
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
    - [Avatar](#43-avatar)
+   - [LoadingState](#44-loadingstate)
+   - [Skeleton](#45-skeleton)
 5. [Componentes de Datos](#5-componentes-de-datos)
    - [DataTable](#51-datatable)
-6. [Componentes de Layout (Sistema)](#6-componentes-de-layout-sistema)
+6. [Componentes de Sistema](#6-componentes-de-sistema)
    - [Modal](#61-modal)
-   - [Toast](#62-toast)
-   - [NotificationContext](#63-notificationcontext)
+   - [FormModal](#62-formmodal)
+   - [ModalField](#63-modalfield)
+   - [Toast](#64-toast)
+   - [NotificationContext](#65-notificationcontext)
 7. [Guia de Estilos](#7-guia-de-estilos)
    - [Patron de Estilos Separados](#71-patron-de-estilos-separados)
    - [Convenciones de Nomenclatura](#72-convenciones-de-nomenclatura)
@@ -1272,6 +1276,147 @@ import { Avatar } from '@/components/ui/Avatar';
 
 ---
 
+### 4.4 LoadingState
+
+Componente de carga centrado con spinner animado, titulo y subtitulo opcional. Util para estados de carga de pagina completa o secciones grandes.
+
+**Archivo:** `src/components/ui/LoadingState/LoadingState.tsx`
+
+**Importacion:**
+```tsx
+import { LoadingState } from '@/components/ui/LoadingState';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `title` | `string` | `'Cargando...'` | Texto principal junto al spinner |
+| `subtitle` | `string` | `undefined` | Texto secundario descriptivo |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del spinner (16px / 24px / 32px) |
+
+#### Diseno visual
+
+- Container: flex centrado vertical y horizontalmente, `py-12`
+- Spinner: borde `slate-200` / `primary` con `animate-spin`, bordes redondeados
+- Titulo: `text-sm font-semibold text-slate-700`
+- Subtitulo: `text-xs text-slate-500`
+
+#### Ejemplo basico
+
+```tsx
+import { LoadingState } from '@/components/ui/LoadingState';
+
+<LoadingState />
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { LoadingState } from '@/components/ui/LoadingState';
+
+// Carga de pagina completa
+<LoadingState
+  title="Cargando trabajadores..."
+  subtitle="Esto puede tomar unos segundos"
+  size="lg"
+/>
+
+// Carga inline pequeña
+<LoadingState title="Guardando..." size="sm" />
+```
+
+#### Cuando usar
+
+- Carga inicial de paginas o modulos.
+- Operaciones largas (exportar, procesar nomina).
+- Fetching de datos antes de renderizar una tabla.
+
+#### No usar cuando
+
+- No usar para carga dentro de botones — usar `Button` con `loading`.
+- No usar para esqueletos de contenido — usar `Skeleton`.
+
+---
+
+### 4.5 Skeleton
+
+Placeholder visual animado que simula la estructura del contenido mientras se carga. Soporta multiples variantes predefinidas.
+
+**Archivo:** `src/components/ui/Skeleton/Skeleton.tsx`
+
+**Importacion:**
+```tsx
+import { Skeleton } from '@/components/ui/Skeleton';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `variant` | `'text' \| 'circle' \| 'avatar' \| 'button' \| 'card' \| 'row' \| 'table'` | `'text'` | Variante del esqueleto |
+| `lines` | `number` | `1` | Numero de lineas (solo para `text` y `table`) |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+#### Variantes
+
+| Variante | Descripcion | Uso tipico |
+|----------|-------------|------------|
+| `text` | Barra rectangular animada | Parrafos, titulos, datos |
+| `circle` | Circulo centrado | Iconos, indicadores |
+| `avatar` | Cuadrado redondeado (40x40) | Fotos de perfil |
+| `button` | Rectangulo con forma de boton | Botones de accion |
+| `card` | Card vacia con titulo + lineas | Tarjetas KPI, stat cards |
+| `row` | Avatar + 2 lineas en fila | Listas de usuarios |
+| `table` | Header + N filas de celdas | Tablas de datos |
+
+#### Ejemplo basico
+
+```tsx
+import { Skeleton } from '@/components/ui/Skeleton';
+
+<Skeleton />                          // Texto basico
+<Skeleton variant="avatar" />         // Avatar
+<Skeleton variant="card" />           // Tarjeta
+<Skeleton variant="table" lines={5} /> // Tabla
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Skeleton } from '@/components/ui/Skeleton';
+
+// Estado de carga para una lista de trabajadores
+<div className="space-y-3">
+  <Skeleton variant="row" />
+  <Skeleton variant="row" />
+  <Skeleton variant="row" />
+</div>
+
+// Grid de tarjetas KPI
+<div className="grid grid-cols-3 gap-4">
+  <Skeleton variant="card" />
+  <Skeleton variant="card" />
+  <Skeleton variant="card" />
+</div>
+
+// Tabla de datos
+<Skeleton variant="table" lines={8} />
+```
+
+#### Cuando usar
+
+- Antes de que los datos se carguen en tablas, listas o tarjetas.
+- Para dar sensacion de rapidez al usuario (perceived performance).
+- Junto con `DataTable` cuando `loading={true}`.
+
+#### No usar cuando
+
+- No usar para contenido que ya esta cargado — es solo para estados de carga.
+- No abusar de variantes en la misma vista — elegir la mas representativa.
+
+---
+
 ## 5. Componentes de Datos
 
 ### 5.1 DataTable
@@ -1435,60 +1580,240 @@ const columns: Column<TrabajadorRow>[] = [
 
 ---
 
-## 6. Componentes de Layout (Sistema)
+## 6. Componentes de Sistema
 
-Estos componentes son parte del layout general de la aplicacion y estan en `src/components/layout/`. No son parte del catalogo de componentes reutilizables pero son esenciales para entender la arquitectura.
+Estos componentes son esenciales para la arquitectura de la aplicacion. Los modales estan en `src/components/ui/Modal/` y los providers de notificaciones en `src/components/layout/`.
 
 ### 6.1 Modal
 
-Modal generico con overlay, header, contenido y botones de accion. Tambien exporta `ModalField`, `inputClass` y `selectClass`.
+Modal base con overlay, backdrop blur, header, contenido scrollable y footer de acciones. Compone sub-componentes (`ModalHeader`, `ModalBody`, `ModalFooter`) para flexibilidad total.
 
-**Archivo:** `src/components/layout/Modal.tsx`
+**Archivo:** `src/components/ui/Modal/Modal.tsx`
 
 **Importacion:**
 ```tsx
-import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
 ```
 
 #### Props
 
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
-| `isOpen` | `boolean` | *(requerido)* | Controla la visibilidad del modal |
-| `onClose` | `() => void` | *(requerido)* | Callback al cerrar (overlay, Escape, boton cancelar) |
-| `onConfirm` | `() => void` | *(requerido)* | Callback al confirmar |
+| `open` | `boolean` | *(requerido)* | Controla la visibilidad del modal |
+| `onClose` | `() => void` | *(requerido)* | Callback al cerrar (Escape, overlay, boton) |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del modal (componer con ModalHeader/Body/Footer) |
+| `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| 'full'` | `'md'` | Tamano maximo del modal |
+| `persistent` | `boolean` | `false` | Si es true, no cierra al hacer click en overlay ni con Escape |
+| `contentClassName` | `string` | `undefined` | Clases adicionales para el card interno |
+
+#### Sub-componentes
+
+**ModalHeader:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
 | `title` | `string` | *(requerido)* | Titulo del modal |
-| `confirmLabel` | `string` | `'Guardar'` | Texto del boton de confirmacion |
-| `children` | `React.ReactNode` | *(requerido)* | Contenido del modal |
+| `subtitle` | `string` | `undefined` | Subtitulo descriptivo |
+| `onClose` | `() => void` | `undefined` | Callback del boton cerrar |
+| `hideClose` | `boolean` | `false` | Ocultar boton X |
+
+**ModalBody:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `React.ReactNode` | *(requerido)* | Contenido scrollable |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+**ModalFooter:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `React.ReactNode` | *(requerido)* | Botones de accion |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+#### Tamanos
+
+| Tamano | Max-width | Uso tipico |
+|--------|-----------|------------|
+| `sm` | `max-w-sm` (384px) | Confirmaciones, alertas simples |
+| `md` | `max-w-md` (448px) | Formularios cortos |
+| `lg` | `max-w-lg` (512px) | Formularios completos |
+| `xl` | `max-w-xl` (576px) | Formularios extensos |
+| `full` | `max-w-3xl` (768px) | Vistas complejas, previews |
 
 #### Funcionalidades
 
-- Cierra con tecla `Escape`.
-- Cierra al hacer click en el overlay (fondo oscuro).
+- Cierra con tecla `Escape` (excepto `persistent`).
+- Cierra al hacer click en el overlay (excepto `persistent`).
+- Bloquea scroll del body mientras esta abierto.
 - Animacion de entrada con `fadeScaleIn`.
 - Backdrop blur en el overlay.
+- Accesibilidad: `role="dialog"`, `aria-modal="true"`.
 
-#### Uso de ModalField, inputClass, selectClass
+#### Ejemplo basico
 
 ```tsx
-<Modal isOpen={open} onClose={() => setOpen(false)} onConfirm={handleSave} title="Nuevo Trabajador">
-  <ModalField label="Nombre">
-    <input className={inputClass} placeholder="Nombre completo" />
-  </ModalField>
-  <ModalField label="Puesto">
-    <select className={selectClass}>
-      <option>Operador</option>
-      <option>Mecanico</option>
-    </select>
-  </ModalField>
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+
+<Modal open={open} onClose={() => setOpen(false)} size="md">
+  <ModalHeader title="Detalle del Trabajador" onClose={() => setOpen(false)} />
+  <ModalBody>
+    <p className="text-sm text-slate-600">Contenido del modal aqui...</p>
+  </ModalBody>
+  <ModalFooter>
+    <Button variant="secondary" onClick={() => setOpen(false)}>Cerrar</Button>
+    <Button>Aceptar</Button>
+  </ModalFooter>
 </Modal>
 ```
 
-> **Nota:** Estos estilos (`inputClass`, `selectClass`) son estilos inline legacy. Para nuevos componentes, usar los componentes `Input` y `Select` del catalogo UI.
+#### Ejemplo: Modal de confirmacion (sin header)
+
+```tsx
+import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { AlertCircle, Trash2 } from 'lucide-react';
+
+<Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} size="sm">
+  <ModalBody>
+    <div className="flex flex-col items-center text-center py-2">
+      <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+        <AlertCircle size={32} className="text-red-500" />
+      </div>
+      <h3 className="text-lg font-bold text-slate-900">Eliminar Registro</h3>
+      <p className="text-sm text-slate-500 mt-1">
+        Esta accion es permanente.
+      </p>
+    </div>
+  </ModalBody>
+  <ModalFooter>
+    <Button variant="secondary" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+    <Button variant="danger" icon={<Trash2 size={16} />}>Eliminar</Button>
+  </ModalFooter>
+</Modal>
+```
 
 ---
 
-### 6.2 Toast
+### 6.2 FormModal
+
+Modal pre-armado para flujos CRUD. Incluye header con titulo/subtitulo, body con formulario scrollable, y footer con botones Cancelar/Guardar. Simplifica la creacion de modales con formulario.
+
+**Archivo:** `src/components/ui/Modal/FormModal.tsx`
+
+**Importacion:**
+```tsx
+import { FormModal } from '@/components/ui/Modal';
+```
+
+#### Props (hereda de Modal)
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `title` | `string` | *(requerido)* | Titulo del modal |
+| `subtitle` | `string` | `undefined` | Subtitulo descriptivo |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del formulario |
+| `submitLabel` | `string` | `'Guardar'` | Texto del boton de envio |
+| `cancelLabel` | `string` | `'Cancelar'` | Texto del boton de cancelar |
+| `onSubmit` | `() => void` | `undefined` | Callback al enviar el formulario |
+| `isSubmitting` | `boolean` | `false` | Estado de carga del boton guardar |
+| `submitDisabled` | `boolean` | `false` | Deshabilitar boton guardar |
+| `hideFooter` | `boolean` | `false` | Ocultar footer con botones |
+| `onCancel` | `() => void` | `undefined` | Alias para onClose |
+
+*Tambien acepta todas las props de `Modal` (`open`, `onClose`, `size`, `persistent`, etc.)*
+
+#### Ejemplo basico
+
+```tsx
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+
+<FormModal
+  open={open}
+  onClose={() => setOpen(false)}
+  title="Nuevo Trabajador"
+  subtitle="Completa los datos para registrar un nuevo trabajador"
+  submitLabel="Guardar Trabajador"
+  onSubmit={handleSave}
+  isSubmitting={saving}
+  size="lg"
+>
+  <div className="grid grid-cols-2 gap-4">
+    <ModalField label="Nombre" required>
+      <input className={modalInputClass} placeholder="Nombre completo" />
+    </ModalField>
+    <ModalField label="Puesto" required>
+      <select className={modalSelectClass}>
+        <option value="">Seleccionar...</option>
+        <option value="operador">Operador</option>
+      </select>
+    </ModalField>
+  </div>
+</FormModal>
+```
+
+---
+
+### 6.3 ModalField
+
+Wrapper de campo de formulario para modales. Incluye label, indicador de requerido, hint de ayuda y mensaje de error.
+
+**Archivo:** `src/components/ui/Modal/ModalField.tsx`
+
+**Importacion:**
+```tsx
+import { ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | *(requerido)* | Texto del label |
+| `required` | `boolean` | `false` | Muestra asterisco rojo |
+| `hint` | `string` | `undefined` | Texto de ayuda debajo del campo |
+| `error` | `string` | `undefined` | Mensaje de error (reemplaza hint) |
+| `children` | `React.ReactNode` | *(requerido)* | Input/select/textarea |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+#### Clases de inputs exportadas
+
+| Clase | Uso | Estilo |
+|-------|-----|--------|
+| `modalInputClass` | `<input>` | `h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm` |
+| `modalSelectClass` | `<select>` | Igual + `appearance-none pr-10` |
+| `modalTextareaClass` | `<textarea>` | Igual + `py-3 resize-none` |
+
+#### Ejemplo
+
+```tsx
+import { ModalField, modalInputClass } from '@/components/ui/Modal';
+
+// Campo basico
+<ModalField label="Nombre" required>
+  <input className={modalInputClass} placeholder="Nombre completo" />
+</ModalField>
+
+// Campo con error
+<ModalField label="RFC" error="El RFC debe tener 13 caracteres">
+  <input className={modalInputClass} maxLength={13} />
+</ModalField>
+
+// Campo con hint
+<ModalField label="Sueldo Fiscal" hint="Monto mensual antes de deducciones">
+  <div className="relative">
+    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+    <input className={modalInputClass + ' pl-8'} type="number" placeholder="0.00" />
+  </div>
+</ModalField>
+```
+
+> **Nota:** Los `modalInputClass`/`modalSelectClass`/`modalTextareaClass` son estilos consistenes para campos dentro de modales. Para campos fuera de modales, usar los componentes `Input` y `Select` del catalogo UI.
+
+---
+
+### 6.4 Toast
 
 Sistema de notificaciones toast (pop-ups temporales). Exporta el provider y el hook `useToast`.
 
@@ -1521,7 +1846,7 @@ showToast('Correo enviado exitosamente', 'info');
 
 ---
 
-### 6.3 NotificationContext
+### 6.5 NotificationContext
 
 Contexto para el centro de alertas/notificaciones del Topbar. Provee estado global de notificaciones con operaciones CRUD basicas.
 
