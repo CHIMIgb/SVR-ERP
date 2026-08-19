@@ -99,6 +99,52 @@ SVR-ERP/
 - **Iconos:** Importar individualmente de `lucide-react`.
 - **Utilidad `cn()`:** clsx + tailwind-merge para clases condicionales.
 - **Gráficas:** Usar `recharts` vía wrappers en `apps/web/src/components/ui/Charts/`.
+- **Layout:** Usar `Stack`, `Container` y `Divider` para consistencia de espaciado.
+- **Zona segura:** Todas las páginas usan `p-6 space-y-6 bg-slate-50`.
+
+## Layout y Espaciado
+
+Componentes de layout disponibles en `apps/web/src/components/ui/`:
+
+| Componente | Uso | Ejemplo |
+|---|---|---|
+| `Stack` | Espaciado vertical/horizontal consistente | `<Stack gap="md">...</Stack>` |
+| `Container` | Max-width centrado con padding | `<Container size="xl">...</Container>` |
+| `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
+| `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
+| `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |
+
+### Zona Segura
+
+Toda página del dashboard debe seguir el patrón:
+
+```tsx
+<div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+  <PageHeader title="Título" />
+  <section>...</section>
+</div>
+```
+
+- `p-6`: Padding de página (24px).
+- `space-y-6`: Separación entre secciones (24px).
+- `bg-slate-50`: Fondo consistente.
+
+### Tokens de Spacing
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `--spacing-page` | 24px | Padding de página |
+| `--spacing-section` | 24px | Entre secciones |
+| `--spacing-card` | 24px | Dentro de cards |
+| `--spacing-card-sm` | 16px | Card padding pequeño |
+| `--spacing-stack` | 16px | Stack vertical |
+| `--spacing-inline` | 12px | Entre elementos inline |
+
+### Responsive Design
+
+- Mobile-first con breakpoints de Tailwind: `sm` (640px), `md` (768px), `lg` (1024px), `xl` (1280px).
+- Patrón común: `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`.
+- Todo componente debe ser responsive — ver reglas en [COMPONENTS.md](./COMPONENTS.md).
 
 ## Librerías de Terceros
 
