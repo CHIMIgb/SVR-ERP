@@ -440,7 +440,7 @@ export default function UIShowcasePage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
               {[
                 { icon: <Fuel size={20} />, name: 'Fuel', uso: 'Combustible' },
-                { icon: <Droplet size={20} />, name: 'Droplet', uso: 'Aceite/Gota' },
+                { icon: <Droplet size={20} />, name: 'DropletOil', uso: 'Aceite/Gota' },
                 { icon: <Droplets size={20} />, name: 'Droplets', uso: 'Liquidos' },
                 { icon: <Flame size={20} />, name: 'Flame', uso: 'Fuego/Gas' },
                 { icon: <Thermometer size={20} />, name: 'Thermometer', uso: 'Temperatura' },

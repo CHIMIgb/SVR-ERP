@@ -86,3 +86,7 @@ src/
 ## Language
 
 The app UI is entirely in **Spanish** (Mexican). All mock data, labels, and user-facing strings are Spanish.
+
+## Critical Rules
+
+- **NO DUPLICATE KEYS:** Before writing any `.map()` over arrays that render JSX, ALWAYS verify there are no duplicate `key` values. Duplicated keys cause React console errors and broken rendering. Use unique identifiers (IDs, unique names, or index + prefix if no unique data exists). Run `npx tsc --noEmit` after changes to catch issues.
