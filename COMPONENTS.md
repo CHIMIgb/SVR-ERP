@@ -33,6 +33,7 @@
    - [Skeleton](#45-skeleton)
 5. [Componentes de Datos](#5-componentes-de-datos)
    - [DataTable](#51-datatable)
+   - [Pagination](#52-pagination)
 6. [Componentes de Sistema](#6-componentes-de-sistema)
    - [Modal](#61-modal)
    - [FormModal](#62-formmodal)
@@ -1572,7 +1573,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 ### 5.1 DataTable
 
-Tabla de datos generica con scroll horizontal/vertical, header sticky, columnas adaptables al contenido y headers con colores semanticos por dominio.
+Tabla de datos generica con scroll horizontal/vertical, header sticky, headers naranja alternados y columnas adaptables al contenido.
 
 **Archivos:**
 - `src/components/ui/DataTable/DataTable.tsx` — Componente principal
@@ -1581,7 +1582,7 @@ Tabla de datos generica con scroll horizontal/vertical, header sticky, columnas 
 
 **Importacion:**
 ```tsx
-import { DataTable, type Column, type HeaderColor } from '@/components/ui/DataTable';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 ```
 
 #### Props
@@ -1605,31 +1606,24 @@ interface Column<T> {
   header: string;                           // Texto del encabezado
   render?: (item: T) => React.ReactNode;    // Renderizado custom de celda
   className?: string;                       // Clases adicionales
-  align?: 'left' | 'center' | 'right';     // Alineacion del contenido
+  align?: 'left' | 'center' | 'right';     // Alineacion del contenido de la celda
   minWidth?: string;                        // Ancho minimo (ej: '120px')
   nowrap?: boolean;                         // No romper contenido
-  headerColor?: HeaderColor;                // Color del header
 }
 ```
 
-#### Tipo HeaderColor
+#### Headers Naranja Alternados
 
-```ts
-type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'slate' | 'primary';
-```
+Los headers usan el color de marca naranja alternando entre dos tonos:
 
-#### Colores de Header
+| Posicion | Fondo | Clase |
+|----------|-------|-------|
+| Impar (1, 3, 5...) | `#f97316` | `bg-primary` |
+| Par (2, 4, 6...) | `#ea580c` | `bg-primary-dark` |
 
-| Color | Fondo | Texto | Uso recomendado |
-|-------|-------|-------|-----------------|
-| `default` | `bg-slate-50` | `text-slate-500` | Columnas genericas |
-| `blue` | `bg-blue-50` | `text-blue-600` | Contacto, estructura, fechas |
-| `green` | `bg-green-50` | `text-green-600` | Ubicacion, bodega |
-| `amber` | `bg-amber-50` | `text-amber-600` | RFC, identificacion fiscal |
-| `red` | `bg-red-50` | `text-red-600` | Estado, alertas |
-| `purple` | `bg-purple-50` | `text-purple-600` | Valores economicos |
-| `slate` | `bg-slate-100` | `text-slate-600` | Datos personales |
-| `primary` | `bg-primary/5` | `text-primary` | Valores destacados,.Brand |
+- **Todos los headers centrados** — incluyendo la columna de Acciones.
+- **Texto blanco** en todos los headers (`text-white`).
+- **`z-20`** en `<thead>` — evita que el contenido se sobreponga al header al hacer scroll.
 
 #### Arquitectura de Scroll
 
@@ -1637,8 +1631,8 @@ type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | '
 ┌─── container (rounded-xl border bg-white) ──────────────┐
 │ ┌─── overflow-auto (H + V) ───────────────────────────┐ │
 │ │                                                      │ │
-│ │  ┌─── thead (sticky top-0 z-10) ─────────────────┐  │ │
-│ │  │  NOM (slate) │ PUE (blue) │ RFC (amber) │ ... │  │ │
+│ │  ┌─── thead (sticky top-0 z-20) ─────────────────┐  │ │
+│ │  │  NOM (naranja) │ PUE (oscuro) │ RFC (naranja) │  │ │
 │ │  └────────────────────────────────────────────────┘  │ │
 │ │                                                      │ │
 │ │  ┌─── tbody (scroll vertical) ────────────────────┐  │ │
@@ -1650,13 +1644,16 @@ type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | '
 └──────────────────────────────────────────────────────────┘
 ```
 
-**Reglas criticas:**
-- **UNA sola tabla** (`<table>`) — header y body comparten el mismo layout de columnas (siempre alineados).
-- **`table-layout: auto`** — el navegador calcula el ancho de columna basado en el contenido, no al reves.
-- **`overflow: auto`** en el wrapper — un solo scroll para ambas direcciones (H + V).
-- **`sticky top-0 z-10`** en `<thead>` — header se queda fijo al hacer scroll vertical.
-- **`whitespace-nowrap`** en celdas — el contenido nunca se rompe, cada columna mantiene su texto completo.
-- **Zona segura** — `px-4` (16px) de padding en cada celda, contenido siempre centrado.
+#### Reglas Criticas
+
+1. **UNA sola tabla** (`<table>`) — header y body comparten el mismo layout de columnas (siempre alineados).
+2. **`table-layout: auto`** — el navegador calcula el ancho de columna basado en el contenido, no al reves.
+3. **`overflow: auto`** en el wrapper — un solo scroll para ambas direcciones (H + V).
+4. **`sticky top-0 z-20`** en `<thead>` — header se queda fijo al hacer scroll vertical, con z-index alto para evitar overlap.
+5. **`whitespace-nowrap`** en celdas — el contenido nunca se rompe, cada columna mantiene su texto completo.
+6. **Zona segura** — `px-4` (16px) de padding en cada celda, contenido siempre centrado.
+7. **Headers siempre centrados** — incluyendo la columna de Acciones.
+8. **Naranja solido** — headers con fondo `primary` o `primary-dark` alternado, texto blanco.
 
 #### Estados
 
@@ -1669,7 +1666,7 @@ type HeaderColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | '
 #### Diseno visual
 
 - Container: `rounded-xl border border-slate-200 bg-white`
-- Header: fondo segun `headerColor`, texto uppercase, `text-[10px] font-black`, `tracking-widest`
+- Header: fondo naranja alternado (`primary` / `primary-dark`), texto blanco uppercase, `text-[10px] font-black`, `tracking-widest`, `text-center`
 - Filas: bordes `slate-100`, alternating rows (even/odd)
 - Filas interactivas: `hover:bg-slate-50/80 cursor-pointer`
 - Celdas: `px-4 py-3.5 text-sm text-slate-700 whitespace-nowrap`
@@ -1697,7 +1694,7 @@ const columns: Column<Trabajador>[] = [
 />
 ```
 
-#### Ejemplo avanzado — 10 columnas con headers coloridos + acciones
+#### Ejemplo avanzado — 10 columnas con acciones
 
 ```tsx
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -1719,18 +1716,13 @@ interface TrabajadorRow {
 }
 
 const columns: Column<TrabajadorRow>[] = [
-  // Datos personales (slate)
-  { key: 'nombre', header: 'Nombre Completo', headerColor: 'slate', minWidth: '200px' },
-  // Contacto (blue)
-  { key: 'puesto', header: 'Puesto', headerColor: 'blue', minWidth: '130px' },
-  { key: 'telefono', header: 'Telefono', headerColor: 'green', minWidth: '130px', nowrap: true },
-  // Identificacion fiscal (amber)
-  { key: 'rfc', header: 'RFC', headerColor: 'amber', minWidth: '140px', nowrap: true },
-  // Valores economicos (purple + primary)
+  { key: 'nombre', header: 'Nombre Completo', minWidth: '200px' },
+  { key: 'puesto', header: 'Puesto', minWidth: '130px' },
+  { key: 'telefono', header: 'Telefono', minWidth: '130px', nowrap: true },
+  { key: 'rfc', header: 'RFC', minWidth: '140px', nowrap: true },
   {
     key: 'sueldoFiscal',
     header: 'Sueldo Fiscal',
-    headerColor: 'purple',
     minWidth: '130px',
     align: 'right',
     nowrap: true,
@@ -1743,7 +1735,6 @@ const columns: Column<TrabajadorRow>[] = [
   {
     key: 'sueldoEfectivo',
     header: 'Sueldo Efectivo',
-    headerColor: 'primary',
     minWidth: '130px',
     align: 'right',
     nowrap: true,
@@ -1753,14 +1744,11 @@ const columns: Column<TrabajadorRow>[] = [
       </span>
     ),
   },
-  // Fechas y ubicacion (blue + green)
-  { key: 'fechaIngreso', header: 'Fecha Ingreso', headerColor: 'blue', minWidth: '120px', nowrap: true },
-  { key: 'bodega', header: 'Bodega', headerColor: 'green', minWidth: '140px' },
-  // Estado (red)
+  { key: 'fechaIngreso', header: 'Fecha Ingreso', minWidth: '120px', nowrap: true },
+  { key: 'bodega', header: 'Bodega', minWidth: '140px' },
   {
     key: 'estado',
     header: 'Estado',
-    headerColor: 'red',
     minWidth: '110px',
     render: (row) => (
       <Badge
@@ -1771,15 +1759,13 @@ const columns: Column<TrabajadorRow>[] = [
       </Badge>
     ),
   },
-  // Acciones (alineadas a la derecha)
   {
     key: 'acciones',
     header: 'Acciones',
-    align: 'right',
     minWidth: '220px',
     nowrap: true,
     render: () => (
-      <div className="flex items-center justify-end gap-1">
+      <div className="flex items-center justify-center gap-1">
         <Button variant="info" size="sm" icon={<Eye size={14} />}>
           Ver
         </Button>
@@ -1794,7 +1780,7 @@ const columns: Column<TrabajadorRow>[] = [
   },
 ];
 
-// Tabla completa con scroll vertical (8 filas)
+// Tabla completa con scroll vertical
 <DataTable<TrabajadorRow>
   columns={columns}
   data={trabajadores}
@@ -1803,11 +1789,18 @@ const columns: Column<TrabajadorRow>[] = [
   maxBodyHeight="400px"
 />
 
-// Tabla reducida sin scroll
+// Con paginacion
 <DataTable<TrabajadorRow>
   columns={columns}
-  data={trabajadores.slice(0, 3)}
+  data={currentRows}
   keyExtractor={(w) => w.id}
+/>
+<Pagination
+  currentPage={3}
+  totalPages={10}
+  totalRecords={98}
+  pageSize={10}
+  onPageChange={(page) => setCurrentPage(page)}
 />
 ```
 
@@ -1826,6 +1819,123 @@ const columns: Column<TrabajadorRow>[] = [
 - No abusar de `render` en todas las columnas — solo usarlo cuando el default `String(value)` no es suficiente.
 - No usar `minWidth` excesivamente grande — el contenido debe definir el ancho, no al reves.
 - No usar sin `keyExtractor` — cada fila necesita una key unica.
+
+---
+
+### 5.2 Pagination
+
+Componente de paginacion para tablas de datos. Muestra info de pagina actual, registros visibles y controles de navegacion.
+
+**Archivos:**
+- `src/components/ui/Pagination/Pagination.tsx` — Componente principal
+- `src/components/ui/Pagination/Pagination.styles.ts` — Clases de estilos
+- `src/components/ui/Pagination/index.ts` — Re-exports
+
+**Importacion:**
+```tsx
+import { Pagination } from '@/components/ui/Pagination';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `currentPage` | `number` | *(requerido)* | Pagina actual (1-based) |
+| `totalPages` | `number` | *(requerido)* | Total de paginas |
+| `totalRecords` | `number` | *(requerido)* | Total de registros |
+| `pageSize` | `number` | *(requerido)* | Registros por pagina |
+| `onPageChange` | `(page: number) => void` | *(requerido)* | Callback al cambiar de pagina |
+| `showJumpButtons` | `boolean` | `true` | Mostrar botones de salto inicio/fin |
+| `className` | `string` | `undefined` | Clases adicionales del container |
+
+#### Visual
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Pagina 3 de 10 — Mostrando 21-30 de 98 registros     «  ‹  1  2  [3]  4  5  ...  10  ›  »  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Elemento | Icono | Funcion |
+|----------|-------|---------|
+| `«` | `ChevronsLeft` | Saltar a primera pagina |
+| `‹` | `ChevronLeft` | Pagina anterior |
+| `1 2 [3] 4 5 ... 10` | — | Numeros de pagina (con ellipsis) |
+| `›` | `ChevronRight` | Pagina siguiente |
+| `»` | `ChevronsRight` | Saltar a ultima pagina |
+
+#### Diseno visual
+
+- Container: `flex items-center justify-between`, `border-t border-slate-100`, `rounded-b-xl` (se pega al fondo de DataTable)
+- Info: `text-sm text-slate-500`, numeros resaltados en `font-semibold text-slate-700`
+- Botones: `h-8 min-w-[32px] rounded-lg`
+- Boton activo: `bg-primary text-white shadow-sm`
+- Boton disabled: `text-slate-300 cursor-not-allowed`
+- Gap de ellipsis: `text-slate-400`
+
+#### Ejemplo basico
+
+```tsx
+import { Pagination } from '@/components/ui/Pagination';
+
+<Pagination
+  currentPage={1}
+  totalPages={10}
+  totalRecords={98}
+  pageSize={10}
+  onPageChange={(page) => console.log('Page:', page)}
+/>
+```
+
+#### Ejemplo avanzado — Con DataTable
+
+```tsx
+import { useState } from 'react';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+
+function TrabajadoresPage() {
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Calcular datos de la pagina actual
+  const allData = getTrabajadores(); // API call
+  const totalPages = Math.ceil(allData.length / pageSize);
+  const currentRows = allData.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  return (
+    <div>
+      <DataTable<Trabajador>
+        columns={columns}
+        data={currentRows}
+        keyExtractor={(t) => t.id}
+      />
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalRecords={allData.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+      />
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Tablas con mas de 10-20 registros que necesitan paginacion.
+- Cualquier lista de datos donde se quiera controlar la cantidad de registros visibles.
+- Junto con `DataTable` para CRUDs con muchos registros.
+
+#### No usar cuando
+
+- No usar para listas cortas (menos de 10 registros) — mostrar todos directamente.
+- No usar sin conectar a estado — el componente es controlado (`currentPage` + `onPageChange`).
+- No usar dentro de un `Card` con `overflow-hidden` — el padding inferior puede cortarse.
 
 ---
 
