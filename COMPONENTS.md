@@ -2511,3 +2511,266 @@ Las cards internas deben usar:
 ### 8.5 Regla de Oro
 
 > **Todo componente debe tener:** margin/padding suficiente para no pegarse a los bordes de su contenedor, y spacing consistente con los elementos vecinos. Usar `Stack` o `space-y-*` para separacion vertical, y `gap-*` o `Stack direction="horizontal"` para separacion horizontal. **NUNCA** usar valores magicos como `mt-[13px]` o `px-[17px]` — siempre usar los tokens del theme o las clases de Tailwind estandar.
+
+---
+
+## 9. SearchBar + FilterPanel + ActiveFilters
+
+Barra de busqueda con filtros avanzados y chips de filtros activos.
+
+### 9.1 SearchBar
+
+Barra de busqueda con input, boton de filtros y soporte para debounce.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | — | Valor de busqueda controlado |
+| `placeholder` | `string` | `'Buscar...'` | Placeholder del input |
+| `onChange` | `(value: string) => void` | — | Callback al cambiar valor |
+| `onSearch` | `(value: string) => void` | — | Callback al enviar (Enter) |
+| `debounceMs` | `number` | `300` | Tiempo de debounce |
+| `filters` | `FilterField[]` | `[]` | Campos de filtro disponibles |
+| `activeFilters` | `ActiveFilter[]` | `[]` | Filtros activos |
+| `onFilterChange` | `(key, value) => void` | — | Callback al cambiar filtro |
+| `onClearFilters` | `() => void` | — | Callback limpiar filtros |
+| `onRemoveFilter` | `(key) => void` | — | Callback eliminar filtro |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { SearchBar } from '@/components/ui/SearchBar';
+```
+
+#### Ejemplo
+
+```tsx
+<SearchBar
+  value={search}
+  placeholder="Buscar trabajador..."
+  onChange={setSearch}
+  filters={[
+    { key: "puesto", label: "Puesto", type: "select", options: [...] },
+    { key: "estado", label: "Estado", type: "select", options: [...] },
+  ]}
+  activeFilters={activeFilters}
+  onRemoveFilter={(key) => removeFilter(key)}
+  onClearFilters={() => clearFilters()}
+/>
+```
+
+### 9.2 FilterPanel
+
+Panel de filtros expandible con selects, fechas y inputs de texto.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `filters` | `FilterField[]` | — | Campos de filtro |
+| `values` | `Record<string, string>` | `{}` | Valores actuales |
+| `onChange` | `(key, value) => void` | — | Callback al cambiar |
+| `onClear` | `() => void` | — | Callback limpiar todo |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { FilterPanel } from '@/components/ui/SearchBar';
+```
+
+#### Ejemplo
+
+```tsx
+<FilterPanel
+  filters={[
+    { key: "puesto", label: "Puesto", type: "select", options: [...] },
+    { key: "fecha", label: "Fecha", type: "date" },
+  ]}
+  values={filters}
+  onChange={(key, value) => setFilter(key, value)}
+  onClear={() => clearFilters()}
+/>
+```
+
+### 9.3 ActiveFilters
+
+Chips que muestran los filtros activos con boton de eliminar.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `filters` | `ActiveFilter[]` | — | Filtros activos |
+| `onRemove` | `(key) => void` | — | Eliminar filtro individual |
+| `onClearAll` | `() => void` | — | Limpiar todos |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { ActiveFilters } from '@/components/ui/SearchBar';
+```
+
+#### Ejemplo
+
+```tsx
+<ActiveFilters
+  filters={[
+    { key: "puesto", label: "Puesto", value: "Operador" },
+    { key: "estado", label: "Estado", value: "Activo" },
+  ]}
+  onRemove={(key) => removeFilter(key)}
+  onClearAll={() => clearFilters()}
+/>
+```
+
+### 9.4 Cuando usar
+
+- **SearchBar**: Siempre que una tabla o lista necesite busqueda y filtros.
+- **FilterPanel**: Cuando hay multiples filtros complejos (selects, fechas).
+- **ActiveFilters**: Para mostrar visualmente los filtros aplicados.
+
+### 9.5 No usar cuando
+
+- La lista tiene menos de 5 elementos (no necesita busqueda).
+- Los filtros son solo un campo de texto (usar `SearchInput` directamente).
+- La busqueda es simple y no necesita debounce.
+
+---
+
+## 10. GPS Tracking Components
+
+Componentes para monitoreo en tiempo real de maquinaria de construccion.
+
+### 10.1 GpsMap
+
+Mapa simulado con marcadores de maquinaria, grid de fondo y lineas de carretera SVG.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `machines` | `GpsMachine[]` | — | Lista de maquinas |
+| `selectedId` | `string` | — | ID de maquina seleccionada |
+| `onSelect` | `(machine) => void` | — | Callback al seleccionar |
+| `height` | `string` | `'400px'` | Altura del mapa |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { GpsMap } from '@/components/ui/GpsTracking';
+```
+
+#### Ejemplo
+
+```tsx
+<GpsMap
+  machines={machines}
+  selectedId={selectedMachine?.id}
+  onSelect={setSelectedMachine}
+  height="350px"
+/>
+```
+
+### 10.2 TrackingPanel
+
+Panel de detalle con velocimetro, combustible, temperatura, horas y operador.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `machine` | `GpsMachine` | — | Maquina a mostrar |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { TrackingPanel } from '@/components/ui/GpsTracking';
+```
+
+### 10.3 SpeedGauge
+
+Velocimetro circular que muestra la velocidad actual en km/h.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `speed` | `number` | — | Velocidad actual |
+| `maxSpeed` | `number` | `80` | Velocidad maxima |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { SpeedGauge } from '@/components/ui/GpsTracking';
+```
+
+### 10.4 MachineList
+
+Lista scrollable de maquinas con badges de estado y seleccion.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `machines` | `GpsMachine[]` | — | Lista de maquinas |
+| `selectedId` | `string` | — | ID seleccionada |
+| `onSelect` | `(machine) => void` | — | Callback al seleccionar |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { MachineList } from '@/components/ui/GpsTracking';
+```
+
+### 10.5 GpsTimeline
+
+Linea de tiempo de actividad con dots y lineas conectoras.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `events` | `TimelineEvent[]` | — | Eventos a mostrar |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { GpsTimeline } from '@/components/ui/GpsTracking';
+```
+
+### 10.6 StatusBadge + LiveIndicator
+
+Badges de estado y indicador en vivo.
+
+```tsx
+import { StatusBadge, LiveIndicator } from '@/components/ui/GpsTracking';
+
+<LiveIndicator />
+<StatusBadge status="moving" />
+<StatusBadge status="idle" />
+<StatusBadge status="offline" />
+<StatusBadge status="alert" />
+```
+
+### 10.7 Cuando usar
+
+- **GpsMap**: Para visualizar la ubicacion de maquinaria en tiempo real.
+- **TrackingPanel**: Para ver detalles de una maquina especifica.
+- **MachineList**: Para listar y seleccionar maquinas.
+- **GpsTimeline**: Para historial de actividad de una maquina.
+- **SpeedGauge**: Para mostrar velocidad actual de forma visual.
+
+### 10.8 No usar cuando
+
+- La aplicacion no trackea ubicacion en tiempo real.
+- Se necesita un mapa real (usar Leaflet/Mapbox en su lugar).
+- Los datos son estaticos (no cambian en tiempo real).

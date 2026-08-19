@@ -17,6 +17,7 @@ import {
   Package, PackageCheck, PackagePlus, Box, Boxes, PackageOpen, PackageSearch,
   Ruler, PencilRuler, DraftingCompass, Scale, Weight, Gauge, Thermometer,
   Trees, Mountain, Earth, Snowflake, Wind, CloudSun,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -42,6 +43,8 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, SpeedGauge, TrackingPanel, GpsTimeline, GpsMap, MachineList } from "@/components/ui/GpsTracking";
 import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
+import { SearchBar, FilterPanel, ActiveFilters } from "@/components/ui/SearchBar";
+import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -279,6 +282,74 @@ export default function UIShowcasePage() {
 
   // GPS demo state
   const [selectedMachine, setSelectedMachine] = useState<GpsMachine | null>(mockMachines[0]);
+
+  // SearchBar demo states
+  const [tableSearch, setTableSearch] = useState("");
+  const [tableFilters, setTableFilters] = useState<Record<string, string>>({});
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+
+  const searchFilters: FilterField[] = [
+    {
+      key: "puesto",
+      label: "Puesto",
+      type: "select",
+      options: [
+        { value: "Operador", label: "Operador" },
+        { value: "Tecnico", label: "Tecnico" },
+        { value: "Supervisor", label: "Supervisor" },
+        { value: "Mecanico", label: "Mecanico" },
+        { value: "Chofer", label: "Chofer" },
+        { value: "Oficinista", label: "Oficinista" },
+      ],
+    },
+    {
+      key: "estado",
+      label: "Estado",
+      type: "select",
+      options: [
+        { value: "Activo", label: "Activo" },
+        { value: "Inactivo", label: "Inactivo" },
+        { value: "Permiso", label: "Permiso" },
+      ],
+    },
+    {
+      key: "bodega",
+      label: "Bodega",
+      type: "select",
+      options: [
+        { value: "Bodega Central", label: "Bodega Central" },
+        { value: "Bodega Norte", label: "Bodega Norte" },
+        { value: "Bodega Sur", label: "Bodega Sur" },
+      ],
+    },
+  ];
+
+  const activeTableFilters: ActiveFilter[] = Object.entries(tableFilters)
+    .filter(([, v]) => v !== "")
+    .map(([key, value]) => ({
+      key,
+      label: searchFilters.find((f) => f.key === key)?.label || key,
+      value,
+    }));
+
+  const filteredWorkers = sampleWorkers.filter((w) => {
+    // Text search
+    if (tableSearch) {
+      const search = tableSearch.toLowerCase();
+      const match = w.nombre.toLowerCase().includes(search) ||
+        w.puesto.toLowerCase().includes(search) ||
+        w.rfc.toLowerCase().includes(search) ||
+        w.telefono.includes(search);
+      if (!match) return false;
+    }
+    // Filter by puesto
+    if (tableFilters.puesto && w.puesto !== tableFilters.puesto) return false;
+    // Filter by estado
+    if (tableFilters.estado && w.estado !== tableFilters.estado) return false;
+    // Filter by bodega
+    if (tableFilters.bodega && w.bodega !== tableFilters.bodega) return false;
+    return true;
+  });
 
   const handleFormSubmit = () => {
     setFormSubmitting(true);
@@ -1063,6 +1134,57 @@ export default function UIShowcasePage() {
             keyExtractor={(w) => w.id}
             onRowClick={(w) => console.log("Clicked:", w.nombre)}
             maxBodyHeight="400px"
+          />
+
+          {/* SearchBar + Filters Example */}
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-4 border-t border-slate-100">
+            Con Busqueda y Filtros
+          </h3>
+          <p className="text-xs text-slate-400 -mt-2">
+            Barra de busqueda con filtros por columna. Los filtros se muestran como chips debajo de la busqueda.
+          </p>
+
+          <SearchBar
+            value={tableSearch}
+            placeholder="Buscar trabajador por nombre, puesto, RFC..."
+            onChange={setTableSearch}
+            filters={searchFilters}
+            activeFilters={activeTableFilters}
+            onRemoveFilter={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
+            onClearFilters={() => setTableFilters({})}
+          />
+
+          {/* Active Filters Chips */}
+          <ActiveFilters
+            filters={activeTableFilters}
+            onRemove={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
+            onClearAll={() => setTableFilters({})}
+          />
+
+          {/* Filter Panel (toggleable) */}
+          <button
+            onClick={() => setShowFilterPanel(!showFilterPanel)}
+            className="text-xs font-semibold text-primary hover:text-primary-dark transition-colors flex items-center gap-1"
+          >
+            <SlidersHorizontal size={14} />
+            {showFilterPanel ? "Ocultar filtros" : "Mostrar panel de filtros"}
+          </button>
+
+          {showFilterPanel && (
+            <FilterPanel
+              filters={searchFilters}
+              values={tableFilters}
+              onChange={(key, value) => setTableFilters((prev) => ({ ...prev, [key]: value }))}
+              onClear={() => setTableFilters({})}
+            />
+          )}
+
+          <DataTable<WorkerRow>
+            columns={workerColumns}
+            data={filteredWorkers}
+            keyExtractor={(w) => w.id}
+            maxBodyHeight="400px"
+            emptyText="No se encontraron trabajadores con esos criterios"
           />
 
           <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-2">
