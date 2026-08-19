@@ -21,6 +21,7 @@ import {
   Bell, BellDot, BellRing, BellOff,
   Timer, ClipboardList, ShieldAlert, Building2, ShoppingCart, CreditCard, FileBadge,
   Banknote, Layers,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -1105,44 +1106,210 @@ export default function UIShowcasePage() {
 
       {/* ── StatsCards ───────────────────────────────────────────── */}
       <section>
-        <Card className="space-y-6">
+        <Card className="space-y-8">
           <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
             Tarjetas de Estadisticas
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatsCard
-              icon={<Users size={22} />}
-              value="1,248"
-              label="Trabajadores Activos"
-              color="primary"
-              trend="up"
-              trendValue="+12%"
-            />
-            <StatsCard
-              icon={<Truck size={22} />}
-              value="36"
-              label="Unidades Operando"
-              color="success"
-              trend="up"
-              trendValue="+3"
-            />
-            <StatsCard
-              icon={<DollarSign size={22} />}
-              value="$2.4M"
-              label="Ingresos del Mes"
-              color="warning"
-              trend="down"
-              trendValue="-5%"
-            />
-            <StatsCard
-              icon={<Activity size={22} />}
-              value="87%"
-              label="Eficiencia General"
-              color="info"
-              trend="neutral"
-              trendValue="0%"
-            />
+          {/* Basic KPIs */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              KPIs Generales
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard
+                icon={<Users size={22} />}
+                value="1,248"
+                label="Trabajadores Activos"
+                color="primary"
+                trend="up"
+                trendValue="+12%"
+              />
+              <StatsCard
+                icon={<Truck size={22} />}
+                value="36"
+                label="Unidades Operando"
+                color="success"
+                trend="up"
+                trendValue="+3"
+              />
+              <StatsCard
+                icon={<DollarSign size={22} />}
+                value="$2.4M"
+                label="Ingresos del Mes"
+                color="warning"
+                trend="down"
+                trendValue="-5%"
+              />
+              <StatsCard
+                icon={<Activity size={22} />}
+                value="87%"
+                label="Eficiencia General"
+                color="info"
+                trend="neutral"
+                trendValue="0%"
+              />
+            </div>
+          </div>
+
+          {/* Operational KPIs */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              KPIs Operativos
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard
+                icon={<Timer size={22} />}
+                value="8,420 h"
+                label="Horas Trabajadas"
+                color="info"
+                trend="up"
+                trendValue="+8%"
+              />
+              <StatsCard
+                icon={<Fuel size={22} />}
+                value="12,450 L"
+                label="Combustible Consumido"
+                color="warning"
+                trend="down"
+                trendValue="-3%"
+              />
+              <StatsCard
+                icon={<Wrench size={22} />}
+                value="7"
+                label="Mantenimientos Pendientes"
+                color="error"
+                trend="up"
+                trendValue="+2"
+              />
+              <StatsCard
+                icon={<HardHat size={22} />}
+                value="14"
+                label="Proyectos Activos"
+                color="success"
+                trend="neutral"
+                trendValue="0"
+              />
+            </div>
+          </div>
+
+          {/* Financial KPIs */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              KPIs Financieros
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard
+                icon={<CreditCard size={22} />}
+                value="$845K"
+                label="Cuentas por Cobrar"
+                color="success"
+                trend="up"
+                trendValue="+4%"
+              />
+              <StatsCard
+                icon={<Banknote size={22} />}
+                value="$320K"
+                label="Cuentas por Pagar"
+                color="error"
+                trend="down"
+                trendValue="-12%"
+              />
+              <StatsCard
+                icon={<TrendingUp size={22} />}
+                value="32%"
+                label="Margen Bruto"
+                color="primary"
+                trend="up"
+                trendValue="+2%"
+              />
+              <StatsCard
+                icon={<DollarSign size={22} />}
+                value="$1.1M"
+                label="Costos Operativos"
+                color="neutral"
+                trend="down"
+                trendValue="-1%"
+              />
+            </div>
+          </div>
+
+          {/* Interactive KPIs */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              KPIs Interactivos (Clickables)
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard
+                icon={<AlertTriangle size={22} />}
+                value="3"
+                label="Incidentes Reportados"
+                color="error"
+                trend="down"
+                trendValue="-1"
+                onClick={() => console.log('Ver incidentes')}
+              />
+              <StatsCard
+                icon={<Package size={22} />}
+                value="28"
+                label="Bajo Stock Inventario"
+                color="warning"
+                trend="up"
+                trendValue="+5"
+                onClick={() => console.log('Ver inventario')}
+              />
+              <StatsCard
+                icon={<MapPin size={22} />}
+                value="18"
+                label="Unidades en Ruta"
+                color="info"
+                trend="up"
+                trendValue="+2"
+                onClick={() => console.log('Ver GPS')}
+              />
+              <StatsCard
+                icon={<CheckCircle2 size={22} />}
+                value="96%"
+                label="Tareas Completadas"
+                color="success"
+                trend="up"
+                trendValue="+3%"
+                onClick={() => console.log('Ver tareas')}
+              />
+            </div>
+          </div>
+
+          {/* Without trend */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Sin Tendencia
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard
+                icon={<Clock size={22} />}
+                value="6.2 h"
+                label="Horas Promedio por Turno"
+                color="neutral"
+              />
+              <StatsCard
+                icon={<Users size={22} />}
+                value="42"
+                label="Operadores Disponibles"
+                color="primary"
+              />
+              <StatsCard
+                icon={<Fuel size={22} />}
+                value="18.5 L/h"
+                label="Consumo Promedio"
+                color="warning"
+              />
+              <StatsCard
+                icon={<Wrench size={22} />}
+                value="124"
+                label="Servicios Realizados"
+                color="info"
+              />
+            </div>
           </div>
         </Card>
       </section>

@@ -1240,17 +1240,161 @@ import { Users, Truck, DollarSign, Activity } from 'lucide-react';
 />
 ```
 
-#### Cuando usar
+#### Ejemplos por categoria
+
+**KPIs Operativos:**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<Timer size={22} />}
+    value="8,420 h"
+    label="Horas Trabajadas"
+    color="info"
+    trend="up"
+    trendValue="+8%"
+  />
+  <StatsCard
+    icon={<Fuel size={22} />}
+    value="12,450 L"
+    label="Combustible Consumido"
+    color="warning"
+    trend="down"
+    trendValue="-3%"
+  />
+  <StatsCard
+    icon={<Wrench size={22} />}
+    value="7"
+    label="Mantenimientos Pendientes"
+    color="error"
+    trend="up"
+    trendValue="+2"
+  />
+  <StatsCard
+    icon={<HardHat size={22} />}
+    value="14"
+    label="Proyectos Activos"
+    color="success"
+    trend="neutral"
+    trendValue="0"
+  />
+</div>
+```
+
+**KPIs Financieros:**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<CreditCard size={22} />}
+    value="$845K"
+    label="Cuentas por Cobrar"
+    color="success"
+    trend="up"
+    trendValue="+4%"
+  />
+  <StatsCard
+    icon={<Banknote size={22} />}
+    value="$320K"
+    label="Cuentas por Pagar"
+    color="error"
+    trend="down"
+    trendValue="-12%"
+  />
+  <StatsCard
+    icon={<TrendingUp size={22} />}
+    value="32%"
+    label="Margen Bruto"
+    color="primary"
+    trend="up"
+    trendValue="+2%"
+  />
+  <StatsCard
+    icon={<DollarSign size={22} />}
+    value="$1.1M"
+    label="Costos Operativos"
+    color="neutral"
+    trend="down"
+    trendValue="-1%"
+  />
+</div>
+```
+
+**KPIs Interactivos (Clickables):**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<AlertTriangle size={22} />}
+    value="3"
+    label="Incidentes Reportados"
+    color="error"
+    trend="down"
+    trendValue="-1"
+    onClick={() => router.push('/incidentes')}
+  />
+  <StatsCard
+    icon={<Package size={22} />}
+    value="28"
+    label="Bajo Stock Inventario"
+    color="warning"
+    trend="up"
+    trendValue="+5"
+    onClick={() => router.push('/inventario')}
+  />
+  <StatsCard
+    icon={<MapPin size={22} />}
+    value="18"
+    label="Unidades en Ruta"
+    color="info"
+    trend="up"
+    trendValue="+2"
+    onClick={() => router.push('/gps')}
+  />
+  <StatsCard
+    icon={<CheckCircle2 size={22} />}
+    value="96%"
+    label="Tareas Completadas"
+    color="success"
+    trend="up"
+    trendValue="+3%"
+    onClick={() => router.push('/tareas')}
+  />
+</div>
+```
+
+**Sin Tendencia:**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<Clock size={22} />}
+    value="6.2 h"
+    label="Horas Promedio por Turno"
+    color="neutral"
+  />
+  <StatsCard
+    icon={<Users size={22} />}
+    value="42"
+    label="Operadores Disponibles"
+    color="primary"
+  />
+</div>
+```
+
+### 4.2 Cuando usar
 
 - Dashboard principal con metricas resumen.
 - KPIs en la parte superior de paginas de modulo.
 - Resumenes de datos en cualquier vista de administracion.
+- Navegacion rapida a modulos usando `onClick`.
 
-#### No usar cuando
+### 4.3 No usar cuando
 
 - No usar para datos detallados — usar `DataTable`.
 - No usar sin icono — el icono es parte fundamental del diseno.
 - No abusar de los trends — solo mostrarlos cuando hay datos comparativos reales.
+- No agrupar KPIs de diferentes areas sin un titulo de seccion claro.
 
 ---
 
