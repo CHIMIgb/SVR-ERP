@@ -10,6 +10,13 @@ import {
   RefreshCw, ExternalLink, Share2, Link, Unlock, Lock,
   Send, Zap, Star, Heart, Archive, RotateCcw, PencilLine,
   CircleCheck, CircleX, CircleAlert, Info, CheckCircle2,
+  Map, MapPinned, MapPinCheck, MapPinHouse, MapPinSearch, MapPlus,
+  Fuel, Droplet, Droplets, Flame,
+  Locate, LocateFixed, Navigation, Compass, Globe, Route, Road, Signpost,
+  Forklift, Wrench, Hammer, Drill, Shovel,
+  Package, PackageCheck, PackagePlus, Box, Boxes, PackageOpen, PackageSearch,
+  Ruler, PencilRuler, DraftingCompass, Scale, Weight, Gauge, Thermometer,
+  Trees, Mountain, Earth, Snowflake, Wind, CloudSun,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -390,6 +397,131 @@ export default function UIShowcasePage() {
                 { icon: <Heart size={20} />, name: 'Heart', uso: 'Me gusta' },
                 { icon: <LayoutDashboard size={20} />, name: 'LayoutDashboard', uso: 'Dashboard' },
                 { icon: <CheckCircle2 size={20} />, name: 'CheckCircle2', uso: 'Confirmado' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Mapas y Ubicaciones
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Map size={20} />, name: 'Map', uso: 'Mapa general' },
+                { icon: <MapPinned size={20} />, name: 'MapPinned', uso: 'Ubicacion fija' },
+                { icon: <MapPinCheck size={20} />, name: 'MapPinCheck', uso: 'Ubicacion verificada' },
+                { icon: <MapPinHouse size={20} />, name: 'MapPinHouse', uso: 'Domicilio' },
+                { icon: <MapPinSearch size={20} />, name: 'MapPinSearch', uso: 'Buscar ubicacion' },
+                { icon: <MapPlus size={20} />, name: 'MapPlus', uso: 'Agregar ubicacion' },
+                { icon: <Locate size={20} />, name: 'Locate', uso: 'Localizar' },
+                { icon: <LocateFixed size={20} />, name: 'LocateFixed', uso: 'GPS fijo' },
+                { icon: <Navigation size={20} />, name: 'Navigation', uso: 'Navegacion' },
+                { icon: <Compass size={20} />, name: 'Compass', uso: 'Brujula' },
+                { icon: <Globe size={20} />, name: 'Globe', uso: 'Mundo' },
+                { icon: <Route size={20} />, name: 'Route', uso: 'Ruta' },
+                { icon: <Road size={20} />, name: 'Road', uso: 'Carretera' },
+                { icon: <Signpost size={20} />, name: 'Signpost', uso: 'Señal' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Combustible e Hidraulicos
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Fuel size={20} />, name: 'Fuel', uso: 'Combustible' },
+                { icon: <Droplet size={20} />, name: 'Droplet', uso: 'Aceite/Gota' },
+                { icon: <Droplets size={20} />, name: 'Droplets', uso: 'Liquidos' },
+                { icon: <Flame size={20} />, name: 'Flame', uso: 'Fuego/Gas' },
+                { icon: <Thermometer size={20} />, name: 'Thermometer', uso: 'Temperatura' },
+                { icon: <Gauge size={20} />, name: 'Gauge', uso: 'Presion/Horometro' },
+                { icon: <Droplet size={20} />, name: 'Droplet', uso: 'Sin liquido' },
+                { icon: <Wind size={20} />, name: 'Wind', uso: 'Viento/Aire' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Maquinaria y Herramientas
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Truck size={20} />, name: 'Truck', uso: 'Transporte' },
+                { icon: <Forklift size={20} />, name: 'Forklift', uso: 'Montacargas' },
+                { icon: <HardHat size={20} />, name: 'HardHat', uso: 'Construccion' },
+                { icon: <Wrench size={20} />, name: 'Wrench', uso: 'Llave/Mantenimiento' },
+                { icon: <Hammer size={20} />, name: 'Hammer', uso: 'Martillo' },
+                { icon: <Drill size={20} />, name: 'Drill', uso: 'Taladro' },
+                { icon: <Shovel size={20} />, name: 'Shovel', uso: 'Pala' },
+                { icon: <Ruler size={20} />, name: 'Ruler', uso: 'Regla/Medicion' },
+                { icon: <PencilRuler size={20} />, name: 'PencilRuler', uso: 'Diseno tecnico' },
+                { icon: <DraftingCompass size={20} />, name: 'DraftingCompass', uso: 'Compas' },
+                { icon: <Scale size={20} />, name: 'Scale', uso: 'Bascula' },
+                { icon: <Weight size={20} />, name: 'Weight', uso: 'Peso' },
+                { icon: <Wrench size={20} />, name: 'WrenchOff', uso: 'Sin mantenimiento' },
+                { icon: <Wrench size={20} />, name: 'Wrench', uso: 'Caja de herramientas' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Materiales y Paqueteria
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Package size={20} />, name: 'Package', uso: 'Paquete' },
+                { icon: <PackageCheck size={20} />, name: 'PackageCheck', uso: 'Paquete verificado' },
+                { icon: <PackagePlus size={20} />, name: 'PackagePlus', uso: 'Agregar paquete' },
+                { icon: <PackageOpen size={20} />, name: 'PackageOpen', uso: 'Paquete abierto' },
+                { icon: <PackageSearch size={20} />, name: 'PackageSearch', uso: 'Buscar paquete' },
+                { icon: <Box size={20} />, name: 'Box', uso: 'Caja' },
+                { icon: <Boxes size={20} />, name: 'Boxes', uso: 'Cajas (multiples)' },
+                { icon: <Package size={20} />, name: 'Package', uso: 'Material/Paquete' },
+                { icon: <Boxes size={20} />, name: 'Boxes', uso: 'Bodega/Almacen' },
+                { icon: <Truck size={20} />, name: 'Truck', uso: 'Edificio/Planta' },
+                { icon: <Settings size={20} />, name: 'Settings', uso: 'Planta/Industrial' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Naturaleza y Clima
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Trees size={20} />, name: 'Trees', uso: 'Arbos/Madera' },
+                { icon: <Mountain size={20} />, name: 'Mountain', uso: 'Montana' },
+                { icon: <Earth size={20} />, name: 'Earth', uso: 'Tierra/Terreno' },
+                { icon: <CloudSun size={20} />, name: 'CloudSun', uso: 'Cielo/Exterior' },
+                { icon: <Snowflake size={20} />, name: 'Snowflake', uso: 'Nieve/Frio' },
+                { icon: <Wind size={20} />, name: 'Wind', uso: 'Viento' },
+                { icon: <Droplets size={20} />, name: 'Droplets', uso: 'Lluvia/Agua' },
+                { icon: <Flame size={20} />, name: 'Flame', uso: 'Sol/Calor' },
               ].map((item) => (
                 <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>
