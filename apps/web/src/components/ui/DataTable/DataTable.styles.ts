@@ -4,7 +4,7 @@ export const dataTableClasses = {
 
   /* ── Header ── */
   thead: 'bg-slate-50',
-  th: 'px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest whitespace-nowrap border-b border-slate-100',
+  th: 'px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap border-b border-slate-100',
   thRight: 'text-right',
   thCenter: 'text-center',
 
