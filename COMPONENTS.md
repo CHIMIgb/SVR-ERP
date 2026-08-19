@@ -2779,7 +2779,21 @@ import { StatusBadge, LiveIndicator } from '@/components/ui/GpsTracking';
 
 ## 11. Charts - Visualizacion de Datos
 
-8 tipos de graficas SVG puras, responsive, con hover effects y tooltips.
+Las graficas se implementan con la libreria **Recharts** para React/Next.js. Los wrappers en `apps/web/src/components/ui/Charts/` encapsulan la complejidad y aplican el diseno del sistema.
+
+### 11.0 Libreria Recharts
+
+```bash
+cd apps/web
+npm install recharts
+```
+
+Por que Recharts:
+- API declarativa basada en componentes JSX.
+- Funciona perfectamente con Next.js 16 y React 19.
+- Bundle razonable para dashboards ERP.
+- Facil de personalizar con Tailwind CSS.
+- Mas popular y mantenida que alternativas como Chart.js o Nivo.
 
 ### 11.1 BarChart
 
@@ -2896,17 +2910,31 @@ Grafica de dona con total centrado.
 import { DoughnutChart } from '@/components/ui/Charts';
 ```
 
-### 11.6 PolarAreaChart
+### 11.6 RadarChartComponent
 
-Area polar con circulos de referencia.
+Grafica de radar para comparar multiples variables en una dimension radial.
 
 #### Import
 
 ```tsx
-import { PolarAreaChart } from '@/components/ui/Charts';
+import { RadarChartComponent } from '@/components/ui/Charts';
 ```
 
-### 11.7 ScatterChart
+#### Ejemplo
+
+```tsx
+<RadarChartComponent
+  title="Metricas del Equipo"
+  data={[
+    { label: 'Velocidad', value: 85 },
+    { label: 'Eficiencia', value: 72 },
+    { label: 'Seguridad', value: 95 },
+    { label: 'Calidad', value: 68 },
+  ]}
+/>
+```
+
+### 11.7 ScatterChartComponent
 
 Grafica de puntos para correlaciones.
 
@@ -2921,17 +2949,17 @@ Grafica de puntos para correlaciones.
 #### Import
 
 ```tsx
-import { ScatterChart } from '@/components/ui/Charts';
+import { ScatterChartComponent } from '@/components/ui/Charts';
 ```
 
-### 11.8 RadialBarChart
+### 11.8 RadialBarChartComponent
 
-Barras radiales circulares concéntricas.
+Barras radiales circulares concentricas.
 
 #### Import
 
 ```tsx
-import { RadialBarChart } from '@/components/ui/Charts';
+import { RadialBarChartComponent } from '@/components/ui/Charts';
 ```
 
 ### 11.9 Colores por Defecto
@@ -2950,11 +2978,23 @@ Cada punto de datos puede tener un `color` custom.
 - **AreaChart**: Volumen acumulado o tendencia con relleno.
 - **PieChart**: Proporciones de un total (pocas categorias).
 - **DoughnutChart**: Proporciones con total visible.
-- **PolarAreaChart**: Comparar categorias con dimension radial.
-- **ScatterChart**: Correlacion entre dos variables.
-- **RadialBarChart**: Metas o progreso circular.
+- **RadarChartComponent**: Comparar categorias con dimension radial.
+- **ScatterChartComponent**: Correlacion entre dos variables.
+- **RadialBarChartComponent**: Metas o progreso circular.
 
-### 11.11 No usar cuando
+### 11.11 Cursor del Tooltip
+
+Para evitar lineas negras/artefactos visuales al pasar el mouse sobre las graficas, el cursor del tooltip esta configurado con un estilo gris punteado:
+
+```tsx
+const tooltipProps = {
+  cursor: { stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' },
+};
+```
+
+No usar el cursor por defecto de Recharts porque puede generar artefactos visuales en navegadores con aceleracion de GPU.
+
+### 11.12 No usar cuando
 
 - Mas de 10 categorias en Pie/Doughnut (usar BarChart).
 - Datos negativos en Pie/Doughnut/Polar (usar Line/Bar).

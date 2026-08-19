@@ -56,6 +56,18 @@ function getColor(index: number, custom?: string): string {
   return custom || COLORS[index % COLORS.length];
 }
 
+/* ── Shared Tooltip Config ── */
+const tooltipProps = {
+  contentStyle: {
+    backgroundColor: '#1e293b',
+    border: 'none',
+    borderRadius: '8px',
+    color: '#fff',
+    fontSize: '12px',
+  },
+  cursor: { stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' },
+};
+
 /* ────────────────────────────────────────────────────────────────
    ChartWrapper
    ──────────────────────────────────────────────────────────────── */
@@ -155,15 +167,7 @@ export function BarChart({
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-        />
+        <Tooltip {...tooltipProps} />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {chartData.map((_, i) => (
             <Cell key={`cell-${i}`} fill={getColor(i, data[i].color)} />
@@ -229,15 +233,7 @@ export function LineChart({
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-        />
+        <Tooltip {...tooltipProps} />
         {series.map((s, i) => (
           <Line
             key={s.name}
@@ -309,15 +305,7 @@ export function AreaChart({
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-        />
+        <Tooltip {...tooltipProps} />
         {series.map((s, i) => (
           <Area
             key={s.name}
@@ -384,15 +372,7 @@ export function PieChart({
             <Cell key={`cell-${i}`} fill={getColor(i, data[i].color)} />
           ))}
         </Pie>
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-        />
+        <Tooltip {...tooltipProps} />
       </RePieChart>
     </ChartWrapper>
   );
@@ -465,15 +445,7 @@ export function RadarChartComponent({
           fill="#ed8238"
           fillOpacity={0.3}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-        />
+        <Tooltip {...tooltipProps} />
       </RadarChart>
     </ChartWrapper>
   );
@@ -528,15 +500,7 @@ export function RadialBarChartComponent({
           dataKey="value"
           cornerRadius={6}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-        />
+        <Tooltip {...tooltipProps} />
       </ReRadialBarChart>
     </ChartWrapper>
   );
@@ -597,16 +561,7 @@ export function ScatterChartComponent({
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#1e293b',
-            border: 'none',
-            borderRadius: '8px',
-            color: '#fff',
-            fontSize: '12px',
-          }}
-          cursor={{ strokeDasharray: '3 3', stroke: '#94a3b8' }}
-        />
+        <Tooltip {...tooltipProps} />
         <Scatter
           name="Datos"
           data={chartData}

@@ -18,6 +18,9 @@ import {
   Ruler, PencilRuler, DraftingCompass, Scale, Weight, Gauge, Thermometer,
   Trees, Mountain, Earth, Snowflake, Wind, CloudSun,
   SlidersHorizontal,
+  Bell, BellDot, BellRing, BellOff,
+  Timer, ClipboardList, ShieldAlert, Building2, ShoppingCart, CreditCard, FileBadge,
+  Banknote, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -673,6 +676,61 @@ export default function UIShowcasePage() {
                 { icon: <Search size={20} />, name: 'Search', uso: 'Buscar' },
                 { icon: <Filter size={20} />, name: 'Filter', uso: 'Filtrar' },
                 { icon: <Settings size={20} />, name: 'Settings', uso: 'Configuracion' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Menu Principal
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <LayoutDashboard size={20} />, name: 'LayoutDashboard', uso: 'Dashboard' },
+                { icon: <Users size={20} />, name: 'Users', uso: 'Trabajadores' },
+                { icon: <Clock size={20} />, name: 'Clock', uso: 'Asistencia' },
+                { icon: <Banknote size={20} />, name: 'Banknote', uso: 'Nomina' },
+                { icon: <Truck size={20} />, name: 'Truck', uso: 'Flota' },
+                { icon: <Timer size={20} />, name: 'Timer', uso: 'Horometro' },
+                { icon: <Wrench size={20} />, name: 'Wrench', uso: 'Mantenimiento' },
+                { icon: <Fuel size={20} />, name: 'Fuel', uso: 'Combustible' },
+                { icon: <MapPin size={20} />, name: 'MapPin', uso: 'GPS' },
+                { icon: <ClipboardList size={20} />, name: 'ClipboardList', uso: 'Operaciones' },
+                { icon: <ShieldAlert size={20} />, name: 'ShieldAlert', uso: 'Reportes Campo' },
+                { icon: <Layers size={20} />, name: 'Layers', uso: 'Criba' },
+                { icon: <Package size={20} />, name: 'Package', uso: 'Inventario' },
+                { icon: <HardHat size={20} />, name: 'HardHat', uso: 'Proyectos' },
+                { icon: <Building2 size={20} />, name: 'Building2', uso: 'Clientes' },
+                { icon: <FileText size={20} />, name: 'FileText', uso: 'Cotizaciones' },
+                { icon: <Banknote size={20} />, name: 'Banknote', uso: 'Finanzas' },
+                { icon: <Truck size={20} />, name: 'Truck', uso: 'Proveedores' },
+                { icon: <ShoppingCart size={20} />, name: 'ShoppingCart', uso: 'Punto de Venta' },
+                { icon: <CreditCard size={20} />, name: 'CreditCard', uso: 'Cobranza' },
+                { icon: <FileBadge size={20} />, name: 'FileBadge', uso: 'Documentacion' },
+                { icon: <BarChart3 size={20} />, name: 'BarChart3', uso: 'Reportes' },
+                { icon: <Settings size={20} />, name: 'Settings', uso: 'Configuracion' },
+              ].map((item) => (
+                <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-slate-700">{item.icon}</div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{item.name}</p>
+                  <p className="text-[10px] text-slate-400">{item.uso}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Notificaciones
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {[
+                { icon: <Bell size={20} />, name: 'Bell', uso: 'Notificaciones' },
+                { icon: <BellDot size={20} />, name: 'BellDot', uso: 'Notificacion nueva' },
+                { icon: <BellRing size={20} />, name: 'BellRing', uso: 'Alerta activa' },
+                { icon: <BellOff size={20} />, name: 'BellOff', uso: 'Silenciar' },
               ].map((item) => (
                 <div key={item.name} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-slate-700">{item.icon}</div>

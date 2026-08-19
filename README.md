@@ -98,6 +98,35 @@ SVR-ERP/
 - **Moneda:** Siempre `Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })`.
 - **Iconos:** Importar individualmente de `lucide-react`.
 - **Utilidad `cn()`:** clsx + tailwind-merge para clases condicionales.
+- **Gráficas:** Usar `recharts` vía wrappers en `apps/web/src/components/ui/Charts/`.
+
+## Librerías de Terceros
+
+### Gráficas - Recharts
+
+Las visualizaciones de datos usan [recharts](https://recharts.org/):
+
+```bash
+cd apps/web
+npm install recharts
+```
+
+Wrappers disponibles en `apps/web/src/components/ui/Charts/`:
+
+```tsx
+import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from '@/components/ui/Charts';
+
+<BarChart title="Producción" data={[{ label: 'Ene', value: 120 }]} />
+<LineChart title="Tendencias" labels={['Ene', 'Feb']} series={[{ name: 'Ventas', data: [100, 200] }]} />
+```
+
+Características de los wrappers:
+- `ResponsiveContainer` para adaptarse a cualquier contenedor.
+- Tooltip oscuro con cursor gris punteado (evita artefactos visuales).
+- Colores de marca (`#ed8238`) y semánticos por defecto.
+- Grid, labels y leyenda configurables.
+
+Ver documentación completa en [COMPONENTS.md](./COMPONENTS.md).
 
 ## Datos
 
