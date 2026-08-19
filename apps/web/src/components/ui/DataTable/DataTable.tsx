@@ -8,6 +8,10 @@ export interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
+  /** Si es true, la celda se alinea a la derecha (para acciones) */
+  align?: 'left' | 'center' | 'right';
+  /** Ancho fijo de la columna (ej: '120px', '8rem') */
+  width?: string;
 }
 
 export interface DataTableProps<T> {
@@ -19,6 +23,8 @@ export interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
   maxBodyHeight?: string;
   className?: string;
+  /** Texto fijo para la columna de acciones en el header */
+  actionHeader?: string;
 }
 
 export function DataTable<T>({
@@ -59,13 +65,27 @@ export function DataTable<T>({
     <div className={cn(dataTableClasses.container, className)}>
       <div
         className={dataTableClasses.scrollWrapper}
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
       >
         <table className={dataTableClasses.table}>
-          <thead>
+          <colgroup>
+            {columns.map((col) => (
+              <col key={col.key} style={col.width ? { width: col.width } : undefined} />
+            ))}
+          </colgroup>
+          <thead className={dataTableClasses.headerGroup}>
             <tr className={dataTableClasses.headerRow}>
               {columns.map((col) => (
-                <th key={col.key} className={cn(dataTableClasses.headerCell, col.className)}>
+                <th
+                  key={col.key}
+                  className={cn(
+                    col.align === 'right'
+                      ? dataTableClasses.headerCellAction
+                      : dataTableClasses.headerCell,
+                    col.className
+                  )}
+                  style={col.width ? { minWidth: col.width } : undefined}
+                >
                   {col.header}
                 </th>
               ))}
@@ -83,7 +103,15 @@ export function DataTable<T>({
                 )}
               >
                 {columns.map((col) => (
-                  <td key={col.key} className={cn(dataTableClasses.cell, col.className)}>
+                  <td
+                    key={col.key}
+                    className={cn(
+                      col.align === 'right'
+                        ? dataTableClasses.cellAction
+                        : dataTableClasses.cell,
+                      col.className
+                    )}
+                  >
                     {col.render ? col.render(item) : String((item as Record<string, unknown>)[col.key] ?? '')}
                   </td>
                 ))}

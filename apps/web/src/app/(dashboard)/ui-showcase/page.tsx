@@ -51,10 +51,14 @@ const sampleOptions = [
 ];
 
 const sampleWorkers = [
-  { id: "1", nombre: "Carlos Hernandez", puesto: "Operador", estado: "Activo" },
-  { id: "2", nombre: "Maria Lopez", puesto: "Tecnico", estado: "Inactivo" },
-  { id: "3", nombre: "Juan Perez", puesto: "Supervisor", estado: "Activo" },
-  { id: "4", nombre: "Ana Garcia", puesto: "Mecanico", estado: "Permiso" },
+  { id: "1", nombre: "Carlos Hernandez", puesto: "Operador", estado: "Activo", telefono: "55 1234 5678" },
+  { id: "2", nombre: "Maria Lopez", puesto: "Tecnico", estado: "Inactivo", telefono: "55 8765 4321" },
+  { id: "3", nombre: "Juan Perez", puesto: "Supervisor", estado: "Activo", telefono: "55 1122 3344" },
+  { id: "4", nombre: "Ana Garcia", puesto: "Mecanico", estado: "Permiso", telefono: "55 5566 7788" },
+  { id: "5", nombre: "Roberto Diaz", puesto: "Operador", estado: "Activo", telefono: "55 9900 1122" },
+  { id: "6", nombre: "Laura Martinez", puesto: "Chofer", estado: "Activo", telefono: "55 3344 5566" },
+  { id: "7", nombre: "Miguel Santos", puesto: "Mecanico", estado: "Inactivo", telefono: "55 7788 9900" },
+  { id: "8", nombre: "Sofia Ramirez", puesto: "Oficinista", estado: "Activo", telefono: "55 2233 4455" },
 ];
 
 interface WorkerRow {
@@ -62,14 +66,17 @@ interface WorkerRow {
   nombre: string;
   puesto: string;
   estado: string;
+  telefono: string;
 }
 
 const workerColumns: Column<WorkerRow>[] = [
-  { key: "nombre", header: "Nombre" },
-  { key: "puesto", header: "Puesto" },
+  { key: "nombre", header: "Nombre", width: "200px" },
+  { key: "puesto", header: "Puesto", width: "140px" },
+  { key: "telefono", header: "Telefono", width: "140px" },
   {
     key: "estado",
     header: "Estado",
+    width: "120px",
     render: (row) => (
       <Badge
         variant={
@@ -88,13 +95,18 @@ const workerColumns: Column<WorkerRow>[] = [
   {
     key: "acciones",
     header: "Acciones",
+    align: "right",
+    width: "200px",
     render: () => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" icon={<Eye size={14} />}>
+      <div className="flex items-center justify-end gap-1">
+        <Button variant="info" size="sm" icon={<Eye size={14} />}>
           Ver
         </Button>
-        <Button variant="ghost" size="sm" icon={<Edit size={14} />}>
+        <Button variant="warning" size="sm" icon={<PencilLine size={14} />}>
           Editar
+        </Button>
+        <Button variant="danger" size="sm" icon={<Trash2 size={14} />}>
+          Eliminar
         </Button>
       </div>
     ),
@@ -815,11 +827,27 @@ export default function UIShowcasePage() {
             Tabla de Datos
           </h2>
 
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+            Con Acciones (Scroll + Header Sticky)
+          </h3>
+          <p className="text-xs text-slate-400 -mt-3">
+            Header fijo al hacer scroll vertical. Scroll horizontal automatico en movil. Botones de accion alineados a la derecha.
+          </p>
           <DataTable<WorkerRow>
             columns={workerColumns}
             data={sampleWorkers}
             keyExtractor={(w) => w.id}
             onRowClick={(w) => console.log("Clicked:", w.nombre)}
+            maxBodyHeight="320px"
+          />
+
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-2">
+            Sin Scroll (Tabla Completa)
+          </h3>
+          <DataTable<WorkerRow>
+            columns={workerColumns}
+            data={sampleWorkers.slice(0, 3)}
+            keyExtractor={(w) => w.id}
           />
 
           <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-2">
