@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@svr-erp/shared": ["../../packages/shared/src"],
+      "@svr-erp/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": [

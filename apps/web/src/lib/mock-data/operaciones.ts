@@ -11,7 +11,7 @@ import type {
   LecturaHorometro,
   ReporteCampo,
   RegistroCriba,
-} from '@/types/operaciones';
+} from '@svr-erp/shared/types';
 
 export const cargasCombustible: CargaCombustible[] = [
   { 

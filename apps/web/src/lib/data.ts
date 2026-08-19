@@ -3,9 +3,6 @@ export type {
   Maquina,
   ChecklistPreoperacional,
   DespachoMaquina,
-} from '@/types/maquinaria';
-
-export type {
   CategoriaPuesto,
   Permiso,
   Trabajador,
@@ -14,16 +11,10 @@ export type {
   RegistroAsistencia,
   DiaAsistenciaSemana,
   AsistenciaSemanalTrabajador,
-} from '@/types/trabajadores';
-
-export type {
   HitoProgreso,
   Proyecto,
   APUItem,
   APUTemplate,
-} from '@/types/proyectos';
-
-export type {
   CargaCombustible,
   ArticuloInventario,
   RegistroMantenimiento,
@@ -36,7 +27,7 @@ export type {
   LecturaHorometro,
   ReporteCampo,
   RegistroCriba,
-} from '@/types/operaciones';
+} from '@svr-erp/shared/types';
 
 // Re-export all mock data arrays
 export { maquinaria, checklistsPreoperacionales, despachosFlota } from './mock-data/maquinaria';

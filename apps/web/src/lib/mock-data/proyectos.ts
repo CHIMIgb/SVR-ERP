@@ -1,4 +1,4 @@
-import type { Proyecto, APUTemplate } from '@/types/proyectos';
+import type { Proyecto, APUTemplate } from '@svr-erp/shared/types';
 
 export const proyectos: Proyecto[] = [
   {

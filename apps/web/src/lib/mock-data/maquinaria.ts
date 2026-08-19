@@ -1,4 +1,4 @@
-import type { Maquina, ChecklistPreoperacional, DespachoMaquina } from '@/types/maquinaria';
+import type { Maquina, ChecklistPreoperacional, DespachoMaquina } from '@svr-erp/shared/types';
 
 export const maquinaria: Maquina[] = [
   {

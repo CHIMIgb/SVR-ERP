@@ -1,4 +1,4 @@
-import type { Trabajador, BitacoraRentaDiaria, RegistroAsistencia, AsistenciaSemanalTrabajador } from '@/types/trabajadores';
+import type { Trabajador, BitacoraRentaDiaria, RegistroAsistencia, AsistenciaSemanalTrabajador } from '@svr-erp/shared/types';
 
 export const trabajadores: Trabajador[] = [
   {
