@@ -22,6 +22,8 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/components/ui/Modal";
+import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from "@/components/ui/Modal";
 
 /* ────────────────────────────────────────────────────────────────
    Mock data
@@ -91,6 +93,20 @@ const workerColumns: Column<WorkerRow>[] = [
 export default function UIShowcasePage() {
   const [activeTab, setActiveTab] = useState("general");
   const [searchValue, setSearchValue] = useState("");
+
+  // Modal states
+  const [basicModalOpen, setBasicModalOpen] = useState(false);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [formModalOpen, setFormModalOpen] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
+  const handleFormSubmit = () => {
+    setFormSubmitting(true);
+    setTimeout(() => {
+      setFormSubmitting(false);
+      setFormModalOpen(false);
+    }, 1500);
+  };
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -599,6 +615,197 @@ export default function UIShowcasePage() {
           </div>
         </Card>
       </section>
+
+      {/* ── Modales ─────────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Modales
+          </h2>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Modal Basico
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => setBasicModalOpen(true)} variant="outline">
+                Abrir Modal Basico
+              </Button>
+              <Button onClick={() => setConfirmModalOpen(true)} variant="danger">
+                Modal de Confirmacion
+              </Button>
+              <Button onClick={() => setFormModalOpen(true)} icon={<Plus size={16} />}>
+                Modal con Formulario
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Modal Basico ────────────────────────────────────────── */}
+      <Modal open={basicModalOpen} onClose={() => setBasicModalOpen(false)} size="md">
+        <ModalHeader title="Detalle del Trabajador" onClose={() => setBasicModalOpen(false)} />
+        <ModalBody>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Avatar name="Carlos Hernandez" size="lg" />
+              <div>
+                <p className="text-sm font-bold text-slate-900">Carlos Hernandez</p>
+                <p className="text-xs text-slate-500">Operador Maquinaria Pesada</p>
+                <Badge variant="success" dot size="sm">Activo</Badge>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase">Telefono</p>
+                <p className="text-slate-700">55 1234 5678</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase">RFC</p>
+                <p className="text-slate-700">HERC850101ABC</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase">Sueldo Fiscal</p>
+                <p className="text-slate-700">$12,500.00</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase">Metodo de Pago</p>
+                <p className="text-slate-700">Transferencia</p>
+              </div>
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setBasicModalOpen(false)}>
+            Cerrar
+          </Button>
+          <Button icon={<Edit size={16} />}>
+            Editar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* ── Modal de Confirmacion ────────────────────────────────── */}
+      <Modal open={confirmModalOpen} onClose={() => setConfirmModalOpen(false)} size="sm">
+        <ModalBody>
+          <div className="flex flex-col items-center text-center py-2">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+              <AlertCircle size={32} className="text-red-500" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900">Eliminar Registro</h3>
+            <p className="text-sm text-slate-500 mt-1 max-w-xs">
+              Esta accion es permanente. Se eliminaran todos los datos asociados a este registro.
+            </p>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setConfirmModalOpen(false)}>
+            Cancelar
+          </Button>
+          <Button variant="danger" icon={<Trash2 size={16} />}>
+            Eliminar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* ── Modal con Formulario ────────────────────────────────── */}
+      <FormModal
+        open={formModalOpen}
+        onClose={() => setFormModalOpen(false)}
+        title="Nuevo Trabajador"
+        subtitle="Completa los datos para registrar un nuevo trabajador"
+        submitLabel="Guardar Trabajador"
+        onSubmit={handleFormSubmit}
+        isSubmitting={formSubmitting}
+        size="lg"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ModalField label="Nombre" required>
+            <input
+              type="text"
+              placeholder="Nombre del trabajador"
+              className={modalInputClass}
+            />
+          </ModalField>
+
+          <ModalField label="Apellido Paterno" required>
+            <input
+              type="text"
+              placeholder="Apellido paterno"
+              className={modalInputClass}
+            />
+          </ModalField>
+
+          <ModalField label="Apellido Materno">
+            <input
+              type="text"
+              placeholder="Apellido materno (opcional)"
+              className={modalInputClass}
+            />
+          </ModalField>
+
+          <ModalField label="RFC">
+            <input
+              type="text"
+              placeholder="RFC (13 caracteres)"
+              className={modalInputClass}
+              maxLength={13}
+            />
+          </ModalField>
+
+          <ModalField label="Puesto" required>
+            <div className="relative">
+              <select className={modalSelectClass}>
+                <option value="">Seleccionar puesto...</option>
+                <option value="operador">Operador</option>
+                <option value="mecanico">Mecanico</option>
+                <option value="chofer">Chofer</option>
+                <option value="oficinista">Oficinista</option>
+              </select>
+            </div>
+          </ModalField>
+
+          <ModalField label="Telefono">
+            <input
+              type="tel"
+              placeholder="10 digitos"
+              className={modalInputClass}
+            />
+          </ModalField>
+        </div>
+
+        <ModalField label="Direccion">
+          <textarea
+            placeholder="Direccion completa del trabajador..."
+            className={modalTextareaClass}
+            rows={3}
+          />
+        </ModalField>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ModalField label="Sueldo Fiscal" required hint="Monto mensual antes de deducciones">
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+              <input
+                type="number"
+                placeholder="0.00"
+                className={modalInputClass + ' pl-8'}
+              />
+            </div>
+          </ModalField>
+
+          <ModalField label="Sueldo Efectivo" required hint="Monto que recibe el trabajador">
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+              <input
+                type="number"
+                placeholder="0.00"
+                className={modalInputClass + ' pl-8'}
+              />
+            </div>
+          </ModalField>
+        </div>
+      </FormModal>
     </div>
   );
 }
