@@ -13,7 +13,7 @@ export default function DashboardLayout({
       <NotificationProvider>
         <div className="min-height-screen bg-slate-50 flex">
           <Sidebar />
-          <main className="flex-1 ml-72 transition-all duration-300 min-h-screen flex flex-col">
+          <main className="flex-1 ml-72 transition-all duration-300 min-h-screen flex flex-col overflow-x-hidden">
             <Topbar />
             
             <div className="p-8">

@@ -1,6 +1,6 @@
 export const dataTableClasses = {
   /* ── Container ── */
-  container: 'w-full overflow-hidden rounded-xl border border-slate-200 bg-white',
+  container: 'w-full rounded-xl border border-slate-200 bg-white',
 
   /* ── Header ── */
   thead: 'bg-slate-50',

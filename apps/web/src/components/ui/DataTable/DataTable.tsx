@@ -10,15 +10,10 @@ export interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
-  /** Alineacion de la celda */
   align?: 'left' | 'center' | 'right';
-  /** Ancho fijo de la columna (ej: '120px', '8rem') */
   width?: string;
-  /** Ancho minimo de la columna */
   minWidth?: string;
-  /** No permitir wrap del contenido */
   nowrap?: boolean;
-  /** Color del header de esta columna */
   headerColor?: HeaderColor;
 }
 
@@ -43,7 +38,6 @@ export function DataTable<T>({
   maxBodyHeight = '400px',
   className,
 }: DataTableProps<T>) {
-  /* ── Loading skeleton ── */
   if (loading) {
     return (
       <div className={cn(dataTableClasses.container, className)}>
@@ -60,7 +54,6 @@ export function DataTable<T>({
     );
   }
 
-  /* ── Empty state ── */
   if (data.length === 0) {
     return (
       <div className={cn(dataTableClasses.container, className)}>
@@ -69,13 +62,12 @@ export function DataTable<T>({
     );
   }
 
-  /* ── Table ── */
   return (
     <div className={cn(dataTableClasses.container, className)}>
-      {/* Scroll horizontal envuelve TODO (header + body) */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 'max-content' }}>
-          {/* ── Header (fuera del scroll vertical) ── */}
+      {/* Scroll horizontal SOLO dentro de este componente */}
+      <div className="overflow-x-auto max-w-full">
+        {/* Header table */}
+        <table className="w-full text-sm border-collapse">
           <thead className={dataTableClasses.thead}>
             <tr>
               {columns.map((col) => (
@@ -97,12 +89,12 @@ export function DataTable<T>({
           </thead>
         </table>
 
-        {/* Scroll vertical envuelve SOLO el body */}
+        {/* Body scroll vertical */}
         <div
           className="overflow-y-auto"
           style={{ maxHeight: maxBodyHeight }}
         >
-          <table className="w-full text-sm" style={{ minWidth: 'max-content' }}>
+          <table className="w-full text-sm border-collapse">
             <colgroup>
               {columns.map((col) => (
                 <col
@@ -149,7 +141,6 @@ export function DataTable<T>({
   );
 }
 
-/* ── Header color map ── */
 const headerColorMap: Record<HeaderColor, string> = {
   default: dataTableClasses.thDefault,
   blue: dataTableClasses.thBlue,
