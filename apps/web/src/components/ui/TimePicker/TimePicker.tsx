@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { timePickerClasses } from './TimePicker.styles';
@@ -83,6 +83,7 @@ export function TimePicker({
   const [internalValue, setInternalValue] = useState(defaultValue ?? '');
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
   const listHourRef = useRef<HTMLDivElement>(null);
   const listMinuteRef = useRef<HTMLDivElement>(null);
 
@@ -94,16 +95,20 @@ export function TimePicker({
 
   const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
 
-  // Calcular posición del dropdown
+  // Calcular posición — useLayoutEffect evita parpadeo
   const updatePosition = useCallback(() => {
-    if (rootRef.current) {
-      const rect = rootRef.current.getBoundingClientRect();
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
       setDropdownPos({
-        top: rect.bottom + window.scrollY + 8,
-        left: rect.left + window.scrollX,
+        top: rect.bottom + 8,
+        left: rect.left,
       });
     }
   }, []);
+
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
 
   // Cerrar al hacer click fuera
   useEffect(() => {
@@ -127,10 +132,9 @@ export function TimePicker({
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen]);
 
-  // Recalcular posición al abrir y al hacer scroll/resize
+  // Reposicionar al hacer scroll/resize
   useEffect(() => {
     if (!isOpen) return;
-    updatePosition();
     const handleReposition = () => updatePosition();
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
@@ -195,7 +199,7 @@ export function TimePicker({
         </label>
       )}
 
-      <div className={timePickerClasses.inputWrapper}>
+      <div ref={inputRef} className={timePickerClasses.inputWrapper}>
         <input
           id={inputId}
           type="text"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useLayoutEffect, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dateRangePickerClasses } from './DateRangePicker.styles';
@@ -131,17 +131,23 @@ export function DateRangePicker({
   );
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
 
   const updatePosition = useCallback(() => {
-    if (rootRef.current) {
-      const rect = rootRef.current.getBoundingClientRect();
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
       setDropdownPos({
-        top: rect.bottom + window.scrollY + 8,
-        left: rect.left + window.scrollX,
+        top: rect.bottom + 8,
+        left: rect.left,
       });
     }
   }, []);
+
+  // Calcular posición ANTES del paint
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -155,9 +161,9 @@ export function DateRangePicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  // Reposicionar al hacer scroll/resize
   useEffect(() => {
     if (!isOpen) return;
-    updatePosition();
     const handleReposition = () => updatePosition();
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
@@ -235,6 +241,7 @@ export function DateRangePicker({
       {label && <label className={dateRangePickerClasses.label}>{label}</label>}
 
       <div
+        ref={inputRef}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={cn(
           dateRangePickerClasses.inputWrapper,

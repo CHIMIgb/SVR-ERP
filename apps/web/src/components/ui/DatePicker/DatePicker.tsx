@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useLayoutEffect, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { datePickerClasses } from './DatePicker.styles';
@@ -114,17 +114,22 @@ export function DatePicker({
 
   const selectedDate = value !== undefined ? value : internalValue;
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
 
-  // Calcular posición del dropdown
+  // Calcular posición del dropdown — useLayoutEffect evita el parpadeo
   const updatePosition = useCallback(() => {
-    if (rootRef.current) {
-      const rect = rootRef.current.getBoundingClientRect();
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
       setDropdownPos({
-        top: rect.bottom + window.scrollY + 8,
-        left: rect.left + window.scrollX,
+        top: rect.bottom + 8,
+        left: rect.left,
       });
     }
   }, []);
+
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
 
   // Cerrar al hacer click fuera
   useEffect(() => {
@@ -139,10 +144,9 @@ export function DatePicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Recalcular posición al abrir y al hacer scroll/resize
+  // Reposicionar al hacer scroll/resize
   useEffect(() => {
     if (!isOpen) return;
-    updatePosition();
     const handleReposition = () => updatePosition();
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
@@ -192,6 +196,7 @@ export function DatePicker({
       {label && <label className={datePickerClasses.label}>{label}</label>}
 
       <div
+        ref={inputRef}
         onClick={() => {
           if (!disabled) {
             setIsOpen(!isOpen);
