@@ -12,7 +12,7 @@ export const timePickerClasses = {
   columns: 'flex gap-3',
   column: 'flex-1',
   columnHeader: 'text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2',
-  list: 'h-[200px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-slate-200',
+  list: 'h-[200px] overflow-y-auto space-y-0.5 scrollbar-thin',
   option:
     'w-full text-center text-sm font-medium py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 text-slate-700',
   optionActive: 'bg-primary text-white hover:bg-primary-dark',
