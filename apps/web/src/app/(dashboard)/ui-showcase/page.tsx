@@ -71,7 +71,6 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Radio } from "@/components/ui/Radio";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
@@ -318,9 +317,11 @@ export default function UIShowcasePage() {
   const [notificaciones, setNotificaciones] = useState(true);
   const [metodoPago, setMetodoPago] = useState("transferencia");
   const [seleccionados, setSeleccionados] = useState<string[]>(["excavacion"]);
-  const [showConfirmDanger, setShowConfirmDanger] = useState(false);
-  const [showConfirmWarning, setShowConfirmWarning] = useState(false);
-  const [showConfirmInfo, setShowConfirmInfo] = useState(false);
+  const [showBaseModal, setShowBaseModal] = useState(false);
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const searchFilters: FilterField[] = [
     {
@@ -1583,59 +1584,110 @@ export default function UIShowcasePage() {
         </Card>
       </section>
 
-      {/* ── ConfirmDialog ──────────────────────────────────────────── */}
+      {/* ── Modales ──────────────────────────────────────────────── */}
       <section>
         <Card className="space-y-6">
           <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
-            ConfirmDialog
+            Modales
           </h2>
 
           <p className="text-xs text-slate-400 -mt-4">
-            Modal de confirmacion para acciones destructivas o irreversibles.
+            Modal base, FormModal pre-construido, y confirmaciones. Todos reutilizan <code>Portal</code> + <code>Overlay</code>.
           </p>
 
           <div className="flex flex-wrap gap-3">
-            <Button variant="danger" onClick={() => setShowConfirmDanger(true)}>
-              Eliminar registro
+            <Button variant="secondary" onClick={() => setShowBaseModal(true)}>
+              Modal Basico
             </Button>
-            <Button variant="warning" onClick={() => setShowConfirmWarning(true)}>
-              Cancelar nomina
+            <Button variant="primary" onClick={() => setShowFormModal(true)}>
+              FormModal
             </Button>
-            <Button variant="secondary" onClick={() => setShowConfirmInfo(true)}>
-              Info del sistema
+            <Button variant="danger" onClick={() => setShowConfirmModal(true)}>
+              Confirmacion
+            </Button>
+            <Button variant="ghost" onClick={() => setShowLoadingModal(true)}>
+              Modal con Loading
             </Button>
           </div>
 
-          <ConfirmDialog
-            open={showConfirmDanger}
-            onClose={() => setShowConfirmDanger(false)}
-            onConfirm={() => setShowConfirmDanger(false)}
-            title="Eliminar trabajador"
-            message="Esta accion eliminara al trabajador Juan Perez y todo su historial de asistencia, nominas y bitacoras. Esta accion no se puede deshacer."
-            confirmLabel="Eliminar"
-            variant="danger"
-          />
+          {/* Modal Basico */}
+          <Modal open={showBaseModal} onClose={() => setShowBaseModal(false)} size="sm">
+            <ModalHeader title="Detalle del trabajador" onClose={() => setShowBaseModal(false)} />
+            <ModalBody>
+              <p className="text-sm text-slate-600">
+                Este es un modal basico con <code>ModalHeader</code>, <code>ModalBody</code> y{' '}
+                <code>ModalFooter</code>. Se cierra con Escape o al hacer click fuera.
+              </p>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="secondary" onClick={() => setShowBaseModal(false)}>
+                Cerrar
+              </Button>
+            </ModalFooter>
+          </Modal>
 
-          <ConfirmDialog
-            open={showConfirmWarning}
-            onClose={() => setShowConfirmWarning(false)}
-            onConfirm={() => setShowConfirmWarning(false)}
-            title="Cancelar nomina"
-            message="Se cancelara el proceso de nomina correspondiente al periodo de Julio 2025. Los pagos pendientes no seran procesados."
-            confirmLabel="Cancelar nomina"
-            variant="warning"
-          />
+          {/* FormModal */}
+          <FormModal
+            open={showFormModal}
+            onClose={() => setShowFormModal(false)}
+            title="Nuevo trabajador"
+            subtitle="Registra un nuevo miembro del equipo"
+            onSubmit={() => {
+              setIsSubmitting(true);
+              setTimeout(() => {
+                setIsSubmitting(false);
+                setShowFormModal(false);
+              }, 1500);
+            }}
+            isSubmitting={isSubmitting}
+            submitLabel="Guardar trabajador"
+          >
+            <ModalField label="Nombre completo" required>
+              <input className={modalInputClass} placeholder="Ej. Juan Perez Lopez" />
+            </ModalField>
+            <ModalField label="Puesto" required>
+              <select className={modalSelectClass}>
+                <option value="">Seleccionar...</option>
+                <option value="albanil">Albanil</option>
+                <option value="operador">Operador</option>
+                <option value="supervisor">Supervisor</option>
+              </select>
+            </ModalField>
+            <ModalField label="Correo electronico" hint="Se enviara la bienvenida a este correo">
+              <input className={modalInputClass} type="email" placeholder="correo@ejemplo.com" />
+            </ModalField>
+          </FormModal>
 
-          <ConfirmDialog
-            open={showConfirmInfo}
-            onClose={() => setShowConfirmInfo(false)}
-            onConfirm={() => setShowConfirmInfo(false)}
-            title="Acerca del sistema"
-            message="SVR-ERP v1.0.0 — Sistema de gestion empresarial para construccion. Modulo de Recursos Humanos activo."
-            confirmLabel="Entendido"
-            cancelLabel="Cerrar"
-            variant="info"
-          />
+          {/* Confirmacion */}
+          <Modal open={showConfirmModal} onClose={() => setShowConfirmModal(false)} size="sm">
+            <ModalHeader title="Eliminar trabajador" onClose={() => setShowConfirmModal(false)} hideClose={isSubmitting} />
+            <ModalBody>
+              <p className="text-sm text-slate-600">
+                Se eliminara al trabajador <strong>Juan Perez</strong> y todo su historial. Esta accion no se puede deshacer.
+              </p>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="secondary" onClick={() => setShowConfirmModal(false)} disabled={isSubmitting}>
+                Cancelar
+              </Button>
+              <Button variant="danger" onClick={() => setShowConfirmModal(false)} loading={isSubmitting}>
+                Eliminar
+              </Button>
+            </ModalFooter>
+          </Modal>
+
+          {/* Modal con Loading */}
+          <Modal open={showLoadingModal} onClose={() => isSubmitting ? undefined : setShowLoadingModal(false)} persistent={isSubmitting} size="sm">
+            <ModalHeader title="Procesando nomina" hideClose={isSubmitting} />
+            <ModalBody>
+              <div className="flex items-center gap-3">
+                <Loader2 size={20} className="animate-spin text-primary" />
+                <p className="text-sm text-slate-600">
+                  Generando recibo de nomina para el periodo de Julio 2025...
+                </p>
+              </div>
+            </ModalBody>
+          </Modal>
         </Card>
       </section>
 

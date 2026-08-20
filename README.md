@@ -133,7 +133,8 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Radio` | Boton de opcion unica | `<Radio name="tipo" value="a" label="Opcion A" />` |
 | `Switch` | Toggle on/off | `<Switch checked={x} onChange={setX} label="Activar" />` |
 | `Textarea` | Campo multilinea | `<Textarea label="Notas" rows={4} />` |
-| `ConfirmDialog` | Modal de confirmacion | `<ConfirmDialog open={open} onConfirm={fn} title="..." message="..." />` |
+| `Modal` | Modal base + sub-componentes | `<Modal open={open} onClose={fn}>...</Modal>` |
+| `FormModal` | Modal pre-armado para CRUD | `<FormModal open={open} onSubmit={fn}>...</FormModal>` |
 
 ### Zona Segura
 

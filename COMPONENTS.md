@@ -24,8 +24,7 @@
    - [Radio](#29-radio)
    - [Switch](#210-switch)
    - [Textarea](#211-textarea)
-   - [ConfirmDialog](#212-confirmdialog)
-   - [Badge](#213-badge)
+   - [Badge](#212-badge)
 3. [Componentes de Layout](#3-componentes-de-layout)
    - [PageHeader](#31-pageheader)
    - [Tabs](#32-tabs)
@@ -1080,80 +1079,7 @@ import { Textarea } from '@/components/ui/Textarea';
 
 ---
 
-### 2.12 ConfirmDialog
-
-Modal de confirmacion para acciones destructivas o irreversibles. Reemplaza las funciones nativas `confirm()` y `alert()` con una experiencia consistente.
-
-**Archivo:** `src/components/ui/ConfirmDialog/ConfirmDialog.tsx`
-
-**Importacion:**
-```tsx
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-```
-
-#### Props
-
-| Prop | Tipo | Default | Descripcion |
-|------|------|---------|-------------|
-| `open` | `boolean` | *(requerido)* | Estado de visibilidad |
-| `onClose` | `() => void` | *(requerido)* | Callback de cierre |
-| `onConfirm` | `() => void` | *(requerido)* | Callback de confirmacion |
-| `title` | `string` | *(requerido)* | Titulo del dialogo |
-| `message` | `string` | *(requerido)* | Mensaje/descripcion |
-| `confirmLabel` | `string` | `'Confirmar'` | Label del boton de confirmar |
-| `cancelLabel` | `string` | `'Cancelar'` | Label del boton de cancelar |
-| `variant` | `'danger' \| 'warning' \| 'info'` | `'danger'` | Variante visual |
-| `loading` | `boolean` | `false` | Estado de carga del boton confirmar |
-| `size` | `'sm' \| 'md'` | `'sm'` | Ancho del modal |
-| `offsetLeft` | `number` | `0` | Espacio a omitir en el lado izquierdo |
-
-#### Ejemplo
-
-```tsx
-import { useState } from 'react';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-
-function ListaTrabajadores() {
-  const [showDelete, setShowDelete] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  return (
-    <>
-      <button onClick={() => { setSelectedId('abc'); setShowDelete(true); }}>
-        Eliminar
-      </button>
-
-      <ConfirmDialog
-        open={showDelete}
-        onClose={() => setShowDelete(false)}
-        onConfirm={() => {
-          // eliminar registro
-          setShowDelete(false);
-        }}
-        title="Eliminar trabajador"
-        message="Esta accion eliminara al trabajador y todo su historial. No se puede deshacer."
-        confirmLabel="Eliminar"
-        variant="danger"
-      />
-    </>
-  );
-}
-```
-
-#### Cuando usar
-
-- Eliminar registros (trabajadores, proyectos, facturas).
-- Cancelar procesos en curso (nominas, ordenes de compra).
-- Cualquier accion que requiera confirmacion explicita del usuario.
-
-#### No usar cuando
-
-- La accion es reversible (deshacer, editar) — usar boton normal.
-- Solo se necesita informar algo al usuario — usar `Toast` o `Modal` simple.
-
----
-
-### 2.13 Badge
+### 2.12 Badge
 
 Etiqueta visual compacta para mostrar estados, categorias o indicadores.
 
