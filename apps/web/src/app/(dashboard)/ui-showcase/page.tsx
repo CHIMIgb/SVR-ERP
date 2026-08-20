@@ -45,6 +45,7 @@ import { Stack } from "@/components/ui/Stack";
 import { Container } from "@/components/ui/Container";
 import { Grid } from "@/components/ui/Grid";
 import { Center } from "@/components/ui/Center";
+import { Spacer } from "@/components/ui/Spacer";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2018,6 +2019,42 @@ export default function UIShowcasePage() {
                   <p className="text-sm text-slate-600">
                     Texto con badge <Center inline axis="both"><span className="bg-warning/10 text-warning px-2 py-0.5 rounded text-xs font-semibold">inline</span></Center> centrado.
                   </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Spacer */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Spacer - Espaciador Declarativo
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Vertical (entre elementos)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <p className="text-sm text-slate-600">Contenido superior</p>
+                  <Spacer size="lg" />
+                  <p className="text-sm text-slate-600">Contenido inferior</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Horizontal (dentro de una fila)</p>
+                <div className="flex items-center bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <span className="text-sm text-slate-600">Izquierda</span>
+                  <Spacer axis="horizontal" size="lg" />
+                  <span className="text-sm text-slate-600">Derecha</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Tamanos: xs (8px) | sm (12px) | md (16px) | lg (24px) | xl (32px) | 2xl (48px) | 3xl (64px)</p>
+                <div className="flex items-end gap-6 bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  {(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'] as const).map((s) => (
+                    <div key={s} className="flex flex-col items-center gap-1">
+                      <div className="w-8 bg-primary/20 rounded" style={{ height: s === 'xs' ? 8 : s === 'sm' ? 12 : s === 'md' ? 16 : s === 'lg' ? 24 : s === 'xl' ? 32 : s === '2xl' ? 48 : 64 }} />
+                      <p className="text-[10px] font-bold text-slate-400">{s}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

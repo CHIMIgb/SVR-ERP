@@ -23,9 +23,10 @@
    - [SearchInput](#32-searchinput)
    - [Grid](#33-grid)
    - [Center](#34-center)
-   - [Stack](#35-stack)
-   - [Container](#36-container)
-   - [Divider](#37-divider)
+   - [Spacer](#35-spacer)
+   - [Stack](#36-stack)
+   - [Container](#37-container)
+   - [Divider](#38-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1142,7 +1143,73 @@ import { Center } from '@/components/ui/Center';
 
 ---
 
-### 3.5 Stack
+### 3.5 Spacer
+
+Espaciador declarativo para separar elementos sin usar clases de margin. Util cuando el espaciado no es responsabilidad de los componentes hijos.
+
+**Archivo:** `src/components/ui/Spacer/Spacer.tsx`
+
+**Importacion:**
+```tsx
+import { Spacer } from '@/components/ui/Spacer';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `size` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl' \| '2xl' \| '3xl'` | `'md'` | Tamano del espaciador |
+| `axis` | `'vertical' \| 'horizontal' \| 'both'` | `'vertical'` | Direccion del espaciado |
+
+#### Tamanos
+
+| Size | Valor |
+|------|-------|
+| `none` | 0px |
+| `xs` | 8px |
+| `sm` | 12px |
+| `md` | 16px |
+| `lg` | 24px |
+| `xl` | 32px |
+| `2xl` | 48px |
+| `3xl` | 64px |
+
+#### Ejemplos
+
+**Espaciado vertical:**
+
+```tsx
+<div>
+  <h2>Seccion 1</h2>
+  <Spacer size="lg" />
+  <h2>Seccion 2</h2>
+</div>
+```
+
+**Espaciado horizontal:**
+
+```tsx
+<div className="flex items-center">
+  <span>Izquierda</span>
+  <Spacer axis="horizontal" size="md" />
+  <span>Derecha</span>
+</div>
+```
+
+#### Cuando usar
+
+- Cuando se necesita espacio entre elementos sin modificar sus estilos.
+- Para espaciado condicional o dinamico.
+- Para mantener componentes hijos desacoplados del layout que los rodea.
+
+#### No usar cuando
+
+- El espaciado es siempre el mismo y puede manejarse con `Stack` o `gap`.
+- Se puede usar padding/margin del contenedor padre.
+
+---
+
+### 3.6 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1202,7 +1269,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.6 Container
+### 3.7 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1250,7 +1317,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.7 Divider
+### 3.8 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 
