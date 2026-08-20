@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Portal } from '@/components/ui/Portal';
 import { datePickerClasses } from './DatePicker.styles';
 
 export interface DatePickerProps {
@@ -231,11 +230,10 @@ export function DatePicker({
       {error && <p className={datePickerClasses.error}>{error}</p>}
 
       {isOpen && !disabled && (
-        <Portal>
-          <div
-            className={datePickerClasses.calendar}
-            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
-          >
+        <div
+          className={datePickerClasses.calendar}
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+        >
             <div className={datePickerClasses.calendarHeader}>
               <button
                 type="button"
@@ -293,7 +291,6 @@ export function DatePicker({
               })}
             </div>
           </div>
-        </Portal>
       )}
     </div>
   );

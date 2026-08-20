@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Portal } from '@/components/ui/Portal';
 import { dateRangePickerClasses } from './DateRangePicker.styles';
 
 export interface DateRange {
@@ -270,11 +269,10 @@ export function DateRangePicker({
       {error && <p className={dateRangePickerClasses.error}>{error}</p>}
 
       {isOpen && !disabled && (
-        <Portal>
-          <div
-            className={dateRangePickerClasses.calendar}
-            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
-          >
+        <div
+          className={dateRangePickerClasses.calendar}
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+        >
           <div className={dateRangePickerClasses.calendarHeader}>
             <button
               type="button"
@@ -353,7 +351,6 @@ export function DateRangePicker({
             </button>
           </div>
           </div>
-        </Portal>
       )}
     </div>
   );

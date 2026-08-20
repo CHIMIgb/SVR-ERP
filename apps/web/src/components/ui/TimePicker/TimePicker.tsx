@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Portal } from '@/components/ui/Portal';
 import { timePickerClasses } from './TimePicker.styles';
 
 export interface TimePickerProps {
@@ -217,11 +216,10 @@ export function TimePicker({
       {error && <p className={timePickerClasses.error}>{error}</p>}
 
       {isOpen && (
-        <Portal>
-          <div
-            className={timePickerClasses.dropdown}
-            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
-          >
+        <div
+          className={timePickerClasses.dropdown}
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+        >
             <div className={timePickerClasses.columns}>
               {/* Horas */}
               <div className={timePickerClasses.column}>
@@ -301,7 +299,6 @@ export function TimePicker({
               )}
             </div>
           </div>
-        </Portal>
       )}
     </div>
   );
