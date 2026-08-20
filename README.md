@@ -121,6 +121,8 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Separator` | Separador horizontal/vertical | `<Separator orientation="vertical" />` |
 | `Box` | Contenedor basico flexible | `<Box padding="md" radius="lg">...</Box>` |
 | `Collapse` | Expandir/colapsar contenido | `<Collapse in={open}>...</Collapse>` |
+| `Portal` | Renderizar fuera del DOM padre | `<Portal>...</Portal>` |
+| `Overlay` | Capa semitransparente | `<Overlay onClick={close} />` |
 | `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
 | `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |

@@ -32,9 +32,11 @@
    - [Separator](#311-separator)
    - [Box](#312-box)
    - [Collapse](#313-collapse)
-   - [Stack](#314-stack)
-   - [Container](#315-container)
-   - [Divider](#316-divider)
+   - [Portal](#314-portal)
+   - [Overlay](#315-overlay)
+   - [Stack](#316-stack)
+   - [Container](#317-container)
+   - [Divider](#318-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1740,7 +1742,89 @@ function Detalles() {
 
 ---
 
-### 3.14 Stack
+### 3.14 Portal
+
+Renderiza contenido en un nodo DOM diferente al arbol principal. Util para modales, tooltips, dropdowns y overlays que deben escapar del stacking context del padre.
+
+**Archivo:** `src/components/ui/Portal/Portal.tsx`
+
+**Importacion:**
+```tsx
+import { Portal } from '@/components/ui/Portal';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `container` | `HTMLElement \| null` | `document.body` | Nodo DOM destino |
+| `children` | `React.ReactNode` | — | Contenido a renderizar |
+
+#### Ejemplo
+
+```tsx
+<Portal>
+  <div className="fixed inset-0 z-50">
+    Contenido fuera del DOM padre
+  </div>
+</Portal>
+```
+
+#### Cuando usar
+
+- Modales y dialogs.
+- Dropdowns que deben sobresalir de contenedores con `overflow: hidden`.
+- Tooltips y popovers.
+
+#### No usar cuando
+
+- El contenido debe heredar estilos del padre.
+- No hay necesidad de escapar del DOM actual.
+
+---
+
+### 3.15 Overlay
+
+Capa semitransparente que cubre toda la pantalla. Se usa detras de modales, drawers y menus moviles.
+
+**Archivo:** `src/components/ui/Overlay/Overlay.tsx`
+
+**Importacion:**
+```tsx
+import { Overlay } from '@/components/ui/Overlay';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `open` | `boolean` | `true` | Mostrar overlay |
+| `blur` | `boolean` | `false` | Aplicar backdrop-blur |
+| `dark` | `boolean` | `true` | Fondo oscuro semitransparente |
+| `onClick` | `() => void` | `undefined` | Click en el overlay |
+
+#### Ejemplo
+
+```tsx
+<Overlay onClick={closeModal} blur>
+  <ModalContent />
+</Overlay>
+```
+
+#### Cuando usar
+
+- Detras de modales para enfocar atencion.
+- Menus laterales (drawers) en movil.
+- Lightboxes y galerias.
+
+#### No usar cuando
+
+- Se necesita interactuar con el contenido de fondo.
+- Se puede usar un dropdown sin bloquear la pantalla.
+
+---
+
+### 3.16 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1800,7 +1884,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.15 Container
+### 3.17 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1848,7 +1932,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.16 Divider
+### 3.18 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

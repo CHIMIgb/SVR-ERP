@@ -56,6 +56,8 @@ import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Separator } from "@/components/ui/Separator";
 import { Box as BoxLayout } from "@/components/ui/Box";
 import { Collapse } from "@/components/ui/Collapse";
+import { Portal } from "@/components/ui/Portal";
+import { Overlay } from "@/components/ui/Overlay";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -297,6 +299,7 @@ export default function UIShowcasePage() {
   const [tableFilters, setTableFilters] = useState<Record<string, string>>({});
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [collapseOpen, setCollapseOpen] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
 
   const searchFilters: FilterField[] = [
     {
@@ -1797,6 +1800,52 @@ export default function UIShowcasePage() {
           </ModalField>
         </div>
       </FormModal>
+
+      {/* ── Portal / Overlay ─────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Portal / Overlay
+          </h2>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Overlay con Portal
+            </h3>
+            <p className="text-xs text-slate-400">
+              El overlay se renderiza fuera del DOM normal usando React Portal.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setOverlayOpen(true)}
+              icon={<Layers size={16} />}
+            >
+              Mostrar Overlay
+            </Button>
+
+            {overlayOpen && (
+              <Portal>
+                <Overlay onClick={() => setOverlayOpen(false)} blur>
+                  <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm mx-4">
+                    <h4 className="text-lg font-bold text-slate-900 mb-2">
+                      Overlay Portal
+                    </h4>
+                    <p className="text-sm text-slate-600 mb-4">
+                      Este contenido esta renderizado en un portal fuera del arbol normal del DOM. Haz click fuera para cerrar.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => setOverlayOpen(false)}
+                    >
+                      Cerrar
+                    </Button>
+                  </div>
+                </Overlay>
+              </Portal>
+            )}
+          </div>
+        </Card>
+      </section>
 
       {/* ── Toasts ─────────────────────────────────────────────── */}
       <section>
