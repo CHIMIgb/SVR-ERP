@@ -48,6 +48,7 @@ import { Center } from "@/components/ui/Center";
 import { Spacer } from "@/components/ui/Spacer";
 import { Flex, Row, Column } from "@/components/ui/Flex";
 import { AspectRatio } from "@/components/ui/AspectRatio";
+import { SkeletonText } from "@/components/ui/SkeletonText";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -1574,8 +1575,25 @@ export default function UIShowcasePage() {
             </div>
 
             <div className="space-y-4">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tabla (5 filas)</p>
-              <Skeleton variant="table" lines={5} />
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">SkeletonText - Texto Especializado</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-500">Default (3 lineas)</p>
+                  <SkeletonText lines={3} />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-500">Anchos aleatorios</p>
+                  <SkeletonText lines={4} width="random" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-500">Anchos personalizados</p>
+                  <SkeletonText lines={3} width={['w-full', 'w-3/4', 'w-1/2']} />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-500">Titulo + ultima linea corta</p>
+                  <SkeletonText lines={2} variant="title" lastLineWidth="w-1/3" />
+                </div>
+              </div>
             </div>
           </div>
         </Card>

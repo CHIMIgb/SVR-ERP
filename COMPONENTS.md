@@ -32,9 +32,10 @@
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
-   - [Avatar](#43-avatar)
-   - [LoadingState](#44-loadingstate)
+   - [LoadingState](#43-loadingstate)
+   - [Badge](#44-badge)
    - [Skeleton](#45-skeleton)
+   - [SkeletonText](#46-skeletontext)
 5. [Componentes de Datos](#5-componentes-de-datos)
    - [DataTable](#51-datatable)
    - [Pagination](#52-pagination)
@@ -2086,6 +2087,74 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 - No usar para contenido que ya esta cargado — es solo para estados de carga.
 - No abusar de variantes en la misma vista — elegir la mas representativa.
+
+---
+
+### 4.6 SkeletonText
+
+Placeholder especializado para texto. Mas flexible que `Skeleton variant="text"` porque permite controlar el ancho de cada linea, el ancho de la ultima linea y el espaciado.
+
+**Archivo:** `src/components/ui/SkeletonText/SkeletonText.tsx`
+
+**Importacion:**
+```tsx
+import { SkeletonText } from '@/components/ui/SkeletonText';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `lines` | `number` | `3` | Numero de lineas |
+| `width` | `'full' \| 'random' \| string[]` | `'full'` | Ancho de las lineas |
+| `lastLineWidth` | `string` | `undefined` | Ancho de la ultima linea |
+| `variant` | `'text' \| 'title'` | `'text'` | Altura de las lineas |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Espaciado entre lineas |
+| `noAnimation` | `boolean` | `false` | Desactivar animacion pulse |
+
+#### Ejemplos
+
+**Texto basico:**
+
+```tsx
+<SkeletonText lines={3} />
+```
+
+**Anchos aleatorios:**
+
+```tsx
+<SkeletonText lines={4} width="random" />
+```
+
+**Anchos personalizados por linea:**
+
+```tsx
+<SkeletonText
+  lines={3}
+  width={['w-full', 'w-3/4', 'w-1/2']}
+/>
+```
+
+**Titulo con ultima linea corta:**
+
+```tsx
+<SkeletonText
+  lines={2}
+  variant="title"
+  lastLineWidth="w-1/3"
+/>
+```
+
+#### Cuando usar
+
+- Para parrafos de carga con control visual detallado.
+- Cuando se necesita simular texto realista con lineas de diferentes anchos.
+- Para titulos con subtitulos en estados de carga.
+
+#### No usar cuando
+
+- Se necesita un esqueleto complejo (avatar + texto + boton) — usar `Skeleton variant="row"`.
+- Se necesita una tabla o card completa — usar `Skeleton`.
 
 ---
 
