@@ -51,6 +51,7 @@ import { AspectRatio } from "@/components/ui/AspectRatio";
 import { SkeletonText } from "@/components/ui/SkeletonText";
 import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
 import { Show, Hide } from "@/components/ui/Show";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2248,6 +2249,47 @@ export default function UIShowcasePage() {
                     <span className="text-sm text-slate-700">Vista movil: interfaz simplificada</span>
                   </Hide>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ScrollArea */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              ScrollArea - Scroll Personalizado
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Vertical con maxHeight</p>
+                <ScrollArea maxHeight="160px" orientation="vertical" padding="sm" className="bg-slate-50 rounded-xl border border-slate-200">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <p key={i} className="text-sm text-slate-700 py-1.5 border-b border-slate-100 last:border-0">
+                      Item {i + 1}: Contenido desplazable verticalmente
+                    </p>
+                  ))}
+                </ScrollArea>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Horizontal</p>
+                <ScrollArea orientation="horizontal" padding="sm" className="bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex gap-3 min-w-max">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <div key={i} className="w-24 h-12 bg-primary/10 rounded-lg flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                        Tag {i + 1}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Con scrollbar oculto</p>
+                <ScrollArea maxHeight="120px" orientation="vertical" hideScrollbar padding="sm" className="bg-slate-50 rounded-xl border border-slate-200">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <p key={i} className="text-sm text-slate-700 py-1.5 border-b border-slate-100 last:border-0">
+                      Item {i + 1}: Sin scrollbar visible
+                    </p>
+                  ))}
+                </ScrollArea>
               </div>
             </div>
           </div>

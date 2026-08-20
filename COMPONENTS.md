@@ -28,9 +28,10 @@
    - [AspectRatio](#37-aspectratio)
    - [VisuallyHidden](#38-visuallyhidden)
    - [Show / Hide](#39-show--hide)
-   - [Stack](#310-stack)
-   - [Container](#311-container)
-   - [Divider](#312-divider)
+   - [ScrollArea](#310-scrollarea)
+   - [Stack](#311-stack)
+   - [Container](#312-container)
+   - [Divider](#313-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1491,7 +1492,72 @@ import { Show, Hide } from '@/components/ui/Show';
 
 ---
 
-### 3.10 Stack
+### 3.10 ScrollArea
+
+Contenedor con scroll controlado. Permite definir orientacion, dimensiones maximas, padding y ocultar la barra de scroll nativa.
+
+**Archivo:** `src/components/ui/ScrollArea/ScrollArea.tsx`
+
+**Importacion:**
+```tsx
+import { ScrollArea } from '@/components/ui/ScrollArea';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `orientation` | `'horizontal' \| 'vertical' \| 'both'` | `'vertical'` | Direccion del scroll |
+| `maxHeight` | `string` | `undefined` | Altura maxima (ej: `'200px'`) |
+| `maxWidth` | `string` | `undefined` | Ancho maxima |
+| `padding` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'none'` | Padding interno |
+| `hideScrollbar` | `boolean` | `false` | Ocultar scrollbar nativo |
+| `as` | `'div' \| 'section' \| 'article'` | `'div'` | Elemento HTML |
+
+#### Ejemplos
+
+**Scroll vertical:**
+
+```tsx
+<ScrollArea maxHeight="200px" orientation="vertical" padding="sm">
+  {items.map((item) => (
+    <p key={item.id}>{item.name}</p>
+  ))}
+</ScrollArea>
+```
+
+**Scroll horizontal:**
+
+```tsx
+<ScrollArea orientation="horizontal" padding="sm">
+  <div className="flex gap-3 min-w-max">
+    {tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}
+  </div>
+</ScrollArea>
+```
+
+**Sin scrollbar visible:**
+
+```tsx
+<ScrollArea maxHeight="160px" hideScrollbar>
+  {longContent}
+</ScrollArea>
+```
+
+#### Cuando usar
+
+- Listas largas dentro de cards o modales.
+- Tablas o tags que exceden el ancho disponible.
+- Cuando se necesita scroll pero sin mostrar la barra nativa.
+
+#### No usar cuando
+
+- El contenido debe expandirse naturalmente — usar `Stack` o `Grid`.
+- Se puede usar el scroll de la pagina completa.
+
+---
+
+### 3.11 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1551,7 +1617,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.11 Container
+### 3.12 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1599,7 +1665,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.12 Divider
+### 3.13 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 
