@@ -119,6 +119,7 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Show` / `Hide` | Mostrar/ocultar por breakpoint | `<Show above="md">...</Show>` |
 | `ScrollArea` | Scroll controlado | `<ScrollArea maxHeight="200px">...</ScrollArea>` |
 | `Separator` | Separador horizontal/vertical | `<Separator orientation="vertical" />` |
+| `Box` | Contenedor basico flexible | `<Box padding="md" radius="lg">...</Box>` |
 | `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
 | `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |

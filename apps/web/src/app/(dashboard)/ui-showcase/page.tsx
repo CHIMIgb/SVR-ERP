@@ -53,6 +53,7 @@ import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
 import { Show, Hide } from "@/components/ui/Show";
 import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Separator } from "@/components/ui/Separator";
+import { Box as BoxLayout } from "@/components/ui/Box";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2322,6 +2323,38 @@ export default function UIShowcasePage() {
                   <Separator orientation="vertical" size="medium" />
                   <span className="text-sm text-slate-600">Derecha</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Box */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Box - Contenedor Basico
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Variantes de fondo, borde y sombra</p>
+                <Grid columns={{ sm: 1, md: 2, lg: 3 }} gap="md">
+                  <BoxLayout padding="md" radius="lg" background="white" border="default" shadow="sm">
+                    <p className="text-sm font-semibold text-slate-700">Card-like Box</p>
+                    <p className="text-xs text-slate-500 mt-1">white + border + shadow-sm</p>
+                  </BoxLayout>
+                  <BoxLayout padding="md" radius="xl" background="slate" border="none">
+                    <p className="text-sm font-semibold text-slate-700">Slate Box</p>
+                    <p className="text-xs text-slate-500 mt-1">slate + radius-xl</p>
+                  </BoxLayout>
+                  <BoxLayout padding="md" radius="md" background="primary" border="primary">
+                    <p className="text-sm font-semibold text-slate-700">Primary Tint Box</p>
+                    <p className="text-xs text-slate-500 mt-1">primary/10 + border primary</p>
+                  </BoxLayout>
+                </Grid>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Full width y combinado</p>
+                <BoxLayout padding="lg" radius="xl" background="white" border="default" shadow="md" fullWidth>
+                  <p className="text-sm text-slate-700">Box de ancho completo con padding grande, sombra media y borde.</p>
+                </BoxLayout>
               </div>
             </div>
           </div>

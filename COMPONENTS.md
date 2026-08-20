@@ -30,9 +30,10 @@
    - [Show / Hide](#39-show--hide)
    - [ScrollArea](#310-scrollarea)
    - [Separator](#311-separator)
-   - [Stack](#312-stack)
-   - [Container](#313-container)
-   - [Divider](#314-divider)
+   - [Box](#312-box)
+   - [Stack](#313-stack)
+   - [Container](#314-container)
+   - [Divider](#315-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1618,7 +1619,71 @@ import { Separator } from '@/components/ui/Separator';
 
 ---
 
-### 3.12 Stack
+### 3.12 Box
+
+Contenedor basico y flexible para agrupar contenido. Permite configurar padding, radio, sombra, fondo y borde de forma declarativa.
+
+**Archivo:** `src/components/ui/Box/Box.tsx`
+
+**Importacion:**
+```tsx
+import { Box } from '@/components/ui/Box';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `padding` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'none'` | Padding interno |
+| `radius` | `'none' \| 'sm' \| 'md' \| 'lg' \| 'xl' \| '2xl'` | `'none'` | Border radius |
+| `shadow` | `'none' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'none'` | Sombra |
+| `background` | `'transparent' \| 'white' \| 'slate' \| 'primary' \| 'secondary'` | `'transparent'` | Fondo |
+| `border` | `'none' \| 'default' \| 'primary'` | `'none'` | Borde |
+| `fullWidth` | `boolean` | `false` | `w-full` |
+| `fullHeight` | `boolean` | `false` | `h-full` |
+| `as` | elemento HTML | `'div'` | Elemento a renderizar |
+
+#### Ejemplos
+
+**Card simple:**
+
+```tsx
+<Box padding="md" radius="lg" background="white" border="default" shadow="sm">
+  <p>Contenido</p>
+</Box>
+```
+
+**Destacado:**
+
+```tsx
+<Box padding="lg" radius="xl" background="primary" border="primary">
+  <h3>Importante</h3>
+  <p>Informacion destacada</p>
+</Box>
+```
+
+**Ancho completo:**
+
+```tsx
+<Box padding="lg" background="white" border="default" shadow="md" fullWidth>
+  <p>Seccion completa</p>
+</Box>
+```
+
+#### Cuando usar
+
+- Para agrupar contenido sin crear un componente especifico.
+- Cuando se necesita un contenedor con padding/background/borde rapido.
+- Como base para layouts simples.
+
+#### No usar cuando
+
+- Se necesita un componente semantico especifico — usar `Card`, `Container`, etc.
+- El contenido requiere logica interna — crear un componente propio.
+
+---
+
+### 3.13 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1678,7 +1743,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.13 Container
+### 3.14 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1726,7 +1791,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.14 Divider
+### 3.15 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 
