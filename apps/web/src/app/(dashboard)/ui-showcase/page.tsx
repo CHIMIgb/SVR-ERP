@@ -2017,7 +2017,7 @@ export default function UIShowcasePage() {
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-slate-400">Inline</p>
                   <p className="text-sm text-slate-600">
-                    Texto con badge <Center inline axis="both"><span className="bg-warning/10 text-warning px-2 py-0.5 rounded text-xs font-semibold">inline</span></Center> centrado.
+                    Texto con badge <Center inline as="span" axis="both"><span className="bg-warning/10 text-warning px-2 py-0.5 rounded text-xs font-semibold">inline</span></Center> centrado.
                   </p>
                 </div>
               </div>

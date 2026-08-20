@@ -1100,8 +1100,8 @@ import { Center } from '@/components/ui/Center';
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
 | `axis` | `'both' \| 'vertical' \| 'horizontal'` | `'both'` | Eje de centrado |
-| `inline` | `boolean` | `false` | Usar `inline-flex` en lugar de `flex` |
-| `as` | `'div' \| 'span' \| 'section' \| 'article' \| 'main' \| 'header' \| 'footer'` | `'div'` | Elemento HTML |
+| `inline` | `boolean` | `false` | Usar `inline-flex`. Cuando es `true`, el elemento por defecto es `span` para evitar errores de anidacion en `<p>`. |
+| `as` | `'div' \| 'span' \| 'section' \| 'article' \| 'main' \| 'header' \| 'footer'` | `'div'` (`'span'` si `inline`) | Elemento HTML |
 
 #### Ejemplos
 

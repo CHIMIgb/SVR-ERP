@@ -14,7 +14,7 @@ export function Center({
   axis = 'both',
   inline = false,
   className,
-  as: Component = 'div',
+  as: Component = inline ? 'span' : 'div',
 }: CenterProps) {
   return (
     <Component
