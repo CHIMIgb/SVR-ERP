@@ -22,6 +22,7 @@ import {
   Timer, ClipboardList, ShieldAlert, Building2, ShoppingCart, CreditCard, FileBadge,
   Banknote, Layers,
   AlertTriangle,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -54,6 +55,7 @@ import { Show, Hide } from "@/components/ui/Show";
 import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Separator } from "@/components/ui/Separator";
 import { Box as BoxLayout } from "@/components/ui/Box";
+import { Collapse } from "@/components/ui/Collapse";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -294,6 +296,7 @@ export default function UIShowcasePage() {
   const [tableSearch, setTableSearch] = useState("");
   const [tableFilters, setTableFilters] = useState<Record<string, string>>({});
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [collapseOpen, setCollapseOpen] = useState(false);
 
   const searchFilters: FilterField[] = [
     {
@@ -2355,6 +2358,37 @@ export default function UIShowcasePage() {
                 <BoxLayout padding="lg" radius="xl" background="white" border="default" shadow="md" fullWidth>
                   <p className="text-sm text-slate-700">Box de ancho completo con padding grande, sombra media y borde.</p>
                 </BoxLayout>
+              </div>
+            </div>
+          </div>
+
+          {/* Collapse */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Collapse - Acordion Simple
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Controlado con boton</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCollapseOpen(!collapseOpen)}
+                    icon={collapseOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  >
+                    {collapseOpen ? 'Ocultar detalles' : 'Mostrar detalles'}
+                  </Button>
+                  <Collapse in={collapseOpen}>
+                    <div className="pt-4 space-y-2">
+                      <p className="text-sm text-slate-700">
+                        Este contenido se expande y colapsa suavemente usando grid-rows-[0fr] y grid-rows-[1fr].
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        No requiere conocer la altura del contenido de antemano.
+                      </p>
+                    </div>
+                  </Collapse>
+                </div>
               </div>
             </div>
           </div>

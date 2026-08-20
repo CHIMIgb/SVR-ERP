@@ -31,9 +31,10 @@
    - [ScrollArea](#310-scrollarea)
    - [Separator](#311-separator)
    - [Box](#312-box)
-   - [Stack](#313-stack)
-   - [Container](#314-container)
-   - [Divider](#315-divider)
+   - [Collapse](#313-collapse)
+   - [Stack](#314-stack)
+   - [Container](#315-container)
+   - [Divider](#316-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1683,7 +1684,63 @@ import { Box } from '@/components/ui/Box';
 
 ---
 
-### 3.13 Stack
+### 3.13 Collapse
+
+Componente para expandir/colapsar contenido con animacion suave. Utiliza `grid-template-rows` para lograr la transicion sin necesidad de conocer la altura del contenido.
+
+**Archivo:** `src/components/ui/Collapse/Collapse.tsx`
+
+**Importacion:**
+```tsx
+import { Collapse } from '@/components/ui/Collapse';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `in` | `boolean` | `false` | Controla si el contenido esta visible |
+| `innerClassName` | `string` | `undefined` | Clases para el contenedor interno |
+
+#### Ejemplo
+
+```tsx
+import { useState } from 'react';
+import { Collapse } from '@/components/ui/Collapse';
+import { Button } from '@/components/ui/Button';
+
+function Detalles() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <Button onClick={() => setOpen(!open)}>
+        {open ? 'Ocultar' : 'Mostrar'}
+      </Button>
+      <Collapse in={open}>
+        <div className="pt-4">
+          <p>Contenido expandible</p>
+        </div>
+      </Collapse>
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Acordiones simples.
+- Mostrar/ocultar detalles adicionales.
+- FAQ o secciones expandibles.
+
+#### No usar cuando
+
+- Se necesita animacion compleja — usar Framer Motion.
+- Se requiere solo un acordeon abierto a la vez — implementar logica de grupo.
+
+---
+
+### 3.14 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1743,7 +1800,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.14 Container
+### 3.15 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1791,7 +1848,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.15 Divider
+### 3.16 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 
