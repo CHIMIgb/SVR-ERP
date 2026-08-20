@@ -114,6 +114,7 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Center` | Centrar contenido vertical/horizontal | `<Center className="h-32">...</Center>` |
 | `Spacer` | Espaciador declarativo | `<Spacer size="lg" />` |
 | `Flex` / `Row` / `Column` | Wrappers flexbox semanticos | `<Row justify="between">...</Row>` |
+| `AspectRatio` | Mantener proporcion fija | `<AspectRatio ratio="video">...</AspectRatio>` |
 | `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
 | `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |

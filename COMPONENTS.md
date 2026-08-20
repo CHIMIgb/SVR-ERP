@@ -25,9 +25,10 @@
    - [Center](#34-center)
    - [Spacer](#35-spacer)
    - [Flex, Row, Column](#36-flex-row-column)
-   - [Stack](#37-stack)
-   - [Container](#38-container)
-   - [Divider](#39-divider)
+   - [AspectRatio](#37-aspectratio)
+   - [Stack](#38-stack)
+   - [Container](#39-container)
+   - [Divider](#310-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1292,7 +1293,77 @@ Igual que `Flex` pero sin `direction` y con `align='stretch'` por defecto.
 
 ---
 
-### 3.7 Stack
+### 3.7 AspectRatio
+
+Contenedor que mantiene una proporcion de aspecto fija. Util para imagenes, videos, tarjetas con imagenes y mapas.
+
+**Archivo:** `src/components/ui/AspectRatio/AspectRatio.tsx`
+
+**Importacion:**
+```tsx
+import { AspectRatio } from '@/components/ui/AspectRatio';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `ratio` | `AspectRatioValue` | `'video'` | Proporcion de aspecto |
+| `contentClassName` | `string` | `undefined` | Clases para el contenedor interno |
+| `as` | `'div' \| 'section' \| 'article' \| 'figure'` | `'div'` | Elemento HTML |
+
+#### Valores de ratio
+
+| Valor | Proporcion | Uso tipico |
+|-------|------------|------------|
+| `'square'` | 1 / 1 | Avatares, logos, thumbnails |
+| `'video'` | 16 / 9 | Videos, dashboards, graficas |
+| `'photo'` | 4 / 3 | Fotografias |
+| `'portrait'` | 3 / 4 | Fotos verticales, tarjetas |
+| `'wide'` | 21 / 9 | Pantallas panoramicas |
+| `'cinema'` | 2.39 / 1 | Contenido cinematografico |
+| `number` | custom | Cualquier proporcion (ej: `2.39`) |
+
+#### Ejemplos
+
+**Video placeholder:**
+
+```tsx
+<AspectRatio ratio="video" className="rounded-xl overflow-hidden bg-slate-900">
+  <video src="..." className="w-full h-full object-cover" />
+</AspectRatio>
+```
+
+**Imagen cuadrada:**
+
+```tsx
+<AspectRatio ratio="square" className="rounded-lg overflow-hidden">
+  <img src="..." alt="..." className="w-full h-full object-cover" />
+</AspectRatio>
+```
+
+**Ratio numerico personalizado:**
+
+```tsx
+<AspectRatio ratio={2.39} className="rounded-xl bg-slate-100">
+  <span>Cinema</span>
+</AspectRatio>
+```
+
+#### Cuando usar
+
+- Contenedores de video o imagen que deben mantener proporcion.
+- Placeholders de contenido multimedia.
+- Tarjetas con imagenes de tamano consistente.
+
+#### No usar cuando
+
+- El contenido no debe recortarse ni escalar — usar un contenedor flexible.
+- Se necesita altura fija independiente del ancho.
+
+---
+
+### 3.8 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1352,7 +1423,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.8 Container
+### 3.9 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1400,7 +1471,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.9 Divider
+### 3.10 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

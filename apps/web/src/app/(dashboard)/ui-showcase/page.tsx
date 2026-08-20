@@ -47,6 +47,7 @@ import { Grid } from "@/components/ui/Grid";
 import { Center } from "@/components/ui/Center";
 import { Spacer } from "@/components/ui/Spacer";
 import { Flex, Row, Column } from "@/components/ui/Flex";
+import { AspectRatio } from "@/components/ui/AspectRatio";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2112,6 +2113,47 @@ export default function UIShowcasePage() {
                     <div className="w-8 h-8 bg-error rounded" />
                   </Flex>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* AspectRatio */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              AspectRatio - Proporciones Fijas
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Presets: video (16:9), square (1:1), photo (4:3), portrait (3:4)</p>
+                <Grid columns={{ sm: 1, md: 2, lg: 4 }} gap="md">
+                  <AspectRatio ratio="video" className="rounded-xl bg-slate-100 border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-500">16:9</span>
+                  </AspectRatio>
+                  <AspectRatio ratio="square" className="rounded-xl bg-slate-100 border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-500">1:1</span>
+                  </AspectRatio>
+                  <AspectRatio ratio="photo" className="rounded-xl bg-slate-100 border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-500">4:3</span>
+                  </AspectRatio>
+                  <AspectRatio ratio="portrait" className="rounded-xl bg-slate-100 border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-500">3:4</span>
+                  </AspectRatio>
+                </Grid>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Ratio numerico personalizado (2.39 = cinema)</p>
+                <AspectRatio ratio={2.39} className="rounded-xl bg-slate-100 border border-slate-200">
+                  <span className="text-xs font-semibold text-slate-500">2.39:1</span>
+                </AspectRatio>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Con contenido real (imagen/video placeholder)</p>
+                <AspectRatio ratio="video" className="rounded-xl overflow-hidden bg-slate-900">
+                  <div className="text-white text-center">
+                    <div className="text-2xl font-black">▶</div>
+                    <p className="text-xs mt-1">Video placeholder</p>
+                  </div>
+                </AspectRatio>
               </div>
             </div>
           </div>
