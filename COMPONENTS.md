@@ -26,9 +26,10 @@
    - [Spacer](#35-spacer)
    - [Flex, Row, Column](#36-flex-row-column)
    - [AspectRatio](#37-aspectratio)
-   - [Stack](#38-stack)
-   - [Container](#39-container)
-   - [Divider](#310-divider)
+   - [VisuallyHidden](#38-visuallyhidden)
+   - [Stack](#39-stack)
+   - [Container](#310-container)
+   - [Divider](#311-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1364,7 +1365,69 @@ import { AspectRatio } from '@/components/ui/AspectRatio';
 
 ---
 
-### 3.8 Stack
+### 3.8 VisuallyHidden
+
+Oculta contenido visualmente manteniendolo accesible para lectores de pantalla. Esencial para accesibilidad (a11y).
+
+**Archivo:** `src/components/ui/VisuallyHidden/VisuallyHidden.tsx`
+
+**Importacion:**
+```tsx
+import { VisuallyHidden } from '@/components/ui/VisuallyHidden';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `focusable` | `boolean` | `false` | Hace el contenido visible al recibir foco (util para "skip links") |
+| `as` | `'span' \| 'div' \| 'label'` | `'span'` | Elemento HTML |
+
+#### Ejemplos
+
+**Texto para screen readers en boton con icono:**
+
+```tsx
+<button>
+  <Search size={20} />
+  <VisuallyHidden>Buscar trabajadores</VisuallyHidden>
+</button>
+```
+
+**Skip link (accesible por teclado):**
+
+```tsx
+<a href="#main-content">
+  <VisuallyHidden focusable>
+    Saltar al contenido principal
+  </VisuallyHidden>
+</a>
+```
+
+**Label oculto para input:**
+
+```tsx
+<label>
+  <VisuallyHidden as="label">Correo electronico</VisuallyHidden>
+  <input type="email" placeholder="correo@ejemplo.com" />
+</label>
+```
+
+#### Cuando usar
+
+- Botones que solo muestran iconos.
+- Enlaces "saltar al contenido".
+- Texto adicional para contexto sin alterar el diseno visual.
+- Labels de formularios cuando el placeholder es suficiente visualmente.
+
+#### No usar cuando
+
+- El contenido debe ser visible para todos los usuarios.
+- Se puede mostrar el texto sin romper el diseno.
+
+---
+
+### 3.9 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1424,7 +1487,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.9 Container
+### 3.10 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1472,7 +1535,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.10 Divider
+### 3.11 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

@@ -49,6 +49,7 @@ import { Spacer } from "@/components/ui/Spacer";
 import { Flex, Row, Column } from "@/components/ui/Flex";
 import { AspectRatio } from "@/components/ui/AspectRatio";
 import { SkeletonText } from "@/components/ui/SkeletonText";
+import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2172,6 +2173,36 @@ export default function UIShowcasePage() {
                     <p className="text-xs mt-1">Video placeholder</p>
                   </div>
                 </AspectRatio>
+              </div>
+            </div>
+          </div>
+
+          {/* VisuallyHidden */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              VisuallyHidden - Accesibilidad
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Texto oculto visualmente (disponible para lectores de pantalla)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <button className="flex items-center gap-2 text-primary hover:text-primary-dark transition-colors">
+                    <Search size={20} />
+                    <VisuallyHidden>Buscar trabajadores</VisuallyHidden>
+                  </button>
+                  <p className="text-xs text-slate-500 mt-2">El boton muestra solo el icono, pero el texto "Buscar trabajadores" es leido por screen readers.</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Focusable (aparece al navegar con teclado)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <a href="#main-content" className="inline-block">
+                    <VisuallyHidden focusable>
+                      Saltar al contenido principal
+                    </VisuallyHidden>
+                  </a>
+                  <p className="text-xs text-slate-500 mt-2">Navega con Tab para ver el enlace "Saltar al contenido principal".</p>
+                </div>
               </div>
             </div>
           </div>
