@@ -1,9 +1,4 @@
 export const modalClasses = {
-  overlay:
-    'fixed inset-0 z-[9998] flex items-center justify-center p-2 sm:p-4',
-  backdrop:
-    'absolute inset-0 bg-slate-900/60 backdrop-blur-sm',
-  center: 'relative z-10 w-full flex items-center justify-center',
   card:
     'bg-white rounded-2xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[90vh] animate-[fadeScaleIn_0.2s_ease-out]',
   sizes: {

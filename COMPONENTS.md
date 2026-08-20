@@ -2994,7 +2994,7 @@ Estos componentes son esenciales para la arquitectura de la aplicacion. Los moda
 
 ### 6.1 Modal
 
-Modal base con overlay, backdrop blur, header, contenido scrollable y footer de acciones. Compone sub-componentes (`ModalHeader`, `ModalBody`, `ModalFooter`) para flexibilidad total.
+Modal base con overlay, header, contenido scrollable y footer de acciones. Usa los componentes `Portal` y `Overlay` para renderizar fuera del DOM y manejar el backdrop. Compone sub-componentes (`ModalHeader`, `ModalBody`, `ModalFooter`) para flexibilidad total.
 
 **Archivo:** `src/components/ui/Modal/Modal.tsx`
 
@@ -3051,11 +3051,12 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Moda
 
 #### Funcionalidades
 
+- Renderiza en un `Portal` fuera del arbol DOM principal.
+- Usa el componente `Overlay` para el backdrop con blur.
 - Cierra con tecla `Escape` (excepto `persistent`).
 - Cierra al hacer click en el overlay (excepto `persistent`).
 - Bloquea scroll del body mientras esta abierto.
 - Animacion de entrada con `fadeScaleIn`.
-- Backdrop blur en el overlay.
 - Accesibilidad: `role="dialog"`, `aria-modal="true"`.
 
 #### Ejemplo basico

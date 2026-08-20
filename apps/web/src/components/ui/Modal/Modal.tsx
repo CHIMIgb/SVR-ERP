@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { modalClasses } from './Modal.styles';
+import { Portal } from '@/components/ui/Portal';
+import { Overlay } from '@/components/ui/Overlay';
 
 type ModalSize = keyof typeof modalClasses.sizes;
 
@@ -30,8 +32,6 @@ export function Modal({
   contentClassName,
   persistent = false,
 }: ModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-
   // Cerrar con Escape
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -53,31 +53,23 @@ export function Modal({
 
   if (!open) return null;
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current && !persistent) onClose();
-  };
-
   return (
-    <div
-      ref={overlayRef}
-      onClick={handleOverlayClick}
-      className={modalClasses.overlay}
-    >
-      {/* Backdrop */}
-      <div className={modalClasses.backdrop} />
-
-      {/* Contenedor centrado */}
-      <div className={modalClasses.center}>
-        {/* Card */}
+    <Portal>
+      <Overlay
+        onClick={persistent ? undefined : onClose}
+        blur
+        className="z-[9998] p-2 sm:p-4"
+      >
         <div
           className={cn(modalClasses.card, modalClasses.sizes[size], contentClassName)}
           role="dialog"
           aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
         >
           {children}
         </div>
-      </div>
-    </div>
+      </Overlay>
+    </Portal>
   );
 }
 
