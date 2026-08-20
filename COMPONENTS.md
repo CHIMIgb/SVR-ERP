@@ -24,9 +24,10 @@
    - [Grid](#33-grid)
    - [Center](#34-center)
    - [Spacer](#35-spacer)
-   - [Stack](#36-stack)
-   - [Container](#37-container)
-   - [Divider](#38-divider)
+   - [Flex, Row, Column](#36-flex-row-column)
+   - [Stack](#37-stack)
+   - [Container](#38-container)
+   - [Divider](#39-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1209,7 +1210,89 @@ import { Spacer } from '@/components/ui/Spacer';
 
 ---
 
-### 3.6 Stack
+### 3.6 Flex, Row, Column
+
+Wrappers semanticos de flexbox para layouts de una dimension. `Row` es flex horizontal, `Column` es flex vertical, y `Flex` expone todas las opciones.
+
+**Archivos:**
+- `src/components/ui/Flex/Flex.tsx`
+- `src/components/ui/Row/Row.tsx`
+- `src/components/ui/Column/Column.tsx`
+
+**Importacion:**
+```tsx
+import { Flex, Row, Column } from '@/components/ui/Flex';
+// o individualmente
+import { Row } from '@/components/ui/Row';
+import { Column } from '@/components/ui/Column';
+```
+
+#### Props de Flex
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `direction` | `'row' \| 'row-reverse' \| 'column' \| 'column-reverse'` | `'row'` | Direccion del flex |
+| `wrap` | `'nowrap' \| 'wrap' \| 'wrap-reverse'` | `'nowrap'` | Comportamiento de wrap |
+| `justify` | `'start' \| 'end' \| 'center' \| 'between' \| 'around' \| 'evenly'` | `undefined` | Alineacion principal |
+| `align` | `'start' \| 'end' \| 'center' \| 'baseline' \| 'stretch'` | `undefined` | Alineacion transversal |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Espaciado entre hijos |
+| `inline` | `boolean` | `false` | Usar `inline-flex` |
+| `fullWidth` | `boolean` | `false` | `w-full` |
+| `fullHeight` | `boolean` | `false` | `h-full` |
+| `as` | elemento HTML | `'div'` | Elemento a renderizar |
+
+#### Props de Row
+
+Igual que `Flex` pero sin `direction` y con `align='center'` por defecto.
+
+#### Props de Column
+
+Igual que `Flex` pero sin `direction` y con `align='stretch'` por defecto.
+
+#### Ejemplos
+
+**Row con distribucion:**
+
+```tsx
+<Row justify="between" align="center">
+  <h2>Titulo</h2>
+  <Button>Accion</Button>
+</Row>
+```
+
+**Column apilada:**
+
+```tsx
+<Column gap="sm">
+  <span>Paso 1</span>
+  <span>Descripcion</span>
+  <Badge>Completado</Badge>
+</Column>
+```
+
+**Flex generico con wrap:**
+
+```tsx
+<Flex wrap="wrap" gap="sm">
+  {items.map((item) => <Tag key={item.id}>{item.name}</Tag>)}
+</Flex>
+```
+
+#### Cuando usar
+
+- `Row`: Para filas de elementos con alineacion horizontal.
+- `Column`: Para columnas de elementos apilados.
+- `Flex`: Cuando se necesita control total de direccion, wrap o alineaciones.
+
+#### No usar cuando
+
+- Para espaciado simple vertical — usar `Stack` o `Spacer`.
+- Para layouts de dos dimensiones — usar `Grid`.
+- Para centrar un solo elemento — usar `Center`.
+
+---
+
+### 3.7 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1269,7 +1352,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.7 Container
+### 3.8 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1317,7 +1400,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.8 Divider
+### 3.9 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

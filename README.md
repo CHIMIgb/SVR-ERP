@@ -113,6 +113,7 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Grid` | Layouts responsivos de columnas | `<Grid columns={{ sm: 1, lg: 4 }}>...</Grid>` |
 | `Center` | Centrar contenido vertical/horizontal | `<Center className="h-32">...</Center>` |
 | `Spacer` | Espaciador declarativo | `<Spacer size="lg" />` |
+| `Flex` / `Row` / `Column` | Wrappers flexbox semanticos | `<Row justify="between">...</Row>` |
 | `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
 | `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |

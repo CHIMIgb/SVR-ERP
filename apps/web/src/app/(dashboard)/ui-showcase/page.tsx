@@ -33,7 +33,7 @@ import { StatsCard } from "@/components/ui/StatsCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Avatar } from "@/components/ui/Avatar";
-import { DataTable, type Column } from "@/components/ui/DataTable";
+import { DataTable, type Column as DataTableColumn } from "@/components/ui/DataTable";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -46,6 +46,7 @@ import { Container } from "@/components/ui/Container";
 import { Grid } from "@/components/ui/Grid";
 import { Center } from "@/components/ui/Center";
 import { Spacer } from "@/components/ui/Spacer";
+import { Flex, Row, Column } from "@/components/ui/Flex";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -88,7 +89,7 @@ interface WorkerRow {
   bodega: string;
 }
 
-const workerColumns: Column<WorkerRow>[] = [
+const workerColumns: DataTableColumn<WorkerRow>[] = [
   { key: "nombre", header: "Nombre Completo", minWidth: "200px" },
   { key: "puesto", header: "Puesto", minWidth: "130px" },
   { key: "telefono", header: "Telefono", minWidth: "130px", nowrap: true },
@@ -2055,6 +2056,61 @@ export default function UIShowcasePage() {
                       <p className="text-[10px] font-bold text-slate-400">{s}</p>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Flex / Row / Column */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Flex, Row y Column - Layouts Flexbox
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Row - Fila con distribucion</p>
+                <Row justify="between" align="center" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <span className="text-sm font-semibold text-slate-700">Titulo</span>
+                  <Button size="sm">Accion</Button>
+                </Row>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Column - Columna apilada</p>
+                <Column gap="sm" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <span className="text-sm font-semibold text-slate-700">Paso 1</span>
+                  <span className="text-sm text-slate-600">Descripcion del paso</span>
+                  <Badge variant="success">Completado</Badge>
+                </Column>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Flex generico (wrap + gap)</p>
+                <Flex wrap="wrap" gap="sm" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  {['A', 'B', 'C', 'D', 'E', 'F'].map((item) => (
+                    <div key={item} className="w-16 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-xs font-semibold text-primary">
+                      {item}
+                    </div>
+                  ))}
+                </Flex>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Alineaciones: start | center | end | between | evenly</p>
+                <div className="space-y-2">
+                  <Flex justify="start" gap="sm" className="bg-slate-50 rounded-lg border border-slate-200 p-2">
+                    <div className="w-8 h-8 bg-info rounded" />
+                    <div className="w-8 h-8 bg-info rounded" />
+                  </Flex>
+                  <Flex justify="center" gap="sm" className="bg-slate-50 rounded-lg border border-slate-200 p-2">
+                    <div className="w-8 h-8 bg-success rounded" />
+                    <div className="w-8 h-8 bg-success rounded" />
+                  </Flex>
+                  <Flex justify="end" gap="sm" className="bg-slate-50 rounded-lg border border-slate-200 p-2">
+                    <div className="w-8 h-8 bg-warning rounded" />
+                    <div className="w-8 h-8 bg-warning rounded" />
+                  </Flex>
+                  <Flex justify="between" className="bg-slate-50 rounded-lg border border-slate-200 p-2">
+                    <div className="w-8 h-8 bg-error rounded" />
+                    <div className="w-8 h-8 bg-error rounded" />
+                  </Flex>
                 </div>
               </div>
             </div>
