@@ -78,7 +78,12 @@ export function Radio({
             !disabled && radioClasses.inputWrapperFocus
           )}
         >
-          {isChecked && <span className={radioClasses.dot} />}
+          <span
+            className={cn(
+              radioClasses.dot,
+              isChecked ? radioClasses.dotVisible : radioClasses.dotHidden
+            )}
+          />
         </span>
         {label && (
           <span className={cn(radioClasses.label, disabled && radioClasses.labelDisabled)}>

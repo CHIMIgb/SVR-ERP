@@ -82,11 +82,20 @@ export function Checkbox({
             !disabled && checkboxClasses.inputWrapperFocus
           )}
         >
-          {indeterminate ? (
-            <Minus className={checkboxClasses.indeterminateIcon} strokeWidth={3} />
-          ) : isChecked ? (
-            <Check className={checkboxClasses.checkIcon} strokeWidth={3} />
-          ) : null}
+          <Minus
+            className={cn(
+              checkboxClasses.indeterminateIcon,
+              indeterminate ? checkboxClasses.checkIconVisible : checkboxClasses.checkIconHidden
+            )}
+            strokeWidth={3}
+          />
+          <Check
+            className={cn(
+              checkboxClasses.checkIcon,
+              !indeterminate && isChecked ? checkboxClasses.checkIconVisible : checkboxClasses.checkIconHidden
+            )}
+            strokeWidth={3}
+          />
         </span>
         {label && (
           <span className={cn(checkboxClasses.label, disabled && checkboxClasses.labelDisabled)}>
