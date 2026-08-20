@@ -66,6 +66,7 @@ import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import type { DateRange } from "@/components/ui/DateRangePicker";
+import { TimePicker } from "@/components/ui/TimePicker";
 import { FormField } from "@/components/ui/FormField";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Radio } from "@/components/ui/Radio";
@@ -311,6 +312,8 @@ export default function UIShowcasePage() {
   const [singleDate, setSingleDate] = useState<Date | null>(new Date());
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
   const [dateError, setDateError] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState('08:30');
+  const [selectedTime2, setSelectedTime2] = useState('');
 
   // Form controls demo states
   const [aceptaTerminos, setAceptaTerminos] = useState(false);
@@ -1413,6 +1416,29 @@ export default function UIShowcasePage() {
                 onChange={setDateRange}
                 label="Periodo del reporte"
                 placeholder="Seleccionar rango de fechas"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-400">TimePicker - Hora unica</p>
+              <TimePicker
+                value={selectedTime}
+                onChange={setSelectedTime}
+                label="Hora de entrega"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-400">TimePicker - Con rango y error</p>
+              <TimePicker
+                value={selectedTime2}
+                onChange={setSelectedTime2}
+                label="Hora de inicio"
+                min="06:00"
+                max="22:00"
+                minuteStep={15}
+                error={!selectedTime2 ? 'La hora es requerida' : undefined}
+                placeholder="Seleccionar..."
               />
             </div>
           </div>

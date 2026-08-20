@@ -19,7 +19,8 @@
    - [Select](#24-select)
    - [DatePicker](#25-datepicker)
    - [DateRangePicker](#26-daterangepicker)
-   - [FormField](#27-formfield)
+   - [TimePicker](#27-timepicker)
+   - [FormField](#28-formfield)
    - [Checkbox](#28-checkbox)
    - [Radio](#29-radio)
    - [Switch](#210-switch)
@@ -791,7 +792,68 @@ function FiltroPeriodo() {
 
 ---
 
-### 2.7 FormField
+### 2.7 TimePicker
+
+Selector de hora con columnas de horas y minutos. Formato 24h estandar en Mexico.
+
+**Archivo:** `src/components/ui/TimePicker/TimePicker.tsx`
+
+**Importacion:**
+```tsx
+import { TimePicker } from '@/components/ui/TimePicker';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | `undefined` | Hora seleccionada — formato `"HH:mm"` |
+| `defaultValue` | `string` | `undefined` | Hora inicial no controlado |
+| `onChange` | `(time: string) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `placeholder` | `string` | `'Seleccionar hora'` | Placeholder del input |
+| `min` | `string` | `undefined` | Hora minima — formato `"HH:mm"` |
+| `max` | `string` | `undefined` | Hora maxima — formato `"HH:mm"` |
+| `minuteStep` | `number` | `5` | Intervalo de minutos (5, 10, 15, 30) |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+
+#### Ejemplo
+
+```tsx
+import { useState } from 'react';
+import { TimePicker } from '@/components/ui/TimePicker';
+
+function Horarios() {
+  const [horaEntrega, setHoraEntrega] = useState('08:30');
+
+  return (
+    <TimePicker
+      value={horaEntrega}
+      onChange={setHoraEntrega}
+      label="Hora de entrega"
+      min="06:00"
+      max="22:00"
+      minuteStep={15}
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Horarios de entrega, turnos, inicio/fin de jornada.
+- Formularios de nominas (horas entrada/salida).
+- Programacion de despachos y bitacoras.
+
+#### No usar cuando
+
+- Se necesita seleccionar fecha y hora juntas — usar `DatePicker` + `TimePicker` separados.
+- El formato de 12h es requerido — ajustar la presentacion manualmente.
+
+---
+
+### 2.8 FormField
 
 Wrapper estandar para agrupar un campo de formulario con su `label`, `hint` y `error`. Asegura consistencia visual en todos los formularios.
 
@@ -849,7 +911,7 @@ import { Input } from '@/components/ui/Input';
 
 ---
 
-### 2.8 Checkbox
+### 2.9 Checkbox
 
 Caja de verificacion con label, estados checked/unchecked/indeterminate y manejo de error.
 
@@ -904,7 +966,7 @@ function Filtros() {
 
 ---
 
-### 2.9 Radio
+### 2.10 Radio
 
 Boton de opcion unica para grupos mutuamente excluyentes.
 
@@ -970,7 +1032,7 @@ function MetodoPago() {
 
 ---
 
-### 2.10 Switch
+### 2.11 Switch
 
 Toggle visual para activar/desactivar una opcion.
 
@@ -1024,7 +1086,7 @@ function Notificaciones() {
 
 ---
 
-### 2.11 Textarea
+### 2.12 Textarea
 
 Campo de texto multilinea para descripciones, notas, comentarios y bitacoras.
 
@@ -1079,7 +1141,7 @@ import { Textarea } from '@/components/ui/Textarea';
 
 ---
 
-### 2.12 Badge
+### 2.13 Badge
 
 Etiqueta visual compacta para mostrar estados, categorias o indicadores.
 

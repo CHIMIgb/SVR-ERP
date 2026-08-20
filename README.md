@@ -128,6 +128,7 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |
 | `DatePicker` | Selector de fecha con calendario | `<DatePicker value={fecha} onChange={setFecha} />` |
 | `DateRangePicker` | Selector de rango de fechas | `<DateRangePicker value={range} onChange={setRange} />` |
+| `TimePicker` | Selector de hora | `<TimePicker value="08:30" onChange={setTime} />` |
 | `FormField` | Wrapper de label + hint + error | `<FormField label="Nombre"><Input /></FormField>` |
 | `Checkbox` | Caja de verificacion | `<Checkbox checked={x} onChange={setX} label="Acepto" />` |
 | `Radio` | Boton de opcion unica | `<Radio name="tipo" value="a" label="Opcion A" />` |
