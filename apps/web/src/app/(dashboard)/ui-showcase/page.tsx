@@ -70,6 +70,8 @@ import { FormField } from "@/components/ui/FormField";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Radio } from "@/components/ui/Radio";
 import { Switch } from "@/components/ui/Switch";
+import { Textarea } from "@/components/ui/Textarea";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
@@ -316,6 +318,9 @@ export default function UIShowcasePage() {
   const [notificaciones, setNotificaciones] = useState(true);
   const [metodoPago, setMetodoPago] = useState("transferencia");
   const [seleccionados, setSeleccionados] = useState<string[]>(["excavacion"]);
+  const [showConfirmDanger, setShowConfirmDanger] = useState(false);
+  const [showConfirmWarning, setShowConfirmWarning] = useState(false);
+  const [showConfirmInfo, setShowConfirmInfo] = useState(false);
 
   const searchFilters: FilterField[] = [
     {
@@ -1537,6 +1542,100 @@ export default function UIShowcasePage() {
               <Switch label="Con error" error="No se pudo guardar la preferencia" />
             </div>
           </div>
+        </Card>
+      </section>
+
+      {/* ── Textarea ──────────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Textarea
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Textarea
+              label="Descripcion del trabajo"
+              placeholder="Detalla la actividad realizada en la obra..."
+              rows={4}
+            />
+            <Textarea
+              label="Notas de bitacora"
+              placeholder="Observaciones adicionales..."
+              rows={4}
+              maxLength={250}
+              showCounter
+            />
+            <Textarea
+              label="Con error"
+              placeholder="Este campo es requerido"
+              rows={3}
+              error="La descripcion es obligatoria"
+              defaultValue="Nota incompleta"
+            />
+            <Textarea
+              label="Deshabilitado"
+              placeholder="No editable"
+              rows={3}
+              disabled
+              defaultValue="Esta informacion viene del sistema"
+            />
+          </div>
+        </Card>
+      </section>
+
+      {/* ── ConfirmDialog ──────────────────────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            ConfirmDialog
+          </h2>
+
+          <p className="text-xs text-slate-400 -mt-4">
+            Modal de confirmacion para acciones destructivas o irreversibles.
+          </p>
+
+          <div className="flex flex-wrap gap-3">
+            <Button variant="danger" onClick={() => setShowConfirmDanger(true)}>
+              Eliminar registro
+            </Button>
+            <Button variant="warning" onClick={() => setShowConfirmWarning(true)}>
+              Cancelar nomina
+            </Button>
+            <Button variant="secondary" onClick={() => setShowConfirmInfo(true)}>
+              Info del sistema
+            </Button>
+          </div>
+
+          <ConfirmDialog
+            open={showConfirmDanger}
+            onClose={() => setShowConfirmDanger(false)}
+            onConfirm={() => setShowConfirmDanger(false)}
+            title="Eliminar trabajador"
+            message="Esta accion eliminara al trabajador Juan Perez y todo su historial de asistencia, nominas y bitacoras. Esta accion no se puede deshacer."
+            confirmLabel="Eliminar"
+            variant="danger"
+          />
+
+          <ConfirmDialog
+            open={showConfirmWarning}
+            onClose={() => setShowConfirmWarning(false)}
+            onConfirm={() => setShowConfirmWarning(false)}
+            title="Cancelar nomina"
+            message="Se cancelara el proceso de nomina correspondiente al periodo de Julio 2025. Los pagos pendientes no seran procesados."
+            confirmLabel="Cancelar nomina"
+            variant="warning"
+          />
+
+          <ConfirmDialog
+            open={showConfirmInfo}
+            onClose={() => setShowConfirmInfo(false)}
+            onConfirm={() => setShowConfirmInfo(false)}
+            title="Acerca del sistema"
+            message="SVR-ERP v1.0.0 — Sistema de gestion empresarial para construccion. Modulo de Recursos Humanos activo."
+            confirmLabel="Entendido"
+            cancelLabel="Cerrar"
+            variant="info"
+          />
         </Card>
       </section>
 

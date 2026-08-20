@@ -132,6 +132,8 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Checkbox` | Caja de verificacion | `<Checkbox checked={x} onChange={setX} label="Acepto" />` |
 | `Radio` | Boton de opcion unica | `<Radio name="tipo" value="a" label="Opcion A" />` |
 | `Switch` | Toggle on/off | `<Switch checked={x} onChange={setX} label="Activar" />` |
+| `Textarea` | Campo multilinea | `<Textarea label="Notas" rows={4} />` |
+| `ConfirmDialog` | Modal de confirmacion | `<ConfirmDialog open={open} onConfirm={fn} title="..." message="..." />` |
 
 ### Zona Segura
 

@@ -531,6 +531,14 @@ Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
   │   ├── Switch.tsx              # Toggle on/off
   │   ├── Switch.styles.ts
   │   └── index.ts
+  ├── Textarea/
+  │   ├── Textarea.tsx            # Campo de texto multilinea
+  │   ├── Textarea.styles.ts
+  │   └── index.ts
+  ├── ConfirmDialog/
+  │   ├── ConfirmDialog.tsx       # Modal de confirmacion
+  │   ├── ConfirmDialog.styles.ts
+  │   └── index.ts
   ├── Modal/
   │   ├── Modal.tsx               # Overlay + backdrop blur + animation
   │   ├── Modal.styles.ts
