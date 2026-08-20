@@ -20,11 +20,11 @@
    - [Badge](#25-badge)
 3. [Componentes de Layout](#3-componentes-de-layout)
    - [PageHeader](#31-pageheader)
-   - [SearchInput](#32-searchinput)
+   - [Tabs](#32-tabs)
    - [Grid](#33-grid)
    - [Center](#34-center)
    - [Spacer](#35-spacer)
-   - [Flex, Row, Column](#36-flex-row-column)
+   - [Flex](#36-flex)
    - [AspectRatio](#37-aspectratio)
    - [VisuallyHidden](#38-visuallyhidden)
    - [Show / Hide](#39-show--hide)
@@ -534,7 +534,7 @@ import { Input } from '@/components/ui/Input';
 
 #### No usar cuando
 
-- No usar para busquedas con debounce — usar `SearchInput`.
+- No usar para busquedas con debounce — usar `SearchBar`.
 - No usar para seleccion multiple — usar `Select`.
 - No usar sin label a menos que el contexto sea obvio (dentro de un form con placeholder claro).
 
@@ -808,87 +808,7 @@ import { Plus, Download } from 'lucide-react';
 
 ---
 
-### 3.2 SearchInput
-
-Campo de busqueda con icono de lupa, boton de limpiar y debounce integrado.
-
-**Archivo:** `src/components/ui/SearchInput/SearchInput.tsx`
-
-**Importacion:**
-```tsx
-import { SearchInput } from '@/components/ui/SearchInput';
-```
-
-#### Props
-
-| Prop | Tipo | Default | Descripcion |
-|------|------|---------|-------------|
-| `value` | `string` | *(no controlado)* | Valor controlado del input |
-| `placeholder` | `string` | `'Buscar...'` | Texto placeholder |
-| `onChange` | `(value: string) => void` | `undefined` | Callback en cada cambio de valor |
-| `onSearch` | `(value: string) => void` | `undefined` | Callback con debounce (para busquedas) |
-| `debounceMs` | `number` | `300` | Milisegundos de debounce para `onSearch` |
-
-#### Comportamiento
-
-- **Controlado vs No controlado:** Si se pasa `value`, funciona como componente controlado. Si no, mantiene su estado interno.
-- **Debounce:** `onSearch` se ejecuta despues de `debounceMs` milisegundos sin cambios en el valor.
-- **Boton limpiar:** Aparece automaticamente cuando hay texto, limpia el valor y ejecuta los callbacks con string vacio.
-
-#### Ejemplo basico
-
-```tsx
-const [busqueda, setBusqueda] = useState('');
-
-<SearchInput
-  value={busqueda}
-  onChange={setBusqueda}
-  placeholder="Buscar trabajadores..."
-/>
-```
-
-#### Ejemplo avanzado
-
-```tsx
-import { SearchInput } from '@/components/ui/SearchInput';
-import { useState } from 'react';
-
-function PaginaMaquinaria() {
-  const [busqueda, setBusqueda] = useState('');
-
-  const handleSearch = (query: string) => {
-    // Se ejecuta despues de 300ms sin cambios
-    fetchMaquinaria(query);
-  };
-
-  return (
-    <div className="flex items-center gap-4">
-      <SearchInput
-        value={busqueda}
-        onChange={setBusqueda}
-        onSearch={handleSearch}
-        placeholder="Buscar por nombre, ID o operador..."
-        debounceMs={500}
-      />
-    </div>
-  );
-}
-```
-
-#### Cuando usar
-
-- Filtrar listas de registros en tiempo real.
-- Busquedas que necesitan debounce para evitar llamadas excesivas.
-- Cualquier campo de busqueda visual con icono de lupa.
-
-#### No usar cuando
-
-- No usar para campos de formulario que no son busqueda — usar `Input`.
-- No usar sin debounce para busquedas que involucran API calls.
-
----
-
-### 3.3 Tabs
+### 3.2 Tabs
 
 Navegacion por pestanas con soporte para iconos, conteos y contenido condicional.
 
@@ -1220,24 +1140,18 @@ import { Spacer } from '@/components/ui/Spacer';
 
 ---
 
-### 3.6 Flex, Row, Column
+### 3.6 Flex
 
-Wrappers semanticos de flexbox para layouts de una dimension. `Row` es flex horizontal, `Column` es flex vertical, y `Flex` expone todas las opciones.
+Wrapper flexbox de bajo nivel con control total de direccion, wrap, alineacion y gap. Usar para layouts de una dimension que requieren opciones avanzadas.
 
-**Archivos:**
-- `src/components/ui/Flex/Flex.tsx`
-- `src/components/ui/Row/Row.tsx`
-- `src/components/ui/Column/Column.tsx`
+**Archivo:** `src/components/ui/Flex/Flex.tsx`
 
 **Importacion:**
 ```tsx
-import { Flex, Row, Column } from '@/components/ui/Flex';
-// o individualmente
-import { Row } from '@/components/ui/Row';
-import { Column } from '@/components/ui/Column';
+import { Flex } from '@/components/ui/Flex';
 ```
 
-#### Props de Flex
+#### Props
 
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
@@ -1251,33 +1165,25 @@ import { Column } from '@/components/ui/Column';
 | `fullHeight` | `boolean` | `false` | `h-full` |
 | `as` | elemento HTML | `'div'` | Elemento a renderizar |
 
-#### Props de Row
-
-Igual que `Flex` pero sin `direction` y con `align='center'` por defecto.
-
-#### Props de Column
-
-Igual que `Flex` pero sin `direction` y con `align='stretch'` por defecto.
-
 #### Ejemplos
 
-**Row con distribucion:**
+**Fila con distribucion:**
 
 ```tsx
-<Row justify="between" align="center">
+<Flex justify="between" align="center">
   <h2>Titulo</h2>
   <Button>Accion</Button>
-</Row>
+</Flex>
 ```
 
-**Column apilada:**
+**Columna apilada:**
 
 ```tsx
-<Column gap="sm">
+<Flex direction="column" gap="sm">
   <span>Paso 1</span>
   <span>Descripcion</span>
   <Badge>Completado</Badge>
-</Column>
+</Flex>
 ```
 
 **Flex generico con wrap:**
@@ -1290,13 +1196,13 @@ Igual que `Flex` pero sin `direction` y con `align='stretch'` por defecto.
 
 #### Cuando usar
 
-- `Row`: Para filas de elementos con alineacion horizontal.
-- `Column`: Para columnas de elementos apilados.
-- `Flex`: Cuando se necesita control total de direccion, wrap o alineaciones.
+- Cuando se necesita control total de direccion, wrap o alineaciones.
+- Para filas de elementos con `justify="between"`.
+- Para layouts de una dimension complejos.
 
 #### No usar cuando
 
-- Para espaciado simple vertical — usar `Stack` o `Spacer`.
+- Para espaciado simple vertical u horizontal — usar `Stack`.
 - Para layouts de dos dimensiones — usar `Grid`.
 - Para centrar un solo elemento — usar `Center`.
 
@@ -1901,7 +1807,7 @@ import { Container } from '@/components/ui/Container';
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
 | `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| 'full'` | `'xl'` | Max-width del contenedor |
-| `padding` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Padding interno |
+| `padding` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Padding interno |
 | `center` | `boolean` | `true` | Centrar horizontalmente |
 | `as` | `'div' \| 'section' \| 'article' \| 'main' \| 'aside'` | `'div'` | Elemento HTML |
 
@@ -3688,7 +3594,7 @@ import { ActiveFilters } from '@/components/ui/SearchBar';
 ### 9.5 No usar cuando
 
 - La lista tiene menos de 5 elementos (no necesita busqueda).
-- Los filtros son solo un campo de texto (usar `SearchInput` directamente).
+- Los filtros son solo un campo de texto (usar `SearchBar` sin filtros).
 - La busqueda es simple y no necesita debounce.
 
 ---

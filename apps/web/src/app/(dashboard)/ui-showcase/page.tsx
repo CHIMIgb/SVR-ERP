@@ -32,7 +32,6 @@ import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatsCard } from "@/components/ui/StatsCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SearchInput } from "@/components/ui/SearchInput";
 import { Avatar } from "@/components/ui/Avatar";
 import { DataTable, type Column as DataTableColumn } from "@/components/ui/DataTable";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
@@ -47,7 +46,7 @@ import { Container } from "@/components/ui/Container";
 import { Grid } from "@/components/ui/Grid";
 import { Center } from "@/components/ui/Center";
 import { Spacer } from "@/components/ui/Spacer";
-import { Flex, Row, Column } from "@/components/ui/Flex";
+import { Flex } from "@/components/ui/Flex";
 import { AspectRatio } from "@/components/ui/AspectRatio";
 import { SkeletonText } from "@/components/ui/SkeletonText";
 import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
@@ -278,7 +277,6 @@ const mockMachines: GpsMachine[] = [
 
 export default function UIShowcasePage() {
   const [activeTab, setActiveTab] = useState("general");
-  const [searchValue, setSearchValue] = useState("");
   const toast = useToast();
 
   // Modal states
@@ -1331,21 +1329,27 @@ export default function UIShowcasePage() {
         </Card>
       </section>
 
-      {/* ── SearchInput ──────────────────────────────────────────── */}
+      {/* ── SearchBar ────────────────────────────────────────────── */}
       <section>
         <Card className="space-y-6">
           <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
             Buscador
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SearchInput
-              value={searchValue}
-              onChange={setSearchValue}
-              placeholder="Buscar trabajadores..."
-            />
-            <SearchInput placeholder="Filtrar por numero de serie..." />
-          </div>
+          <SearchBar
+            value={tableSearch}
+            placeholder="Buscar trabajador por nombre, puesto, RFC..."
+            onChange={setTableSearch}
+            filters={searchFilters}
+            activeFilters={activeTableFilters}
+            onRemoveFilter={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
+            onClearFilters={() => setTableFilters({})}
+          />
+          <ActiveFilters
+            filters={activeTableFilters}
+            onRemove={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
+            onClearAll={() => setTableFilters({})}
+          />
         </Card>
       </section>
 
@@ -1368,31 +1372,6 @@ export default function UIShowcasePage() {
             keyExtractor={(w) => w.id}
             onRowClick={(w) => console.log("Clicked:", w.nombre)}
             maxBodyHeight="400px"
-          />
-
-          {/* SearchBar + Filters Example */}
-          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider pt-4 border-t border-slate-100">
-            Con Busqueda y Filtros
-          </h3>
-          <p className="text-xs text-slate-400 -mt-2">
-            Barra de busqueda con filtros por columna. Los filtros se muestran como chips debajo de la busqueda.
-          </p>
-
-          <SearchBar
-            value={tableSearch}
-            placeholder="Buscar trabajador por nombre, puesto, RFC..."
-            onChange={setTableSearch}
-            filters={searchFilters}
-            activeFilters={activeTableFilters}
-            onRemoveFilter={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
-            onClearFilters={() => setTableFilters({})}
-          />
-
-          {/* Active Filters Chips */}
-          <ActiveFilters
-            filters={activeTableFilters}
-            onRemove={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
-            onClearAll={() => setTableFilters({})}
           />
 
           {/* Filter Panel (toggleable) */}
@@ -2137,26 +2116,26 @@ export default function UIShowcasePage() {
             </div>
           </div>
 
-          {/* Flex / Row / Column */}
+          {/* Flex / Stack */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-              Flex, Row y Column - Layouts Flexbox
+              Flex y Stack - Layouts Flexbox
             </h3>
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-400">Row - Fila con distribucion</p>
-                <Row justify="between" align="center" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
-                  <span className="text-sm font-semibold text-slate-700">Titulo</span>
-                  <Button size="sm">Accion</Button>
-                </Row>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-400">Column - Columna apilada</p>
-                <Column gap="sm" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-semibold text-slate-400">Stack - Columna apilada</p>
+                <Stack gap="sm" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                   <span className="text-sm font-semibold text-slate-700">Paso 1</span>
                   <span className="text-sm text-slate-600">Descripcion del paso</span>
                   <Badge variant="success">Completado</Badge>
-                </Column>
+                </Stack>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Stack horizontal</p>
+                <Stack direction="horizontal" gap="sm" align="center" className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <span className="text-sm font-semibold text-slate-700">Titulo</span>
+                  <Button size="sm">Accion</Button>
+                </Stack>
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-slate-400">Flex generico (wrap + gap)</p>
@@ -2246,7 +2225,7 @@ export default function UIShowcasePage() {
                     <Search size={20} />
                     <VisuallyHidden>Buscar trabajadores</VisuallyHidden>
                   </button>
-                  <p className="text-xs text-slate-500 mt-2">El boton muestra solo el icono, pero el texto "Buscar trabajadores" es leido por screen readers.</p>
+                  <p className="text-xs text-slate-500 mt-2">El boton muestra solo el icono, pero el texto &quot;Buscar trabajadores&quot; es leido por screen readers.</p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -2257,7 +2236,7 @@ export default function UIShowcasePage() {
                       Saltar al contenido principal
                     </VisuallyHidden>
                   </a>
-                  <p className="text-xs text-slate-500 mt-2">Navega con Tab para ver el enlace "Saltar al contenido principal".</p>
+                  <p className="text-xs text-slate-500 mt-2">Navega con Tab para ver el enlace &quot;Saltar al contenido principal&quot;.</p>
                 </div>
               </div>
             </div>

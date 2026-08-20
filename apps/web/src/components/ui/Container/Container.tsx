@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 
 type ContainerSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
-type ContainerPadding = 'none' | 'sm' | 'md' | 'lg';
+type ContainerPadding = 'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 const maxWidthMap: Record<ContainerSize, string> = {
   sm: 'max-w-screen-sm',   /* 640px */
@@ -15,9 +15,11 @@ const maxWidthMap: Record<ContainerSize, string> = {
 
 const paddingMap: Record<ContainerPadding, string> = {
   none: 'p-0',
+  xs: 'p-2',     /* 8px */
   sm: 'p-4',     /* 16px */
   md: 'p-6',     /* 24px */
   lg: 'p-8',     /* 32px */
+  xl: 'p-10',    /* 40px */
 };
 
 export interface ContainerProps {

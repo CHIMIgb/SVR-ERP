@@ -113,7 +113,7 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Grid` | Layouts responsivos de columnas | `<Grid columns={{ sm: 1, lg: 4 }}>...</Grid>` |
 | `Center` | Centrar contenido vertical/horizontal | `<Center className="h-32">...</Center>` |
 | `Spacer` | Espaciador declarativo | `<Spacer size="lg" />` |
-| `Flex` / `Row` / `Column` | Wrappers flexbox semanticos | `<Row justify="between">...</Row>` |
+| `Flex` | Wrapper flexbox de control total (direction, justify, align, wrap) | `<Flex justify="between">...</Flex>` |
 | `AspectRatio` | Mantener proporcion fija | `<AspectRatio ratio="video">...</AspectRatio>` |
 | `VisuallyHidden` | Ocultar visualmente (accesible) | `<VisuallyHidden>Texto</VisuallyHidden>` |
 | `Show` / `Hide` | Mostrar/ocultar por breakpoint | `<Show above="md">...</Show>` |

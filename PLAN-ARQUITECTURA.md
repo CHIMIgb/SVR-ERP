@@ -518,9 +518,9 @@ Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
   │   ├── PageHeader.tsx          # Titulo + subtitulo + boton de accion
   │   ├── PageHeader.styles.ts
   │   └── index.ts
-  ├── SearchInput/
-  │   ├── SearchInput.tsx         # Input con icono de busqueda
-  │   ├── SearchInput.styles.ts
+  ├── SearchBar/
+  │   ├── SearchBar.tsx           # Barra de busqueda con filtros opcionales
+  │   ├── SearchBar.styles.ts
   │   └── index.ts
   ├── StatsCard/
   │   ├── StatsCard.tsx           # KPI card con icono, valor, tendencia
