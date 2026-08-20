@@ -126,6 +126,8 @@ Componentes de layout disponibles en `apps/web/src/components/ui/`:
 | `Divider` | Separador visual entre secciones | `<Divider label="Sección" />` |
 | `PageHeader` | Encabezado estándar de página | `<PageHeader title="Título" />` |
 | `Card` | Contenedor con padding y borde | `<Card padding="md">...</Card>` |
+| `DatePicker` | Selector de fecha con calendario | `<DatePicker value={fecha} onChange={setFecha} />` |
+| `DateRangePicker` | Selector de rango de fechas | `<DateRangePicker value={range} onChange={setRange} />` |
 
 ### Zona Segura
 

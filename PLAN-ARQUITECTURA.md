@@ -507,6 +507,14 @@ Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
   │   ├── Badge.tsx               # Variantes: success, warning, error, info, neutral
   │   ├── Badge.styles.ts
   │   └── index.ts
+  ├── DatePicker/
+  │   ├── DatePicker.tsx          # Selector de fecha con calendario desplegable
+  │   ├── DatePicker.styles.ts
+  │   └── index.ts
+  ├── DateRangePicker/
+  │   ├── DateRangePicker.tsx     # Selector de rango de fechas
+  │   ├── DateRangePicker.styles.ts
+  │   └── index.ts
   ├── Modal/
   │   ├── Modal.tsx               # Overlay + backdrop blur + animation
   │   ├── Modal.styles.ts

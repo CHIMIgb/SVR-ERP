@@ -17,7 +17,9 @@
    - [Card](#22-card)
    - [Input](#23-input)
    - [Select](#24-select)
-   - [Badge](#25-badge)
+   - [DatePicker](#25-datepicker)
+   - [DateRangePicker](#26-daterangepicker)
+   - [Badge](#27-badge)
 3. [Componentes de Layout](#3-componentes-de-layout)
    - [PageHeader](#31-pageheader)
    - [Tabs](#32-tabs)
@@ -644,7 +646,147 @@ import { Select } from '@/components/ui/Select';
 
 ---
 
-### 2.5 Badge
+### 2.5 DatePicker
+
+Selector de fecha con calendario desplegable, navegacion por meses y formato `es-MX`.
+
+**Archivo:** `src/components/ui/DatePicker/DatePicker.tsx`
+
+**Importacion:**
+```tsx
+import { DatePicker } from '@/components/ui/DatePicker';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `Date \| null` | `undefined` | Fecha seleccionada (controlado) |
+| `defaultValue` | `Date \| null` | `null` | Fecha inicial (no controlado) |
+| `onChange` | `(date: Date \| null) => void` | `undefined` | Callback al seleccionar o limpiar |
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `placeholder` | `string` | `'Seleccionar fecha'` | Placeholder del input |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar el campo |
+| `min` | `Date` | `undefined` | Fecha minima seleccionable |
+| `max` | `Date` | `undefined` | Fecha maxima seleccionable |
+| `disabledDates` | `(date: Date) => boolean` | `undefined` | Funcion para deshabilitar fechas especificas |
+
+#### Ejemplo basico
+
+```tsx
+import { DatePicker } from '@/components/ui/DatePicker';
+import { useState } from 'react';
+
+function FormularioServicio() {
+  const [fecha, setFecha] = useState<Date | null>(new Date());
+
+  return (
+    <DatePicker
+      value={fecha}
+      onChange={setFecha}
+      label="Fecha de servicio"
+      placeholder="Seleccionar fecha"
+    />
+  );
+}
+```
+
+#### Ejemplo con restricciones
+
+```tsx
+<DatePicker
+  label="Fecha de entrega"
+  min={new Date()}
+  max={new Date(2025, 11, 31)}
+  disabledDates={(date) => date.getDay() === 0}
+  error="La fecha es obligatoria"
+/>
+```
+
+#### Cuando usar
+
+- Formularios que requieren una sola fecha (servicios, nómina, asistencia).
+- Filtros por fecha exacta.
+- Reemplazo de inputs `type="date"` nativos para mantener coherencia visual.
+
+#### No usar cuando
+
+- Se necesita seleccionar un rango — usar `DateRangePicker`.
+- Se necesita seleccionar fecha y hora — aun no hay componente de datetime.
+
+---
+
+### 2.6 DateRangePicker
+
+Selector de rango de fechas. Permite seleccionar fecha inicial y final con resaltado visual del intervalo.
+
+**Archivo:** `src/components/ui/DateRangePicker/DateRangePicker.tsx`
+
+**Importacion:**
+```tsx
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
+import type { DateRange } from '@/components/ui/DateRangePicker';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `DateRange` | `undefined` | Rango seleccionado (controlado) |
+| `defaultValue` | `DateRange` | `{ start: null, end: null }` | Rango inicial (no controlado) |
+| `onChange` | `(range: DateRange) => void` | `undefined` | Callback al cambiar el rango |
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `placeholder` | `string` | `'Seleccionar rango'` | Placeholder del input |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar el campo |
+| `min` | `Date` | `undefined` | Fecha minima seleccionable |
+| `max` | `Date` | `undefined` | Fecha maxima seleccionable |
+
+#### Tipo DateRange
+
+```ts
+interface DateRange {
+  start: Date | null;
+  end: Date | null;
+}
+```
+
+#### Ejemplo basico
+
+```tsx
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
+import type { DateRange } from '@/components/ui/DateRangePicker';
+import { useState } from 'react';
+
+function FiltroPeriodo() {
+  const [range, setRange] = useState<DateRange>({ start: null, end: null });
+
+  return (
+    <DateRangePicker
+      value={range}
+      onChange={setRange}
+      label="Periodo del reporte"
+      placeholder="Seleccionar rango de fechas"
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Filtros por periodo en reportes y finanzas.
+- Formularios que requieren fecha inicial y final (despachos, bitacoras, nómina).
+- Reemplazo de dos inputs de fecha sueltos.
+
+#### No usar cuando
+
+- Se necesita solo una fecha — usar `DatePicker`.
+- El rango siempre es fijo (ej. "esta semana") — usar botones predefinidos.
+
+---
+
+### 2.7 Badge
 
 Etiqueta visual compacta para mostrar estados, categorias o indicadores.
 

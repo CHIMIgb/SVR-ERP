@@ -63,6 +63,9 @@ import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui
 import type { GpsMachine, MachineStatus } from "@/components/ui/GpsTracking";
 import { SearchBar, FilterPanel, ActiveFilters } from "@/components/ui/SearchBar";
 import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import type { DateRange } from "@/components/ui/DateRangePicker";
 import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
@@ -298,6 +301,11 @@ export default function UIShowcasePage() {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [collapseOpen, setCollapseOpen] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
+
+  // Date picker demo states
+  const [singleDate, setSingleDate] = useState<Date | null>(new Date());
+  const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
+  const [dateError, setDateError] = useState<Date | null>(null);
 
   const searchFilters: FilterField[] = [
     {
@@ -1350,6 +1358,48 @@ export default function UIShowcasePage() {
             onRemove={(key) => setTableFilters((prev) => ({ ...prev, [key]: "" }))}
             onClearAll={() => setTableFilters({})}
           />
+        </Card>
+      </section>
+
+      {/* ── DatePicker / DateRangePicker ─────────────────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Selector de Fechas
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-400">DatePicker - Fecha unica</p>
+              <DatePicker
+                value={singleDate}
+                onChange={setSingleDate}
+                label="Fecha de servicio"
+                placeholder="Seleccionar fecha"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-400">DatePicker - Con error</p>
+              <DatePicker
+                value={dateError}
+                onChange={setDateError}
+                label="Fecha de corte"
+                placeholder="Requerido"
+                error="La fecha de corte es obligatoria"
+              />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <p className="text-xs font-semibold text-slate-400">DateRangePicker - Rango</p>
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                label="Periodo del reporte"
+                placeholder="Seleccionar rango de fechas"
+              />
+            </div>
+          </div>
         </Card>
       </section>
 
