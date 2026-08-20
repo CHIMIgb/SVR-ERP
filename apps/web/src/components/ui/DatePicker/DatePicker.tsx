@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/Portal';
 import { datePickerClasses } from './DatePicker.styles';
 
 export interface DatePickerProps {
@@ -32,7 +33,7 @@ export interface DatePickerProps {
 
 const WEEK_DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Anero', 'Mayo', 'Junio',
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
@@ -71,18 +72,15 @@ function getCalendarDays(year: number, month: number): Date[] {
 
   const days: Date[] = [];
 
-  // Previous month filler days
   const prevMonthDays = new Date(year, month, 0).getDate();
   for (let i = startDayOfWeek - 1; i >= 0; i--) {
     days.push(new Date(year, month - 1, prevMonthDays - i));
   }
 
-  // Current month days
   for (let i = 1; i <= daysInMonth; i++) {
     days.push(new Date(year, month, i));
   }
 
-  // Next month filler days to complete 6 weeks (42 days)
   const remaining = 42 - days.length;
   for (let i = 1; i <= remaining; i++) {
     days.push(new Date(year, month + 1, i));
@@ -109,6 +107,7 @@ export function DatePicker({
     const initial = value ?? defaultValue ?? new Date();
     return new Date(initial.getFullYear(), initial.getMonth(), 1);
   });
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
 
   const [internalValue, setInternalValue] = useState<Date | null>(
     value ?? defaultValue ?? null
@@ -116,6 +115,17 @@ export function DatePicker({
 
   const selectedDate = value !== undefined ? value : internalValue;
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Calcular posición del dropdown
+  const updatePosition = useCallback(() => {
+    if (rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX,
+      });
+    }
+  }, []);
 
   // Cerrar al hacer click fuera
   useEffect(() => {
@@ -129,6 +139,19 @@ export function DatePicker({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
+
+  // Recalcular posición al abrir y al hacer scroll/resize
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePosition();
+    const handleReposition = () => updatePosition();
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [isOpen, updatePosition]);
 
   const isDateDisabled = useCallback(
     (date: Date): boolean => {
@@ -170,7 +193,11 @@ export function DatePicker({
       {label && <label className={datePickerClasses.label}>{label}</label>}
 
       <div
-        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onClick={() => {
+          if (!disabled) {
+            setIsOpen(!isOpen);
+          }
+        }}
         className={cn(
           datePickerClasses.inputWrapper,
           error && datePickerClasses.inputWrapperError,
@@ -204,64 +231,69 @@ export function DatePicker({
       {error && <p className={datePickerClasses.error}>{error}</p>}
 
       {isOpen && !disabled && (
-        <div className={datePickerClasses.calendar}>
-          <div className={datePickerClasses.calendarHeader}>
-            <button
-              type="button"
-              onClick={() => navigateMonth(-1)}
-              className={datePickerClasses.navButton}
-              aria-label="Mes anterior"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className={datePickerClasses.calendarTitle}>
-              {MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}
-            </span>
-            <button
-              type="button"
-              onClick={() => navigateMonth(1)}
-              className={datePickerClasses.navButton}
-              aria-label="Mes siguiente"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
+        <Portal>
+          <div
+            className={datePickerClasses.calendar}
+            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+          >
+            <div className={datePickerClasses.calendarHeader}>
+              <button
+                type="button"
+                onClick={() => navigateMonth(-1)}
+                className={datePickerClasses.navButton}
+                aria-label="Mes anterior"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className={datePickerClasses.calendarTitle}>
+                {MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}
+              </span>
+              <button
+                type="button"
+                onClick={() => navigateMonth(1)}
+                className={datePickerClasses.navButton}
+                aria-label="Mes siguiente"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
 
-          <div className={datePickerClasses.daysHeader}>
-            {WEEK_DAYS.map((day) => (
-              <div key={day} className={datePickerClasses.dayLabel}>
-                {day}
-              </div>
-            ))}
-          </div>
+            <div className={datePickerClasses.daysHeader}>
+              {WEEK_DAYS.map((day) => (
+                <div key={day} className={datePickerClasses.dayLabel}>
+                  {day}
+                </div>
+              ))}
+            </div>
 
-          <div className={datePickerClasses.daysGrid}>
-            {calendarDays.map((date, index) => {
-              const isCurrentMonth = date.getMonth() === viewDate.getMonth();
-              const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
-              const isToday = isSameDay(date, today);
-              const isDisabled = isDateDisabled(date);
+            <div className={datePickerClasses.daysGrid}>
+              {calendarDays.map((date, index) => {
+                const isCurrentMonth = date.getMonth() === viewDate.getMonth();
+                const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
+                const isToday = isSameDay(date, today);
+                const isDisabled = isDateDisabled(date);
 
-              return (
-                <button
-                  key={index}
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={() => handleDateSelect(date)}
-                  className={cn(
-                    datePickerClasses.dayButton,
-                    !isCurrentMonth && datePickerClasses.dayButtonOutside,
-                    isToday && !isSelected && datePickerClasses.dayButtonToday,
-                    isSelected && datePickerClasses.dayButtonSelected,
-                    isDisabled && datePickerClasses.dayButtonDisabled
-                  )}
-                >
-                  {date.getDate()}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={() => handleDateSelect(date)}
+                    className={cn(
+                      datePickerClasses.dayButton,
+                      !isCurrentMonth && datePickerClasses.dayButtonOutside,
+                      isToday && !isSelected && datePickerClasses.dayButtonToday,
+                      isSelected && datePickerClasses.dayButtonSelected,
+                      isDisabled && datePickerClasses.dayButtonDisabled
+                    )}
+                  >
+                    {date.getDate()}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/Portal';
 import { timePickerClasses } from './TimePicker.styles';
 
 export interface TimePickerProps {
@@ -81,6 +82,7 @@ export function TimePicker({
 }: TimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [internalValue, setInternalValue] = useState(defaultValue ?? '');
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const rootRef = useRef<HTMLDivElement>(null);
   const listHourRef = useRef<HTMLDivElement>(null);
   const listMinuteRef = useRef<HTMLDivElement>(null);
@@ -92,6 +94,17 @@ export function TimePicker({
   const minutes = generateMinutes(minuteStep);
 
   const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
+
+  // Calcular posición del dropdown
+  const updatePosition = useCallback(() => {
+    if (rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX,
+      });
+    }
+  }, []);
 
   // Cerrar al hacer click fuera
   useEffect(() => {
@@ -114,6 +127,19 @@ export function TimePicker({
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen]);
+
+  // Recalcular posición al abrir y al hacer scroll/resize
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePosition();
+    const handleReposition = () => updatePosition();
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [isOpen, updatePosition]);
 
   // Auto-scroll a la hora seleccionada al abrir
   useEffect(() => {
@@ -191,86 +217,91 @@ export function TimePicker({
       {error && <p className={timePickerClasses.error}>{error}</p>}
 
       {isOpen && (
-        <div className={timePickerClasses.dropdown}>
-          <div className={timePickerClasses.columns}>
-            {/* Horas */}
-            <div className={timePickerClasses.column}>
-              <div className={timePickerClasses.columnHeader}>Hora</div>
-              <div ref={listHourRef} className={timePickerClasses.list}>
-                {hours.map((h) => {
-                  const time = formatTime(h, parsed?.minutes ?? 0);
-                  const disabledOption = isTimeDisabled(time, min, max);
-                  const isActive = parsed?.hours === h;
-                  return (
-                    <button
-                      key={h}
-                      type="button"
-                      data-active={isActive || undefined}
-                      disabled={disabledOption}
-                      onClick={() => handleSelect(h, parsed?.minutes ?? 0)}
-                      className={cn(
-                        timePickerClasses.option,
-                        isActive && timePickerClasses.optionActive,
-                        disabledOption && 'opacity-30 cursor-not-allowed'
-                      )}
-                    >
-                      {String(h).padStart(2, '0')}
-                    </button>
-                  );
-                })}
+        <Portal>
+          <div
+            className={timePickerClasses.dropdown}
+            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+          >
+            <div className={timePickerClasses.columns}>
+              {/* Horas */}
+              <div className={timePickerClasses.column}>
+                <div className={timePickerClasses.columnHeader}>Hora</div>
+                <div ref={listHourRef} className={timePickerClasses.list}>
+                  {hours.map((h) => {
+                    const time = formatTime(h, parsed?.minutes ?? 0);
+                    const disabledOption = isTimeDisabled(time, min, max);
+                    const isActive = parsed?.hours === h;
+                    return (
+                      <button
+                        key={h}
+                        type="button"
+                        data-active={isActive || undefined}
+                        disabled={disabledOption}
+                        onClick={() => handleSelect(h, parsed?.minutes ?? 0)}
+                        className={cn(
+                          timePickerClasses.option,
+                          isActive && timePickerClasses.optionActive,
+                          disabledOption && 'opacity-30 cursor-not-allowed'
+                        )}
+                      >
+                        {String(h).padStart(2, '0')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <span className={timePickerClasses.separator}>:</span>
+
+              {/* Minutos */}
+              <div className={timePickerClasses.column}>
+                <div className={timePickerClasses.columnHeader}>Min</div>
+                <div ref={listMinuteRef} className={timePickerClasses.list}>
+                  {minutes.map((m) => {
+                    const time = formatTime(parsed?.hours ?? 0, m);
+                    const disabledOption = isTimeDisabled(time, min, max);
+                    const isActive = parsed?.minutes === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        data-active={isActive || undefined}
+                        disabled={disabledOption}
+                        onClick={() => handleSelect(parsed?.hours ?? 0, m)}
+                        className={cn(
+                          timePickerClasses.option,
+                          isActive && timePickerClasses.optionActive,
+                          disabledOption && 'opacity-30 cursor-not-allowed'
+                        )}
+                      >
+                        {String(m).padStart(2, '0')}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            <span className={timePickerClasses.separator}>:</span>
-
-            {/* Minutos */}
-            <div className={timePickerClasses.column}>
-              <div className={timePickerClasses.columnHeader}>Min</div>
-              <div ref={listMinuteRef} className={timePickerClasses.list}>
-                {minutes.map((m) => {
-                  const time = formatTime(parsed?.hours ?? 0, m);
-                  const disabledOption = isTimeDisabled(time, min, max);
-                  const isActive = parsed?.minutes === m;
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      data-active={isActive || undefined}
-                      disabled={disabledOption}
-                      onClick={() => handleSelect(parsed?.hours ?? 0, m)}
-                      className={cn(
-                        timePickerClasses.option,
-                        isActive && timePickerClasses.optionActive,
-                        disabledOption && 'opacity-30 cursor-not-allowed'
-                      )}
-                    >
-                      {String(m).padStart(2, '0')}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className={timePickerClasses.footer}>
-            <button
-              type="button"
-              onClick={handleNow}
-              className={timePickerClasses.nowButton}
-            >
-              Ahora
-            </button>
-            {currentTime && (
+            <div className={timePickerClasses.footer}>
               <button
                 type="button"
-                onClick={handleClear}
-                className={timePickerClasses.clearButton}
+                onClick={handleNow}
+                className={timePickerClasses.nowButton}
               >
-                Limpiar
+                Ahora
               </button>
-            )}
+              {currentTime && (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className={timePickerClasses.clearButton}
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

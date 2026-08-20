@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/Portal';
 import { dateRangePickerClasses } from './DateRangePicker.styles';
 
 export interface DateRange {
@@ -131,6 +132,17 @@ export function DateRangePicker({
   );
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -143,6 +155,18 @@ export function DateRangePicker({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePosition();
+    const handleReposition = () => updatePosition();
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [isOpen, updatePosition]);
 
   const isDateDisabled = (date: Date): boolean => {
     if (disabled) return true;
@@ -246,7 +270,11 @@ export function DateRangePicker({
       {error && <p className={dateRangePickerClasses.error}>{error}</p>}
 
       {isOpen && !disabled && (
-        <div className={dateRangePickerClasses.calendar}>
+        <Portal>
+          <div
+            className={dateRangePickerClasses.calendar}
+            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+          >
           <div className={dateRangePickerClasses.calendarHeader}>
             <button
               type="button"
@@ -324,7 +352,8 @@ export function DateRangePicker({
               Limpiar
             </button>
           </div>
-        </div>
+          </div>
+        </Portal>
       )}
     </div>
   );
