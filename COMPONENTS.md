@@ -27,9 +27,10 @@
    - [Flex, Row, Column](#36-flex-row-column)
    - [AspectRatio](#37-aspectratio)
    - [VisuallyHidden](#38-visuallyhidden)
-   - [Stack](#39-stack)
-   - [Container](#310-container)
-   - [Divider](#311-divider)
+   - [Show / Hide](#39-show--hide)
+   - [Stack](#310-stack)
+   - [Container](#311-container)
+   - [Divider](#312-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1427,7 +1428,70 @@ import { VisuallyHidden } from '@/components/ui/VisuallyHidden';
 
 ---
 
-### 3.9 Stack
+### 3.9 Show / Hide
+
+Componentes para mostrar u ocultar contenido segun el breakpoint. Wrapper semantico sobre las clases de Tailwind.
+
+**Archivos:**
+- `src/components/ui/Show/Show.tsx`
+- `src/components/ui/Hide/Hide.tsx`
+
+**Importacion:**
+```tsx
+import { Show, Hide } from '@/components/ui/Show';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `above` | `'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Mostrar/ocultar por encima del breakpoint |
+| `below` | `'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Mostrar/ocultar por debajo del breakpoint |
+| `as` | `'div' \| 'span' \| 'section' \| 'article'` | `'div'` | Elemento HTML |
+
+#### Ejemplos
+
+**Mostrar solo en desktop:**
+
+```tsx
+<Show above="md">
+  <Sidebar />
+</Show>
+```
+
+**Ocultar en desktop:**
+
+```tsx
+<Hide above="md">
+  <MobileMenuButton />
+</Hide>
+```
+
+**Texto adaptativo:**
+
+```tsx
+<Show above="md">
+  <span>Vista desktop</span>
+</Show>
+<Hide above="md">
+  <span>Vista movil</span>
+</Hide>
+```
+
+#### Cuando usar
+
+- Mostrar u ocultar contenido segun el tamano de pantalla.
+- Renderizar interfaces diferentes para movil y desktop.
+- Evitar duplicar logica condicional con `useMediaQuery`.
+
+#### No usar cuando
+
+- Se necesita animacion de entrada/salida — usar CSS transitions o Framer Motion.
+- El contenido debe seguir en el DOM pero ser invisible — usar `hidden` directamente.
+
+---
+
+### 3.10 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1487,7 +1551,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.10 Container
+### 3.11 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1535,7 +1599,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.11 Divider
+### 3.12 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

@@ -50,6 +50,7 @@ import { Flex, Row, Column } from "@/components/ui/Flex";
 import { AspectRatio } from "@/components/ui/AspectRatio";
 import { SkeletonText } from "@/components/ui/SkeletonText";
 import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
+import { Show, Hide } from "@/components/ui/Show";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2202,6 +2203,50 @@ export default function UIShowcasePage() {
                     </VisuallyHidden>
                   </a>
                   <p className="text-xs text-slate-500 mt-2">Navega con Tab para ver el enlace "Saltar al contenido principal".</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Show / Hide */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Show / Hide - Por Breakpoint
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Show above md (oculto en movil, visible en desktop)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <Show above="md">
+                    <Badge variant="primary">Visible en md y superior</Badge>
+                  </Show>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Hide above md (visible en movil, oculto en desktop)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <Hide above="md">
+                    <Badge variant="warning">Visible solo en movil</Badge>
+                  </Hide>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Show below md (visible solo en movil y tablet)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <Show below="md">
+                    <Badge variant="info">Visible solo abajo de md</Badge>
+                  </Show>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Combinado: texto adaptativo</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                  <Show above="md">
+                    <span className="text-sm text-slate-700">Vista desktop: mas espacio para detalles</span>
+                  </Show>
+                  <Hide above="md">
+                    <span className="text-sm text-slate-700">Vista movil: interfaz simplificada</span>
+                  </Hide>
                 </div>
               </div>
             </div>
