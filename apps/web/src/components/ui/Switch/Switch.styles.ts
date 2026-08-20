@@ -7,7 +7,7 @@ export const switchClasses = {
   trackError: 'bg-red-200 border-red-200',
   trackFocus: 'group-focus-within:ring-2 group-focus-within:ring-primary/10',
   thumb:
-    'pointer-events-none absolute left-0.5 top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out',
+    'pointer-events-none absolute left-[2px] top-[3px] h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out',
   thumbChecked: 'translate-x-5',
   input: 'sr-only',
   label: 'text-sm font-semibold text-slate-700 select-none',
