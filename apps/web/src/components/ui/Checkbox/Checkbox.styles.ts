@@ -5,7 +5,7 @@ export const checkboxClasses = {
     'relative shrink-0 w-5 h-5 rounded-md border-2 border-slate-300 bg-white transition-all flex items-center justify-center',
   inputWrapperChecked: 'bg-primary border-primary',
   inputWrapperError: 'border-red-400 bg-red-50',
-  inputWrapperFocus: 'group-focus-within:border-primary/50 group-focus-within:ring-2 group-focus-within:ring-primary/10',
+  inputWrapperFocus: 'group-focus-within:border-primary',
   input: 'sr-only',
   checkIcon: 'text-white w-3.5 h-3.5',
   indeterminateIcon: 'text-white w-3 h-3',

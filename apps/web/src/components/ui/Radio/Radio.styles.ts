@@ -5,7 +5,7 @@ export const radioClasses = {
     'relative shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 bg-white transition-all flex items-center justify-center',
   inputWrapperChecked: 'border-primary',
   inputWrapperError: 'border-red-400 bg-red-50',
-  inputWrapperFocus: 'group-focus-within:border-primary/50 group-focus-within:ring-2 group-focus-within:ring-primary/10',
+  inputWrapperFocus: 'group-focus-within:border-primary',
   input: 'sr-only',
   dot: 'w-2.5 h-2.5 rounded-full bg-primary',
   label: 'text-sm font-semibold text-slate-700 leading-5 select-none',
