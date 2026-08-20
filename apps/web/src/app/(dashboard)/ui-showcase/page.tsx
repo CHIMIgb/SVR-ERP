@@ -66,6 +66,10 @@ import type { FilterField, ActiveFilter } from "@/components/ui/SearchBar";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import type { DateRange } from "@/components/ui/DateRangePicker";
+import { FormField } from "@/components/ui/FormField";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Radio } from "@/components/ui/Radio";
+import { Switch } from "@/components/ui/Switch";
 import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
@@ -306,6 +310,12 @@ export default function UIShowcasePage() {
   const [singleDate, setSingleDate] = useState<Date | null>(new Date());
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
   const [dateError, setDateError] = useState<Date | null>(null);
+
+  // Form controls demo states
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
+  const [notificaciones, setNotificaciones] = useState(true);
+  const [metodoPago, setMetodoPago] = useState("transferencia");
+  const [seleccionados, setSeleccionados] = useState<string[]>(["excavacion"]);
 
   const searchFilters: FilterField[] = [
     {
@@ -1398,6 +1408,133 @@ export default function UIShowcasePage() {
                 label="Periodo del reporte"
                 placeholder="Seleccionar rango de fechas"
               />
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── FormField / Checkbox / Radio / Switch ──────────────── */}
+      <section>
+        <Card className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+            Controles de Formulario
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* FormField */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                FormField
+              </h3>
+              <FormField label="Nombre del trabajador" required htmlFor="nombre-worker">
+                <Input id="nombre-worker" placeholder="Ej. Juan Perez Lopez" />
+              </FormField>
+              <FormField
+                label="Correo electronico"
+                hint="Se enviara la factura a este correo"
+                htmlFor="email-worker"
+              >
+                <Input id="email-worker" type="email" placeholder="correo@ejemplo.com" />
+              </FormField>
+              <FormField
+                label="CURP"
+                error="La CURP debe tener 18 caracteres"
+                htmlFor="curp"
+              >
+                <Input id="curp" defaultValue="ABC123" maxLength={18} />
+              </FormField>
+            </div>
+
+            {/* Checkbox */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                Checkbox
+              </h3>
+              <Checkbox
+                checked={aceptaTerminos}
+                onChange={setAceptaTerminos}
+                label="Acepto los terminos y condiciones"
+              />
+              <Checkbox
+                checked={seleccionados.includes("excavacion")}
+                onChange={(c) =>
+                  setSeleccionados((prev) =>
+                    c
+                      ? [...prev, "excavacion"]
+                      : prev.filter((x) => x !== "excavacion")
+                  )
+                }
+                label="Excavacion"
+              />
+              <Checkbox
+                checked={seleccionados.includes("cimbra")}
+                onChange={(c) =>
+                  setSeleccionados((prev) =>
+                    c
+                      ? [...prev, "cimbra"]
+                      : prev.filter((x) => x !== "cimbra")
+                  )
+                }
+                label="Cimbra"
+              />
+              <Checkbox indeterminate label="Seleccionar todos (indeterminate)" disabled />
+              <Checkbox disabled label="Opcion deshabilitada" />
+              <Checkbox
+                checked={false}
+                label="Con error"
+                error="Este campo es obligatorio"
+              />
+            </div>
+
+            {/* Radio */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                Radio
+              </h3>
+              <Radio
+                name="metodo-pago"
+                value="transferencia"
+                checked={metodoPago === "transferencia"}
+                onChange={() => setMetodoPago("transferencia")}
+                label="Transferencia SPEI"
+              />
+              <Radio
+                name="metodo-pago"
+                value="efectivo"
+                checked={metodoPago === "efectivo"}
+                onChange={() => setMetodoPago("efectivo")}
+                label="Efectivo"
+              />
+              <Radio
+                name="metodo-pago"
+                value="cheque"
+                checked={metodoPago === "cheque"}
+                onChange={() => setMetodoPago("cheque")}
+                label="Cheque nominativo"
+              />
+              <Radio
+                name="metodo-pago-disabled"
+                value="a"
+                checked
+                label="Deshabilitado"
+                disabled
+              />
+            </div>
+
+            {/* Switch */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                Switch
+              </h3>
+              <Switch
+                checked={notificaciones}
+                onChange={setNotificaciones}
+                label="Recibir notificaciones push"
+              />
+              <Switch defaultChecked label="Modo oscuro (no controlado)" />
+              <Switch disabled label="Siempre activo (deshabilitado)" />
+              <Switch disabled label="Siempre inactivo (deshabilitado)" />
+              <Switch label="Con error" error="No se pudo guardar la preferencia" />
             </div>
           </div>
         </Card>

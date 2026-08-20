@@ -19,7 +19,11 @@
    - [Select](#24-select)
    - [DatePicker](#25-datepicker)
    - [DateRangePicker](#26-daterangepicker)
-   - [Badge](#27-badge)
+   - [FormField](#27-formfield)
+   - [Checkbox](#28-checkbox)
+   - [Radio](#29-radio)
+   - [Switch](#210-switch)
+   - [Badge](#211-badge)
 3. [Componentes de Layout](#3-componentes-de-layout)
    - [PageHeader](#31-pageheader)
    - [Tabs](#32-tabs)
@@ -786,7 +790,240 @@ function FiltroPeriodo() {
 
 ---
 
-### 2.7 Badge
+### 2.7 FormField
+
+Wrapper estandar para agrupar un campo de formulario con su `label`, `hint` y `error`. Asegura consistencia visual en todos los formularios.
+
+**Archivo:** `src/components/ui/FormField/FormField.tsx`
+
+**Importacion:**
+```tsx
+import { FormField } from '@/components/ui/FormField';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `hint` | `string` | `undefined` | Texto de ayuda debajo del campo |
+| `error` | `string` | `undefined` | Mensaje de error (reemplaza al hint) |
+| `required` | `boolean` | `false` | Muestra asterisco de requerido |
+| `htmlFor` | `string` | `undefined` | ID del campo asociado al label |
+| `children` | `React.ReactNode` | *(requerido)* | Campo de entrada |
+
+#### Ejemplo
+
+```tsx
+import { FormField } from '@/components/ui/FormField';
+import { Input } from '@/components/ui/Input';
+
+<FormField
+  label="Nombre completo"
+  hint="Como aparece en la identificacion oficial"
+  required
+  htmlFor="nombre"
+>
+  <Input id="nombre" placeholder="Ej. Juan Perez" />
+</FormField>
+
+<FormField
+  label="Correo electronico"
+  error="El correo no es valido"
+  htmlFor="email"
+>
+  <Input id="email" type="email" />
+</FormField>
+```
+
+#### Cuando usar
+
+- Todos los campos de formulario que necesiten label, hint o error.
+- Agrupar inputs, selects, datepickers, textareas, etc.
+
+#### No usar cuando
+
+- El campo ya trae su propio label integrado (ej. `Input` si ya lo incluye).
+- No se necesita label ni validacion visual.
+
+---
+
+### 2.8 Checkbox
+
+Caja de verificacion con label, estados checked/unchecked/indeterminate y manejo de error.
+
+**Archivo:** `src/components/ui/Checkbox/Checkbox.tsx`
+
+**Importacion:**
+```tsx
+import { Checkbox } from '@/components/ui/Checkbox';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `checked` | `boolean` | `undefined` | Estado controlado |
+| `defaultChecked` | `boolean` | `false` | Estado inicial no controlado |
+| `onChange` | `(checked: boolean) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta al lado del checkbox |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+| `indeterminate` | `boolean` | `false` | Estado indeterminado |
+
+#### Ejemplo
+
+```tsx
+import { Checkbox } from '@/components/ui/Checkbox';
+import { useState } from 'react';
+
+function Filtros() {
+  const [aceptado, setAceptado] = useState(false);
+
+  return (
+    <Checkbox
+      checked={aceptado}
+      onChange={setAceptado}
+      label="Acepto los terminos y condiciones"
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Seleccion binaria (si/no, activo/inactivo).
+- Listas de opciones donde se pueden marcar multiples items.
+- Estado "seleccionar todos" con `indeterminate`.
+
+#### No usar cuando
+
+- Solo hay dos opciones mutuamente excluyentes y visibles — usar `Radio`.
+- La accion es un toggle inmediato sin confirmacion — usar `Switch`.
+
+---
+
+### 2.9 Radio
+
+Boton de opcion unica para grupos mutuamente excluyentes.
+
+**Archivo:** `src/components/ui/Radio/Radio.tsx`
+
+**Importacion:**
+```tsx
+import { Radio } from '@/components/ui/Radio';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `checked` | `boolean` | `undefined` | Estado controlado |
+| `defaultChecked` | `boolean` | `false` | Estado inicial no controlado |
+| `onChange` | `(checked: boolean) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta |
+| `name` | `string` | `undefined` | Nombre del grupo |
+| `value` | `string` | `undefined` | Valor del radio |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+| `error` | `boolean` | `false` | Indica error en el grupo |
+
+#### Ejemplo
+
+```tsx
+import { Radio } from '@/components/ui/Radio';
+import { useState } from 'react';
+
+function MetodoPago() {
+  const [metodo, setMetodo] = useState('transferencia');
+
+  return (
+    <div className="space-y-2">
+      <Radio
+        name="metodo"
+        value="transferencia"
+        checked={metodo === 'transferencia'}
+        onChange={() => setMetodo('transferencia')}
+        label="Transferencia SPEI"
+      />
+      <Radio
+        name="metodo"
+        value="efectivo"
+        checked={metodo === 'efectivo'}
+        onChange={() => setMetodo('efectivo')}
+        label="Efectivo"
+      />
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Seleccion unica entre varias opciones visibles.
+- Opciones mutuamente excluyentes (maximo 5-7 opciones).
+
+#### No usar cuando
+
+- Se pueden seleccionar multiples opciones — usar `Checkbox`.
+- Hay mas de 7 opciones — usar `Select` o `Combobox`.
+
+---
+
+### 2.10 Switch
+
+Toggle visual para activar/desactivar una opcion.
+
+**Archivo:** `src/components/ui/Switch/Switch.tsx`
+
+**Importacion:**
+```tsx
+import { Switch } from '@/components/ui/Switch';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `checked` | `boolean` | `undefined` | Estado controlado |
+| `defaultChecked` | `boolean` | `false` | Estado inicial no controlado |
+| `onChange` | `(checked: boolean) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+
+#### Ejemplo
+
+```tsx
+import { Switch } from '@/components/ui/Switch';
+import { useState } from 'react';
+
+function Notificaciones() {
+  const [activo, setActivo] = useState(true);
+
+  return (
+    <Switch
+      checked={activo}
+      onChange={setActivo}
+      label="Recibir notificaciones push"
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Activar/desactivar una funcion o configuracion.
+- Cambios que aplican inmediatamente.
+- Estados ON/OFF claros.
+
+#### No usar cuando
+
+- La opcion requiere confirmacion adicional — usar `Checkbox`.
+- Hay multiples opciones excluyentes — usar `Radio`.
+
+---
+
+### 2.11 Badge
 
 Etiqueta visual compacta para mostrar estados, categorias o indicadores.
 

@@ -515,6 +515,22 @@ Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
   │   ├── DateRangePicker.tsx     # Selector de rango de fechas
   │   ├── DateRangePicker.styles.ts
   │   └── index.ts
+  ├── FormField/
+  │   ├── FormField.tsx           # Wrapper de label + hint + error
+  │   ├── FormField.styles.ts
+  │   └── index.ts
+  ├── Checkbox/
+  │   ├── Checkbox.tsx            # Caja de verificacion
+  │   ├── Checkbox.styles.ts
+  │   └── index.ts
+  ├── Radio/
+  │   ├── Radio.tsx               # Boton de opcion unica
+  │   ├── Radio.styles.ts
+  │   └── index.ts
+  ├── Switch/
+  │   ├── Switch.tsx              # Toggle on/off
+  │   ├── Switch.styles.ts
+  │   └── index.ts
   ├── Modal/
   │   ├── Modal.tsx               # Overlay + backdrop blur + animation
   │   ├── Modal.styles.ts
