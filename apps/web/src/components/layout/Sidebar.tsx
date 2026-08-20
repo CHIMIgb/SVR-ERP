@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { useSidebar } from './SidebarContext';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -73,7 +74,7 @@ const navItems: SidebarGroup[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = React.useState(false);
+  const { collapsed, setCollapsed } = useSidebar();
 
   return (
     <aside className={cn(

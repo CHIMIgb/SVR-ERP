@@ -1801,6 +1801,7 @@ import { Overlay } from '@/components/ui/Overlay';
 | `open` | `boolean` | `true` | Mostrar overlay |
 | `blur` | `boolean` | `false` | Aplicar backdrop-blur |
 | `dark` | `boolean` | `true` | Fondo oscuro semitransparente |
+| `offsetLeft` | `number` | `0` | Pixeles a omitir en el lado izquierdo (ej. ancho del sidebar) |
 | `onClick` | `() => void` | `undefined` | Click en el overlay |
 
 #### Ejemplo
@@ -3013,6 +3014,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Moda
 | `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| 'full'` | `'md'` | Tamano maximo del modal |
 | `persistent` | `boolean` | `false` | Si es true, no cierra al hacer click en overlay ni con Escape |
 | `contentClassName` | `string` | `undefined` | Clases adicionales para el card interno |
+| `offsetLeft` | `number` | `0` | Omite el overlay en los primeros pixeles del lado izquierdo (util para no cubrir el sidebar) |
 
 #### Sub-componentes
 

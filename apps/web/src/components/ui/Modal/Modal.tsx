@@ -22,6 +22,8 @@ export interface ModalProps {
   contentClassName?: string;
   /** Si es true, no cierra al hacer click en el overlay */
   persistent?: boolean;
+  /** Espacio a omitir en el lado izquierdo (ej. ancho del sidebar) */
+  offsetLeft?: number;
 }
 
 export function Modal({
@@ -31,6 +33,7 @@ export function Modal({
   size = 'md',
   contentClassName,
   persistent = false,
+  offsetLeft = 0,
 }: ModalProps) {
   // Cerrar con Escape
   const handleKeyDown = useCallback(
@@ -58,6 +61,7 @@ export function Modal({
       <Overlay
         onClick={persistent ? undefined : onClose}
         blur
+        offsetLeft={offsetLeft}
         className="z-[9998] p-2 sm:p-4"
       >
         <div
