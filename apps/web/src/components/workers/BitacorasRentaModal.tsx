@@ -1,14 +1,12 @@
 "use client";
 
 import React, { useState } from 'react';
-import { 
-  X, Plus, FileText, CheckCircle2, Clock, Truck, 
-  Building2, User, DollarSign, AlertCircle, Search,
-  Calendar, ShieldCheck, Download, ExternalLink, Printer
-} from 'lucide-react';
+import { X, Plus, FileText, CheckCircle2, AlertCircle, Calendar } from 'lucide-react';
 import { BitacoraRentaDiaria, Trabajador, maquinaria } from '@/lib/data';
 import { useToast } from '@/components/layout/Toast';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { Portal } from '@/components/ui/Portal';
+import { Overlay } from '@/components/ui/Overlay';
 
 interface BitacorasRentaModalProps {
   isOpen: boolean;
@@ -29,7 +27,6 @@ export default function BitacorasRentaModal({
   const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
-  const [selectedBitacora, setSelectedBitacora] = useState<BitacoraRentaDiaria | null>(null);
 
   // New Bitácora form
   const [form, setForm] = useState({
@@ -65,7 +62,7 @@ export default function BitacorasRentaModal({
     const importe = totalHrs * tarifa;
 
     const nueva: BitacoraRentaDiaria = {
-      id: `B${Date.now()}`,
+      id: `B${String(bitacoras.length + 1).padStart(4, '0')}`,
       folio: `BIT-2025-${String(bitacoras.length + 1).padStart(3, '0')}`,
       trabajadorId: form.trabajadorId,
       trabajadorNombre: trabajador?.nombre ?? 'Operador SVR',
@@ -98,15 +95,15 @@ export default function BitacorasRentaModal({
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
-        onClick={e => e.stopPropagation()}
-      >
-        
+    <Portal>
+      <Overlay onClick={onClose} blur className="z-[9999] p-4">
+        <div
+          className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+
         {/* Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -181,7 +178,7 @@ export default function BitacorasRentaModal({
               <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400">
                 <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p className="font-bold text-sm">Sin hojas de bitácora registradas para este operador.</p>
-                <p className="text-xs mt-1">Haz clic en "+ Capturar Hoja" para registrar la primera bitácora.</p>
+                <p className="text-xs mt-1">Haz clic en &quot;+ Capturar Hoja&quot; para registrar la primera bitácora.</p>
               </div>
             ) : (
               filteredBitacoras.map(b => (
@@ -433,11 +430,10 @@ export default function BitacorasRentaModal({
                 </div>
               )}
             </div>
-
           </div>
         </Modal>
       )}
-
-    </div>
+    </Overlay>
+  </Portal>
   );
 }

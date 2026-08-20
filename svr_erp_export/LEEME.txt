@@ -1,0 +1,63 @@
+EXPORT DE LA BASE DE DATOS "svr_erp" (SVR-ERP)
+================================================
+
+Este .zip trae 2 copias de la misma base de datos:
+
+  1) svr_erp.dump   <- USAR ESTA (formato "custom" de PostgreSQL, comprimido)
+  2) svr_erp.sql    <- Respaldo por si el punto 1 no funciona (formato de texto plano)
+
+Requisito: tener PostgreSQL instalado (idealmente versión 16 o más nueva,
+para evitar problemas de compatibilidad). Se necesitan las herramientas de
+línea de comandos que vienen con la instalación: pg_restore y/o psql.
+
+────────────────────────────────────────────────────────────────────────
+OPCIÓN A (recomendada) — Restaurar svr_erp.dump con pg_restore
+────────────────────────────────────────────────────────────────────────
+
+1. Abre una terminal (CMD o PowerShell) en la carpeta donde descomprimiste
+   el .zip.
+
+2. Ejecuta (ajusta el usuario si el tuyo no se llama "postgres"; te va a
+   pedir la contraseña de ese usuario de Postgres):
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\pg_restore.exe" -h localhost -U postgres -C -d postgres --no-owner --no-privileges svr_erp.dump
+
+   El flag -C hace que cree la base de datos "svr_erp" automáticamente.
+   No hace falta crearla a mano antes.
+
+3. Si todo salió bien, ya tienes la base "svr_erp" completa (con datos)
+   en tu Postgres local.
+
+Alternativa con interfaz gráfica (pgAdmin):
+   - Click derecho en "Databases" > Create > Database... (nómbrala "svr_erp")
+   - Click derecho en esa base nueva > Restore...
+   - Selecciona svr_erp.dump, formato "Custom or tar", y dale Restore.
+
+────────────────────────────────────────────────────────────────────────
+OPCIÓN B (respaldo) — Restaurar svr_erp.sql con psql
+────────────────────────────────────────────────────────────────────────
+
+Solo si la Opción A falla. Este archivo es texto plano, un poco más
+sensible a encoding/versión, pero más "a prueba de fallos" para tools
+que no tienen pg_restore.
+
+1. Crea la base de datos vacía primero:
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\createdb.exe" -h localhost -U postgres svr_erp
+
+2. Carga el archivo:
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\psql.exe" -h localhost -U postgres -d svr_erp -f svr_erp.sql
+
+────────────────────────────────────────────────────────────────────────
+NOTAS
+────────────────────────────────────────────────────────────────────────
+
+- El dump se generó con --no-owner --no-privileges para que no truene por
+  roles/usuarios que no existen en tu servidor (ej. si tu superusuario de
+  Postgres no se llama "postgres").
+- Incluye estructura completa (tablas, relaciones, tipos) + los datos de
+  prueba ya cargados (trabajadores, máquinas, proyectos, etc.).
+- Contiene acentos y ñ (texto en español) — está en UTF-8, no debería dar
+  problemas, pero si ves caracteres raros al restaurar el .sql, asegúrate
+  de que tu terminal/cliente esté usando UTF-8.

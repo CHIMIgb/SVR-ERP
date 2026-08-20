@@ -1,5 +1,7 @@
 import { FileSearch } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Center } from '@/components/ui/Center';
+import { Stack } from '@/components/ui/Stack';
 import { emptyStateClasses } from './EmptyState.styles';
 
 export interface EmptyStateProps {
@@ -18,13 +20,15 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <div className={cn(emptyStateClasses.wrapper, className)}>
-      <div className={emptyStateClasses.iconWrapper}>
-        {icon || <FileSearch className={emptyStateClasses.icon} size={36} />}
-      </div>
-      <h3 className={emptyStateClasses.title}>{title}</h3>
-      <p className={emptyStateClasses.subtitle}>{subtitle}</p>
-      {action && <div className="mt-5">{action}</div>}
-    </div>
+    <Center axis="both" className={cn('py-10 sm:py-16 px-4 overflow-hidden', className)}>
+      <Stack gap="sm" align="center">
+        <Center className={emptyStateClasses.iconWrapper}>
+          {icon || <FileSearch className={emptyStateClasses.icon} size={36} />}
+        </Center>
+        <h3 className={emptyStateClasses.title}>{title}</h3>
+        <p className={emptyStateClasses.subtitle}>{subtitle}</p>
+        {action && <div className="mt-5">{action}</div>}
+      </Stack>
+    </Center>
   );
 }
