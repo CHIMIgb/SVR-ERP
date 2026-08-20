@@ -1,14 +1,16 @@
 "use client";
 
 import React, { useState } from 'react';
-import { 
-  X, MapPin, ShieldCheck, ShieldAlert, Smartphone, 
+import {
+  X, ShieldCheck, ShieldAlert,
   Battery, Clock, ExternalLink, Navigation, Compass,
   CheckCircle2, AlertTriangle, Building2, User, Flame,
-  DollarSign, ArrowRight
+  ArrowRight
 } from 'lucide-react';
 import { RegistroAsistencia, trabajadores } from '@/lib/data';
 import { useToast } from '@/components/layout/Toast';
+import { Portal } from '@/components/ui/Portal';
+import { Overlay } from '@/components/ui/Overlay';
 
 interface AsistenciaGpsModalProps {
   isOpen: boolean;
@@ -57,15 +59,15 @@ export default function AsistenciaGpsModal({
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
-        onClick={e => e.stopPropagation()}
-      >
-        
+    <Portal>
+      <Overlay onClick={onClose} blur className="z-[9999] p-4">
+        <div
+          className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -429,6 +431,7 @@ export default function AsistenciaGpsModal({
         </div>
 
       </div>
-    </div>
+      </Overlay>
+    </Portal>
   );
 }

@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useEffect } from 'react';
-import { X } from 'lucide-react';
+import React from 'react';
+import {
+  Modal as ModalBase,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+} from '@/components/ui/Modal';
 
 interface ModalProps {
   isOpen: boolean;
@@ -20,61 +25,29 @@ export default function Modal({
   confirmLabel = 'Guardar',
   children,
 }: ModalProps) {
-  // Close on Escape key
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-[9998] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-
-      {/* Card */}
-      <div
-        className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-[fadeScaleIn_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-black text-slate-900">{title}</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Content */}
+    <ModalBase open={isOpen} onClose={onClose} size="md">
+      <ModalHeader title={title} onClose={onClose} />
+      <ModalBody>
         <div className="space-y-4">{children}</div>
-
-        {/* Actions */}
-        <div className="flex gap-3 mt-8">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 border border-slate-200 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+      </ModalBody>
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 py-3 border border-slate-200 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+        >
+          {confirmLabel}
+        </button>
+      </ModalFooter>
+    </ModalBase>
   );
 }
 

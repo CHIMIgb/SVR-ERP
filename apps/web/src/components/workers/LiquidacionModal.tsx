@@ -1,14 +1,12 @@
 "use client";
 
 import React, { useState } from 'react';
-import { 
-  X, Printer, DollarSign, Calendar, ShieldCheck, 
-  AlertTriangle, FileText, UserX, CheckCircle2,
-  Building2, Scale, Calculator, ArrowRight, Download
-} from 'lucide-react';
+import { X, Printer, UserX, Scale } from 'lucide-react';
 import { Trabajador, trabajadores } from '@/lib/data';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
+import { Portal } from '@/components/ui/Portal';
+import { Overlay } from '@/components/ui/Overlay';
 
 interface LiquidacionModalProps {
   isOpen: boolean;
@@ -35,11 +33,10 @@ export default function LiquidacionModal({
 
   // Parameters
   const [tipoTerminacion, setTipoTerminacion] = useState<'Despido' | 'Renuncia' | 'Convenio'>('Despido');
-  const [fechaBaja, setFechaBaja] = useState(new Date().toISOString().split('T')[0]);
+  const fechaBaja = new Date().toISOString().split('T')[0];
   const [diasTrabajadosPeriodo, setDiasTrabajadosPeriodo] = useState('6');
   const [diasVacacionesPendientes, setDiasVacacionesPendientes] = useState('8');
   const [deduccionesPrestamos, setDeduccionesPrestamos] = useState('0');
-  const [motivoBaja, setMotivoBaja] = useState('Recorte de personal / Cierre de frente de obra');
   const [viewMode, setViewMode] = useState<'calculadora' | 'carta_firma'>('calculadora');
 
   if (!isOpen || !worker) return null;
@@ -54,7 +51,6 @@ export default function LiquidacionModal({
   // Sueldos
   const sueldoSemanalTotal = worker.sueldoFiscal + worker.sueldoEfectivo;
   const sueldoDiario = +(sueldoSemanalTotal / 6).toFixed(2); // Sueldo diario real
-  const sueldoDiarioFiscal = +(worker.sueldoFiscal / 6).toFixed(2);
 
   // Cálculos de Ley Federal del Trabajo (LFT)
   const diasPeriodo = parseFloat(diasTrabajadosPeriodo) || 0;
@@ -107,15 +103,15 @@ export default function LiquidacionModal({
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden flex flex-col max-h-[94vh] animate-[fadeScaleIn_0.2s_ease-out]"
-        onClick={e => e.stopPropagation()}
-      >
-        
+    <Portal>
+      <Overlay onClick={onClose} blur className="z-[9999] p-4">
+        <div
+          className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden flex flex-col max-h-[94vh] animate-[fadeScaleIn_0.2s_ease-out]"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+
         {/* Header */}
         <div className="px-6 py-4 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
@@ -217,7 +213,7 @@ export default function LiquidacionModal({
                           type="radio"
                           name="tipoTerminacion"
                           checked={tipoTerminacion === t.id}
-                          onChange={() => setTipoTerminacion(t.id as any)}
+                          onChange={() => setTipoTerminacion(t.id as 'Despido' | 'Renuncia' | 'Convenio')}
                           className="mt-0.5"
                         />
                         <div className="text-xs">
@@ -403,7 +399,7 @@ export default function LiquidacionModal({
               {/* Declaración Legal */}
               <div className="space-y-3 text-xs leading-relaxed text-slate-800 text-justify">
                 <p>
-                  En la Ciudad de México, a <strong>{fechaBaja}</strong>, se reúnen por una parte <strong>CONSTRUCTORA SVR S.A. DE C.V.</strong> (en lo sucesivo "EL PATRÓN") y por la otra el C. <strong>{worker.nombre}</strong> (en lo sucesivo "EL TRABAJADOR"), quien desempeñaba el puesto de <strong>{worker.puesto} ({worker.categoriaPuesto})</strong> habiendo ingresado a laborar el día <strong>{worker.fechaContratacion ?? '2023-01-15'}</strong> con una antigüedad de <strong>{aniosAntiguedad} años</strong>.
+                  En la Ciudad de México, a <strong>{fechaBaja}</strong>, se reúnen por una parte <strong>CONSTRUCTORA SVR S.A. DE C.V.</strong> (en lo sucesivo &quot;EL PATRÓN&quot;) y por la otra el C. <strong>{worker.nombre}</strong> (en lo sucesivo &quot;EL TRABAJADOR&quot;), quien desempeñaba el puesto de <strong>{worker.puesto} ({worker.categoriaPuesto})</strong> habiendo ingresado a laborar el día <strong>{worker.fechaContratacion ?? '2023-01-15'}</strong> con una antigüedad de <strong>{aniosAntiguedad} años</strong>.
                 </p>
 
                 <p>
@@ -485,7 +481,8 @@ export default function LiquidacionModal({
           </div>
         </div>
 
-      </div>
-    </div>
+        </div>
+      </Overlay>
+    </Portal>
   );
 }
