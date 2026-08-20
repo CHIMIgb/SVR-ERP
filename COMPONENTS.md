@@ -29,9 +29,10 @@
    - [VisuallyHidden](#38-visuallyhidden)
    - [Show / Hide](#39-show--hide)
    - [ScrollArea](#310-scrollarea)
-   - [Stack](#311-stack)
-   - [Container](#312-container)
-   - [Divider](#313-divider)
+   - [Separator](#311-separator)
+   - [Stack](#312-stack)
+   - [Container](#313-container)
+   - [Divider](#314-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
@@ -1557,7 +1558,67 @@ import { ScrollArea } from '@/components/ui/ScrollArea';
 
 ---
 
-### 3.11 Stack
+### 3.11 Separator
+
+Separador visual simple que soporta orientacion horizontal y vertical. Mas ligero que `Divider` y util para separar elementos en filas o columnas.
+
+**Archivo:** `src/components/ui/Separator/Separator.tsx`
+
+**Importacion:**
+```tsx
+import { Separator } from '@/components/ui/Separator';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Orientacion del separador |
+| `size` | `'thin' \| 'medium' \| 'thick'` | `'thin'` | Grosor del separador |
+| `decorative` | `boolean` | `true` | Si es decorativo, no expone `role="separator"` |
+
+#### Ejemplos
+
+**Horizontal:**
+
+```tsx
+<div>
+  <p>Arriba</p>
+  <Separator />
+  <p>Abajo</p>
+</div>
+```
+
+**Vertical en una fila:**
+
+```tsx
+<div className="flex items-center gap-4">
+  <span>Izquierda</span>
+  <Separator orientation="vertical" size="medium" />
+  <span>Derecha</span>
+</div>
+```
+
+**Accesible (no decorativo):**
+
+```tsx
+<Separator decorative={false} aria-label="Seccion siguiente" />
+```
+
+#### Cuando usar
+
+- Separar elementos horizontalmente o verticalmente.
+- Cuando se necesita un separador simple sin label.
+- Dentro de toolbars, menus, o listas.
+
+#### No usar cuando
+
+- Se necesita un label centrado — usar `Divider`.
+- Se necesita un separador con estilo dashed/dotted — usar `Divider`.
+
+---
+
+### 3.12 Stack
 
 Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
 
@@ -1617,7 +1678,7 @@ import { Stack } from '@/components/ui/Stack';
 
 ---
 
-### 3.12 Container
+### 3.13 Container
 
 Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
 
@@ -1665,7 +1726,7 @@ import { Container } from '@/components/ui/Container';
 
 ---
 
-### 3.13 Divider
+### 3.14 Divider
 
 Separador visual horizontal con soporte para labels y variantes de borde.
 

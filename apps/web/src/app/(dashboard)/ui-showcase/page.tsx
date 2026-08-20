@@ -52,6 +52,7 @@ import { SkeletonText } from "@/components/ui/SkeletonText";
 import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
 import { Show, Hide } from "@/components/ui/Show";
 import { ScrollArea } from "@/components/ui/ScrollArea";
+import { Separator } from "@/components/ui/Separator";
 import { Pagination } from "@/components/ui/Pagination";
 import { Divider } from "@/components/ui/Divider";
 import { LiveIndicator, StatusBadge, GpsMap, MachineList } from "@/components/ui/GpsTracking";
@@ -2290,6 +2291,37 @@ export default function UIShowcasePage() {
                     </p>
                   ))}
                 </ScrollArea>
+              </div>
+            </div>
+          </div>
+
+          {/* Separator */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+              Separator - Separadores Horizontales y Verticales
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Horizontal (tamanos: thin, medium, thick)</p>
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+                  <p className="text-sm text-slate-600">Contenido superior</p>
+                  <Separator orientation="horizontal" size="thin" />
+                  <p className="text-sm text-slate-600">Separador thin</p>
+                  <Separator orientation="horizontal" size="medium" />
+                  <p className="text-sm text-slate-600">Separador medium</p>
+                  <Separator orientation="horizontal" size="thick" />
+                  <p className="text-sm text-slate-600">Separador thick</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400">Vertical (dentro de una fila)</p>
+                <div className="flex items-center gap-4 bg-slate-50 rounded-xl border border-slate-200 p-4 h-16">
+                  <span className="text-sm text-slate-600">Izquierda</span>
+                  <Separator orientation="vertical" size="medium" />
+                  <span className="text-sm text-slate-600">Centro</span>
+                  <Separator orientation="vertical" size="medium" />
+                  <span className="text-sm text-slate-600">Derecha</span>
+                </div>
               </div>
             </div>
           </div>
