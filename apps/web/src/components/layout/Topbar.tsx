@@ -110,8 +110,8 @@ export default function Topbar() {
       </button>
 
       {/* Brand Title */}
-      <div className="font-black text-slate-800 tracking-tight uppercase text-sm shrink-0">
-        SVR ERP <span className="text-slate-400 text-xs font-bold font-sans lowercase">v2.0</span>
+      <div className="font-black text-slate-800 tracking-tight uppercase text-xs sm:text-sm shrink-0">
+        SVR ERP <span className="text-slate-400 text-[10px] sm:text-xs font-bold font-sans lowercase">v2.0</span>
       </div>
 
       {/* Global Quick Search Bar */}
@@ -355,21 +355,21 @@ export default function Topbar() {
             className="flex items-center gap-3 focus:outline-none"
             disabled={!isInitialized}
           >
-            <div className="text-right hidden sm:block">
+            <div className="text-right">
               {!isInitialized ? (
                 <>
-                  <div className="h-3.5 w-24 bg-slate-200 rounded animate-pulse mb-1.5" />
-                  <div className="h-2.5 w-16 bg-slate-200 rounded animate-pulse" />
+                  <div className="h-3.5 w-20 sm:w-24 bg-slate-200 rounded animate-pulse mb-1.5 ml-auto" />
+                  <div className="h-2.5 w-12 sm:w-16 bg-slate-200 rounded animate-pulse ml-auto" />
                 </>
               ) : (
                 <>
-                  <div className="text-xs font-black text-slate-900 leading-none">
+                  <div className="text-[10px] sm:text-xs font-black text-slate-900 leading-none">
                     {user?.persona?.nombre || 'Usuario'}
                     {user?.persona?.apellidoPaterno
                       ? ` ${user.persona.apellidoPaterno}`
                       : ''}
                   </div>
-                  <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-1">
+                  <div className="text-[8px] sm:text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-0.5 sm:mt-1">
                     {user?.roles?.find((r) => r.esPrincipal)?.nombre ||
                       user?.roles?.[0]?.nombre ||
                       'Sin rol'}
@@ -377,7 +377,7 @@ export default function Topbar() {
                 </>
               )}
             </div>
-            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md hover:scale-105 transition-transform">
               {!isInitialized ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
