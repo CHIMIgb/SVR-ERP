@@ -72,6 +72,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Radio } from "@/components/ui/Radio";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
@@ -3077,6 +3078,101 @@ export default function UIShowcasePage() {
                   ]}
                   height={200}
                 />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Tooltips ──────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-3xl font-black tracking-tight text-slate-900">
+          Tooltips
+        </h2>
+        <p className="text-slate-500 mt-2 mb-4">
+          Tooltips contextuales con posicionamiento automatico. Hover (desktop) o tap (mobile).
+        </p>
+        <Card>
+          <div className="space-y-8">
+            {/* Posiciones */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                Posiciones
+              </h3>
+              <div className="flex flex-wrap gap-4">
+                <Tooltip content="Tooltip arriba" placement="top">
+                  <Button variant="outline" size="sm">Top</Button>
+                </Tooltip>
+                <Tooltip content="Tooltip abajo" placement="bottom">
+                  <Button variant="outline" size="sm">Bottom</Button>
+                </Tooltip>
+                <Tooltip content="Tooltip a la izquierda" placement="left">
+                  <Button variant="outline" size="sm">Left</Button>
+                </Tooltip>
+                <Tooltip content="Tooltip a la derecha" placement="right">
+                  <Button variant="outline" size="sm">Right</Button>
+                </Tooltip>
+              </div>
+            </div>
+
+            {/* En contexto */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                En Contexto ERP
+              </h3>
+              <div className="flex flex-wrap items-center gap-3">
+                <Tooltip content="Editar registro" placement="top">
+                  <Button variant="outline" size="sm">
+                    <Edit size={14} /> Editar
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Eliminar permanentemente" placement="top">
+                  <Button variant="danger" size="sm">
+                    <Trash2 size={14} /> Eliminar
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Copiar al portapapeles" placement="top">
+                  <Button variant="ghost" size="sm">
+                    <Copy size={14} />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Descargar como PDF" placement="top">
+                  <Button variant="ghost" size="sm">
+                    <Download size={14} />
+                  </Button>
+                </Tooltip>
+              </div>
+            </div>
+
+            {/* En tablas */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                Texto Truncado
+              </h3>
+              <div className="max-w-xs">
+                <Tooltip content="Este es un nombre de proyecto muy largo que se trunca en la tabla" placement="top">
+                  <div className="truncate text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 cursor-default">
+                    Nombre de proyecto muy largo que se trunca...
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+
+            {/* Badges */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                Badges con Tooltip
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <Tooltip content="Maquina operando en obra activa" placement="top">
+                  <Badge variant="success">Activa</Badge>
+                </Tooltip>
+                <Tooltip content="En espera de asignacion a proyecto" placement="top">
+                  <Badge variant="warning">En espera</Badge>
+                </Tooltip>
+                <Tooltip content="Requiere mantenimiento correctivo" placement="top">
+                  <Badge variant="error">Averiada</Badge>
+                </Tooltip>
               </div>
             </div>
           </div>

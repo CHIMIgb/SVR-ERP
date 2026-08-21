@@ -4489,3 +4489,91 @@ Todos los componentes UI protegen contra desbordamiento de contenido.
 ### 12.3 Regla de Oro
 
 > **TODO componente debe evitar que el texto o contenido salga de sus limites.** Usar `overflow-hidden` en containers, `truncate` en texto de una sola linea, `break-words` en texto multilinea, `min-w-0` en flex children, y `shrink-0` en iconos/badges que no deben cambiar de tamano. El contenido se desplaza o trunca en lugar de romper el layout.
+
+---
+
+## 13. Tooltip
+
+### 13.1 Descripcion
+
+Tooltip contextual con posicionamiento automatico. Funciona en desktop (hover) y mobile (tap), con auto-flip para evitar desbordamiento del viewport.
+
+### 13.2 Import
+
+```tsx
+import { Tooltip } from '@/components/ui/Tooltip';
+```
+
+### 13.3 Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `content` | `ReactNode` | **requerido** | Contenido del tooltip |
+| `placement` | `'top' \| 'bottom' \| 'left' \| 'right'` | `'top'` | Posicion preferida |
+| `delay` | `number` | `300` | Retraso en ms antes de mostrar (solo hover) |
+| `maxWidth` | `number` | `240` | Ancho maximo del tooltip |
+| `disabled` | `boolean` | `false` | Deshabilitar el tooltip |
+| `children` | `ReactElement` | **requerido** | Elemento trigger (se envuelve) |
+| `className` | `string` | `undefined` | Clase adicional en el wrapper |
+
+### 13.4 Ejemplo Basico
+
+```tsx
+<Tooltip content="Editar registro">
+  <Button onClick={handleEdit}>
+    <Pencil size={16} />
+  </Button>
+</Tooltip>
+```
+
+### 13.5 Ejemplo con Posicion
+
+```tsx
+<Tooltip content="Estado: Activo" placement="right">
+  <Badge variant="success">Activo</Badge>
+</Tooltip>
+
+<Tooltip content="Este campo es obligatorio" placement="bottom">
+  <Info size={14} className="text-slate-400" />
+</Tooltip>
+```
+
+### 13.6 Comportamiento
+
+| Plataforma | Accion | Resultado |
+|------------|--------|-----------|
+| Desktop | Hover | Muestra despues de 300ms |
+| Desktop | Mouse leave | Oculta inmediatamente |
+| Desktop | Focus (Tab) | Muestra despues de 300ms |
+| Mobile/Tap | Tap en trigger | Muestra inmediatamente |
+| Mobile/Tap | Tap fuera | Oculta |
+
+### 13.7 Auto-flip
+
+Si el tooltip no cabe en la posicion preferida, se reposiciona automaticamente:
+- `top` → intenta `bottom` → `right` → `left`
+- `bottom` → intenta `top` → `right` → `left`
+- `left` → intenta `right` → `bottom` → `top`
+- `right` → intenta `left` → `bottom` → `top`
+
+### 13.8 Accesibilidad
+
+- `role="tooltip"` en el elemento de tooltip
+- `aria-describedby` en el trigger apuntando al tooltip
+- Visible en focus (keyboard navigation)
+- `VisuallyHidden` no es necesario — el tooltip es percibible por screen readers
+
+### 13.9 Cuando USAR
+
+- Texto truncado que necesita mostrar el contenido completo
+- Iconos sin label visible
+- Botones de accion rapida (editar, eliminar, copiar)
+- Campos de formulario con explicacion adicional
+- Badges con significado no obvio
+
+### 13.10 Cuando NO usar
+
+- Para contenido largo o complejo → usar un Modal
+- Para menus de accion → esperar a DropdownMenu
+- Para errores de validacion → usar el `error` del form field
+- Para labels de campos → usar el `label` del form field
