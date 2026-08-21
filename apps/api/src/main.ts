@@ -31,6 +31,6 @@ async function bootstrap() {
   );
 
   await app.listen(3001);
-  console.log('🚀 API SVR-ERP corriendo en http://localhost:3001/api');
+  console.log('API SVR-ERP corriendo en http://localhost:3001/api');
 }
 bootstrap();
