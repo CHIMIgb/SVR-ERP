@@ -97,18 +97,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const success = handleAuthResponse(response);
 
         if (!success) {
-          return {
-            success: false,
-            message: response.success ? undefined : response.error.message,
-          };
+          const backendMessage = response.success
+            ? undefined
+            : response.error.message;
+
+          // Normalizar errores de autenticacion para no mostrar 500 o mensajes tecnicos
+          const message =
+            backendMessage && /bloquead/i.test(backendMessage)
+              ? backendMessage
+              : 'Credenciales incorrectas';
+
+          setError(message);
+          return { success: false, message };
         }
 
         return { success: true };
       } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : "No se pudo conectar con el servidor";
+        const backendMessage =
+          err instanceof Error ? err.message : 'Error desconocido';
+
+        // Si es un error de red, mostrar mensaje de conexion
+        const message = /no se pudo conectar|failed to fetch|network/i.test(
+          backendMessage,
+        )
+          ? backendMessage
+          : 'Credenciales incorrectas';
+
         setError(message);
         return { success: false, message };
       } finally {

@@ -43,6 +43,37 @@ npm run test             # Ejecutar tests unitarios
 npm run test:cov         # Tests con reporte de cobertura
 ```
 
+### Configuración de Puertos (desarrollo)
+
+La API usa el puerto `3001` por defecto y el frontend el `3000`. **Nunca deben compartir el mismo puerto** o el login fallará con errores de conexión / 500.
+
+```bash
+# Terminal 1 - API
+cd apps/api
+npm run dev              # http://localhost:3001/api
+
+# Terminal 2 - Frontend
+cd apps/web
+npm run dev              # http://localhost:3000
+```
+
+Si el puerto `3000` está ocupado y Next.js salta al `3001`, mueve el frontend a otro puerto:
+
+```bash
+cd apps/web
+$env:PORT=3002; npm run dev   # PowerShell
+# o
+PORT=3002 npm run dev          # bash/WSL
+```
+
+Y asegúrate de que `apps/web/.env.local` apunte a la API:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001/api
+```
+
+Hay un template en `apps/web/.env.local.example`.
+
 ### Credenciales de Acceso (API)
 
 #### Administrador (acceso total a los 6 módulos)
