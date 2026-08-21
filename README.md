@@ -92,6 +92,32 @@ curl http://localhost:3001/api/auth/profile \
 
 ### Base de Datos — Prisma
 
+### Testing (Unit Tests)
+
+Los tests unitarios usan **Jest** y se ejecutan desde `apps/api/`:
+
+```bash
+cd apps/api
+
+npm run test             # Ejecutar todos los tests
+npm run test:watch       # Modo watch (re-ejecuta al guardar)
+npm run test:cov         # Tests con reporte de cobertura
+```
+
+**Ubicación de los tests:**
+
+| Archivo | Qué testea |
+|---------|------------|
+| `src/auth/auth.service.spec.ts` | Login, register, logout, getProfile (12 tests) |
+| `src/auth/auth.controller.spec.ts` | Endpoints del controller (5 tests) |
+| `src/auth/intentos-login.service.spec.ts` | Registro de intentos de sesión (9 tests) |
+| `src/bloqueo/bloqueo.service.spec.ts` | Bloqueo escalonado por intentos fallidos (8 tests) |
+| `src/common/filters/throttler-exception.filter.spec.ts` | Error 429 en español (2 tests) |
+
+**Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Ver `AGENTS.md` para las reglas completas de testing.
+
+### Base de Datos — Prisma
+
 ```bash
 cd apps/api
 
