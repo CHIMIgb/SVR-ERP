@@ -156,23 +156,6 @@ body {
 }
 
 /* ── Scrollbar Utilities ── */
-.timepicker-list {
-  height: 200px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
-}
-.timepicker-list::-webkit-scrollbar {
-  width: 4px;
-}
-.timepicker-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.timepicker-list::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
