@@ -14,7 +14,9 @@ describe('AuthService', () => {
   let prisma: Record<string, any>;
   let bloqueoService: {
     verificarBloqueo: jest.Mock;
+    verificarBloqueoPorIP: jest.Mock;
     registrarIntentoFallido: jest.Mock;
+    registrarIntentoFallidoPorIP: jest.Mock;
     resetearIntentos: jest.Mock;
   };
   let jwtService: {
@@ -74,9 +76,13 @@ describe('AuthService', () => {
 
     bloqueoService = {
       verificarBloqueo: jest.fn().mockResolvedValue({ bloqueado: false }),
+      verificarBloqueoPorIP: jest.fn().mockResolvedValue({ bloqueado: false }),
       registrarIntentoFallido: jest.fn().mockResolvedValue({
         bloqueado: false,
         intentosRestantes: 4,
+      }),
+      registrarIntentoFallidoPorIP: jest.fn().mockResolvedValue({
+        bloqueado: false,
       }),
       resetearIntentos: jest.fn().mockResolvedValue(undefined),
     };
@@ -202,6 +208,45 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'admin@svr-constructora.com', password: 'wrong' }),
       ).rejects.toThrow('Cuenta bloqueada por 1 minutos');
+    });
+
+    it('debe lanzar 401 si la IP está bloqueada antes de buscar el usuario', async () => {
+      bloqueoService.verificarBloqueoPorIP.mockResolvedValue({
+        bloqueado: true,
+        minutosRestantes: 30,
+      });
+
+      await expect(
+        service.login(
+          { email: 'admin@svr-constructora.com', password: '123456' },
+          '192.168.1.100',
+          'Mozilla/5.0',
+        ),
+      ).rejects.toThrow('Demasiados intentos desde esta IP');
+
+      // No debe siquiera buscar el usuario
+      expect(prisma.users.findUnique).not.toHaveBeenCalled();
+      expect(intentosLoginService.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          motivoFallo: expect.stringContaining('IP bloqueada'),
+        }),
+      );
+    });
+
+    it('debe registrar intento por IP cuando el usuario no existe', async () => {
+      prisma.users.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.login(
+          { email: 'noexiste@test.com', password: '123456' },
+          '10.0.0.1',
+          'Mozilla/5.0',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(bloqueoService.registrarIntentoFallidoPorIP).toHaveBeenCalledWith(
+        '10.0.0.1',
+      );
     });
   });
 

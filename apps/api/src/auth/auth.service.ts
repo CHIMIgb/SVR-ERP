@@ -38,6 +38,23 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<AuthResponse> {
+    // 0. Verificar si la IP está bloqueada
+    if (ip) {
+      const ipBloqueada = await this.bloqueoService.verificarBloqueoPorIP(ip);
+      if (ipBloqueada.bloqueado) {
+        await this.intentosLoginService.registrar({
+          email: dto.email,
+          exitoso: false,
+          motivoFallo: `IP bloqueada (${ipBloqueada.minutosRestantes} min restantes)`,
+          ip,
+          userAgent,
+        });
+        throw new UnauthorizedException(
+          `Demasiados intentos desde esta IP. Intenta de nuevo en ${ipBloqueada.minutosRestantes} minuto(s)`,
+        );
+      }
+    }
+
     // 1. Buscar usuario por email
     const user = await this.prisma.users.findUnique({
       where: { email: dto.email },
@@ -65,6 +82,12 @@ export class AuthService {
         ip,
         userAgent,
       });
+
+      // Si la IP existe, también contamos este fallo para el bloqueo por IP
+      if (ip) {
+        await this.bloqueoService.registrarIntentoFallidoPorIP(ip);
+      }
+
       throw new UnauthorizedException('Credenciales inválidas');
     }
 

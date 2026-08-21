@@ -1720,7 +1720,8 @@ model users_roles {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model usuarios_bloqueados {
   id                                                            String           @id @db.Uuid
-  user_id                                                       String           @db.Uuid
+  user_id                                                       String?          @db.Uuid
+  ip_address                                                    String?
   nivel_id                                                      String?          @db.Uuid
   nivel_numero                                                  Int
   intentos_fallidos_consecutivos                                Int
@@ -1734,9 +1735,10 @@ model usuarios_bloqueados {
   actualizado_en                                                DateTime
   users_usuarios_bloqueados_desbloqueado_manualmente_porTousers users?           @relation("usuarios_bloqueados_desbloqueado_manualmente_porTousers", fields: [desbloqueado_manualmente_por], references: [id], onUpdate: NoAction, map: "fk_usuarios_bloqueados_desbloqueado_por")
   niveles_bloqueo                                               niveles_bloqueo? @relation(fields: [nivel_id], references: [id])
-  users_usuarios_bloqueados_user_idTousers                      users            @relation("usuarios_bloqueados_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
+  users_usuarios_bloqueados_user_idTousers                      users?           @relation("usuarios_bloqueados_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id, activo])
+  @@index([ip_address, activo])
 }
 
 model vistas {
