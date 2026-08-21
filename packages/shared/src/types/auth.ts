@@ -1,6 +1,6 @@
 export interface PersonaAuth {
   nombre: string;
-  apellidoPaterno: string;
+  apellidoPaterno: string | null;
   apellidoMaterno?: string | null;
 }
 

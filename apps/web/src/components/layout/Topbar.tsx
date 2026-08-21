@@ -6,7 +6,7 @@ import {
   Bell, Mail, ShieldAlert, Check, Trash2, Clock, 
   ExternalLink, User, Settings, CheckCheck, Search,
   Truck, HardHat, Users, FileText, Layers, X, Menu,
-  LogOut
+  LogOut, Loader2
 } from 'lucide-react';
 import { useNotifications, Notification } from './NotificationContext';
 import EmailPreviewModal from './EmailPreviewModal';
@@ -32,7 +32,7 @@ const MODULOS = [
 export default function Topbar() {
   const router = useRouter();
   const { openMobile } = useSidebar();
-  const { user, logout } = useAuth();
+  const { user, logout, isInitialized } = useAuth();
   const { 
     notifications, 
     unreadCount, 
@@ -353,23 +353,44 @@ export default function Topbar() {
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-3 focus:outline-none"
+            disabled={!isInitialized}
           >
             <div className="text-right hidden sm:block">
-              <div className="text-xs font-black text-slate-900 leading-none">
-                {user?.persona?.nombre || 'Usuario'} {user?.persona?.apellidoPaterno || ''}
-              </div>
-              <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-1">
-                {user?.roles?.[0]?.nombre || 'Sin rol'}
-              </div>
+              {!isInitialized ? (
+                <>
+                  <div className="h-3.5 w-24 bg-slate-200 rounded animate-pulse mb-1.5" />
+                  <div className="h-2.5 w-16 bg-slate-200 rounded animate-pulse" />
+                </>
+              ) : (
+                <>
+                  <div className="text-xs font-black text-slate-900 leading-none">
+                    {user?.persona?.nombre || 'Usuario'}
+                    {user?.persona?.apellidoPaterno
+                      ? ` ${user.persona.apellidoPaterno}`
+                      : ''}
+                  </div>
+                  <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-1">
+                    {user?.roles?.find((r) => r.esPrincipal)?.nombre ||
+                      user?.roles?.[0]?.nombre ||
+                      'Sin rol'}
+                  </div>
+                </>
+              )}
             </div>
             <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md hover:scale-105 transition-transform">
-              {user?.persona?.nombre?.[0] || 'U'}
-              {user?.persona?.apellidoPaterno?.[0] || ''}
+              {!isInitialized ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  {user?.persona?.nombre?.[0] || 'U'}
+                  {user?.persona?.apellidoPaterno?.[0] || ''}
+                </>
+              )}
             </div>
           </button>
 
-          {userMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-[fadeScaleIn_0.12s_ease-out]">
+          {userMenuOpen && isInitialized && (
+            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-[fadeScaleIn_0.12s_ease-out]">
               <div className="px-4 py-3 border-b border-slate-100">
                 <p className="text-xs font-black text-slate-900 truncate">
                   {user?.email || 'usuario@svr.com'}
