@@ -100,6 +100,19 @@ async function request<T>(
   const response = await fetch(url, {
     ...fetchOptions,
     headers,
+  }).catch((error: TypeError) => {
+    // Error de red: API no responde, CORS bloqueado preflight, o conexion rechazada
+    if (
+      error.message?.includes('fetch') ||
+      error.message?.includes('NetworkError') ||
+      error.message?.includes('Failed to fetch') ||
+      error.message?.includes('Network request failed')
+    ) {
+      throw new Error(
+        'No se pudo conectar con el servidor. Verifica que la API esté corriendo en http://localhost:3001/api',
+      );
+    }
+    throw error;
   });
 
   // 401: intentar refresh y reintentar una vez
