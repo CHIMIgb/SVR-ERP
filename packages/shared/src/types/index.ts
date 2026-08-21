@@ -23,6 +23,23 @@ export type {
 } from './proyectos';
 
 export type {
+  PersonaAuth,
+  RolAuth,
+  VistaAuth,
+  PermisoAuth,
+  UserAuth,
+  AuthResponse,
+  LoginCredentials,
+  RegisterCredentials,
+  RefreshCredentials,
+  ApiError,
+  ApiSuccess,
+  ApiResponse,
+} from './auth';
+
+export { STORAGE_KEYS } from './auth';
+
+export type {
   CargaCombustible,
   ArticuloInventario,
   RegistroMantenimiento,

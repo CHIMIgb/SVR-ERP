@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { 
   Bell, Mail, ShieldAlert, Check, Trash2, Clock, 
   ExternalLink, User, Settings, CheckCheck, Search,
-  Truck, HardHat, Users, FileText, Layers, X, Menu
+  Truck, HardHat, Users, FileText, Layers, X, Menu,
+  LogOut
 } from 'lucide-react';
 import { useNotifications, Notification } from './NotificationContext';
 import EmailPreviewModal from './EmailPreviewModal';
 import { useSidebar } from './SidebarContext';
+import { useAuth } from '@/hooks/useAuth';
 import { trabajadores, maquinaria, proyectos } from '@/lib/data';
 
 const MODULOS = [
@@ -30,6 +32,7 @@ const MODULOS = [
 export default function Topbar() {
   const router = useRouter();
   const { openMobile } = useSidebar();
+  const { user, logout } = useAuth();
   const { 
     notifications, 
     unreadCount, 
@@ -47,6 +50,10 @@ export default function Topbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  // User dropdown
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
   // Close dropdowns on clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -56,10 +63,18 @@ export default function Topbar() {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchOpen(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    router.push('/');
+  };
 
   const handleNotificationClick = (notif: Notification) => {
     markAsRead(notif.id);
@@ -334,14 +349,44 @@ export default function Topbar() {
         </div>
 
         {/* ── USER INFO ── */}
-        <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-          <div className="text-right">
-            <div className="text-xs font-black text-slate-900 leading-none">Carlos SVR</div>
-            <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-1">CEO / Dueño</div>
-          </div>
-          <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md hover:scale-105 transition-transform">
-            CS
-          </div>
+        <div className="relative flex items-center gap-3 pl-4 border-l border-slate-200" ref={userMenuRef}>
+          <button
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            className="flex items-center gap-3 focus:outline-none"
+          >
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-black text-slate-900 leading-none">
+                {user?.persona?.nombre || 'Usuario'} {user?.persona?.apellidoPaterno || ''}
+              </div>
+              <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-1">
+                {user?.roles?.[0]?.nombre || 'Sin rol'}
+              </div>
+            </div>
+            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md hover:scale-105 transition-transform">
+              {user?.persona?.nombre?.[0] || 'U'}
+              {user?.persona?.apellidoPaterno?.[0] || ''}
+            </div>
+          </button>
+
+          {userMenuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-[fadeScaleIn_0.12s_ease-out]">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <p className="text-xs font-black text-slate-900 truncate">
+                  {user?.email || 'usuario@svr.com'}
+                </p>
+                <p className="text-[9px] text-slate-500 font-bold truncate">
+                  {user?.roles?.map((r) => r.nombre).join(', ') || 'Sin rol'}
+                </p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Cerrar Sesión
+              </button>
+            </div>
+          )}
         </div>
 
       </div>

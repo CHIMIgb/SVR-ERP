@@ -1,16 +1,41 @@
 "use client";
 
-import React from 'react';
-import { useRouter } from 'next/navigation';
-import { HardHat, Lock, User, ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { HardHat, Lock, User, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, isAuthenticated, isInitialized, isLoading, error, clearError } = useAuth();
+  const [email, setEmail] = useState("admin@svr-constructora.com");
+  const [password, setPassword] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Redirigir si ya está autenticado
+  useEffect(() => {
+    if (isInitialized && isAuthenticated) {
+      router.push("/dashboard");
+    }
+  }, [isInitialized, isAuthenticated, router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push('/dashboard');
+    clearError();
+
+    const result = await login({ email, password });
+    if (result.success) {
+      router.push("/dashboard");
+    }
   };
+
+  // Mientras se valida la sesión existente, mostramos un estado de carga
+  if (!isInitialized) {
+    return (
+      <main className="min-h-screen bg-secondary flex items-center justify-center p-6">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-secondary flex items-center justify-center p-6 relative overflow-hidden">
@@ -36,16 +61,26 @@ export default function LoginPage() {
           <h2 className="text-2xl font-bold text-white mb-2">Bienvenido al ERP</h2>
           <p className="text-slate-400 text-sm mb-8 font-medium">Ingresa tus credenciales para continuar.</p>
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          {error && (
+            <div className="mb-6 flex items-start gap-3 rounded-2xl bg-red-500/10 border border-red-500/20 p-4 text-sm text-red-200">
+              <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Usuario</label>
               <div className="relative group">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="admin@svr.com"
-                  defaultValue="admin@svr.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all"
+                <input
+                  type="email"
+                  placeholder="admin@svr-constructora.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"
                 />
               </div>
             </div>
@@ -54,21 +89,34 @@ export default function LoginPage() {
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Contraseña</label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   placeholder="••••••••"
-                  defaultValue="password"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"
                 />
               </div>
             </div>
 
-            <button 
+            <button
               type="submit"
-              className="w-full bg-primary hover:bg-primary-dark text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-primary/20 transition-all transform hover:-translate-y-1 active:translate-y-0 mt-8"
+              disabled={isLoading}
+              className="w-full bg-primary hover:bg-primary-dark disabled:bg-primary/60 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-primary/20 transition-all transform hover:-translate-y-1 active:translate-y-0 mt-8"
             >
-              Iniciar Sesión
-              <ArrowRight className="w-5 h-5" />
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Iniciando sesión…
+                </>
+              ) : (
+                <>
+                  Iniciar Sesión
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
             </button>
           </form>
 
