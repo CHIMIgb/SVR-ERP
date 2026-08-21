@@ -90,7 +90,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-hide">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-none">
         {navItems.map((group, idx) => (
           <div key={idx} className="space-y-1">
             <div className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
