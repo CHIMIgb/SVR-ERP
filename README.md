@@ -5,7 +5,7 @@ Sistema ERP de gestión para maquinaria, trabajadores, proyectos y operaciones.
 ## Stack
 
 - **Frontend:** Next.js 16 (App Router, Turbopack) + React 19 + Tailwind CSS v4
-- **Backend:** NestJS 11 + Prisma 6 + PostgreSQL 16+ *(Fase 4)*
+- **Backend:** NestJS 11 + Prisma 7 + PostgreSQL 18 *(Fase 4)*
 - **Móvil:** Capacitor (compila el frontend web a APK nativo)
 - **Lenguaje:** TypeScript 5 (strict mode)
 - **Monorepo:** npm workspaces + Turborepo
@@ -43,6 +43,46 @@ npm run db:migrate       # Ejecutar migraciones Prisma
 npm run db:seed          # Poblar base de datos
 ```
 
+### Base de Datos — Prisma
+
+```bash
+cd apps/api
+
+# 1. Instalar dependencias (primera vez)
+npm install
+
+# 2. Pull del esquema desde PostgreSQL (introspección)
+npx prisma db pull
+
+# 3. Generar el cliente de Prisma
+npx prisma generate
+
+# 4. Migraciones (cuando modifiques schema.prisma manualmente)
+npx prisma migrate dev --name <nombre_migracion>
+
+# 5. Deploy de migraciones en producción
+npx prisma migrate deploy
+```
+
+**Archivos clave:**
+
+| Archivo | Descripción |
+|---------|-------------|
+| `prisma/schema.prisma` | Schema con 71 modelos introspecteados de `svr_erp` |
+| `prisma.config.ts` | Config Prisma 7 (`defineConfig` + `datasource.url`) |
+| `.env` | `DATABASE_URL=postgresql://postgres:admin123@localhost:5432/svr_erp` |
+
+**Flujo típico de trabajo:**
+
+```bash
+# Si cambias el schema manualmente (agregar campo, índice, etc.)
+npx prisma migrate dev --name agregar_campo_activo
+
+# Si la DB cambió por fuera de Prisma (etapa de desarrollo)
+npx prisma db pull
+npx prisma generate
+```
+
 ### Build para Móvil (Capacitor)
 
 ```bash
@@ -67,7 +107,12 @@ SVR-ERP/
 │   │   ├── tsconfig.json
 │   │   └── next.config.ts
 │   │
-│   └── api/                        # NestJS Backend *(Fase 4)*
+│   └── api/                        # NestJS Backend
+│       ├── prisma/
+│       │   ├── schema.prisma       # 71 modelos (introspecteados de svr_erp)
+│       │   └── migrations/
+│       ├── prisma.config.ts        # Config Prisma 7
+│       ├── .env                    # DATABASE_URL
 │       ├── src/
 │       │   ├── main.ts
 │       │   └── app.module.ts
