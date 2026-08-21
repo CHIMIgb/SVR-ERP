@@ -1,25 +1,24 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 
 interface SidebarContextValue {
-  collapsed: boolean;
-  setCollapsed: (value: boolean) => void;
-  width: number;
+  mobileOpen: boolean;
+  openMobile: () => void;
+  closeMobile: () => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   const value = useMemo(
-    () => ({
-      collapsed,
-      setCollapsed,
-      width: collapsed ? 80 : 288,
-    }),
-    [collapsed]
+    () => ({ mobileOpen, openMobile, closeMobile }),
+    [mobileOpen, openMobile, closeMobile]
   );
 
   return (

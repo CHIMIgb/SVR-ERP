@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import {
   Modal,
@@ -8,7 +9,8 @@ import {
   ModalFooter,
 } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { useSidebar } from './SidebarContext';
+
+const SIDEBAR_WIDTH = 288; // w-72 = 18rem = 288px
 
 interface ModalProps {
   isOpen: boolean;
@@ -27,14 +29,22 @@ export default function LayoutModal({
   confirmLabel = 'Guardar',
   children,
 }: ModalProps) {
-  const { width } = useSidebar();
+  const [offsetLeft, setOffsetLeft] = useState(0);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const update = () => setOffsetLeft(mq.matches ? SIDEBAR_WIDTH : 0);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   return (
     <Modal
       open={isOpen}
       onClose={onClose}
       size="md"
-      offsetLeft={width}
+      offsetLeft={offsetLeft}
     >
       <ModalHeader
         title={title}

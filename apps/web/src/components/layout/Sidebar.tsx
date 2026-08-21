@@ -8,10 +8,11 @@ import {
   Fuel, MapPin, ClipboardList, Package, HardHat, 
   Building2, FileText, Banknote, FileBadge, ShieldAlert, 
   BarChart3, Settings, LogOut,
-  ShoppingCart, CreditCard, Layers
+  ShoppingCart, CreditCard, Layers, X
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { useSidebar } from './SidebarContext';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -70,12 +71,11 @@ const navItems: SidebarGroup[] = [
   ]},
 ];
 
-
-export default function Sidebar() {
+function SidebarContent() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex flex-col">
+    <>
       {/* Header */}
       <div className="p-6">
         <div className="flex items-center gap-3">
@@ -135,6 +135,43 @@ export default function Sidebar() {
           <span className="text-sm font-semibold">Cerrar Sesión</span>
         </button>
       </div>
-    </aside>
+    </>
+  );
+}
+
+export default function Sidebar() {
+  const { mobileOpen, closeMobile } = useSidebar();
+
+  return (
+    <>
+      {/* Desktop sidebar — always visible on md+ */}
+      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex-col">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile sidebar — overlay when opened */}
+      {mobileOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 z-50 md:hidden animate-[fadeIn_0.2s_ease-out]"
+            onClick={closeMobile}
+          />
+
+          {/* Panel */}
+          <aside className="fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex flex-col md:hidden animate-[slideInLeft_0.2s_ease-out]">
+            {/* Close button */}
+            <button
+              onClick={closeMobile}
+              className="absolute top-5 right-5 p-1.5 hover:bg-white/10 rounded-lg transition-colors text-white/70 hover:text-white z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <SidebarContent />
+          </aside>
+        </>
+      )}
+    </>
   );
 }

@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { 
   Bell, Mail, ShieldAlert, Check, Trash2, Clock, 
   ExternalLink, User, Settings, CheckCheck, Search,
-  Truck, HardHat, Users, FileText, Layers, X
+  Truck, HardHat, Users, FileText, Layers, X, Menu
 } from 'lucide-react';
 import { useNotifications, Notification } from './NotificationContext';
 import EmailPreviewModal from './EmailPreviewModal';
+import { useSidebar } from './SidebarContext';
 import { trabajadores, maquinaria, proyectos } from '@/lib/data';
 
 const MODULOS = [
@@ -28,6 +29,7 @@ const MODULOS = [
 
 export default function Topbar() {
   const router = useRouter();
+  const { openMobile } = useSidebar();
   const { 
     notifications, 
     unreadCount, 
@@ -82,8 +84,16 @@ export default function Topbar() {
   const hasResults = matchedModulos.length > 0 || matchedTrabajadores.length > 0 || matchedMaquinaria.length > 0 || matchedProyectos.length > 0;
 
   return (
-    <header className="h-16 border-b border-slate-200 bg-white sticky top-0 z-40 px-8 flex items-center justify-between gap-4">
+    <header className="h-16 border-b border-slate-200 bg-white sticky top-0 z-40 px-4 md:px-8 flex items-center justify-between gap-4">
       
+      {/* Hamburger — mobile only */}
+      <button
+        onClick={openMobile}
+        className="md:hidden p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-600"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       {/* Brand Title */}
       <div className="font-black text-slate-800 tracking-tight uppercase text-sm shrink-0">
         SVR ERP <span className="text-slate-400 text-xs font-bold font-sans lowercase">v2.0</span>
