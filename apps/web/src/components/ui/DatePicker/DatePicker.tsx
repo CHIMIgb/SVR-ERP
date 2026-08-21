@@ -144,10 +144,15 @@ export function DatePicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Reposicionar al hacer scroll/resize
+  // Reposicionar al hacer scroll/resize — ignorar scroll interno del dropdown
   useEffect(() => {
     if (!isOpen) return;
-    const handleReposition = () => updatePosition();
+    const handleReposition = (e: Event) => {
+      if (rootRef.current && e.target instanceof Node && rootRef.current.contains(e.target)) {
+        return;
+      }
+      updatePosition();
+    };
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
     return () => {

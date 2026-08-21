@@ -128,10 +128,16 @@ export function TimePicker({
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen]);
 
-  // Reposicionar al scroll/resize
+  // Reposicionar al scroll/resize — ignorar scroll interno del dropdown
   useEffect(() => {
     if (!isOpen) return;
-    const handleReposition = () => updatePosition();
+    const handleReposition = (e: Event) => {
+      // Si el scroll viene de dentro del dropdown, no reposicionar
+      if (rootRef.current && e.target instanceof Node && rootRef.current.contains(e.target)) {
+        return;
+      }
+      updatePosition();
+    };
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
     return () => {
