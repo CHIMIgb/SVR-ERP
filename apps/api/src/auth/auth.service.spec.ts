@@ -4,6 +4,7 @@ import { UnauthorizedException, ConflictException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BloqueoService } from '../bloqueo/bloqueo.service';
+import { IntentosLoginService } from './intentos-login.service';
 import * as bcrypt from 'bcryptjs';
 
 jest.mock('bcryptjs');
@@ -18,6 +19,10 @@ describe('AuthService', () => {
   };
   let jwtService: {
     sign: jest.Mock;
+  };
+  let intentosLoginService: {
+    registrar: jest.Mock;
+    contarFallidosRecientes: jest.Mock;
   };
 
   const mockUser = {
@@ -80,12 +85,18 @@ describe('AuthService', () => {
       sign: jest.fn().mockReturnValue('jwt-token-mock'),
     };
 
+    intentosLoginService = {
+      registrar: jest.fn().mockResolvedValue(undefined),
+      contarFallidosRecientes: jest.fn().mockResolvedValue(0),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: BloqueoService, useValue: bloqueoService },
         { provide: JwtService, useValue: jwtService },
+        { provide: IntentosLoginService, useValue: intentosLoginService },
       ],
     }).compile();
 

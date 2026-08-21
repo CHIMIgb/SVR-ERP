@@ -9,6 +9,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { BloqueoService } from '../bloqueo/bloqueo.service';
+import { IntentosLoginService } from './intentos-login.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponse, JwtPayload } from './types/auth.types';
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly bloqueoService: BloqueoService,
+    private readonly intentosLoginService: IntentosLoginService,
   ) {}
 
   /**
@@ -52,12 +54,31 @@ export class AuthService {
     });
 
     if (!user || !user.activo || user.eliminado_en) {
+      await this.intentosLoginService.registrar({
+        email: dto.email,
+        exitoso: false,
+        motivoFallo: !user
+          ? 'Usuario no encontrado'
+          : !user.activo
+            ? 'Usuario desactivado'
+            : 'Usuario eliminado',
+        ip,
+        userAgent,
+      });
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
     // 2. Verificar si está bloqueado
     const bloqueo = await this.bloqueoService.verificarBloqueo(user.id);
     if (bloqueo.bloqueado) {
+      await this.intentosLoginService.registrar({
+        email: dto.email,
+        userId: user.id,
+        exitoso: false,
+        motivoFallo: `Cuenta bloqueada (${bloqueo.minutosRestantes} min restantes)`,
+        ip,
+        userAgent,
+      });
       throw new UnauthorizedException(
         `Cuenta bloqueada. Intenta de nuevo en ${bloqueo.minutosRestantes} minuto(s)`,
       );
@@ -75,6 +96,17 @@ export class AuthService {
         ip,
       );
 
+      await this.intentosLoginService.registrar({
+        email: dto.email,
+        userId: user.id,
+        exitoso: false,
+        motivoFallo: resultado.bloqueado
+          ? `Contraseña incorrecta — cuenta bloqueada por ${resultado.minutosBloqueo} min`
+          : `Contraseña incorrecta — ${resultado.intentosRestantes} intento(s) restante(s)`,
+        ip,
+        userAgent,
+      });
+
       if (resultado.bloqueado) {
         throw new UnauthorizedException(
           `Cuenta bloqueada por ${resultado.minutosBloqueo} minutos tras múltiples intentos fallidos`,
@@ -88,6 +120,14 @@ export class AuthService {
 
     // 4. Login exitoso — resetear intentos
     await this.bloqueoService.resetearIntentos(user.id);
+
+    await this.intentosLoginService.registrar({
+      email: dto.email,
+      userId: user.id,
+      exitoso: true,
+      ip,
+      userAgent,
+    });
 
     // 5. Crear sesión
     const accessJti = randomUUID();
