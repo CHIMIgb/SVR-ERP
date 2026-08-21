@@ -3169,7 +3169,7 @@ export default function UIShowcasePage() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline">
-                    Abrir menu <ChevronDown size={14} />
+                    Abrir menu
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
@@ -3192,7 +3192,7 @@ export default function UIShowcasePage() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline">
-                    Opciones <ChevronDown size={14} />
+                    Opciones
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
