@@ -84,7 +84,7 @@ export default function Topbar() {
   const hasResults = matchedModulos.length > 0 || matchedTrabajadores.length > 0 || matchedMaquinaria.length > 0 || matchedProyectos.length > 0;
 
   return (
-    <header className="h-16 border-b border-slate-200 bg-white sticky top-0 z-40 px-4 md:px-8 flex items-center justify-between gap-4">
+    <header className="h-16 border-b border-slate-200 bg-white fixed top-0 right-0 left-0 md:left-72 z-40 px-4 md:px-8 flex items-center justify-between gap-4">
       
       {/* Hamburger — mobile only */}
       <button
