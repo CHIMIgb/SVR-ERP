@@ -8,7 +8,7 @@ export const timePickerClasses = {
   iconRight: 'absolute right-3 text-slate-400 pointer-events-none',
   error: 'text-xs font-medium text-red-500',
   dropdown:
-    'z-50 bg-white rounded-xl border border-slate-200 shadow-xl p-3 w-[280px] overflow-hidden',
+    'z-50 bg-white rounded-xl border border-slate-200 shadow-xl p-3 w-[280px]',
   columns: 'flex gap-3',
   column: 'flex-1',
   columnHeader: 'text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2',
