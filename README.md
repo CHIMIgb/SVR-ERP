@@ -5,7 +5,7 @@ Sistema ERP de gestión para maquinaria, trabajadores, proyectos y operaciones.
 ## Stack
 
 - **Frontend:** Next.js 16 (App Router, Turbopack) + React 19 + Tailwind CSS v4
-- **Backend:** NestJS 11 + Prisma 7 + PostgreSQL 18 *(Fase 4)*
+- **Backend:** NestJS 11 + Prisma 7 + PostgreSQL 18 (AuthModule con JWT + RBAC)
 - **Móvil:** Capacitor (compila el frontend web a APK nativo)
 - **Lenguaje:** TypeScript 5 (strict mode)
 - **Monorepo:** npm workspaces + Turborepo
@@ -34,13 +34,48 @@ npm run build            # Build de todos los workspaces
 cd apps/web && npm run start  # Servir frontend en producción
 ```
 
-### Backend (cuando esté listo)
+### Backend
 
 ```bash
 cd apps/api
 npm run dev              # NestJS en http://localhost:3001/api
-npm run db:migrate       # Ejecutar migraciones Prisma
-npm run db:seed          # Poblar base de datos
+npm run test             # Ejecutar tests unitarios
+npm run test:cov         # Tests con reporte de cobertura
+```
+
+### Credenciales de Acceso (API)
+
+| Campo | Valor |
+|-------|-------|
+| **Email** | `admin@svr-constructora.com` |
+| **Contraseña** | `admin123` |
+| **Rol** | Administrador (nivel 100, acceso total a los 6 módulos) |
+
+**Endpoints de autenticación:**
+
+```bash
+# Login
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@svr-constructora.com","password":"admin123"}'
+
+# Registrar nuevo usuario
+curl -X POST http://localhost:3001/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"nuevo@test.com","password":"123456","nombre":"Juan","apellido_paterno":"Pérez"}'
+
+# Refrescar token (requiere refresh token del login)
+curl -X POST http://localhost:3001/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<token_del_login>"}'
+
+# Cerrar sesión
+curl -X POST http://localhost:3001/api/auth/logout \
+  -H "Authorization: Bearer <access_token>"
+
+# Obtener perfil (requiere access token)
+curl http://localhost:3001/api/auth/profile \
+  -H "Authorization: Bearer <access_token>"
 ```
 
 ### Base de Datos — Prisma
@@ -244,4 +279,4 @@ Ver documentación completa en [COMPONENTS.md](./COMPONENTS.md).
 
 ## Datos
 
-Las páginas usan datos mock de `apps/web/src/lib/mock-data/`. Los tipos están en `packages/shared/src/types/`. El backend real viene en la Fase 4 del [PLAN-ARQUITECTURA.md](./PLAN-ARQUITECTURA.md).
+Las páginas usan datos mock de `apps/web/src/lib/mock-data/`. Los tipos están en `packages/shared/src/types/`. El backend está implementado en `apps/api/` con autenticación JWT, RBAC y acceso a PostgreSQL.

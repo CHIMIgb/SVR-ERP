@@ -9,7 +9,7 @@ INSERT INTO personas (id, nombre, apellido_paterno, correo, telefono, activo, cr
 VALUES ('b0000000-0000-0000-0000-000000000001', 'Carlos', 'SVR', 'admin@svr-constructora.com', '8112345678', true, NOW(), NOW());
 
 INSERT INTO users (id, persona_id, email, password_hash, email_verificado, activo, creado_en, actualizado_en)
-VALUES ('c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'admin@svr-constructora.com', '$2b$10$placeholder_hash_reemplazar_en_produccion', true, true, NOW(), NOW());
+VALUES ('c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'admin@svr-constructora.com', '$2b$10$nXLFI4c2jybkPBaB0TI2eeBjkgGeleg/2P3rXsuUo0cCvFX90rJoC', true, true, NOW(), NOW());
 
 INSERT INTO users_roles (id, user_id, rol_id, es_principal, activo, asignado_en)
 VALUES ('d0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', true, true, NOW());
