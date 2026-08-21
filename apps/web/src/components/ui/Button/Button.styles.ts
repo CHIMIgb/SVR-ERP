@@ -1,5 +1,5 @@
 export const buttonClasses = {
-  base: 'inline-flex items-center justify-center font-semibold transition-all duration-200 cursor-pointer select-none overflow-hidden min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2',
+  base: 'inline-flex items-center justify-center font-semibold transition-all duration-200 cursor-pointer select-none overflow-hidden min-w-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2',
   disabled: 'opacity-50 cursor-not-allowed pointer-events-none',
   loading: 'opacity-70 cursor-wait pointer-events-none',
   variants: {
