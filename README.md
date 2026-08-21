@@ -74,6 +74,34 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
 
 Hay un template en `apps/web/.env.local.example`.
 
+### Variables de Entorno
+
+#### API (`apps/api/.env`)
+
+```env
+DATABASE_URL="postgresql://postgres:admin123@localhost:5432/svr_erp"
+JWT_ACCESS_SECRET="..."
+JWT_REFRESH_SECRET="..."
+
+PORT=3001
+FRONTEND_URL=http://localhost:3000
+
+# Opcional: lista de origenes CORS separada por comas
+# CORS_ORIGINS=http://localhost:3000,http://localhost:3002
+
+# Bloqueo por IP (anti brute-force)
+BLOQUEO_IP_MAX_INTENTOS=10
+BLOQUEO_IP_VENTANA_MINUTOS=15
+BLOQUEO_IP_MINUTOS=60
+```
+
+#### Web (`apps/web/.env.local`)
+
+```env
+PORT=3000
+NEXT_PUBLIC_API_URL=http://localhost:3001/api
+```
+
 ### Credenciales de Acceso (API)
 
 #### Administrador (acceso total a los 6 módulos)

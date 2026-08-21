@@ -9,15 +9,18 @@ async function bootstrap() {
   // Prefijo global para todos los endpoints
   app.setGlobalPrefix('api');
 
-  // CORS — permitir frontend en desarrollo (incluye IPs de red local)
+  // CORS — permitir frontend en desarrollo
+  const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
-    : [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:3001',
-      ];
+    : frontendUrl
+      ? [frontendUrl]
+      : [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:3001',
+        ];
 
   app.enableCors({
     origin: (

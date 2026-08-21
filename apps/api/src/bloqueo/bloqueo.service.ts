@@ -4,12 +4,17 @@ import { PrismaService } from '../prisma/prisma.service';
 
 /** Intentos fallidos de USUARIO antes de bloqueo escalonado */
 const MAX_INTENTOS_USUARIO = 5;
-/** Intentos fallidos desde una misma IP antes de bloquear la IP */
-const MAX_INTENTOS_IP = 10;
-/** Minutos de bloqueo para una IP (fijo, no escalonado) */
-const BLOQUEO_IP_MINUTOS = 60;
-/** Ventana de tiempo para contar intentos fallidos de IP (minutos) */
-const VENTANA_IP_MINUTOS = 15;
+
+function envInt(key: string, defaultValue: number): number {
+  const value = process.env[key];
+  if (!value) return defaultValue;
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? defaultValue : parsed;
+}
+
+const MAX_INTENTOS_IP = envInt('BLOQUEO_IP_MAX_INTENTOS', 10);
+const BLOQUEO_IP_MINUTOS = envInt('BLOQUEO_IP_MINUTOS', 60);
+const VENTANA_IP_MINUTOS = envInt('BLOQUEO_IP_VENTANA_MINUTOS', 15);
 
 @Injectable()
 export class BloqueoService {
