@@ -245,8 +245,8 @@ export function TimePicker({
 
       {isOpen && (
         <div
-          className="z-50 bg-white rounded-xl border border-slate-200 shadow-xl p-3 w-[280px]"
-          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }}
+          className="bg-white rounded-xl border border-slate-200 shadow-xl p-3 w-[280px] pointer-events-auto"
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 60 }}
         >
           {/* Hora 12h + Periodo */}
           <div className="flex items-center gap-3 mb-3">
