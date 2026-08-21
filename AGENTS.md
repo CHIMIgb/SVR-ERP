@@ -183,3 +183,50 @@ Usar SIEMPRE `scrollbar-none` (definido en `globals.css`). **NO** crear clases n
 ```tsx
 import { cn } from '@/lib/utils';
 ```
+
+## Backend (NestJS + Prisma)
+
+### Tech Stack
+- **NestJS 11** (API REST en `apps/api/`)
+- **Prisma 7** ORM + **PostgreSQL 18** (DB: `svr_erp`, 72 tablas, 71 modelos Prisma)
+- Config de Prisma en `apps/api/prisma.config.ts` (defineConfig), NO en `schema.prisma`
+- URL de BD en `apps/api/.env`
+
+### Prisma ORM
+- Schema: `apps/api/prisma/schema.prisma` (~2,015 líneas)
+- UUIDs para PKs (`@db.Uuid`), snake_case en columnas (`@map`)
+- Soft deletes: campo `eliminado_en` / `deletedAt` en tablas principales
+- Auditoría: `creado_en`, `actualizado_en`, `creado_por`, `actualizado_por`
+- `npx prisma migrate dev` para migraciones, `npx prisma generate` para el cliente
+
+### RBAC (Role-Based Access Control)
+
+Sistema de control de acceso completo. **Las permisos controlan acceso a módulos/acciones. Las vistas controlan acceso a rutas del sidebar.**
+
+#### Modelos principales
+| Modelo | Descripción |
+|--------|-------------|
+| `roles` | Roles del sistema (nombre único, nivel jerárquico, `es_sistema` para proteger) |
+| `permissions` | Permisos granulares: `(modulo, recurso, accion)` único |
+| `vistas` | Rutas del sidebar con `ruta`, `icono`, `orden`, visibilidad |
+| `users_roles` | Vincula usuarios ↔ roles (`es_principal`, `asignado_en`) |
+| `role_permissions` | Vincula roles ↔ permisos (composite PK: `rol_id` + `permiso_id`) |
+| `role_vistas` | Vincula roles ↔ vistas con permisos granulares (`puede_ver`, `puede_crear`, `puede_editar`, `puede_eliminar`, `puede_exportar`) |
+
+#### Seed inicial (en `apps/api/prisma/migrations/20260821000000_seed_rbac/`)
+- **1 Rol**: Administrador (nivel 100, `es_sistema`)
+- **1 Persona + User**: Carlos SVR (`admin@svr-constructora.com`, hash bcrypt placeholder)
+- **96 Permisos**: CRUD + acciones especiales en 6 módulos (dashboard, rrhh, maquinaria, operaciones, comercial, sistema)
+- **24 Vistas**: Todas las rutas del sidebar
+- **96 role_permissions**: Todos los permisos → Administrador
+- **24 role_vistas**: Todas las vistas → Administrador con acceso total
+
+#### Módulos y permisos
+| Módulo | Recursos | Permisos |
+|--------|----------|----------|
+| dashboard | dashboard | ver |
+| rrhh | trabajadores, asistencia, nomina | ver, crear, editar, eliminar, exportar, procesar |
+| maquinaria | flota, horometro, mantenimiento, combustible, gps | ver, crear, editar, eliminar, exportar, aprobar |
+| operaciones | operaciones, reportes_campo, criba, inventario, proyectos | ver, crear, editar, eliminar, exportar |
+| comercial | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
+| sistema | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |

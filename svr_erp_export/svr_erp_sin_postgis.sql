@@ -22,14 +22,12 @@ SET row_security = off;
 -- Name: postgis; Type: EXTENSION; Schema: -; Owner: -
 --
 
-CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 
 
 --
 -- Name: EXTENSION postgis; Type: COMMENT; Schema: -; Owner: -
 --
 
-COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types and functions';
 
 
 --
@@ -1139,7 +1137,6 @@ CREATE TABLE public.geocercas (
     creado_por uuid,
     actualizado_por uuid,
     eliminado_en timestamp(3) without time zone,
-    geometria public.geography(Polygon,4326) GENERATED ALWAYS AS (public.st_buffer((public.st_setsrid(public.st_makepoint((centro_lng)::double precision, (centro_lat)::double precision), 4326))::public.geography, (radio_metros)::double precision)) STORED,
     CONSTRAINT chk_geocercas_radio CHECK ((radio_metros > (0)::numeric)),
     CONSTRAINT chk_geocercas_tipo CHECK ((tipo = ANY (ARRAY['OBRA'::text, 'PATIO'::text, 'ESTACION'::text, 'RUTA'::text, 'PROHIBIDA'::text])))
 );
@@ -1652,8 +1649,7 @@ CREATE TABLE public.rastreo_gps (
     dispositivo_id text,
     activo boolean DEFAULT true NOT NULL,
     creado_en timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    creado_por uuid,
-    posicion public.geography(Point,4326) GENERATED ALWAYS AS ((public.st_setsrid(public.st_makepoint((lng)::double precision, (lat)::double precision), 4326))::public.geography) STORED
+    creado_por uuid
 );
 
 
@@ -2768,12 +2764,6 @@ COPY public.sessions (id, user_id, refresh_token_jti, ip_address, user_agent, di
 \.
 
 
---
--- Data for Name: spatial_ref_sys; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY public.spatial_ref_sys (srid, auth_name, auth_srid, srtext, proj4text) FROM stdin;
-\.
 
 
 --
@@ -3835,7 +3825,6 @@ CREATE INDEX idx_documentos_palabras_clave ON public.documentos USING gin (palab
 -- Name: idx_geocercas_geometria; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_geocercas_geometria ON public.geocercas USING gist (geometria);
 
 
 --
@@ -3856,7 +3845,6 @@ CREATE INDEX idx_proyectos_nombre_fts ON public.proyectos USING gin (to_tsvector
 -- Name: idx_rastreo_gps_posicion; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_rastreo_gps_posicion ON public.rastreo_gps USING gist (posicion);
 
 
 --
