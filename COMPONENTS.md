@@ -4574,6 +4574,122 @@ Si el tooltip no cabe en la posicion preferida, se reposiciona automaticamente:
 ### 13.10 Cuando NO usar
 
 - Para contenido largo o complejo → usar un Modal
-- Para menus de accion → esperar a DropdownMenu
+- Para menus de accion → usar DropdownMenu
 - Para errores de validacion → usar el `error` del form field
 - Para labels de campos → usar el `label` del form field
+
+---
+
+## 14. DropdownMenu
+
+### 14.1 Descripcion
+
+Menu flotante con compound component pattern. Soporta items, iconos, shortcuts, separadores, labels, items destructivos, deshabilitados, y navegacion por teclado (flechas, Escape, Home/End).
+
+### 14.2 Import
+
+```tsx
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from '@/components/ui/DropdownMenu';
+```
+
+### 14.3 Subcomponentes
+
+#### DropdownMenu (Root)
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Subcomponentes del menu |
+| `open` | `boolean` | interno | Control externo del estado |
+| `onOpenChange` | `(open: boolean) => void` | — | Callback al cambiar estado |
+| `className` | `string` | — | Clase adicional |
+
+#### DropdownMenuTrigger
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Elemento trigger |
+| `asChild` | `boolean` | `false` | Renderizar sin wrapper (clonar child) |
+
+#### DropdownMenuContent
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Items del menu |
+| `align` | `'start' \| 'center' \| 'end'` | `'end'` | Alineacion horizontal |
+| `width` | `number` | `200` | Ancho fijo del menu |
+
+#### DropdownMenuItem
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Texto del item |
+| `icon` | `ReactNode` | — | Icono a la izquierda |
+| `shortcut` | `string` | — | Atajo a la derecha |
+| `destructive` | `boolean` | `false` | Texto rojo (eliminar) |
+| `disabled` | `boolean` | `false` | Deshabilitado |
+| `onClick` | `() => void` | — | Callback al seleccionar |
+
+#### DropdownMenuSeparator / DropdownMenuLabel
+
+Sin props adicionales.
+
+### 14.4 Ejemplo Basico
+
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger asChild>
+    <Button variant="outline">
+      Acciones <ChevronDown size={14} />
+    </Button>
+  </DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem icon={<Edit size={14} />}>Editar</DropdownMenuItem>
+    <DropdownMenuItem icon={<Copy size={14} />}>Duplicar</DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuItem icon={<Trash2 size={14} />} shortcut="Del" destructive>
+      Eliminar
+    </DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+### 14.5 Navegacion por Teclado
+
+| Tecla | Accion |
+|-------|--------|
+| `ArrowDown` | Siguiente item |
+| `ArrowUp` | Item anterior |
+| `Home` | Primer item |
+| `End` | Ultimo item |
+| `Escape` | Cerrar menu + focus en trigger |
+| `Enter` / `Space` | Seleccionar item enfocado |
+
+### 14.6 Comportamiento
+
+- **Click outside**: cierra el menu
+- **Touch**: tap para abrir, tap fuera para cerrar
+- **Auto-flip vertical**: si no cabe abajo, abre arriba del trigger
+- **Clamp horizontal**: nunca se sale del viewport
+- **Focus management**: al abrir, enfoca el primer item habilitado
+- **z-index**: 60 (sobre Sidebar, debajo de modales)
+
+### 14.7 Cuando USAR
+
+- Menus de acciones en tablas (editar, eliminar, duplicar)
+- Botones de "mas opciones" en cards/headers
+- Configuraciones contextuales
+- Cualquier menu flotante con items de accion
+
+### 14.8 Cuando NO usar
+
+- Para seleccionar un valor de una lista → usar Select
+- Para contenido informativo → usar Tooltip
+- Para contenido largo/scrollable → usar un Modal
+- Para navegacion principal → usar Sidebar

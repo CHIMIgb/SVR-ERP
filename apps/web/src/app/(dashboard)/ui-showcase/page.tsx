@@ -73,6 +73,7 @@ import { Radio } from "@/components/ui/Radio";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/DropdownMenu";
 import { BarChart, LineChart, AreaChart, PieChart, DoughnutChart, RadarChartComponent, RadialBarChartComponent, ScatterChartComponent } from "@/components/ui/Charts";
 
 /* ────────────────────────────────────────────────────────────────
@@ -3145,6 +3146,85 @@ export default function UIShowcasePage() {
                   <Badge variant="error">Averiada</Badge>
                 </Tooltip>
               </div>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── DropdownMenu ────────────────────────────────────── */}
+      <section>
+        <h2 className="text-3xl font-black tracking-tight text-slate-900">
+          DropdownMenu
+        </h2>
+        <p className="text-slate-500 mt-2 mb-4">
+          Menus flotantes con items, separadores, labels y soporte de teclado.
+        </p>
+        <Card>
+          <div className="space-y-8">
+            {/* Basico */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                Basico
+              </h3>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    Abrir menu <ChevronDown size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem icon={<Edit size={14} />}>Editar</DropdownMenuItem>
+                  <DropdownMenuItem icon={<Copy size={14} />}>Duplicar</DropdownMenuItem>
+                  <DropdownMenuItem icon={<Download size={14} />}>Descargar</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem icon={<Trash2 size={14} />} shortcut="Del" destructive>
+                    Eliminar
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Con Labels */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                Con Labels
+              </h3>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    Opciones <ChevronDown size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>Accion</DropdownMenuLabel>
+                  <DropdownMenuItem icon={<Edit size={14} />}>Editar registro</DropdownMenuItem>
+                  <DropdownMenuItem icon={<Copy size={14} />}>Duplicar registro</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Exportar</DropdownMenuLabel>
+                  <DropdownMenuItem icon={<Download size={14} />}>Descargar PDF</DropdownMenuItem>
+                  <DropdownMenuItem icon={<FileText size={14} />}>Exportar Excel</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Icon trigger */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                Trigger con Icono
+              </h3>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <Settings size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent width={180}>
+                  <DropdownMenuItem icon={<Settings size={14} />}>Configuracion</DropdownMenuItem>
+                  <DropdownMenuItem icon={<Eye size={14} />}>Ver detalle</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem icon={<Share2 size={14} />}>Compartir</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </Card>
