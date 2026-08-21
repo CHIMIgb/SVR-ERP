@@ -45,11 +45,23 @@ npm run test:cov         # Tests con reporte de cobertura
 
 ### Credenciales de Acceso (API)
 
+#### Administrador (acceso total a los 6 módulos)
+
 | Campo | Valor |
 |-------|-------|
 | **Email** | `admin@svr-constructora.com` |
 | **Contraseña** | `admin123` |
-| **Rol** | Administrador (nivel 100, acceso total a los 6 módulos) |
+| **Rol** | Administrador (nivel 100) |
+
+#### Encargado de RRHH (solo módulo Recursos Humanos)
+
+| Campo | Valor |
+|-------|-------|
+| **Email** | `rrhh@svr-constructora.com` |
+| **Contraseña** | `rrhh123` |
+| **Rol** | Encargado de RRHH (nivel 30) |
+| **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
+| **No tiene acceso** | Maquinaria, Operaciones, Comercial, Sistema, Configuración |
 
 **Endpoints de autenticación:**
 
