@@ -228,7 +228,7 @@ export function TimePicker({
               {/* Horas */}
               <div className={timePickerClasses.column}>
                 <div className={timePickerClasses.columnHeader}>Hora</div>
-                <div ref={listHourRef} className={timePickerClasses.list}>
+                <div ref={listHourRef} className="timepicker-list">
                   {hours.map((h) => {
                     const time = formatTime(h, parsed?.minutes ?? 0);
                     const disabledOption = isTimeDisabled(time, min, max);
@@ -258,7 +258,7 @@ export function TimePicker({
               {/* Minutos */}
               <div className={timePickerClasses.column}>
                 <div className={timePickerClasses.columnHeader}>Min</div>
-                <div ref={listMinuteRef} className={timePickerClasses.list}>
+                <div ref={listMinuteRef} className="timepicker-list">
                   {minutes.map((m) => {
                     const time = formatTime(parsed?.hours ?? 0, m);
                     const disabledOption = isTimeDisabled(time, min, max);

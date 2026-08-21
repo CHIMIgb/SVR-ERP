@@ -156,17 +156,19 @@ body {
 }
 
 /* ── Scrollbar Utilities ── */
-.scrollbar-thin {
+.timepicker-list {
+  height: 200px;
+  overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
 }
-.scrollbar-thin::-webkit-scrollbar {
+.timepicker-list::-webkit-scrollbar {
   width: 4px;
 }
-.scrollbar-thin::-webkit-scrollbar-track {
+.timepicker-list::-webkit-scrollbar-track {
   background: transparent;
 }
-.scrollbar-thin::-webkit-scrollbar-thumb {
+.timepicker-list::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
 }
