@@ -224,46 +224,83 @@ npx cap sync android     # Sincronizar con proyecto nativo
 npx cap open android     # Abrir en Android Studio
 ```
 
-## Estructura del Monorepo
+## Arquitectura y Estructura del Monorepo
 
-```
+Este proyecto utiliza un monorepo basado en npm workspaces y Turborepo para separar el frontend, el backend y los paquetes compartidos.
+
+### Estructura General
+
+```text
 SVR-ERP/
 ├── apps/
-│   ├── web/                        # Next.js 16 Frontend
-│   │   ├── src/
-│   │   │   ├── app/                # App Router (24 páginas dashboard)
-│   │   │   ├── components/         # UI (layout, workers, machinery, projects)
-│   │   │   └── lib/                # Utilities, hooks, contexts, mock data
-│   │   ├── public/
-│   │   ├── package.json
-│   │   ├── tsconfig.json
-│   │   └── next.config.ts
-│   │
-│   └── api/                        # NestJS Backend
-│       ├── prisma/
-│       │   ├── schema.prisma       # 71 modelos (introspecteados de svr_erp)
-│       │   └── migrations/
-│       ├── prisma.config.ts        # Config Prisma 7
-│       ├── .env                    # DATABASE_URL
-│       ├── src/
-│       │   ├── main.ts
-│       │   └── app.module.ts
-│       ├── package.json
-│       └── tsconfig.json
-│
+│   ├── web/                        # Next.js 16 Frontend (React 19)
+│   └── api/                        # NestJS 11 Backend (Prisma 7)
 ├── packages/
-│   └── shared/                     # Paquete compartido
-│       ├── src/
-│       │   ├── types/              # Interfaces TypeScript por dominio
-│       │   ├── utils/              # formatCurrency, formatDate
-│       │   └── constants/          # ROLES, STATUSES
-│       ├── package.json
-│       └── tsconfig.json
-│
-├── package.json                    # Root workspace config
-├── turbo.json                      # Turborepo config
-├── tsconfig.base.json              # TS config compartida
-└── .gitignore
+│   └── shared/                     # Tipos, constantes y utilidades compartidas
+├── turbo.json                      # Configuración de Turborepo
+└── package.json                    # Workspaces root
+```
+
+### Arquitectura de `apps/web` (Frontend)
+
+El frontend está construido con **Next.js 16 (App Router)** usando el empaquetador **Turbopack** para desarrollo y **Tailwind CSS v4** para estilos.
+
+**Características de la Arquitectura:**
+- **App Router:** Las rutas se definen mediante la estructura de carpetas dentro de `src/app`.
+- **Client Components:** Prácticamente todas las vistas y componentes usan `"use client"`. Solo los layouts principales (ej. `layout.tsx` y `(dashboard)/layout.tsx`) se renderizan como Server Components.
+- **Sin estado global pesado:** Se usan hooks y contexts (ej. `ToastProvider`, `NotificationProvider`) en lugar de Redux o Zustand para el estado general.
+- **UI "headless-like":** Toda la interfaz de usuario está construida usando Tailwind, organizando los componentes reutilizables en `src/components/ui/` sin depender de librerías como MUI.
+- **Consistencia Visual:** Se emplean componentes de layout estructurados (`Stack`, `Grid`, `Center`, `Flex`, etc.) para controlar el espaciado.
+- **Responsividad:** El diseño es completamente adaptativo utilizando breakpoints definidos en la configuración de Tailwind (`sm`, `md`, `lg`, `xl`).
+
+**Estructura de Carpetas (`apps/web`):**
+```text
+apps/web/
+├── public/                 # Assets estáticos (imágenes, logos)
+├── src/
+│   ├── app/                # Rutas y páginas (Next.js App Router)
+│   │   ├── (dashboard)/    # Rutas agrupadas para el layout protegido (Sidebar/Topbar)
+│   │   │   └── [domain]/   # Vistas por módulo (ej. trabajadores, maquinaria)
+│   │   ├── globals.css     # Estilos globales y variables de Tailwind v4 (@theme)
+│   │   └── layout.tsx      # Root layout de la aplicación
+│   ├── components/         # Componentes de React
+│   │   ├── layout/         # Componentes base del cascarón (Sidebar, Topbar, Modal, etc.)
+│   │   ├── ui/             # Componentes UI reutilizables (Botones, Inputs, Cards)
+│   │   └── [dominio]/      # Componentes por módulo (machinery, projects, workers)
+│   ├── hooks/              # Custom React hooks
+│   ├── lib/                # Utilidades, helpers y datos mock
+│   └── providers/          # Context Providers de React
+├── next.config.ts          # Configuración de Next.js
+└── package.json
+```
+
+### Arquitectura de `apps/api` (Backend)
+
+El backend es una API RESTful desarrollada con **NestJS 11** y el ORM **Prisma 7** conectado a PostgreSQL 18.
+
+**Características de la Arquitectura:**
+- **Módulos Desacoplados:** La API está dividida por dominios de negocio y responsabilidades transversales (Auth, Bloqueo, etc.) manteniendo una arquitectura modular limpia.
+- **Prisma Global:** `PrismaModule` se configura con el decorador `@Global()`, permitiendo inyectar `PrismaService` en cualquier servicio sin necesidad de importar el módulo en cada feature. Usa el adaptador `@prisma/adapter-pg`.
+- **Estandarización de Respuestas:** Usa un `AllExceptionsFilter` para transformar excepciones en JSON consistentes (`{ success: false, error: ... }`) y un `TransformInterceptor` para envolver el éxito de las respuestas en (`{ success: true, data: ... }`).
+- **Seguridad Multicapa:** Utiliza JWT para autenticación. Incorpora protección anti-bruteforce avanzada (bloqueos temporales por intentos fallidos, bloqueos IP escalonados) usando módulos de Rate Limiting y Throttler global.
+- **Control de Acceso basado en Roles (RBAC):** Protege las rutas mediante un `PermissionsGuard` y decoradores personalizados `@RequirePermission()`, cruzando los permisos del usuario almacenados en la base de datos de manera granular (ver, crear, editar, eliminar).
+- **Soft Deletes y Auditoría:** Adopta un diseño orientado a mantener el histórico de datos. Los registros usan soft deletes (`eliminado_en`) en vez de eliminaciones físicas. 
+
+**Estructura de Carpetas (`apps/api`):**
+```text
+apps/api/
+├── prisma/
+│   ├── migrations/         # Archivos de migración de esquema SQL
+│   └── schema.prisma       # Modelos Prisma ORM (~71 tablas) configurados con PostgreSQL
+├── src/
+│   ├── auth/               # Módulo central de Autenticación, sesión y guards JWT/RBAC
+│   ├── bloqueo/            # Módulo de lógica de bloqueo de cuentas/IPs
+│   ├── common/             # Interceptores, decorators y Exception Filters globales
+│   ├── prisma/             # Módulo Prisma integrado como dependecia global de NestJS
+│   ├── app.module.ts       # Root module donde se orquestan imports, rate limits y filtros
+│   └── main.ts             # Punto de entrada de la API (CORS, Pipes de validación)
+├── prisma.config.ts        # Configuración explícita del cliente y driver de Prisma
+└── package.json
 ```
 
 ## Reglas de Estilo
