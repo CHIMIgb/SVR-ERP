@@ -3115,35 +3115,6 @@ export default function UIShowcasePage() {
               </div>
             </div>
 
-            {/* En contexto */}
-            <div>
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-                En Contexto ERP
-              </h3>
-              <div className="flex flex-wrap items-center gap-3">
-                <Tooltip content="Editar registro" placement="top">
-                  <Button variant="outline" size="sm">
-                    <Edit size={14} /> Editar
-                  </Button>
-                </Tooltip>
-                <Tooltip content="Eliminar permanentemente" placement="top">
-                  <Button variant="danger" size="sm">
-                    <Trash2 size={14} /> Eliminar
-                  </Button>
-                </Tooltip>
-                <Tooltip content="Copiar al portapapeles" placement="top">
-                  <Button variant="ghost" size="sm">
-                    <Copy size={14} />
-                  </Button>
-                </Tooltip>
-                <Tooltip content="Descargar como PDF" placement="top">
-                  <Button variant="ghost" size="sm">
-                    <Download size={14} />
-                  </Button>
-                </Tooltip>
-              </div>
-            </div>
-
             {/* En tablas */}
             <div>
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
