@@ -230,3 +230,59 @@ Sistema de control de acceso completo. **Las permisos controlan acceso a módulo
 | operaciones | operaciones, reportes_campo, criba, inventario, proyectos | ver, crear, editar, eliminar, exportar |
 | comercial | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
 | sistema | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |
+
+## Testing — Mandatory Rule
+
+**EVERY NEW FUNCTION OR MODULE IMPLEMENTED MUST INCLUDE UNIT TESTS.**
+
+### Backend (NestJS + Jest)
+
+- **Framework**: Jest (ships with `@nestjs/cli`)
+- **Location**: `*.spec.ts` files alongside the source file
+- **Minimum coverage required**: Services, Controllers, Guards, DTOs
+- **Mocking pattern**: Use `@nestjs/testing` `TestingModule` + PrismaService mocks
+
+```bash
+npm run test          # Run all tests
+npm run test:cov      # Run with coverage report
+```
+
+**Unit test structure:**
+
+```ts
+// auth.service.spec.ts
+describe('AuthService', () => {
+  let service: AuthService;
+  let prisma: {/* mock type */};
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: {/* mock */} },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  describe('login', () => {
+    it('should return 401 if email does not exist', async () => {
+      // arrange, act, assert
+    });
+  });
+});
+```
+
+**Testing rules:**
+1. Each public method of a Service must have at least 1 test
+2. Each endpoint of a Controller must have at least 1 test
+3. Guards must test both `true` and `false` cases
+4. DTOs must be validated with `class-validator` in tests
+5. Tests must be isolated (no real DB dependency, no dependency on other tests)
+6. Use `describe()` to group by method, `it()` for each scenario
+7. AAA pattern: **Arrange** (setup), **Act** (execute), **Assert** (verify)
+
+### Frontend (Jest + React Testing Library) — Coming Soon
+
+When frontend tests are implemented, they will use `@testing-library/react` + `jest`.
