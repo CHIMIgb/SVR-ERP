@@ -45,8 +45,12 @@ export interface AuthResponse {
   data: {
     accessToken: string;
     refreshToken: string;
-    expiresIn: number;
     user: UserAuth;
+    session: {
+      id: string;
+      iniciadaEn: string;
+      expiraEn: string;
+    };
   };
 }
 

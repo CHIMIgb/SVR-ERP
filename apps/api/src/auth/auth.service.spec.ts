@@ -40,6 +40,43 @@ describe('AuthService', () => {
       apellido_materno: null,
       correo: 'admin@svr-constructora.com',
     },
+    users_roles_users_roles_user_idTousers: [
+      {
+        es_principal: true,
+        roles: {
+          id: 'rol-1',
+          nombre: 'Administrador',
+          nivel: 100,
+          role_vistas: [
+            {
+              vista_id: 'vista-1',
+              puede_ver: true,
+              puede_crear: true,
+              puede_editar: true,
+              puede_eliminar: true,
+              puede_exportar: true,
+              vistas: {
+                id: 'vista-1',
+                nombre: 'Dashboard',
+                ruta: '/dashboard',
+                icono: 'LayoutDashboard',
+                orden: 1,
+              },
+            },
+          ],
+          role_permissions: [
+            {
+              permissions: {
+                modulo: 'dashboard',
+                recurso: 'dashboard',
+                accion: 'ver',
+                activo: true,
+              },
+            },
+          ],
+        },
+      },
+    ],
   };
 
   beforeEach(async () => {
@@ -137,6 +174,10 @@ describe('AuthService', () => {
       expect(resultado.refreshToken).toBeDefined();
       expect(resultado.user.email).toBe('admin@svr-constructora.com');
       expect(resultado.user.persona.nombre).toBe('Carlos');
+      expect(resultado.user.roles).toHaveLength(1);
+      expect(resultado.user.vistas).toHaveLength(1);
+      expect(resultado.user.vistas[0].ruta).toBe('/dashboard');
+      expect(resultado.user.permisos).toHaveLength(1);
       expect(prisma.sessions.create).toHaveBeenCalled();
       expect(bloqueoService.resetearIntentos).toHaveBeenCalledWith('user-1');
     });

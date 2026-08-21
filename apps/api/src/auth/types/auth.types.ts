@@ -11,17 +11,41 @@ export interface AuthResponse {
   user: {
     id: string;
     email: string;
+    activo: boolean;
     persona: {
       nombre: string;
-      apellido_paterno: string | null;
-      apellido_materno: string | null;
+      apellidoPaterno: string | null;
+      apellidoMaterno: string | null;
       correo: string | null;
     };
+    roles: {
+      id: string;
+      nombre: string;
+      nivel: number;
+      esPrincipal: boolean;
+    }[];
+    vistas: {
+      id: string;
+      nombre: string;
+      ruta: string;
+      icono: string | null;
+      orden: number;
+      puedeVer: boolean;
+      puedeCrear: boolean;
+      puedeEditar: boolean;
+      puedeEliminar: boolean;
+      puedeExportar: boolean;
+    }[];
+    permisos: {
+      modulo: string;
+      recurso: string;
+      accion: string;
+    }[];
   };
   session: {
     id: string;
-    iniciadaEn: Date;
-    expiraEn: Date;
+    iniciadaEn: string;
+    expiraEn: string;
   };
 }
 

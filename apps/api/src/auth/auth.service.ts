@@ -19,6 +19,34 @@ const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const SALT_ROUNDS = 12;
 
+const USER_INCLUDE = {
+  personas_users_persona_idTopersonas: {
+    select: {
+      nombre: true,
+      apellido_paterno: true,
+      apellido_materno: true,
+      correo: true,
+      telefono: true,
+    },
+  },
+  users_roles_users_roles_user_idTousers: {
+    where: { activo: true },
+    include: {
+      roles: {
+        include: {
+          role_vistas: {
+            where: { activo: true },
+            include: { vistas: true },
+          },
+          role_permissions: {
+            include: { permissions: true },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -58,16 +86,7 @@ export class AuthService {
     // 1. Buscar usuario por email
     const user = await this.prisma.users.findUnique({
       where: { email: dto.email },
-      include: {
-        personas_users_persona_idTopersonas: {
-          select: {
-            nombre: true,
-            apellido_paterno: true,
-            apellido_materno: true,
-            correo: true,
-          },
-        },
-      },
+      include: USER_INCLUDE,
     });
 
     if (!user || !user.activo || user.eliminado_en) {
@@ -222,15 +241,11 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        persona: user.personas_users_persona_idTopersonas,
-      },
+      user: this.buildUserProfile(user),
       session: {
         id: session.id,
-        iniciadaEn: session.iniciada_en,
-        expiraEn: session.expira_en,
+        iniciadaEn: session.iniciada_en.toISOString(),
+        expiraEn: session.expira_en.toISOString(),
       },
     };
   }
@@ -461,46 +476,25 @@ export class AuthService {
   async getProfile(userId: string) {
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      include: {
-        personas_users_persona_idTopersonas: {
-          select: {
-            nombre: true,
-            apellido_paterno: true,
-            apellido_materno: true,
-            correo: true,
-            telefono: true,
-          },
-        },
-        users_roles_users_roles_user_idTousers: {
-          where: { activo: true },
-          include: {
-            roles: {
-              include: {
-                role_vistas: {
-                  where: { activo: true },
-                  include: { vistas: true },
-                },
-                role_permissions: {
-                  include: { permissions: true },
-                },
-              },
-            },
-          },
-        },
-      },
+      include: USER_INCLUDE,
     });
 
     if (!user) return null;
 
-    // Aplanar roles
-    const roles = user.users_roles_users_roles_user_idTousers.map((ur) => ({
+    return this.buildUserProfile(user);
+  }
+
+  /**
+   * Construye el objeto de perfil en camelCase a partir del raw user de Prisma.
+   */
+  private buildUserProfile(user: any): AuthResponse['user'] {
+    const roles = user.users_roles_users_roles_user_idTousers.map((ur: any) => ({
       id: ur.roles.id,
       nombre: ur.roles.nombre,
       nivel: ur.roles.nivel,
-      es_principal: ur.es_principal,
+      esPrincipal: ur.es_principal,
     }));
 
-    // Aplanar vistas (deduplicadas por vista_id, con OR lógico)
     const vistasMap = new Map<
       string,
       {
@@ -509,16 +503,16 @@ export class AuthService {
         ruta: string;
         icono: string | null;
         orden: number;
-        puede_ver: boolean;
-        puede_crear: boolean;
-        puede_editar: boolean;
-        puede_eliminar: boolean;
-        puede_exportar: boolean;
+        puedeVer: boolean;
+        puedeCrear: boolean;
+        puedeEditar: boolean;
+        puedeEliminar: boolean;
+        puedeExportar: boolean;
       }
     >();
 
-    user.users_roles_users_roles_user_idTousers.forEach((ur) => {
-      ur.roles.role_vistas.forEach((rv) => {
+    user.users_roles_users_roles_user_idTousers.forEach((ur: any) => {
+      ur.roles.role_vistas.forEach((rv: any) => {
         const existing = vistasMap.get(rv.vista_id);
         if (!existing) {
           vistasMap.set(rv.vista_id, {
@@ -527,20 +521,18 @@ export class AuthService {
             ruta: rv.vistas.ruta,
             icono: rv.vistas.icono,
             orden: rv.vistas.orden,
-            puede_ver: rv.puede_ver,
-            puede_crear: rv.puede_crear,
-            puede_editar: rv.puede_editar,
-            puede_eliminar: rv.puede_eliminar,
-            puede_exportar: rv.puede_exportar,
+            puedeVer: rv.puede_ver,
+            puedeCrear: rv.puede_crear,
+            puedeEditar: rv.puede_editar,
+            puedeEliminar: rv.puede_eliminar,
+            puedeExportar: rv.puede_exportar,
           });
         } else {
-          existing.puede_ver = existing.puede_ver || rv.puede_ver;
-          existing.puede_crear = existing.puede_crear || rv.puede_crear;
-          existing.puede_editar = existing.puede_editar || rv.puede_editar;
-          existing.puede_eliminar =
-            existing.puede_eliminar || rv.puede_eliminar;
-          existing.puede_exportar =
-            existing.puede_exportar || rv.puede_exportar;
+          existing.puedeVer = existing.puedeVer || rv.puede_ver;
+          existing.puedeCrear = existing.puedeCrear || rv.puede_crear;
+          existing.puedeEditar = existing.puedeEditar || rv.puede_editar;
+          existing.puedeEliminar = existing.puedeEliminar || rv.puede_eliminar;
+          existing.puedeExportar = existing.puedeExportar || rv.puede_exportar;
         }
       });
     });
@@ -549,10 +541,9 @@ export class AuthService {
       (a, b) => a.orden - b.orden,
     );
 
-    // Aplanar permisos (deduplicados)
     const permisosSet = new Set<string>();
-    user.users_roles_users_roles_user_idTousers.forEach((ur) => {
-      ur.roles.role_permissions.forEach((rp) => {
+    user.users_roles_users_roles_user_idTousers.forEach((ur: any) => {
+      ur.roles.role_permissions.forEach((rp: any) => {
         if (rp.permissions.activo) {
           permisosSet.add(
             `${rp.permissions.modulo}.${rp.permissions.recurso}.${rp.permissions.accion}`,
@@ -569,7 +560,15 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
-      persona: user.personas_users_persona_idTopersonas,
+      activo: user.activo,
+      persona: {
+        nombre: user.personas_users_persona_idTopersonas.nombre,
+        apellidoPaterno:
+          user.personas_users_persona_idTopersonas.apellido_paterno,
+        apellidoMaterno:
+          user.personas_users_persona_idTopersonas.apellido_materno,
+        correo: user.personas_users_persona_idTopersonas.correo,
+      },
       roles,
       vistas,
       permisos,
