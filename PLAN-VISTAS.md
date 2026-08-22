@@ -14,6 +14,195 @@ Orden recomendado para refactorizar cada vista aplicando componentes UI reutiliz
 
 ---
 
+
+---
+
+## Requisitos de Seguridad y Auditoria
+
+TODAS las vistas deben implementar estas 3 capas antes de considerarse completas:
+
+### 1. Verificacion de Token (JWT)
+
+Cada llamada a la API debe incluir el access token valido. El frontend ya maneja esto automaticamente via `src/lib/api.ts` (interceptor JWT), pero la vista debe:
+
+- Usar `useAuth()` para obtener el usuario actual y el estado de sesion
+- Si `isAuthenticated === false`, el `RouteGuard` redirige al login (no hacer nada en la vista)
+- Si el token expira durante una operacion, el interceptor refresca automaticamente
+- Si el refresh falla, el usuario se redirige al login
+
+```tsx
+// Patron correcto en cualquier vista:
+const { user, isAuthenticated } = useAuth();
+
+// RouteGuard ya maneja el redirect, pero como doble seguridad:
+if (!isAuthenticated || !user) {
+  return <LoadingState message="Verificando sesion..." />;
+}
+```
+
+### 2. Verificacion de Permisos (RBAC)
+
+Cada accion (ver, crear, editar, eliminar, exportar) debe verificarse antes de mostrar el boton/elemento de UI correspondiente. Los permisos vienen del `user.vistas` array que la API retorna en el login.
+
+**Backend:** El `PermissionsGuard` protege los endpoints con `@RequirePermission('modulo.recurso.accion')`.
+
+**Frontend:** La vista debe ocultar/deshabilitar botones y acciones segun los permisos del usuario:
+
+```tsx
+// Patron correcto para botones CRUD:
+const puedeCrear = user?.vistas?.some(v =>
+  v.ruta === '/inventario' && v.puedeCrear
+);
+const puedeEditar = user?.vistas?.some(v =>
+  v.ruta === '/inventario' && v.puedeEditar
+);
+const puedeEliminar = user?.vistas?.some(v =>
+  v.ruta === '/inventario' && v.puedeEliminar
+);
+const puedeExportar = user?.vistas?.some(v =>
+  v.ruta === '/inventario' && v.puedeExportar
+);
+
+// En el JSX:
+{puedeCrear && (
+  <Button onClick={handleCreate}>
+    <Plus /> Nuevo Articulo
+  </Button>
+)}
+
+{puedeEditar && (
+  <Button variant="ghost" onClick={() => handleEdit(item)}>
+    <Edit2 /> Editar
+  </Button>
+)}
+```
+
+**Permisos disponibles por vista:**
+
+| Campo | Tipo | Descripcion |
+|-------|------|-------------|
+| `puedeVer` | boolean | Puede ver la pagina |
+| `puedeCrear` | boolean | Puede crear registros |
+| `puedeEditar` | boolean | Puede editar registros existentes |
+| `puedeEliminar` | boolean | Puede eliminar registros |
+| `puedeExportar` | boolean | Puede exportar datos |
+
+**IMPORTANTE:** Si un usuario no tiene `puedeVer` para una ruta, el `RouteGuard` ya lo redirige. Los botones de CRUD se verifican por separado en cada vista.
+
+### 3. Servicio de Auditoria
+
+Toda accion que modifique datos (crear, editar, eliminar, login, logout, etc.) debe registrarse en la tabla `bitacora_auditoria` via el modulo `audit/` del backend.
+
+**El registro debe incluir:**
+- **Que** se hizo (accion: CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.)
+- **Quien** lo hizo (user_id del token JWT)
+- **Que recurso** fue afectado (tabla + registro ID)
+- **Valores** antes y despues del cambio (para UPDATE)
+- **Exito o fallo** (status: SUCCESS, FAILURE)
+- **Direccion IP** del cliente
+- **User-Agent** del navegador
+- **Mensaje** descriptivo (exitoso o motivo de fallo)
+
+**Tabla `bitacora_auditoria`:**
+
+| Campo | Tipo | Descripcion |
+|-------|------|-------------|
+| `id` | UUID | PK unica |
+| `accion` | Enum | CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, etc. |
+| `tabla` | String | Nombre de la tabla afectada |
+| `registro_id` | UUID? | ID del registro afectado (nullable) |
+| `user_id` | UUID | Quien ejecuto la accion |
+| `valores_anteriores` | JSON? | Estado antes del cambio (para UPDATE/DELETE) |
+| `valores_nuevos` | JSON? | Estado despues del cambio (para CREATE/UPDATE) |
+| `status` | Enum | SUCCESS o FAILURE |
+| `mensaje` | String? | Descripcion legible de la accion |
+| `ip_address` | String? | IP del cliente |
+| `user_agent` | String? | Navegador del cliente |
+| `creado_en` | DateTime | Timestamp de la accion |
+
+** Patron en el Backend (NestJS Service):**
+
+```ts
+// En cualquier Service que modifique datos:
+async crearRegistro(dto: CreateRegistroDto, userId: string, ip: string) {
+  try {
+    const resultado = await this.prisma.registro.create({ data: dto });
+
+    // Registrar auditoria EXITOSA
+    await this.auditService.registrar({
+      accion: 'CREATE',
+      tabla: 'registros',
+      registroId: resultado.id,
+      userId,
+      ip,
+      valoresNuevos: resultado,
+      status: 'SUCCESS',
+      mensaje: `Registro creado exitosamente: ${resultado.nombre}`,
+    });
+
+    return resultado;
+  } catch (error) {
+    // Registrar auditoria FALLIDA
+    await this.auditService.registrar({
+      accion: 'CREATE',
+      tabla: 'registros',
+      userId,
+      ip,
+      status: 'FAILURE',
+      mensaje: `Error al crear registro: ${error.message}`,
+    });
+    throw error;
+  }
+}
+```
+
+** Patron en el Frontend (llamada a la API):**
+
+```tsx
+// La vista no registra auditoria directamente - eso es responsabilidad del backend.
+// Pero la vista SI debe:
+// 1. Mostrar feedback al usuario (toast de exito/error)
+// 2. Manejar errores de la API y mostrar mensaje claro
+// 3. Refrescar datos despues de una operacion exitosa
+
+const handleCreate = async (data: CreateForm) => {
+  try {
+    await api.post('/inventario', data);
+    showToast('Articulo creado exitosamente', 'success');
+    await refreshData(); // Re-cargar la lista
+  } catch (error: any) {
+    // El backend ya registro el fallo en auditoria
+    showToast(error.message || 'Error al crear el articulo', 'error');
+  }
+};
+
+const handleDelete = async (id: string) => {
+  if (!confirm('Estas seguro de eliminar este registro?')) return;
+  try {
+    await api.delete(`/inventario/${id}`);
+    showToast('Registro eliminado', 'success');
+    await refreshData();
+  } catch (error: any) {
+    showToast(error.message || 'Error al eliminar', 'error');
+  }
+};
+```
+
+### Checklist de Seguridad por Vista
+
+Para cada vista refactorizada, verificar:
+
+- [ ] **Token:** `useAuth()` importado y usando para verificar sesion
+- [ ] **Permisos de crear:** Boton "Nuevo" oculto si `!puedeCrear`
+- [ ] **Permisos de editar:** Botones de edicion ocultos si `!puedeEditar`
+- [ ] **Permisos de eliminar:** Botones de eliminacion ocultos si `!puedeEliminar`
+- [ ] **Permisos de exportar:** Boton "Exportar" oculto si `!puedeExportar`
+- [ ] **Auditoria backend:** Service con try/catch que llama `auditService.registrar()` en exito y fallo
+- [ ] **Feedback frontend:** Toast de exito en operaciones exitosas, toast de error en fallos
+- [ ] **Refresco de datos:** `refreshData()` despues de crear/editar/eliminar
+- [ ] **Confirmacion de eliminacion:** `confirm()` o modal antes de eliminar
+
+
 ## Modulo: Operaciones
 
 | # | Vista | Lineas | Prioridad | Componentes UI a aplicar |
@@ -340,6 +529,7 @@ SEMANA 6:
 
 Para cada vista refactorizada:
 
+### UI y Componentes
 - [ ] Reemplazar `<h1>` manual por `<PageHeader title="..." />`
 - [ ] Reemplazar stat cards manuales por `<StatsCard icon={} value={} label={} />`
 - [ ] Reemplazar tablas HTML por `<DataTable columns={} data={} />`
@@ -350,6 +540,28 @@ Para cada vista refactorizada:
 - [ ] Reemplazar empty states manuales por `<EmptyState icon={} title={} description={} />`
 - [ ] Reemplazar `Intl.NumberFormat(...)` por `formatCurrency()` de packages/shared
 - [ ] Agregar `useState` para busqueda y filtros (si no existen)
+
+### Seguridad y Permisos
+- [ ] Importar `useAuth()` y verificar `isAuthenticated` / `user`
+- [ ] Verificar `puedeCrear` antes de mostrar boton "Nuevo"
+- [ ] Verificar `puedeEditar` antes de mostrar botones de edicion
+- [ ] Verificar `puedeEliminar` antes de mostrar botones de eliminacion
+- [ ] Verificar `puedeExportar` antes de mostrar boton "Exportar"
+- [ ] Deshabilitar/ocultar acciones que el usuario no puede realizar
+
+### Auditoria
+- [ ] Backend: Service con try/catch que llama `auditService.registrar()` en EXITO
+- [ ] Backend: Service con try/catch que llama `auditService.registrar()` en FALLO
+- [ ] Backend: Registrar valores anteriores en UPDATE/DELETE
+- [ ] Backend: Registrar user_id e ip_address en cada operacion
+- [ ] Frontend: Toast de exito en operaciones exitosas
+- [ ] Frontend: Toast de error en fallos con mensaje descriptivo
+- [ ] Frontend: Refrescar datos (`refreshData()`) despues de crear/editar/eliminar
+- [ ] Frontend: `confirm()` o modal antes de eliminar registros
+
+### Calidad
 - [ ] Verificar responsividad (mobile: stacked, desktop: grid/table)
-- [ ] Verificar que no hay duplicate keys en .map()
+- [ ] Verificar que no hay duplicate keys en `.map()`
 - [ ] Documentar componente si se creo alguno nuevo en COMPONENTS.md
+- [ ] Run `npx tsc --noEmit` sin errores
+- [ ] Run `npm run build` exitoso
