@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { InventarioModule } from './inventario/inventario.module';
@@ -10,22 +10,23 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
 @Module({
   imports: [
-    // Rate limiting global con 3 niveles configurables
+    // Rate limiting: SOLO se aplica donde se use @UseGuards(ThrottlerGuard)
+    // (AuthController). El resto de la API NO tiene rate limiting.
     ThrottlerModule.forRoot([
       {
-        name: 'short',   // Para endpoints sensibles (login, register)
-        ttl: 900000,     // 15 minutos
-        limit: 5,        // 5 intentos por 15 min
+        name: 'short',   // Login: 5 intentos / 15 min
+        ttl: 900000,
+        limit: 5,
       },
       {
-        name: 'medium',  // Para refresh y operaciones normales
-        ttl: 900000,     // 15 minutos
-        limit: 30,       // 30 requests por 15 min
+        name: 'medium',  // Refresh: 30 requests / 15 min
+        ttl: 900000,
+        limit: 30,
       },
       {
-        name: 'long',    // Default para toda la API
-        ttl: 60000,      // 1 minuto
-        limit: 60,       // 60 requests por minuto
+        name: 'long',    // General (no usado globalmente)
+        ttl: 60000,
+        limit: 60,
       },
     ]),
     PrismaModule,
@@ -33,11 +34,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     InventarioModule,
   ],
   providers: [
-    // Guard global de rate limiting
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    // NO ThrottlerGuard global — solo en AuthController
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,

@@ -28,7 +28,6 @@ export class InventarioService {
   async findAll(query: QueryArticulosDto) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 10, 100);
-    const skip = (page - 1) * limit;
 
     const where: Prisma.articulos_inventarioWhereInput = {
       eliminado_en: null,
@@ -60,31 +59,58 @@ export class InventarioService {
       where.proveedor_id = query.proveedorId;
     }
 
+    const needsPostFilter = !!query.stockEstado;
+
+    if (needsPostFilter) {
+      // Cuando se filtra por stock, necesitamos traer TODO y post-filtrar ANTES de paginar.
+      const allItems = await this.prisma.articulos_inventario.findMany({
+        where,
+        include: ARTICULO_INCLUDE,
+        orderBy: { creado_en: 'desc' },
+      });
+
+      // Post-filtro de stock (Decimal no soporta comparación con ref en Prisma)
+      let filtered = allItems;
+      if (query.stockEstado === 'bajo') {
+        filtered = allItems.filter(
+          (a) => Number(a.stock) <= Number(a.stock_minimo),
+        );
+      } else if (query.stockEstado === 'ok') {
+        filtered = allItems.filter(
+          (a) => Number(a.stock) > Number(a.stock_minimo),
+        );
+      }
+
+      // Paginar sobre los filtrados
+      const total = filtered.length;
+      const start = (page - 1) * limit;
+      const paged = filtered.slice(start, start + limit);
+
+      return {
+        items: paged.map(this.serialize),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        },
+      };
+    }
+
+    // Sin post-filtro: paginación directa en DB (rápido)
     const [items, total] = await Promise.all([
       this.prisma.articulos_inventario.findMany({
         where,
         include: ARTICULO_INCLUDE,
         orderBy: { creado_en: 'desc' },
-        skip,
+        skip: (page - 1) * limit,
         take: limit,
       }),
       this.prisma.articulos_inventario.count({ where }),
     ]);
 
-    // Post-filtro de stock (Decimal no soporta comparación con ref en Prisma)
-    let filtered = items;
-    if (query.stockEstado === 'bajo') {
-      filtered = items.filter(
-        (a) => Number(a.stock) <= Number(a.stock_minimo),
-      );
-    } else if (query.stockEstado === 'ok') {
-      filtered = items.filter(
-        (a) => Number(a.stock) > Number(a.stock_minimo),
-      );
-    }
-
     return {
-      items: filtered.map(this.serialize),
+      items: items.map(this.serialize),
       pagination: {
         page,
         limit,

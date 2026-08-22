@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Package, AlertTriangle, TrendingDown, ShoppingCart,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Eye,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -54,7 +54,9 @@ export default function InventarioPage() {
     proveedores: [],
     unidades: [],
   });
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoaded = useRef(false);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   // ── Estado de búsqueda y filtros ──
@@ -89,7 +91,13 @@ export default function InventarioPage() {
 
   // ── Cargar datos ──
   const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
-    setLoading(true);
+    // Primera carga: skeleton dentro del DataTable
+    // Refetches: overlay sutil sobre datos existentes
+    if (!hasLoaded.current) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     try {
       const res = await inventarioApi.listar({
         search: searchVal || undefined,
@@ -108,7 +116,9 @@ export default function InventarioPage() {
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
     } finally {
-      setLoading(false);
+      hasLoaded.current = true;
+      setInitialLoading(false);
+      setRefreshing(false);
     }
   }, [showToast]);
 
@@ -195,6 +205,13 @@ export default function InventarioPage() {
 
   const handlePageChange = useCallback((page: number) => {
     fetchData(page, search, filterValues);
+  }, [fetchData, search, filterValues]);
+
+  // ── Filtrar por stock bajo desde la alerta / tarjeta ──
+  const handleFilterLowStock = useCallback(() => {
+    const next = { ...filterValues, stockEstado: 'bajo' };
+    setFilterValues(next);
+    fetchData(1, search, next);
   }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
@@ -467,6 +484,14 @@ export default function InventarioPage() {
               </p>
             </div>
           </div>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<Eye className="w-3.5 h-3.5" />}
+            onClick={handleFilterLowStock}
+          >
+            Ver artículos con stock bajo
+          </Button>
         </div>
       )}
 
@@ -482,6 +507,7 @@ export default function InventarioPage() {
           value={`${stats.stockBajo} críticos`}
           label="Stock Bajo"
           color={stats.stockBajo > 0 ? 'error' : 'success'}
+          onClick={stats.stockBajo > 0 ? handleFilterLowStock : undefined}
         />
         <StatsCard
           icon={<ShoppingCart className="w-6 h-6" />}
@@ -571,28 +597,29 @@ export default function InventarioPage() {
       )}
 
       <div className="space-y-3">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
-          </div>
-        ) : (
-          <>
-            <DataTable
-              columns={columns}
-              data={articulos}
-              keyExtractor={(item) => item.id}
-              emptyText="No se encontraron artículos que coincidan con la búsqueda."
-              maxBodyHeight="500px"
-            />
-            <Pagination
-              currentPage={pagination.page}
-              totalPages={pagination.totalPages}
-              totalRecords={pagination.total}
-              pageSize={PAGE_SIZE}
-              onPageChange={handlePageChange}
-            />
-          </>
-        )}
+        <div className="relative">
+          {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
+          {refreshing && !initialLoading && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
+            </div>
+          )}
+          <DataTable
+            columns={columns}
+            data={articulos}
+            loading={initialLoading}
+            keyExtractor={(item) => item.id}
+            emptyText="No se encontraron artículos que coincidan con la búsqueda."
+            maxBodyHeight="500px"
+          />
+        </div>
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
+          pageSize={PAGE_SIZE}
+          onPageChange={handlePageChange}
+        />
       </div>
 
       {/* ═══════════════════════════════════════════
