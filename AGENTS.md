@@ -121,6 +121,7 @@ por sus componentes equivalentes. **Nunca re-implementar lo que ya existe.**
 | Search + filter manual | `<SearchBar>` + `<FilterPanel>` | `@/components/ui/SearchBar` |
 | Currency: `new Intl.NumberFormat(...)` | Formatear con utilidad compartida | Ver abajo |
 | Stat cards manuales con icono + valor | `<StatsCard />` | `@/components/ui/StatsCard` |
+| Timeline/bitácora manual con fecha sidebar | `<TimelineCard />` | `@/components/ui/TimelineCard` |
 
 ### Formateo de Moneda
 

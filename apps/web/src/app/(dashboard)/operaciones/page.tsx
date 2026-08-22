@@ -1,70 +1,168 @@
 "use client";
 
-import React from 'react';
-import { Plus, ClipboardList, Timer, MapPin, Search, Filter, History } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  Plus, MapPin, ClipboardList, History, HardHat,
+} from 'lucide-react';
 import { operaciones, maquinaria } from '@/lib/data';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { TimelineCard } from '@/components/ui/TimelineCard';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function OperacionesPage() {
+  const { user } = useAuth();
+
+  // ── RBAC ──
+  const vista = user?.vistas?.find(v => v.ruta === '/operaciones');
+  const puedeCrear = vista?.puedeCrear ?? false;
+
+  // ── Filtros ──
+  const [search, setSearch] = useState('');
+  const [maquinaFilter, setMaquinaFilter] = useState('');
+  const [obraFilter, setObraFilter] = useState('');
+
+  // ── Catálogos únicos de los datos ──
+  const obras = useMemo(
+    () => [...new Set(operaciones.map(o => o.obra))].sort(),
+    [],
+  );
+
+  // ── Filtrado ──
+  const filtered = useMemo(() => {
+    let result = operaciones;
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        o =>
+          o.actividad.toLowerCase().includes(q) ||
+          o.obra.toLowerCase().includes(q),
+      );
+    }
+
+    if (maquinaFilter) {
+      result = result.filter(o => o.maquinaId === maquinaFilter);
+    }
+
+    if (obraFilter) {
+      result = result.filter(o => o.obra === obraFilter);
+    }
+
+    return result;
+  }, [search, maquinaFilter, obraFilter]);
+
+  // ── Formatear fecha legible ──
+  const formatFecha = useCallback((fecha: string) => {
+    const d = new Date(fecha + 'T00:00:00');
+    const day = d.getDate();
+    const month = d.toLocaleDateString('es-MX', { month: 'short' });
+    return `${day} ${month}`;
+  }, []);
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Bitácora de Operaciones</h1>
-          <p className="text-slate-500 font-medium">Registro diario de actividades realizadas por maquinaria en obra.</p>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Bitácora de Operaciones"
+        subtitle="Registro diario de actividades realizadas por maquinaria en obra."
+        action={
+          puedeCrear ? (
+            <Button variant="primary" icon={<Plus className="w-5 h-5" />}>
+              Nuevo Registro
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {/* ── Filtros ── */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar actividad, obra..."
+          className="flex-1"
+        />
+        <div className="flex gap-3">
+          <Select
+            value={maquinaFilter}
+            onChange={(e) => setMaquinaFilter(e.target.value)}
+            options={[
+              { value: '', label: 'Todas las máquinas' },
+              ...maquinaria.map(m => ({ value: m.id, label: m.nombre })),
+            ]}
+          />
+          <Select
+            value={obraFilter}
+            onChange={(e) => setObraFilter(e.target.value)}
+            options={[
+              { value: '', label: 'Todas las obras' },
+              ...obras.map(o => ({ value: o, label: o })),
+            ]}
+          />
         </div>
-        <button className="btn-primary flex items-center gap-2 w-fit">
-          <Plus className="w-5 h-5" />
-          Nuevo Registro
-        </button>
       </div>
 
-      {/* Timeline List */}
-      <div className="space-y-6">
-        {operaciones.map((op) => {
-          const maquina = maquinaria.find(m => m.id === op.maquinaId);
-          return (
-            <div key={op.id} className="card group hover:border-primary/50 transition-all flex flex-col md:flex-row gap-6">
-               <div className="md:w-32 flex flex-col items-center justify-center border-r border-slate-100 pr-6">
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{op.fecha}</span>
-                  <div className="text-2xl font-black text-primary mt-1">{op.horas} hrs</div>
-               </div>
+      {/* ── Lista de operaciones ── */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<ClipboardList className="w-10 h-10 text-slate-300" />}
+          title="No hay operaciones registradas"
+          subtitle={
+            search || maquinaFilter || obraFilter
+              ? 'No se encontraron resultados con los filtros aplicados.'
+              : 'Aún no se ha registrado ninguna operación en la bitácora.'
+          }
+          action={
+            search || maquinaFilter || obraFilter ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { setSearch(''); setMaquinaFilter(''); setObraFilter(''); }}
+              >
+                Limpiar filtros
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="space-y-4">
+          {filtered.map(op => {
+            const maquina = maquinaria.find(m => m.id === op.maquinaId);
 
-               <div className="flex-1 space-y-4">
-                  <div className="flex justify-between items-start">
-                     <div>
-                        <h3 className="font-bold text-slate-900 text-lg leading-tight group-hover:text-primary transition-colors">
-                           {op.actividad}
-                        </h3>
-                        <div className="flex items-center gap-4 mt-2">
-                           <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                              <MapPin className="w-3.5 h-3.5 text-slate-300" />
-                              {op.obra}
-                           </div>
-                           <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                              <ClipboardList className="w-3.5 h-3.5 text-slate-300" />
-                              Máquina: <span className="text-slate-900">{op.maquinaId} - {maquina?.nombre}</span>
-                           </div>
-                        </div>
-                     </div>
-                     <button className="p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                        <History className="w-4 h-4 text-slate-400" />
-                     </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                     <span className="text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-500 px-2 py-1 rounded">
-                        ID: {op.id}
-                     </span>
-                     <span className="text-[10px] font-black uppercase tracking-widest bg-green-100 text-green-600 px-2 py-1 rounded">
-                        Completado
-                     </span>
-                  </div>
-               </div>
-            </div>
-          );
-        })}
-      </div>
+            return (
+              <TimelineCard
+                key={op.id}
+                date={formatFecha(op.fecha)}
+                indicator={`${op.horas} hrs`}
+                title={op.actividad}
+                meta={[
+                  {
+                    icon: <MapPin className="w-3.5 h-3.5" />,
+                    label: 'Obra:',
+                    value: op.obra,
+                  },
+                  {
+                    icon: <HardHat className="w-3.5 h-3.5" />,
+                    label: 'Máquina:',
+                    value: maquina ? `${maquina.nombre}` : op.maquinaId,
+                  },
+                ]}
+                badges={[
+                  { variant: 'success' as const, dot: true, children: 'Completado' },
+                ]}
+                actions={
+                  <Button variant="ghost" size="sm" icon={<History className="w-4 h-4" />}>
+                    Historial
+                  </Button>
+                }
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

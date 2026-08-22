@@ -216,7 +216,7 @@ Para cada vista refactorizada, verificar:
 
 ### Detalle por vista
 
-#### 1. Inventario (137 lineas) - PRIORIDAD ALTA
+#### 1. Inventario (137 lineas) - PRIORIDAD ALTA - REALIZADA
 
 **Por que empezar aca:**
 - Tabla con columnas (nombre, stock, estado, precio, proveedor, acciones) -> plantilla para DataTable

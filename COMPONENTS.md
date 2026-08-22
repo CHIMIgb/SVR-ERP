@@ -66,6 +66,13 @@
    - [Convenciones de Nomenclatura](#72-convenciones-de-nomenclatura)
    - [Responsive Design](#73-responsive-design)
 8. [Reglas de Espaciado y Zona Segura](#8-reglas-de-espaciado-y-zona-segura)
+9. [SearchBar + FilterPanel + ActiveFilters](#9-searchbar--filterpanel--activefilters)
+10. [GPS Tracking Components](#10-gps-tracking-components)
+11. [Charts - Visualizacion de Datos](#11-charts---visualizacion-de-datos)
+12. [Reglas de Overflow Protection](#12-reglas-de-overflow-protection)
+13. [Tooltip](#13-tooltip)
+14. [DropdownMenu](#14-dropdownmenu)
+15. [TimelineCard](#15-timelinecard)
 
 ---
 
@@ -4693,3 +4700,81 @@ Sin props adicionales.
 - Para contenido informativo → usar Tooltip
 - Para contenido largo/scrollable → usar un Modal
 - Para navegacion principal → usar Sidebar
+
+---
+
+## 15. TimelineCard
+
+### 15.1 Descripcion
+
+Card con layout de timeline: sidebar izquierdo con fecha + indicador numerico, y area de contenido con titulo, metadatos, badges y acciones. Disenado para vistas cronologicas (bitacoras, historial de mantenimiento, lecturas de horometro).
+
+### 15.2 Import
+
+```tsx
+import { TimelineCard } from '@/components/ui/TimelineCard';
+import type { TimelineCardProps, TimelineMeta, TimelineBadge } from '@/components/ui/TimelineCard';
+```
+
+### 15.3 Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `date` | `string` | *requerido* | Label de fecha en el sidebar (e.g., "27 abr") |
+| `indicator` | `ReactNode` | — | Indicador numerico/icono debajo de la fecha (e.g., "8 hrs") |
+| `title` | `string` | *requerido* | Titulo principal / actividad |
+| `meta` | `TimelineMeta[]` | `[]` | Items de metadata (maquina, obra, operador...) |
+| `badges` | `TimelineBadge[]` | `[]` | Badges de estado |
+| `actions` | `ReactNode` | — | Botones de accion (renderizados a la derecha) |
+| `onClick` | `() => void` | — | Handler click en toda la card |
+| `children` | `ReactNode` | — | Contenido adicional debajo de metadata/badges |
+| `className` | `string` | — | Clases adicionales |
+
+**TimelineMeta:**
+
+| Prop | Tipo | Descripcion |
+|------|------|-------------|
+| `icon` | `ReactNode` | Icono de Lucide |
+| `label` | `string` | Label descriptivo (e.g., "Obra:") |
+| `value` | `string` | Valor (e.g., "Valle Sur") |
+
+**TimelineBadge:**
+
+| Prop | Tipo | Descripcion |
+|------|------|-------------|
+| `variant` | `BadgeVariant` | primary, success, warning, error, info, neutral |
+| `size` | `BadgeSize` | sm, md, lg |
+| `children` | `ReactNode` | Texto del badge |
+| `dot` | `boolean` | Muestra indicador de color antes del texto |
+
+### 15.4 Ejemplo Basico
+
+```tsx
+<TimelineCard
+  date="27 abr"
+  indicator="8 hrs"
+  title="Excavacion para cimentacion profunda"
+  meta={[
+    { icon: <MapPin />, label: 'Obra:', value: 'Valle Sur' },
+    { icon: <HardHat />, label: 'Maquina:', value: 'Excavadora CAT 320' },
+  ]}
+  badges={[{ variant: 'success', dot: true, children: 'Completado' }]}
+  actions={
+    <Button variant="ghost" size="sm" icon={<History />}>Historial</Button>
+  }
+/>
+```
+
+### 15.5 Cuando USAR
+
+- Bitacora de operaciones (actividades diarias)
+- Historial de mantenimiento de maquinaria
+- Lecturas de horometro
+- Reportes de campo con cronologia
+- Cualquier vista con lista cronologica de registros
+
+### 15.6 Cuando NO usar
+
+- Para datos tabulares con muchas columnas → usar DataTable
+- Para metricas/resumen → usar StatsCard
+- Para contenido sin cronologia → usar Card directamente
