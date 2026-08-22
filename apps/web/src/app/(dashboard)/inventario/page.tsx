@@ -208,7 +208,7 @@ export default function InventarioPage() {
           {/* Botón "Pedir más" - visible si puede editar */}
           {puedeEditar && (
             <Button
-              variant="ghost"
+              variant="info"
               size="sm"
               icon={<ShoppingCart className="w-3.5 h-3.5" />}
               onClick={(e) => {
@@ -223,7 +223,7 @@ export default function InventarioPage() {
           {/* Botón Editar - visible si puede editar */}
           {puedeEditar && (
             <Button
-              variant="ghost"
+              variant="warning"
               size="sm"
               icon={<Pencil className="w-3.5 h-3.5" />}
               onClick={(e) => {
