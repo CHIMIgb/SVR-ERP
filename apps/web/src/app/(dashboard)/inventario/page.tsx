@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   Plus, Package, AlertTriangle, TrendingDown, ShoppingCart,
-  Pencil, Trash2, SlidersHorizontal, X,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
 } from 'lucide-react';
 import { inventario, type ArticuloInventario } from '@/lib/data';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
@@ -14,9 +14,9 @@ import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { cn } from '@/lib/utils';
 
 // ── Constantes ──
 const PAGE_SIZE = 2;
@@ -52,6 +52,17 @@ const filterFields: FilterField[] = [
   },
 ];
 
+// ── Form defaults ──
+const emptyForm = {
+  nombre: '',
+  categoria: '',
+  stock: '',
+  stockMinimo: '',
+  unidad: 'Pza',
+  precioUnitario: '',
+  proveedor: '',
+};
+
 export default function InventarioPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -62,6 +73,14 @@ export default function InventarioPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // ── Estado de modales ──
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ArticuloInventario | null>(null);
+  const [form, setForm] = useState(emptyForm);
+
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/inventario');
   const puedeCrear = vista?.puedeCrear ?? false;
@@ -71,6 +90,7 @@ export default function InventarioPage() {
   // ── Datos calculados ──
   const lowStockItems = inventario.filter(item => item.stock <= item.stockMinimo);
   const totalValue = inventario.reduce((acc, item) => acc + item.stock * item.precioUnitario, 0);
+
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = useMemo(() => {
     const filters: ActiveFilter[] = [];
@@ -89,7 +109,7 @@ export default function InventarioPage() {
     return filters;
   }, [filterValues]);
 
-  // ── Filtro combinado (search + filtros) — sin recarga visual ──
+  // ── Filtro combinado ──
   const filtered = useMemo(() => {
     let result = inventario;
 
@@ -129,7 +149,7 @@ export default function InventarioPage() {
     safeCurrentPage * PAGE_SIZE
   );
 
-  // Resetear a página 1 cuando cambian los filtros
+  // ── Handlers de filtros ──
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
     setCurrentPage(1);
@@ -154,20 +174,76 @@ export default function InventarioPage() {
     setCurrentPage(1);
   }, []);
 
-  // ── Acciones CRUD ──
-  const handlePedirMas = useCallback((item: ArticuloInventario) => {
-    showToast(`Solicitando reposición de ${item.nombre} al proveedor ${item.proveedor}...`, 'info');
-  }, [showToast]);
+  // ── Handlers de modales ──
+  const openCreate = useCallback(() => {
+    setForm(emptyForm);
+    setCreateOpen(true);
+  }, []);
 
-  const handleEdit = useCallback((item: ArticuloInventario) => {
-    showToast(`Editando artículo: ${item.nombre}`, 'info');
-  }, [showToast]);
+  const openEdit = useCallback((item: ArticuloInventario) => {
+    setSelectedItem(item);
+    setForm({
+      nombre: item.nombre,
+      categoria: item.categoria,
+      stock: String(item.stock),
+      stockMinimo: String(item.stockMinimo),
+      unidad: item.unidad,
+      precioUnitario: String(item.precioUnitario),
+      proveedor: item.proveedor,
+    });
+    setEditOpen(true);
+  }, []);
 
-  const handleDelete = useCallback((item: ArticuloInventario) => {
-    if (confirm(`¿Estás seguro de eliminar "${item.nombre}"? Esta acción no se puede deshacer.`)) {
-      showToast(`Artículo "${item.nombre}" eliminado.`, 'success');
+  const openOrder = useCallback((item: ArticuloInventario) => {
+    setSelectedItem(item);
+    setForm({
+      ...emptyForm,
+      nombre: item.nombre,
+      categoria: item.categoria,
+      proveedor: item.proveedor,
+      stock: String(item.stockMinimo - item.stock + 10), // Sugerir reposición
+    });
+    setOrderOpen(true);
+  }, []);
+
+  const openDelete = useCallback((item: ArticuloInventario) => {
+    setSelectedItem(item);
+    setDeleteOpen(true);
+  }, []);
+
+  const handleCreate = useCallback(() => {
+    if (!form.nombre || !form.categoria) {
+      showToast('Nombre y categoría son obligatorios.', 'error');
+      return;
     }
-  }, [showToast]);
+    showToast(`Artículo "${form.nombre}" creado exitosamente.`, 'success');
+    setCreateOpen(false);
+  }, [form, showToast]);
+
+  const handleEdit = useCallback(() => {
+    if (!form.nombre || !form.categoria) {
+      showToast('Nombre y categoría son obligatorios.', 'error');
+      return;
+    }
+    showToast(`Artículo "${form.nombre}" actualizado exitosamente.`, 'success');
+    setEditOpen(false);
+  }, [form, showToast]);
+
+  const handleOrder = useCallback(() => {
+    if (!form.stock) {
+      showToast('La cantidad a pedir es obligatoria.', 'error');
+      return;
+    }
+    showToast(`Orden de compra para "${form.nombre}" (${form.stock} unidades) enviada.`, 'success');
+    setOrderOpen(false);
+  }, [form, showToast]);
+
+  const handleDelete = useCallback(() => {
+    if (!selectedItem) return;
+    showToast(`Artículo "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
+    setDeleteOpen(false);
+    setSelectedItem(null);
+  }, [selectedItem, showToast]);
 
   // ── Columnas de DataTable ──
   const columns: Column<ArticuloInventario>[] = [
@@ -230,7 +306,7 @@ export default function InventarioPage() {
               variant="info"
               size="sm"
               icon={<ShoppingCart className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); handlePedirMas(item); }}
+              onClick={(e) => { e.stopPropagation(); openOrder(item); }}
             >
               Pedir
             </Button>
@@ -240,7 +316,7 @@ export default function InventarioPage() {
               variant="warning"
               size="sm"
               icon={<Pencil className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); handleEdit(item); }}
+              onClick={(e) => { e.stopPropagation(); openEdit(item); }}
             >
               Editar
             </Button>
@@ -250,7 +326,7 @@ export default function InventarioPage() {
               variant="danger"
               size="sm"
               icon={<Trash2 className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
+              onClick={(e) => { e.stopPropagation(); openDelete(item); }}
             >
               Eliminar
             </Button>
@@ -268,7 +344,7 @@ export default function InventarioPage() {
         subtitle="Control de stock, órdenes de compra y almacén central."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />}>
+            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Artículo
             </Button>
           ) : undefined
@@ -371,7 +447,7 @@ export default function InventarioPage() {
         </div>
       )}
 
-      {/* Panel de filtros — solo visible al hacer clic en "Filtros" */}
+      {/* Panel de filtros */}
       {showFilters && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
@@ -416,6 +492,285 @@ export default function InventarioPage() {
           onPageChange={setCurrentPage}
         />
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════
+          MODALES
+          ═══════════════════════════════════════════════════════════ */}
+
+      {/* Modal: Crear Artículo */}
+      <FormModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCancel={() => setCreateOpen(false)}
+        title="Nuevo Artículo"
+        subtitle="Registrar un nuevo artículo en inventario."
+        submitLabel="Crear Artículo"
+        cancelLabel="Cancelar"
+        onSubmit={handleCreate}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Nombre" required className="sm:col-span-2">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Ej: Filtro de Aceite CAT"
+              value={form.nombre}
+              onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Categoría" required>
+            <select
+              className={modalSelectClass}
+              value={form.categoria}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            >
+              <option value="">Seleccionar...</option>
+              {categorias.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Proveedor">
+            <select
+              className={modalSelectClass}
+              value={form.proveedor}
+              onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+            >
+              <option value="">Seleccionar...</option>
+              {proveedores.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Stock Inicial">
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="0"
+              min="0"
+              value={form.stock}
+              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Stock Mínimo">
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="5"
+              min="0"
+              value={form.stockMinimo}
+              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Unidad">
+            <select
+              className={modalSelectClass}
+              value={form.unidad}
+              onChange={(e) => setForm({ ...form, unidad: e.target.value })}
+            >
+              <option value="Pza">Pieza (Pza)</option>
+              <option value="Galones">Galones</option>
+              <option value="Litros">Litros</option>
+              <option value="Kg">Kilogramos (Kg)</option>
+              <option value="Metro">Metro</option>
+              <option value="Rollo">Rollo</option>
+            </select>
+          </ModalField>
+
+          <ModalField label="Precio Unitario (MXN)">
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              value={form.precioUnitario}
+              onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+            />
+          </ModalField>
+        </div>
+      </FormModal>
+
+      {/* Modal: Pedir / Orden de Compra */}
+      <FormModal
+        open={orderOpen}
+        onClose={() => setOrderOpen(false)}
+        onCancel={() => setOrderOpen(false)}
+        title="Orden de Compra"
+        subtitle={selectedItem ? `Reposición de: ${selectedItem.nombre}` : undefined}
+        submitLabel="Enviar Orden"
+        cancelLabel="Cancelar"
+        onSubmit={handleOrder}
+      >
+        {selectedItem && (
+          <div className="space-y-4">
+            {/* Resumen del artículo */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-black text-slate-900">{selectedItem.nombre}</p>
+                  <p className="text-xs text-slate-500">{selectedItem.categoria} — {selectedItem.proveedor}</p>
+                </div>
+                <Badge variant={selectedItem.stock <= selectedItem.stockMinimo ? 'error' : 'success'} size="sm">
+                  Stock: {selectedItem.stock} {selectedItem.unidad}
+                </Badge>
+              </div>
+            </div>
+
+            <ModalField label="Cantidad a Pedir" required>
+              <input
+                type="number"
+                className={modalInputClass}
+                placeholder="10"
+                min="1"
+                value={form.stock}
+                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+              />
+            </ModalField>
+
+            <ModalField label="Notas / Referencia">
+              <input
+                type="text"
+                className={modalInputClass}
+                placeholder="Número de orden interno, prioridad, etc."
+              />
+            </ModalField>
+          </div>
+        )}
+      </FormModal>
+
+      {/* Modal: Editar Artículo */}
+      <FormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onCancel={() => setEditOpen(false)}
+        title="Editar Artículo"
+        subtitle={selectedItem ? `Editando: ${selectedItem.nombre}` : undefined}
+        submitLabel="Guardar Cambios"
+        cancelLabel="Cancelar"
+        onSubmit={handleEdit}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Nombre" required className="sm:col-span-2">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Nombre del artículo"
+              value={form.nombre}
+              onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Categoría" required>
+            <select
+              className={modalSelectClass}
+              value={form.categoria}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            >
+              <option value="">Seleccionar...</option>
+              {categorias.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Proveedor">
+            <select
+              className={modalSelectClass}
+              value={form.proveedor}
+              onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+            >
+              <option value="">Seleccionar...</option>
+              {proveedores.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Stock Actual">
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="0"
+              min="0"
+              value={form.stock}
+              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Stock Mínimo">
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="5"
+              min="0"
+              value={form.stockMinimo}
+              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Unidad">
+            <select
+              className={modalSelectClass}
+              value={form.unidad}
+              onChange={(e) => setForm({ ...form, unidad: e.target.value })}
+            >
+              <option value="Pza">Pieza (Pza)</option>
+              <option value="Galones">Galones</option>
+              <option value="Litros">Litros</option>
+              <option value="Kg">Kilogramos (Kg)</option>
+              <option value="Metro">Metro</option>
+              <option value="Rollo">Rollo</option>
+            </select>
+          </ModalField>
+
+          <ModalField label="Precio Unitario (MXN)">
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              value={form.precioUnitario}
+              onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+            />
+          </ModalField>
+        </div>
+      </FormModal>
+
+      {/* Modal: Confirmar Eliminación */}
+      <FormModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onCancel={() => setDeleteOpen(false)}
+        title="Eliminar Artículo"
+        subtitle="Esta acción no se puede deshacer."
+        submitLabel="Sí, Eliminar"
+        cancelLabel="Cancelar"
+        onSubmit={handleDelete}
+      >
+        {selectedItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">
+              ¿Estás seguro de eliminar el artículo?
+            </p>
+            <p className="font-black text-slate-900 text-lg mb-2">
+              {selectedItem.nombre}
+            </p>
+            <p className="text-xs text-slate-500">
+              {selectedItem.categoria} — Stock actual: {selectedItem.stock} {selectedItem.unidad}
+            </p>
+          </div>
+        )}
+      </FormModal>
     </div>
   );
 }
