@@ -330,11 +330,11 @@ export default function InventarioPage() {
           size="md"
           icon={<SlidersHorizontal className="w-4 h-4" />}
           onClick={() => setShowFilters(prev => !prev)}
-          className="shrink-0"
+          className="shrink-0 whitespace-nowrap"
         >
-          Filtros
+          <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1.5 w-5 h-5 rounded-full bg-white/20 text-[10px] font-bold flex items-center justify-center">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -394,17 +394,6 @@ export default function InventarioPage() {
                 </select>
               </div>
             ))}
-
-            {Object.values(filterValues).some(v => v !== '') && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearFilters}
-                className="text-red-600 hover:bg-red-50 shrink-0"
-              >
-                Limpiar
-              </Button>
-            )}
           </div>
         </div>
       )}
@@ -419,15 +408,13 @@ export default function InventarioPage() {
           maxBodyHeight="500px"
         />
 
-        {filtered.length > PAGE_SIZE && (
-          <Pagination
-            currentPage={safeCurrentPage}
-            totalPages={totalPages}
-            totalRecords={filtered.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={setCurrentPage}
-          />
-        )}
+        <Pagination
+          currentPage={safeCurrentPage}
+          totalPages={totalPages}
+          totalRecords={filtered.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
     </div>
   );
