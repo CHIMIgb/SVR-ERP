@@ -212,3 +212,135 @@ export const authApi = {
 };
 
 export { setTokens, clearTokens, getAccessToken, getRefreshToken };
+
+// ────────────────────────────────────────────────────────────
+//  Inventario API
+// ────────────────────────────────────────────────────────────
+
+/** Formato que devuelve el backend serializado */
+export interface ArticuloInventarioDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  stock: number;
+  stockMinimo: number;
+  precioUnitario: number;
+  categoria: string;
+  categoriaId: string;
+  proveedor: string;
+  proveedorId: string;
+  unidad: string;
+  unidadId: string;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface InventarioStats {
+  totalArticulos: number;
+  stockBajo: number;
+  valorTotal: number;
+}
+
+export interface CatalogoItem {
+  id: string;
+  nombre: string;
+}
+
+export interface CatalogoUnidad extends CatalogoItem {
+  codigo: string;
+}
+
+export interface InventarioCatalogos {
+  categorias: CatalogoItem[];
+  proveedores: CatalogoItem[];
+  unidades: CatalogoUnidad[];
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ArticuloCreateInput {
+  nombre: string;
+  codigo?: string;
+  categoriaId: string;
+  proveedorId: string;
+  unidadId: string;
+  stock: number;
+  stockMinimo: number;
+  precioUnitario: number;
+}
+
+export interface MovimientoInput {
+  articuloId: string;
+  tipo: 'ENTRADA' | 'SALIDA';
+  cantidad: number;
+  motivo?: string;
+  referenciaTipo?: string;
+  referenciaId?: string;
+}
+
+export const inventarioApi = {
+  /** Listar artículos con búsqueda, filtros y paginación */
+  listar: (params?: {
+    search?: string;
+    categoriaId?: string;
+    proveedorId?: string;
+    stockEstado?: 'bajo' | 'ok';
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.categoriaId) searchParams.set('categoriaId', params.categoriaId);
+    if (params?.proveedorId) searchParams.set('proveedorId', params.proveedorId);
+    if (params?.stockEstado) searchParams.set('stockEstado', params.stockEstado);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ArticuloInventarioDTO>>(
+      `/inventario${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un artículo por ID */
+  obtener: (id: string) =>
+    apiClient.get<ArticuloInventarioDTO>(`/inventario/${id}`),
+
+  /** Crear un artículo */
+  crear: (data: ArticuloCreateInput) =>
+    apiClient.post<ArticuloInventarioDTO>('/inventario', data),
+
+  /** Actualizar un artículo */
+  actualizar: (id: string, data: Partial<ArticuloCreateInput>) =>
+    apiClient.patch<ArticuloInventarioDTO>(`/inventario/${id}`, data),
+
+  /** Eliminar un artículo (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/inventario/${id}`),
+
+  /** Registrar movimiento de stock */
+  movimiento: (data: MovimientoInput) =>
+    apiClient.post<{
+      articuloId: string;
+      tipo: string;
+      cantidad: number;
+      stockAnterior: number;
+      stockResultante: number;
+    }>('/inventario/movimiento', data),
+
+  /** Estadísticas del inventario */
+  stats: () =>
+    apiClient.get<InventarioStats>('/inventario/stats'),
+
+  /** Catálogos para selects (categorías, proveedores, unidades) */
+  catalogos: () =>
+    apiClient.get<InventarioCatalogos>('/inventario/catalogos'),
+};

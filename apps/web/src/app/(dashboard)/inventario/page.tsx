@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Package, AlertTriangle, TrendingDown, ShoppingCart,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
 } from 'lucide-react';
-import { inventario, type ArticuloInventario } from '@/lib/data';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -17,69 +16,61 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import {
+  inventarioApi,
+  type ArticuloInventarioDTO,
+  type InventarioCatalogos,
+} from '@/lib/api';
 
 // ── Constantes ──
-const PAGE_SIZE = 2;
-
-// ── Opciones de filtro (derivadas de los datos) ──
-const categorias = [...new Set(inventario.map(i => i.categoria))];
-const proveedores = [...new Set(inventario.map(i => i.proveedor))];
-
-const filterFields: FilterField[] = [
-  {
-    key: 'categoria',
-    label: 'Categoría',
-    type: 'select',
-    options: categorias.map(c => ({ value: c, label: c })),
-    placeholder: 'Todas',
-  },
-  {
-    key: 'proveedor',
-    label: 'Proveedor',
-    type: 'select',
-    options: proveedores.map(p => ({ value: p, label: p })),
-    placeholder: 'Todos',
-  },
-  {
-    key: 'stock',
-    label: 'Estado Stock',
-    type: 'select',
-    options: [
-      { value: 'bajo', label: 'Stock Bajo' },
-      { value: 'ok', label: 'Stock OK' },
-    ],
-    placeholder: 'Todos',
-  },
-];
+const PAGE_SIZE = 10;
 
 // ── Form defaults ──
 const emptyForm = {
   nombre: '',
-  categoria: '',
+  codigo: '',
+  categoriaId: '',
+  proveedorId: '',
+  unidadId: '',
   stock: '',
   stockMinimo: '',
-  unidad: 'Pza',
   precioUnitario: '',
-  proveedor: '',
+};
+
+const emptyOrderForm = {
+  cantidad: '',
+  motivo: '',
 };
 
 export default function InventarioPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
 
-  // ── Estado local ──
+  // ── Estado de datos ──
+  const [articulos, setArticulos] = useState<ArticuloInventarioDTO[]>([]);
+  const [stats, setStats] = useState({ totalArticulos: 0, stockBajo: 0, valorTotal: 0 });
+  const [catalogos, setCatalogos] = useState<InventarioCatalogos>({
+    categorias: [],
+    proveedores: [],
+    unidades: [],
+  });
+  const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+
+  // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ArticuloInventario | null>(null);
+  const [selectedItem, setSelectedItem] = useState<ArticuloInventarioDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [orderForm, setOrderForm] = useState(emptyOrderForm);
+  const [submitting, setSubmitting] = useState(false);
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/inventario');
@@ -87,92 +78,124 @@ export default function InventarioPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
-  // ── Datos calculados ──
-  const lowStockItems = inventario.filter(item => item.stock <= item.stockMinimo);
-  const totalValue = inventario.reduce((acc, item) => acc + item.stock * item.precioUnitario, 0);
+  // ── Cargar catálogos (una sola vez) ──
+  useEffect(() => {
+    inventarioApi.catalogos().then((res) => {
+      if (res.success && res.data) {
+        setCatalogos(res.data);
+      }
+    });
+  }, []);
+
+  // ── Cargar datos ──
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    setLoading(true);
+    try {
+      const res = await inventarioApi.listar({
+        search: searchVal || undefined,
+        categoriaId: filters?.categoriaId || undefined,
+        proveedorId: filters?.proveedorId || undefined,
+        stockEstado: filters?.stockEstado as 'bajo' | 'ok' | undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      if (res.success && res.data) {
+        setArticulos(res.data.items);
+        setPagination(res.data.pagination);
+      } else {
+        showToast('Error al cargar inventario.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  const fetchStats = useCallback(async () => {
+    const res = await inventarioApi.stats();
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
-  const activeFilters: ActiveFilter[] = useMemo(() => {
-    const filters: ActiveFilter[] = [];
-    if (filterValues.categoria) {
-      const label = categorias.find(c => c === filterValues.categoria) ?? filterValues.categoria;
-      filters.push({ key: 'categoria', label: 'Categoría', value: label });
-    }
-    if (filterValues.proveedor) {
-      const label = proveedores.find(p => p === filterValues.proveedor) ?? filterValues.proveedor;
-      filters.push({ key: 'proveedor', label: 'Proveedor', value: label });
-    }
-    if (filterValues.stock) {
-      const label = filterValues.stock === 'bajo' ? 'Stock Bajo' : 'Stock OK';
-      filters.push({ key: 'stock', label: 'Estado', value: label });
-    }
-    return filters;
-  }, [filterValues]);
+  const activeFilters: ActiveFilter[] = [];
+  if (filterValues.categoriaId) {
+    const cat = catalogos.categorias.find(c => c.id === filterValues.categoriaId);
+    activeFilters.push({ key: 'categoriaId', label: 'Categoría', value: cat?.nombre ?? filterValues.categoriaId });
+  }
+  if (filterValues.proveedorId) {
+    const prov = catalogos.proveedores.find(p => p.id === filterValues.proveedorId);
+    activeFilters.push({ key: 'proveedorId', label: 'Proveedor', value: prov?.nombre ?? filterValues.proveedorId });
+  }
+  if (filterValues.stockEstado) {
+    activeFilters.push({ key: 'stockEstado', label: 'Estado', value: filterValues.stockEstado === 'bajo' ? 'Stock Bajo' : 'Stock OK' });
+  }
 
-  // ── Filtro combinado ──
-  const filtered = useMemo(() => {
-    let result = inventario;
-
-    if (search.trim()) {
-      const term = search.toLowerCase();
-      result = result.filter(item =>
-        item.nombre.toLowerCase().includes(term) ||
-        item.categoria.toLowerCase().includes(term) ||
-        item.proveedor.toLowerCase().includes(term)
-      );
-    }
-
-    if (filterValues.categoria) {
-      result = result.filter(item => item.categoria === filterValues.categoria);
-    }
-
-    if (filterValues.proveedor) {
-      result = result.filter(item => item.proveedor === filterValues.proveedor);
-    }
-
-    if (filterValues.stock) {
-      if (filterValues.stock === 'bajo') {
-        result = result.filter(item => item.stock <= item.stockMinimo);
-      } else {
-        result = result.filter(item => item.stock > item.stockMinimo);
-      }
-    }
-
-    return result;
-  }, [search, filterValues]);
-
-  // ── Paginación ──
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const paginatedData = filtered.slice(
-    (safeCurrentPage - 1) * PAGE_SIZE,
-    safeCurrentPage * PAGE_SIZE
-  );
+  // ── Filtros para SearchBar ──
+  const filterFields: FilterField[] = [
+    {
+      key: 'categoriaId',
+      label: 'Categoría',
+      type: 'select',
+      options: catalogos.categorias.map(c => ({ value: c.id, label: c.nombre })),
+      placeholder: 'Todas',
+    },
+    {
+      key: 'proveedorId',
+      label: 'Proveedor',
+      type: 'select',
+      options: catalogos.proveedores.map(p => ({ value: p.id, label: p.nombre })),
+      placeholder: 'Todos',
+    },
+    {
+      key: 'stockEstado',
+      label: 'Estado Stock',
+      type: 'select',
+      options: [
+        { value: 'bajo', label: 'Stock Bajo' },
+        { value: 'ok', label: 'Stock OK' },
+      ],
+      placeholder: 'Todos',
+    },
+  ];
 
   // ── Handlers de filtros ──
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
-    setCurrentPage(1);
   }, []);
 
+  const handleSearch = useCallback(() => {
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
+
   const handleFilterChange = useCallback((key: string, value: string) => {
-    setFilterValues(prev => ({ ...prev, [key]: value }));
-    setCurrentPage(1);
-  }, []);
+    const next = { ...filterValues, [key]: value };
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
-    setCurrentPage(1);
-  }, []);
+    fetchData(1, search, {});
+  }, [fetchData, search]);
 
   const handleRemoveFilter = useCallback((key: string) => {
-    setFilterValues(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setCurrentPage(1);
-  }, []);
+    const next = { ...filterValues };
+    delete next[key];
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
+
+  const handlePageChange = useCallback((page: number) => {
+    fetchData(page, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
@@ -180,73 +203,152 @@ export default function InventarioPage() {
     setCreateOpen(true);
   }, []);
 
-  const openEdit = useCallback((item: ArticuloInventario) => {
+  const openEdit = useCallback((item: ArticuloInventarioDTO) => {
     setSelectedItem(item);
     setForm({
       nombre: item.nombre,
-      categoria: item.categoria,
+      codigo: item.codigo ?? '',
+      categoriaId: item.categoriaId,
+      proveedorId: item.proveedorId,
+      unidadId: item.unidadId,
       stock: String(item.stock),
       stockMinimo: String(item.stockMinimo),
-      unidad: item.unidad,
       precioUnitario: String(item.precioUnitario),
-      proveedor: item.proveedor,
     });
     setEditOpen(true);
   }, []);
 
-  const openOrder = useCallback((item: ArticuloInventario) => {
+  const openOrder = useCallback((item: ArticuloInventarioDTO) => {
     setSelectedItem(item);
-    setForm({
-      ...emptyForm,
-      nombre: item.nombre,
-      categoria: item.categoria,
-      proveedor: item.proveedor,
-      stock: String(item.stockMinimo - item.stock + 10), // Sugerir reposición
-    });
+    const sugerencia = Math.max(1, item.stockMinimo - item.stock + 10);
+    setOrderForm({ cantidad: String(sugerencia), motivo: '' });
     setOrderOpen(true);
   }, []);
 
-  const openDelete = useCallback((item: ArticuloInventario) => {
+  const openDelete = useCallback((item: ArticuloInventarioDTO) => {
     setSelectedItem(item);
     setDeleteOpen(true);
   }, []);
 
-  const handleCreate = useCallback(() => {
-    if (!form.nombre || !form.categoria) {
-      showToast('Nombre y categoría son obligatorios.', 'error');
+  // ── CRUD Handlers ──
+  const handleCreate = useCallback(async () => {
+    if (!form.nombre || !form.categoriaId || !form.proveedorId || !form.unidadId) {
+      showToast('Nombre, categoría, proveedor y unidad son obligatorios.', 'error');
       return;
     }
-    showToast(`Artículo "${form.nombre}" creado exitosamente.`, 'success');
-    setCreateOpen(false);
-  }, [form, showToast]);
+    setSubmitting(true);
+    try {
+      const res = await inventarioApi.crear({
+        nombre: form.nombre,
+        codigo: form.codigo || undefined,
+        categoriaId: form.categoriaId,
+        proveedorId: form.proveedorId,
+        unidadId: form.unidadId,
+        stock: Number(form.stock) || 0,
+        stockMinimo: Number(form.stockMinimo) || 0,
+        precioUnitario: Number(form.precioUnitario) || 0,
+      });
+      if (res.success) {
+        showToast(`Artículo "${form.nombre}" creado exitosamente.`, 'success');
+        setCreateOpen(false);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al crear artículo.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al crear artículo.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  const handleEdit = useCallback(() => {
-    if (!form.nombre || !form.categoria) {
-      showToast('Nombre y categoría son obligatorios.', 'error');
+  const handleEdit = useCallback(async () => {
+    if (!selectedItem) return;
+    if (!form.nombre || !form.categoriaId || !form.proveedorId || !form.unidadId) {
+      showToast('Nombre, categoría, proveedor y unidad son obligatorios.', 'error');
       return;
     }
-    showToast(`Artículo "${form.nombre}" actualizado exitosamente.`, 'success');
-    setEditOpen(false);
-  }, [form, showToast]);
+    setSubmitting(true);
+    try {
+      const res = await inventarioApi.actualizar(selectedItem.id, {
+        nombre: form.nombre,
+        codigo: form.codigo || undefined,
+        categoriaId: form.categoriaId,
+        proveedorId: form.proveedorId,
+        unidadId: form.unidadId,
+        stock: Number(form.stock) || 0,
+        stockMinimo: Number(form.stockMinimo) || 0,
+        precioUnitario: Number(form.precioUnitario) || 0,
+      });
+      if (res.success) {
+        showToast(`Artículo "${form.nombre}" actualizado exitosamente.`, 'success');
+        setEditOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar artículo.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar artículo.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  const handleOrder = useCallback(() => {
-    if (!form.stock) {
+  const handleOrder = useCallback(async () => {
+    if (!selectedItem || !orderForm.cantidad) {
       showToast('La cantidad a pedir es obligatoria.', 'error');
       return;
     }
-    showToast(`Orden de compra para "${form.nombre}" (${form.stock} unidades) enviada.`, 'success');
-    setOrderOpen(false);
-  }, [form, showToast]);
+    setSubmitting(true);
+    try {
+      const res = await inventarioApi.movimiento({
+        articuloId: selectedItem.id,
+        tipo: 'ENTRADA',
+        cantidad: Number(orderForm.cantidad),
+        motivo: orderForm.motivo || `Orden de compra - ${selectedItem.nombre}`,
+      });
+      if (res.success) {
+        showToast(`Entrada de ${orderForm.cantidad} unidades registrada para "${selectedItem.nombre}".`, 'success');
+        setOrderOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al registrar entrada.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al registrar entrada.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, orderForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
-    showToast(`Artículo "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
-    setDeleteOpen(false);
-    setSelectedItem(null);
-  }, [selectedItem, showToast]);
+    setSubmitting(true);
+    try {
+      const res = await inventarioApi.eliminar(selectedItem.id);
+      if (res.success) {
+        showToast(`Artículo "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
+        setDeleteOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar artículo.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al eliminar artículo.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Columnas de DataTable ──
-  const columns: Column<ArticuloInventario>[] = [
+  const columns: Column<ArticuloInventarioDTO>[] = [
     {
       key: 'nombre',
       header: 'Nombre / Categoría',
@@ -336,9 +438,10 @@ export default function InventarioPage() {
     },
   ];
 
+  const lowStockCount = stats.stockBajo;
+
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Header */}
       <PageHeader
         title="Inventario y Refacciones"
         subtitle="Control de stock, órdenes de compra y almacén central."
@@ -351,8 +454,7 @@ export default function InventarioPage() {
         }
       />
 
-      {/* Alert Summary */}
-      {lowStockItems.length > 0 && (
+      {lowStockCount > 0 && (
         <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
@@ -361,43 +463,39 @@ export default function InventarioPage() {
             <div>
               <p className="text-red-900 font-bold text-sm">Alerta de Stock Crítico</p>
               <p className="text-red-700 text-xs font-medium">
-                Tienes {lowStockItems.length} artículo{lowStockItems.length > 1 ? 's' : ''} por debajo del mínimo.
+                Tienes {lowStockCount} artículo{lowStockCount > 1 ? 's' : ''} por debajo del mínimo.
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="text-red-900 font-black uppercase tracking-widest shrink-0">
-            Ver artículos
-          </Button>
         </div>
       )}
 
-      {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <StatsCard
           icon={<Package className="w-6 h-6" />}
-          value={`${inventario.length} tipos`}
+          value={`${stats.totalArticulos} tipos`}
           label="Total Artículos"
           color="info"
         />
         <StatsCard
           icon={<TrendingDown className="w-6 h-6" />}
-          value={`${lowStockItems.length} críticos`}
+          value={`${stats.stockBajo} críticos`}
           label="Stock Bajo"
-          color={lowStockItems.length > 0 ? 'error' : 'success'}
+          color={stats.stockBajo > 0 ? 'error' : 'success'}
         />
         <StatsCard
           icon={<ShoppingCart className="w-6 h-6" />}
-          value={formatCurrency(totalValue)}
+          value={formatCurrency(stats.valorTotal)}
           label="Valor Inventario"
           color="neutral"
         />
       </div>
 
-      {/* Search + Toggle Filtros */}
       <div className="flex flex-col sm:flex-row gap-3">
         <SearchBar
           value={search}
           onChange={handleSearchChange}
+          onSearch={handleSearch}
           placeholder="Buscar refacción, categoría o proveedor..."
           className="flex-1"
         />
@@ -417,7 +515,6 @@ export default function InventarioPage() {
         </Button>
       </div>
 
-      {/* Chips de filtros activos */}
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {activeFilters.map((filter) => (
@@ -447,7 +544,6 @@ export default function InventarioPage() {
         </div>
       )}
 
-      {/* Panel de filtros */}
       {showFilters && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
@@ -474,30 +570,35 @@ export default function InventarioPage() {
         </div>
       )}
 
-      {/* Tabla + Paginación */}
       <div className="space-y-3">
-        <DataTable
-          columns={columns}
-          data={paginatedData}
-          keyExtractor={(item) => item.id}
-          emptyText="No se encontraron artículos que coincidan con la búsqueda."
-          maxBodyHeight="500px"
-        />
-
-        <Pagination
-          currentPage={safeCurrentPage}
-          totalPages={totalPages}
-          totalRecords={filtered.length}
-          pageSize={PAGE_SIZE}
-          onPageChange={setCurrentPage}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          </div>
+        ) : (
+          <>
+            <DataTable
+              columns={columns}
+              data={articulos}
+              keyExtractor={(item) => item.id}
+              emptyText="No se encontraron artículos que coincidan con la búsqueda."
+              maxBodyHeight="500px"
+            />
+            <Pagination
+              currentPage={pagination.page}
+              totalPages={pagination.totalPages}
+              totalRecords={pagination.total}
+              pageSize={PAGE_SIZE}
+              onPageChange={handlePageChange}
+            />
+          </>
+        )}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════════════
           MODALES
-          ═══════════════════════════════════════════════════════════ */}
+          ═══════════════════════════════════════════ */}
 
-      {/* Modal: Crear Artículo */}
       <FormModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -507,6 +608,7 @@ export default function InventarioPage() {
         submitLabel="Crear Artículo"
         cancelLabel="Cancelar"
         onSubmit={handleCreate}
+        isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField label="Nombre" required className="sm:col-span-2">
@@ -519,28 +621,51 @@ export default function InventarioPage() {
             />
           </ModalField>
 
+          <ModalField label="Código">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Ej: FAC-001"
+              value={form.codigo}
+              onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+            />
+          </ModalField>
+
           <ModalField label="Categoría" required>
             <select
               className={modalSelectClass}
-              value={form.categoria}
-              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              value={form.categoriaId}
+              onChange={(e) => setForm({ ...form, categoriaId: e.target.value })}
             >
               <option value="">Seleccionar...</option>
-              {categorias.map(c => (
-                <option key={c} value={c}>{c}</option>
+              {catalogos.categorias.map(c => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
               ))}
             </select>
           </ModalField>
 
-          <ModalField label="Proveedor">
+          <ModalField label="Proveedor" required>
             <select
               className={modalSelectClass}
-              value={form.proveedor}
-              onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+              value={form.proveedorId}
+              onChange={(e) => setForm({ ...form, proveedorId: e.target.value })}
             >
               <option value="">Seleccionar...</option>
-              {proveedores.map(p => (
-                <option key={p} value={p}>{p}</option>
+              {catalogos.proveedores.map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Unidad de Medida" required>
+            <select
+              className={modalSelectClass}
+              value={form.unidadId}
+              onChange={(e) => setForm({ ...form, unidadId: e.target.value })}
+            >
+              <option value="">Seleccionar...</option>
+              {catalogos.unidades.map(u => (
+                <option key={u.id} value={u.id}>{u.nombre} ({u.codigo})</option>
               ))}
             </select>
           </ModalField>
@@ -567,21 +692,6 @@ export default function InventarioPage() {
             />
           </ModalField>
 
-          <ModalField label="Unidad">
-            <select
-              className={modalSelectClass}
-              value={form.unidad}
-              onChange={(e) => setForm({ ...form, unidad: e.target.value })}
-            >
-              <option value="Pza">Pieza (Pza)</option>
-              <option value="Galones">Galones</option>
-              <option value="Litros">Litros</option>
-              <option value="Kg">Kilogramos (Kg)</option>
-              <option value="Metro">Metro</option>
-              <option value="Rollo">Rollo</option>
-            </select>
-          </ModalField>
-
           <ModalField label="Precio Unitario (MXN)">
             <input
               type="number"
@@ -596,20 +706,19 @@ export default function InventarioPage() {
         </div>
       </FormModal>
 
-      {/* Modal: Pedir / Orden de Compra */}
       <FormModal
         open={orderOpen}
         onClose={() => setOrderOpen(false)}
         onCancel={() => setOrderOpen(false)}
-        title="Orden de Compra"
-        subtitle={selectedItem ? `Reposición de: ${selectedItem.nombre}` : undefined}
-        submitLabel="Enviar Orden"
+        title="Registrar Entrada de Inventario"
+        subtitle={selectedItem ? `Artículo: ${selectedItem.nombre}` : undefined}
+        submitLabel="Registrar Entrada"
         cancelLabel="Cancelar"
         onSubmit={handleOrder}
+        isSubmitting={submitting}
       >
         {selectedItem && (
           <div className="space-y-4">
-            {/* Resumen del artículo */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -622,29 +731,30 @@ export default function InventarioPage() {
               </div>
             </div>
 
-            <ModalField label="Cantidad a Pedir" required>
+            <ModalField label="Cantidad a Entrar" required>
               <input
                 type="number"
                 className={modalInputClass}
                 placeholder="10"
                 min="1"
-                value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                value={orderForm.cantidad}
+                onChange={(e) => setOrderForm({ ...orderForm, cantidad: e.target.value })}
               />
             </ModalField>
 
-            <ModalField label="Notas / Referencia">
+            <ModalField label="Motivo / Referencia">
               <input
                 type="text"
                 className={modalInputClass}
-                placeholder="Número de orden interno, prioridad, etc."
+                placeholder="Número de orden interno, proveedor, etc."
+                value={orderForm.motivo}
+                onChange={(e) => setOrderForm({ ...orderForm, motivo: e.target.value })}
               />
             </ModalField>
           </div>
         )}
       </FormModal>
 
-      {/* Modal: Editar Artículo */}
       <FormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
@@ -654,6 +764,7 @@ export default function InventarioPage() {
         submitLabel="Guardar Cambios"
         cancelLabel="Cancelar"
         onSubmit={handleEdit}
+        isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField label="Nombre" required className="sm:col-span-2">
@@ -666,28 +777,51 @@ export default function InventarioPage() {
             />
           </ModalField>
 
+          <ModalField label="Código">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Código del artículo"
+              value={form.codigo}
+              onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+            />
+          </ModalField>
+
           <ModalField label="Categoría" required>
             <select
               className={modalSelectClass}
-              value={form.categoria}
-              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              value={form.categoriaId}
+              onChange={(e) => setForm({ ...form, categoriaId: e.target.value })}
             >
               <option value="">Seleccionar...</option>
-              {categorias.map(c => (
-                <option key={c} value={c}>{c}</option>
+              {catalogos.categorias.map(c => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
               ))}
             </select>
           </ModalField>
 
-          <ModalField label="Proveedor">
+          <ModalField label="Proveedor" required>
             <select
               className={modalSelectClass}
-              value={form.proveedor}
-              onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+              value={form.proveedorId}
+              onChange={(e) => setForm({ ...form, proveedorId: e.target.value })}
             >
               <option value="">Seleccionar...</option>
-              {proveedores.map(p => (
-                <option key={p} value={p}>{p}</option>
+              {catalogos.proveedores.map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Unidad de Medida" required>
+            <select
+              className={modalSelectClass}
+              value={form.unidadId}
+              onChange={(e) => setForm({ ...form, unidadId: e.target.value })}
+            >
+              <option value="">Seleccionar...</option>
+              {catalogos.unidades.map(u => (
+                <option key={u.id} value={u.id}>{u.nombre} ({u.codigo})</option>
               ))}
             </select>
           </ModalField>
@@ -714,21 +848,6 @@ export default function InventarioPage() {
             />
           </ModalField>
 
-          <ModalField label="Unidad">
-            <select
-              className={modalSelectClass}
-              value={form.unidad}
-              onChange={(e) => setForm({ ...form, unidad: e.target.value })}
-            >
-              <option value="Pza">Pieza (Pza)</option>
-              <option value="Galones">Galones</option>
-              <option value="Litros">Litros</option>
-              <option value="Kg">Kilogramos (Kg)</option>
-              <option value="Metro">Metro</option>
-              <option value="Rollo">Rollo</option>
-            </select>
-          </ModalField>
-
           <ModalField label="Precio Unitario (MXN)">
             <input
               type="number"
@@ -743,7 +862,6 @@ export default function InventarioPage() {
         </div>
       </FormModal>
 
-      {/* Modal: Confirmar Eliminación */}
       <FormModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -753,6 +871,7 @@ export default function InventarioPage() {
         submitLabel="Sí, Eliminar"
         cancelLabel="Cancelar"
         onSubmit={handleDelete}
+        isSubmitting={submitting}
       >
         {selectedItem && (
           <div className="flex flex-col items-center text-center py-4">
