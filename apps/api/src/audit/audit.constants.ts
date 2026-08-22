@@ -1,0 +1,68 @@
+import { AuditAction, AuditSeverity } from '@prisma/client';
+
+/**
+ * Mapeo automático de AuditAction → AuditSeverity, para no tener que
+ * escribir `severity: AuditSeverity.INFO` en el 90% de los usos.
+ *
+ * Criterios:
+ * - INFO: operaciones normales de CRUD y auth exitoso
+ * - WARNING: intentos fallidos, eliminaciones, revocaciones
+ * - CRITICAL: cambios de permisos/roles, errores del sistema
+ *
+ * Se puede hacer override pasando `severity` explícito en el DTO.
+ */
+export const ACTION_SEVERITY_MAP: Record<AuditAction, AuditSeverity> = {
+  LOGIN_EXITOSO: 'INFO',
+  LOGIN_FALLIDO: 'WARNING',
+  LOGOUT: 'INFO',
+  TOKEN_REFRESCADO: 'INFO',
+  TOKEN_REVOCADO: 'WARNING',
+  SESION_CERRADA: 'WARNING',
+
+  USUARIO_CREADO: 'INFO',
+  USUARIO_ACTUALIZADO: 'INFO',
+  USUARIO_ELIMINADO: 'WARNING',
+
+  ROL_ASIGNADO: 'CRITICAL',
+  ROL_REVOCADO: 'CRITICAL',
+  PERMISO_MODIFICADO: 'CRITICAL',
+
+  VISTA_CREADA: 'INFO',
+  VISTA_ACTUALIZADA: 'INFO',
+  VISTA_ELIMINADA: 'WARNING',
+
+  PERSONA_CREADA: 'INFO',
+  PERSONA_ACTUALIZADA: 'INFO',
+
+  DOCUMENTO_CREADO: 'INFO',
+  DOCUMENTO_ACTUALIZADO: 'INFO',
+  DOCUMENTO_ELIMINADO: 'WARNING',
+
+  REPORTE_CREADO: 'INFO',
+  REPORTE_ACTUALIZADO: 'INFO',
+  REPORTE_ELIMINADO: 'WARNING',
+
+  ESTATUS_CAMBIADO: 'INFO',
+  PAGO_REGISTRADO: 'INFO',
+  PAGO_ACTUALIZADO: 'INFO',
+  PAGO_ELIMINADO: 'WARNING',
+  NOMINA_PROCESADA: 'INFO',
+
+  COMBUSTIBLE_CARGADO: 'INFO',
+  MAQUINA_ASIGNADA: 'INFO',
+  MAQUINA_LIBERADA: 'INFO',
+
+  ERROR_SISTEMA: 'CRITICAL',
+};
+
+/**
+ * Campos que nunca deben aparecer en previous_value/new_value, para no
+ * filtrar datos sensibles en la bitácora de auditoría.
+ */
+export const AUDIT_SENSITIVE_FIELDS = [
+  'password_hash',
+  'token_hash',
+  'refresh_token_jti',
+  'secret',
+  'api_key',
+] as const;

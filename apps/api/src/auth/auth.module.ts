@@ -7,6 +7,7 @@ import { IntentosLoginService } from './intentos-login.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { BloqueoModule } from '../bloqueo/bloqueo.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { BloqueoModule } from '../bloqueo/bloqueo.module';
       signOptions: { expiresIn: '15m' },
     }),
     BloqueoModule,
+    AuditModule,
   ],
   controllers: [AuthController],
   providers: [

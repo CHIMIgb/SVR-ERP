@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BloqueoService } from '../bloqueo/bloqueo.service';
 import { IntentosLoginService } from './intentos-login.service';
+import { AuditService } from '../audit/audit.service';
 import * as bcrypt from 'bcryptjs';
 
 jest.mock('bcryptjs');
@@ -25,6 +26,10 @@ describe('AuthService', () => {
   let intentosLoginService: {
     registrar: jest.Mock;
     contarFallidosRecientes: jest.Mock;
+  };
+  let auditService: {
+    log: jest.Mock;
+    logFailure: jest.Mock;
   };
 
   const mockUser = {
@@ -133,6 +138,11 @@ describe('AuthService', () => {
       contarFallidosRecientes: jest.fn().mockResolvedValue(0),
     };
 
+    auditService = {
+      log: jest.fn().mockResolvedValue(undefined),
+      logFailure: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -140,6 +150,7 @@ describe('AuthService', () => {
         { provide: BloqueoService, useValue: bloqueoService },
         { provide: JwtService, useValue: jwtService },
         { provide: IntentosLoginService, useValue: intentosLoginService },
+        { provide: AuditService, useValue: auditService },
       ],
     }).compile();
 

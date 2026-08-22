@@ -7,9 +7,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BloqueoService } from '../bloqueo/bloqueo.service';
 import { IntentosLoginService } from './intentos-login.service';
+import { AuditService } from '../audit/audit.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponse, JwtPayload } from './types/auth.types';
@@ -56,6 +58,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly bloqueoService: BloqueoService,
     private readonly intentosLoginService: IntentosLoginService,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -77,6 +80,21 @@ export class AuthService {
           ip,
           userAgent,
         });
+
+        await this.auditService.logFailure({
+          action: AuditAction.LOGIN_FALLIDO,
+          entityType: 'users',
+          entityId: '',
+          errorCode: 'IP_BLOCKED',
+          actorRole: 'sin_autenticar',
+          ipAddress: ip,
+          userAgent,
+          metadata: {
+            email: dto.email,
+            minutosRestantes: ipBloqueada.minutosRestantes,
+          },
+        });
+
         throw new UnauthorizedException(
           `Demasiados intentos desde esta IP. Intenta de nuevo en ${ipBloqueada.minutosRestantes} minuto(s)`,
         );
@@ -107,6 +125,18 @@ export class AuthService {
         await this.bloqueoService.registrarIntentoFallidoPorIP(ip);
       }
 
+      await this.auditService.logFailure({
+        action: AuditAction.LOGIN_FALLIDO,
+        entityType: 'users',
+        entityId: user?.id ?? '',
+        actorUserId: user?.id,
+        actorRole: 'sin_autenticar',
+        errorCode: !user ? 'USER_NOT_FOUND' : !user.activo ? 'USER_INACTIVE' : 'USER_DELETED',
+        ipAddress: ip,
+        userAgent,
+        metadata: { email: dto.email },
+      });
+
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -121,6 +151,19 @@ export class AuthService {
         ip,
         userAgent,
       });
+
+      await this.auditService.logFailure({
+        action: AuditAction.LOGIN_FALLIDO,
+        entityType: 'users',
+        entityId: user.id,
+        actorUserId: user.id,
+        actorRole: 'sin_autenticar',
+        errorCode: 'ACCOUNT_LOCKED',
+        ipAddress: ip,
+        userAgent,
+        metadata: { email: dto.email, minutosRestantes: bloqueo.minutosRestantes },
+      });
+
       throw new UnauthorizedException(
         `Cuenta bloqueada. Intenta de nuevo en ${bloqueo.minutosRestantes} minuto(s)`,
       );
@@ -147,6 +190,22 @@ export class AuthService {
           : `Contraseña incorrecta — ${resultado.intentosRestantes} intento(s) restante(s)`,
         ip,
         userAgent,
+      });
+
+      await this.auditService.logFailure({
+        action: AuditAction.LOGIN_FALLIDO,
+        entityType: 'users',
+        entityId: user.id,
+        actorUserId: user.id,
+        actorRole: 'sin_autenticar',
+        errorCode: resultado.bloqueado ? 'ACCOUNT_NOW_LOCKED' : 'INVALID_PASSWORD',
+        ipAddress: ip,
+        userAgent,
+        metadata: {
+          email: dto.email,
+          intentosRestantes: resultado.intentosRestantes,
+          bloqueado: resultado.bloqueado,
+        },
       });
 
       if (resultado.bloqueado) {
@@ -237,6 +296,19 @@ export class AuthService {
     this.logger.log(
       `Login exitoso: ${user.email} desde IP ${ip || 'desconocida'}`,
     );
+
+    await this.auditService.log({
+      action: AuditAction.LOGIN_EXITOSO,
+      entityType: 'sessions',
+      entityId: session.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: user.id,
+      actorRole: 'autenticado',
+      sessionId: session.id,
+      ipAddress: ip,
+      userAgent,
+      newValue: { sessionId: session.id, userId: user.id, email: user.email },
+    });
 
     return {
       accessToken,
@@ -468,6 +540,16 @@ export class AuthService {
     });
 
     this.logger.log(`Logout exitoso: usuario ${userId}`);
+
+    await this.auditService.log({
+      action: AuditAction.LOGOUT,
+      entityType: 'sessions',
+      entityId: userId,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorRole: 'autenticado',
+      metadata: { motivo: 'Logout manual' },
+    });
   }
 
   /**
