@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState } from 'react';
-import { 
-  X, Calendar, MapPin, Building2, DollarSign, Users, Truck, 
-  TrendingUp, BarChart2, CheckCircle2, AlertCircle, Clock
+import React from 'react';
+import {
+  X, Calendar, Building2, Truck,
+  BarChart2, CheckCircle2, AlertCircle, Clock
 } from 'lucide-react';
-import { 
-  Proyecto, 
-  trabajadores as allTrabajadores, 
-  maquinaria as allMaquinaria, 
-  despachosFlota,
-  HitoProgreso
+import {
+  Proyecto,
+  trabajadores as allTrabajadores,
+  maquinaria as allMaquinaria,
+  despachosFlota
 } from '@/lib/data';
+import { Portal } from '@/components/ui/Portal';
+import { Overlay } from '@/components/ui/Overlay';
 
 interface ProjectDetailsModalProps {
   isOpen: boolean;
@@ -24,8 +25,6 @@ export default function ProjectDetailsModal({
   onClose,
   proyecto
 }: ProjectDetailsModalProps) {
-  const [hoveredPoint, setHoveredPoint] = useState<{ index: number; type: 'plan' | 'real' } | null>(null);
-
   if (!isOpen) return null;
 
   const formatter = new Intl.NumberFormat('es-MX', {
@@ -78,13 +77,15 @@ export default function ProjectDetailsModal({
   const spi = planificadoProgreso > 0 ? proyecto.progreso / planificadoProgreso : 1;
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+    <Portal>
+      <Overlay onClick={onClose} blur className="z-[9998] p-4">
+        <div
+          className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-8 animate-[fadeScaleIn_0.2s_ease-out] flex flex-col gap-6"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
 
-      {/* Main Container */}
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-8 animate-[fadeScaleIn_0.2s_ease-out] flex flex-col gap-6">
-        
         {/* Header */}
         <div className="flex justify-between items-start border-b border-slate-100 pb-4">
           <div>
@@ -203,32 +204,28 @@ export default function ProjectDetailsModal({
                           </text>
 
                           {/* Planned dot */}
-                          <circle 
-                            cx={px} 
-                            cy={pyPlan} 
-                            r="4" 
-                            fill="#ffffff" 
-                            stroke="#f97316" 
+                          <circle
+                            cx={px}
+                            cy={pyPlan}
+                            r="4"
+                            fill="#ffffff"
+                            stroke="#f97316"
                             strokeWidth="2.5"
                             className="cursor-pointer transition-all hover:r-6"
-                            onMouseEnter={() => setHoveredPoint({ index: i, type: 'plan' })}
-                            onMouseLeave={() => setHoveredPoint(null)}
                           />
                           <text x={px} y={pyPlan - 8} textAnchor="middle" className="text-[8px] font-black fill-primary">
                             {h.planificado}%
                           </text>
 
                           {/* Real dot */}
-                          <circle 
-                            cx={px} 
-                            cy={pyReal} 
-                            r="4" 
-                            fill="#ffffff" 
-                            stroke="#0f172a" 
+                          <circle
+                            cx={px}
+                            cy={pyReal}
+                            r="4"
+                            fill="#ffffff"
+                            stroke="#0f172a"
                             strokeWidth="2.5"
                             className="cursor-pointer transition-all hover:r-6"
-                            onMouseEnter={() => setHoveredPoint({ index: i, type: 'real' })}
-                            onMouseLeave={() => setHoveredPoint(null)}
                           />
                           <text x={px} y={pyReal + 12} textAnchor="middle" className="text-[8px] font-black fill-slate-800">
                             {h.real}%
@@ -402,7 +399,8 @@ export default function ProjectDetailsModal({
 
         </div>
 
-      </div>
-    </div>
+        </div>
+      </Overlay>
+    </Portal>
   );
 }

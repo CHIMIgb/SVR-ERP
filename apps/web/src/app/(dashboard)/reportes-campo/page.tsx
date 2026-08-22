@@ -102,7 +102,7 @@ export default function ReportesCampoPage() {
       </div>
 
       {/* Filtros por tipo */}
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide flex-wrap">
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none flex-wrap">
         {TIPOS.map(tipo => {
           const count = tipo === 'Todos'
             ? reportesCampo.length

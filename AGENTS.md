@@ -86,3 +86,203 @@ src/
 ## Language
 
 The app UI is entirely in **Spanish** (Mexican). All mock data, labels, and user-facing strings are Spanish.
+
+## Critical Rules
+
+- **ALL COMPONENTS MUST BE RESPONSIVE:** Every UI component (existing and future) MUST be responsive. Use Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`) for layouts, flex direction changes, grid adjustments, and text sizing. Tables must scroll horizontally on mobile. Modals must adapt to small screens. Forms must stack on mobile. This is the #1 rule — no exceptions.
+- **NO DUPLICATE KEYS:** Before writing any `.map()` over arrays that render JSX, ALWAYS verify there are no duplicate `key` values. Duplicated keys cause React console errors and broken rendering. Use unique identifiers (IDs, unique names, or index + prefix if no unique data exists). Run `npx tsc --noEmit` after changes to catch issues.
+- **DOCUMENT EVERYTHING:** Every UI component created in `src/components/ui/` MUST be documented in `COMPONENTS.md` with: Props table, Import example, Usage example, "When to use" and "When NOT to use" sections. This is non-negotiable.
+
+## UI Components — Reglas de Migración
+
+Al crear o refactorizar vistas, reemplazar estos patrones manuales
+por sus componentes equivalentes. **Nunca re-implementar lo que ya existe.**
+
+| Patrón manual existente | Componente a usar | Import |
+|------------------------|-------------------|--------|
+| `text-3xl font-black tracking-tight text-slate-900` en headers | `<PageHeader title="..." />` | `@/components/ui/PageHeader` |
+| `bg-white rounded-xl border border-slate-200 shadow-sm p-6` | `<Card>` | `@/components/ui/Card` |
+| `border-t border-slate-100` / `border-b border-slate-100` | `<Separator />` | `@/components/ui/Separator` |
+| `title="..."` en elementos truncados | `<Tooltip content="...">` | `@/components/ui/Tooltip` |
+| `<input type="text">` nativo | `<Input />` | `@/components/ui/Input` |
+| `<select>` nativo | `<Select />` | `@/components/ui/Select` |
+| `<textarea>` nativo | `<Textarea />` | `@/components/ui/Textarea` |
+| Botón + menú flotante ad-hoc con useState/useRef | `<DropdownMenu>` | `@/components/ui/DropdownMenu` |
+| `type="file"` + drag & drop manual | `<FileUpload />` (próximamente) | — |
+| Loading con `Loader2 animate-spin` | `<LoadingState />` | `@/components/ui/LoadingState` |
+| Empty state manual con icono + texto | `<EmptyState />` | `@/components/ui/EmptyState` |
+| Badges `<span className="bg-... rounded-full">` | `<Badge />` | `@/components/ui/Badge` |
+| Avatar manual con initials/image | `<Avatar />` | `@/components/ui/Avatar` |
+| Tab layout manual con onClick + estado | `<Tabs>` + `<TabPanel>` | `@/components/ui/Tabs` |
+| Form fields con label + error + hint | `<FormField>` + `<Input>` | `@/components/ui/FormField` |
+| Modales manuales con Overlay + useState | `<Modal>` / `<FormModal>` | `@/components/ui/Modal` |
+| Skeleton/loading manual | `<Skeleton />` / `<SkeletonText />` | `@/components/ui/Skeleton` |
+| Paginación manual | `<Pagination />` | `@/components/ui/Pagination` |
+| Search + filter manual | `<SearchBar>` + `<FilterPanel>` | `@/components/ui/SearchBar` |
+| Currency: `new Intl.NumberFormat(...)` | Formatear con utilidad compartida | Ver abajo |
+| Stat cards manuales con icono + valor | `<StatsCard />` | `@/components/ui/StatsCard` |
+
+### Formateo de Moneda
+
+Estándar obligatorio para mostrar precios/totales (no duplicar en cada vista):
+
+```ts
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
+```
+
+Si se repite en 3+ archivos, extraer a `src/lib/formatters.ts`.
+
+## Reglas de Estilos
+
+### PROHIBIDO: CSS inline
+
+**Está prohibido usar `style={{ ... }}` en componentes y vistas**, excepto en casos wherey where:
+- `position: fixed` calculado dinámicamente (dropdowns, tooltips, modales)
+- `z-index` dinámico
+- `width`/`height` en píxeles calculados en runtime
+
+Todo lo demás debe ser **Tailwind CSS en className**.
+
+### Archivos de estilos separados
+
+Cada componente UI en `src/components/ui/` debe seguir este patrón:
+
+```
+Componente/
+  Componente.tsx       # Lógica + JSX
+  Componente.styles.ts # Clases Tailwind extraídas
+  index.ts             # Barrel export
+```
+
+**Reglas:**
+1. Los estilos se definen en `*.styles.ts` como objetos con strings de Tailwind
+2. Se importan y aplican via `cn()` (clsx + tailwind-merge)
+3. **NUNCA** poner clases Tailwind largas/duplicadas directamente en el JSX del componente
+4. Si un patrón de estilo se repite en 3+ componentes, moverlo a `globals.css` como clase global
+
+### globals.css
+
+- Solo tokens `@theme {}`, keyframes, y clases utilitarias globales (`.scrollbar-none`, `.tp-scroll-list`)
+- **NO** agregar estilos de componentes específicos aquí
+- **NO** modificar los tokens existentes sin verificar que no rompa otros componentes
+- Las clases en `@layer components` (`.btn-primary`, `.card`) son legacy — preferir componentes UI
+
+### Scrollbar oculto
+
+Usar SIEMPRE `scrollbar-none` (definido en `globals.css`). **NO** crear clases nuevas como `scrollbar-hide`:
+
+```tsx
+<div className="overflow-y-auto scrollbar-none">
+```
+
+## cn() Utility
+
+`cn()` está definido en `src/lib/utils.ts` (clsx + tailwind-merge). Importar desde ahí:
+
+```tsx
+import { cn } from '@/lib/utils';
+```
+
+## Backend (NestJS + Prisma)
+
+### Tech Stack
+- **NestJS 11** (API REST en `apps/api/`)
+- **Prisma 7** ORM + **PostgreSQL 18** (DB: `svr_erp`, 72 tablas, 71 modelos Prisma)
+- Config de Prisma en `apps/api/prisma.config.ts` (defineConfig), NO en `schema.prisma`
+- URL de BD en `apps/api/.env`
+
+### Prisma ORM
+- Schema: `apps/api/prisma/schema.prisma` (~2,015 líneas)
+- UUIDs para PKs (`@db.Uuid`), snake_case en columnas (`@map`)
+- Soft deletes: campo `eliminado_en` / `deletedAt` en tablas principales
+- Auditoría: `creado_en`, `actualizado_en`, `creado_por`, `actualizado_por`
+- `npx prisma migrate dev` para migraciones, `npx prisma generate` para el cliente
+
+### RBAC (Role-Based Access Control)
+
+Sistema de control de acceso completo. **Las permisos controlan acceso a módulos/acciones. Las vistas controlan acceso a rutas del sidebar.**
+
+#### Modelos principales
+| Modelo | Descripción |
+|--------|-------------|
+| `roles` | Roles del sistema (nombre único, nivel jerárquico, `es_sistema` para proteger) |
+| `permissions` | Permisos granulares: `(modulo, recurso, accion)` único |
+| `vistas` | Rutas del sidebar con `ruta`, `icono`, `orden`, visibilidad |
+| `users_roles` | Vincula usuarios ↔ roles (`es_principal`, `asignado_en`) |
+| `role_permissions` | Vincula roles ↔ permisos (composite PK: `rol_id` + `permiso_id`) |
+| `role_vistas` | Vincula roles ↔ vistas con permisos granulares (`puede_ver`, `puede_crear`, `puede_editar`, `puede_eliminar`, `puede_exportar`) |
+
+#### Seed inicial (en `apps/api/prisma/migrations/20260821000000_seed_rbac/`)
+- **1 Rol**: Administrador (nivel 100, `es_sistema`)
+- **1 Persona + User**: Carlos SVR (`admin@svr-constructora.com`, hash bcrypt placeholder)
+- **96 Permisos**: CRUD + acciones especiales en 6 módulos (dashboard, rrhh, maquinaria, operaciones, comercial, sistema)
+- **24 Vistas**: Todas las rutas del sidebar
+- **96 role_permissions**: Todos los permisos → Administrador
+- **24 role_vistas**: Todas las vistas → Administrador con acceso total
+
+#### Módulos y permisos
+| Módulo | Recursos | Permisos |
+|--------|----------|----------|
+| dashboard | dashboard | ver |
+| rrhh | trabajadores, asistencia, nomina | ver, crear, editar, eliminar, exportar, procesar |
+| maquinaria | flota, horometro, mantenimiento, combustible, gps | ver, crear, editar, eliminar, exportar, aprobar |
+| operaciones | operaciones, reportes_campo, criba, inventario, proyectos | ver, crear, editar, eliminar, exportar |
+| comercial | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
+| sistema | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |
+
+## Testing — Mandatory Rule
+
+**EVERY NEW FUNCTION OR MODULE IMPLEMENTED MUST INCLUDE UNIT TESTS.**
+
+### Backend (NestJS + Jest)
+
+- **Framework**: Jest (ships with `@nestjs/cli`)
+- **Location**: `*.spec.ts` files alongside the source file
+- **Minimum coverage required**: Services, Controllers, Guards, DTOs
+- **Mocking pattern**: Use `@nestjs/testing` `TestingModule` + PrismaService mocks
+
+```bash
+npm run test          # Run all tests
+npm run test:cov      # Run with coverage report
+```
+
+**Unit test structure:**
+
+```ts
+// auth.service.spec.ts
+describe('AuthService', () => {
+  let service: AuthService;
+  let prisma: {/* mock type */};
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: {/* mock */} },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  describe('login', () => {
+    it('should return 401 if email does not exist', async () => {
+      // arrange, act, assert
+    });
+  });
+});
+```
+
+**Testing rules:**
+1. Each public method of a Service must have at least 1 test
+2. Each endpoint of a Controller must have at least 1 test
+3. Guards must test both `true` and `false` cases
+4. DTOs must be validated with `class-validator` in tests
+5. Tests must be isolated (no real DB dependency, no dependency on other tests)
+6. Use `describe()` to group by method, `it()` for each scenario
+7. AAA pattern: **Arrange** (setup), **Act** (execute), **Assert** (verify)
+
+### Frontend (Jest + React Testing Library) — Coming Soon
+
+When frontend tests are implemented, they will use `@testing-library/react` + `jest`.

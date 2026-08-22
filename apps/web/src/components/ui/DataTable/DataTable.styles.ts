@@ -1,13 +1,24 @@
 export const dataTableClasses = {
-  container: 'w-full overflow-hidden rounded-xl border border-slate-200 bg-white',
-  scrollWrapper: 'overflow-x-auto',
-  table: 'w-full text-sm',
-  headerRow: 'bg-slate-50 border-b border-slate-100',
-  headerCell: 'px-4 py-3 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest',
-  row: 'border-b border-slate-100 last:border-0 transition-colors',
-  rowInteractive: 'hover:bg-slate-50/80 cursor-pointer',
-  rowEven: 'bg-white',
-  rowOdd: 'bg-slate-50/30',
-  cell: 'px-4 py-3.5 text-sm text-slate-700',
+  /* ── Container ── */
+  container: 'w-full rounded-xl border border-slate-200 bg-white',
+
+  /* ── Header ── */
+  thead: '',
+  th: 'px-3 sm:px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest whitespace-nowrap text-white',
+
+  /* ── Header Colors (naranja alternado) ── */
+  thOdd: 'bg-primary',
+  thEven: 'bg-primary-dark',
+
+  /* ── Body ── */
+  tr: 'border-b border-slate-100 last:border-0 transition-colors',
+  trInteractive: 'hover:bg-slate-50/80 cursor-pointer',
+  trEven: 'bg-white',
+  trOdd: 'bg-slate-50/30',
+  td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-slate-700 whitespace-nowrap',
+  tdRight: 'text-right',
+  tdCenter: 'text-center',
+
+  /* ── Loading ── */
   skeleton: 'animate-pulse bg-slate-200 rounded',
 };

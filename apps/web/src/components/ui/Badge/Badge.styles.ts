@@ -1,5 +1,5 @@
 export const badgeClasses = {
-  base: 'inline-flex items-center font-semibold rounded-full whitespace-nowrap',
+  base: 'inline-flex items-center font-semibold rounded-full whitespace-nowrap overflow-hidden max-w-full',
   sizes: {
     sm: 'px-2 py-0.5 text-[10px]',
     md: 'px-2.5 py-1 text-xs',

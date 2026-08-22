@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { dataTableClasses } from './DataTable.styles';
 
@@ -8,6 +9,9 @@ export interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
+  align?: 'left' | 'center' | 'right';
+  minWidth?: string;
+  nowrap?: boolean;
 }
 
 export interface DataTableProps<T> {
@@ -28,9 +32,32 @@ export function DataTable<T>({
   loading = false,
   emptyText = 'No hay registros',
   onRowClick,
-  maxBodyHeight,
+  maxBodyHeight = '400px',
   className,
 }: DataTableProps<T>) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showRightShadow, setShowRightShadow] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const hasMore = el.scrollWidth > el.clientWidth;
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    setShowRightShadow(hasMore && !atEnd);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('resize', checkScroll);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [checkScroll, data]);
+
   if (loading) {
     return (
       <div className={cn(dataTableClasses.container, className)}>
@@ -57,40 +84,68 @@ export function DataTable<T>({
 
   return (
     <div className={cn(dataTableClasses.container, className)}>
-      <div
-        className={dataTableClasses.scrollWrapper}
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
-      >
-        <table className={dataTableClasses.table}>
-          <thead>
-            <tr className={dataTableClasses.headerRow}>
-              {columns.map((col) => (
-                <th key={col.key} className={cn(dataTableClasses.headerCell, col.className)}>
-                  {col.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((item, index) => (
-              <tr
-                key={keyExtractor(item)}
-                onClick={() => onRowClick?.(item)}
-                className={cn(
-                  dataTableClasses.row,
-                  index % 2 === 0 ? dataTableClasses.rowEven : dataTableClasses.rowOdd,
-                  onRowClick && dataTableClasses.rowInteractive
-                )}
-              >
-                {columns.map((col) => (
-                  <td key={col.key} className={cn(dataTableClasses.cell, col.className)}>
-                    {col.render ? col.render(item) : String((item as Record<string, unknown>)[col.key] ?? '')}
-                  </td>
+      {/* Scroll horizontal + vertical envuelven UNA SOLA tabla */}
+      <div className="relative">
+        <div
+          ref={scrollRef}
+          className="overflow-auto scrollbar-none"
+          style={{ maxHeight: maxBodyHeight }}
+        >
+          <table className="w-full text-sm border-collapse" style={{ tableLayout: 'auto' }}>
+            {/* Header sticky — se queda fijo arriba al hacer scroll vertical */}
+            <thead className="sticky top-0 z-20">
+              <tr>
+                {columns.map((col, index) => (
+                  <th
+                    key={col.key}
+                    className={cn(
+                      dataTableClasses.th,
+                      index % 2 === 0 ? dataTableClasses.thOdd : dataTableClasses.thEven,
+                      col.className
+                    )}
+                  >
+                    {col.header}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.map((item, index) => (
+                <tr
+                  key={keyExtractor(item)}
+                  onClick={() => onRowClick?.(item)}
+                  className={cn(
+                    dataTableClasses.tr,
+                    index % 2 === 0 ? dataTableClasses.trEven : dataTableClasses.trOdd,
+                    onRowClick && dataTableClasses.trInteractive
+                  )}
+                >
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className={cn(
+                        dataTableClasses.td,
+                        col.align === 'right' && dataTableClasses.tdRight,
+                        col.align === 'center' && dataTableClasses.tdCenter,
+                        col.nowrap && 'whitespace-nowrap',
+                        col.className
+                      )}
+                    >
+                      {col.render
+                        ? col.render(item)
+                        : String((item as Record<string, unknown>)[col.key] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Indicador de scroll: gradiente derecho */}
+        {showRightShadow && (
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/90 via-white/60 to-transparent pointer-events-none z-10" />
+        )}
       </div>
     </div>
   );

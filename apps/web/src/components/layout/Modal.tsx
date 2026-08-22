@@ -1,7 +1,16 @@
 "use client";
 
-import React, { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import {
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+} from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+
+const SIDEBAR_WIDTH = 288; // w-72 = 18rem = 288px
 
 interface ModalProps {
   isOpen: boolean;
@@ -9,10 +18,10 @@ interface ModalProps {
   onConfirm: () => void;
   title: string;
   confirmLabel?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
-export default function Modal({
+export default function LayoutModal({
   isOpen,
   onClose,
   onConfirm,
@@ -20,61 +29,41 @@ export default function Modal({
   confirmLabel = 'Guardar',
   children,
 }: ModalProps) {
-  // Close on Escape key
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
+  const [offsetLeft, setOffsetLeft] = useState(0);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const update = () => setOffsetLeft(mq.matches ? SIDEBAR_WIDTH : 0);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   return (
-    <div
-      className="fixed inset-0 z-[9998] flex items-center justify-center p-4"
-      onClick={onClose}
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="md"
+      offsetLeft={offsetLeft}
     >
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-
-      {/* Card */}
-      <div
-        className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-[fadeScaleIn_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-black text-slate-900">{title}</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <ModalHeader
+        title={title}
+        onClose={onClose}
+      />
+      <ModalBody>
+        <div className="space-y-4">
+          {children}
         </div>
-
-        {/* Content */}
-        <div className="space-y-4">{children}</div>
-
-        {/* Actions */}
-        <div className="flex gap-3 mt-8">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 border border-slate-200 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -84,7 +73,7 @@ export function ModalField({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
@@ -101,3 +90,4 @@ export const inputClass =
 
 export const selectClass =
   'w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:border-primary/50 transition-all bg-slate-50 focus:bg-white appearance-none';
+

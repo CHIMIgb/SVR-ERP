@@ -114,7 +114,7 @@ export default function DocumentosPage() {
           />
         </div>
         {/* Filtros de categoría */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {CATEGORIAS.map(cat => (
             <button
               key={cat}

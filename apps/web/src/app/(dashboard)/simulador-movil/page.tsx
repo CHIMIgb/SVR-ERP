@@ -88,7 +88,7 @@ export default function SimuladorMovilPage() {
 
     setOperatorHorometro('');
     setOperatorFalla('');
-    showToast('🚀 Reporte enviado correctamente a Oficina Central.', 'success');
+    showToast('Reporte enviado correctamente a Oficina Central.', 'success');
   };
 
   const renderScreen = () => {

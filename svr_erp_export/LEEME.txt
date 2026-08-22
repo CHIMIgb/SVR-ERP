@@ -1,0 +1,90 @@
+EXPORT DE LA BASE DE DATOS "svr_erp" (SVR-ERP) — v2
+====================================================
+Actualizado: esquema completo con auditoria, RBAC, GPS/PostGIS, nomina,
+facturacion, bloqueo de cuentas, etc. (72 tablas). Si ya tenias un export
+anterior de este mismo proyecto, esta version lo reemplaza.
+
+Este .zip trae 3 copias de la misma base de datos:
+
+  1) svr_erp.dump              <- USAR ESTA si tienes PostGIS instalado
+  2) svr_erp.sql                <- Igual a la 1, pero en texto plano
+  3) svr_erp_sin_postgis.sql    <- USAR ESTA si NO quieres instalar PostGIS
+
+IMPORTANTE — PostGIS:
+Esta base usa la extension PostGIS para 2 columnas de geometria (mapas /
+geocercas). Si tu Postgres NO tiene PostGIS instalado, las opciones 1 y 2
+van a fallar al restaurar. La opcion 3 es una version editada que quita
+esas 2 columnas y su indice espacial — el resto de la base (las otras 72
+tablas) queda igual. Solo perderias esas 2 columnas de geometria hasta
+que decidas instalar PostGIS despues.
+
+Requisito general: tener PostgreSQL instalado (idealmente version 16 o
+mas nueva). Se necesitan pg_restore y/o psql (vienen con la instalacion).
+
+────────────────────────────────────────────────────────────────────────
+OPCION A (recomendada, CON PostGIS) — Restaurar svr_erp.dump
+────────────────────────────────────────────────────────────────────────
+
+0. Si no tienes PostGIS: instalalo primero. En Windows, con PostgreSQL
+   instalado via el instalador de EDB, ya viene "Stack Builder" (en el
+   mismo grupo del menu de inicio que PostgreSQL) — ahi eliges Spatial
+   Extensions > PostGIS y lo instala solo. O descarga el bundle manual
+   desde https://postgis.net/windows_downloads/ (busca el que diga
+   "pg16", o el que corresponda a tu version de Postgres).
+
+1. Abre una terminal (CMD o PowerShell) en la carpeta donde descomprimiste
+   el .zip.
+
+2. Ejecuta (ajusta el usuario si el tuyo no se llama "postgres"; te va a
+   pedir la contraseña de ese usuario de Postgres):
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\pg_restore.exe" -h localhost -U postgres -C -d postgres --no-owner --no-privileges svr_erp.dump
+
+   El flag -C hace que cree la base de datos "svr_erp" automaticamente.
+   No hace falta crearla a mano antes.
+
+Alternativa con interfaz grafica (pgAdmin):
+   - Click derecho en "Databases" > Create > Database... (nombrala "svr_erp")
+   - Click derecho en esa base nueva > Restore...
+   - Selecciona svr_erp.dump, formato "Custom or tar", y dale Restore.
+
+────────────────────────────────────────────────────────────────────────
+OPCION B (SIN PostGIS) — Restaurar svr_erp_sin_postgis.sql
+────────────────────────────────────────────────────────────────────────
+
+1. Crea la base de datos vacia:
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\createdb.exe" -h localhost -U postgres svr_erp
+
+2. Carga el archivo:
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\psql.exe" -h localhost -U postgres -d svr_erp -f svr_erp_sin_postgis.sql
+
+Esta version ya se probo (se restauro en limpio, sin errores, 72 tablas).
+
+────────────────────────────────────────────────────────────────────────
+OPCION C (respaldo, texto plano CON PostGIS) — svr_erp.sql
+────────────────────────────────────────────────────────────────────────
+
+Igual que la Opcion A pero en texto plano en vez de formato custom. Usar
+solo si por alguna razon no tienes pg_restore a la mano. Requiere PostGIS
+igual que la opcion A.
+
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\createdb.exe" -h localhost -U postgres svr_erp
+   "C:\Program Files\PostgreSQL\<VERSION>\bin\psql.exe" -h localhost -U postgres -d svr_erp -f svr_erp.sql
+
+────────────────────────────────────────────────────────────────────────
+NOTAS
+────────────────────────────────────────────────────────────────────────
+
+- Los 3 archivos se generaron con --no-owner --no-privileges para que no
+  truene por roles/usuarios que no existan en tu servidor (ej. si tu
+  superusuario de Postgres no se llama "postgres").
+- Incluye estructura completa (tablas, relaciones, tipos, triggers,
+  CHECK constraints) + los datos de prueba ya cargados (trabajadores,
+  maquinas, proyectos, catalogos, niveles de bloqueo por defecto, etc.).
+  Las tablas de usuarios/roles/nomina/facturacion existen pero estan
+  vacias (no tienen datos de prueba todavia).
+- Contiene acentos y ñ (texto en español) — esta en UTF-8, no deberia dar
+  problemas, pero si ves caracteres raros al restaurar el .sql, asegurate
+  de que tu terminal/cliente este usando UTF-8.

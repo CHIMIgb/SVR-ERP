@@ -507,6 +507,38 @@ Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
   │   ├── Badge.tsx               # Variantes: success, warning, error, info, neutral
   │   ├── Badge.styles.ts
   │   └── index.ts
+  ├── DatePicker/
+  │   ├── DatePicker.tsx          # Selector de fecha con calendario desplegable
+  │   ├── DatePicker.styles.ts
+  │   └── index.ts
+  ├── DateRangePicker/
+  │   ├── DateRangePicker.tsx     # Selector de rango de fechas
+  │   ├── DateRangePicker.styles.ts
+  │   └── index.ts
+  ├── TimePicker/
+  │   ├── TimePicker.tsx          # Selector de hora
+  │   ├── TimePicker.styles.ts
+  │   └── index.ts
+  ├── FormField/
+  │   ├── FormField.tsx           # Wrapper de label + hint + error
+  │   ├── FormField.styles.ts
+  │   └── index.ts
+  ├── Checkbox/
+  │   ├── Checkbox.tsx            # Caja de verificacion
+  │   ├── Checkbox.styles.ts
+  │   └── index.ts
+  ├── Radio/
+  │   ├── Radio.tsx               # Boton de opcion unica
+  │   ├── Radio.styles.ts
+  │   └── index.ts
+  ├── Switch/
+  │   ├── Switch.tsx              # Toggle on/off
+  │   ├── Switch.styles.ts
+  │   └── index.ts
+  ├── Textarea/
+  │   ├── Textarea.tsx            # Campo de texto multilinea
+  │   ├── Textarea.styles.ts
+  │   └── index.ts
   ├── Modal/
   │   ├── Modal.tsx               # Overlay + backdrop blur + animation
   │   ├── Modal.styles.ts
@@ -518,9 +550,9 @@ Cada componente tiene 2 archivos: `Component.tsx` + `Component.styles.ts`
   │   ├── PageHeader.tsx          # Titulo + subtitulo + boton de accion
   │   ├── PageHeader.styles.ts
   │   └── index.ts
-  ├── SearchInput/
-  │   ├── SearchInput.tsx         # Input con icono de busqueda
-  │   ├── SearchInput.styles.ts
+  ├── SearchBar/
+  │   ├── SearchBar.tsx           # Barra de busqueda con filtros opcionales
+  │   ├── SearchBar.styles.ts
   │   └── index.ts
   ├── StatsCard/
   │   ├── StatsCard.tsx           # KPI card con icono, valor, tendencia

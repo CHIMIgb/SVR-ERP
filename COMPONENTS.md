@@ -17,25 +17,55 @@
    - [Card](#22-card)
    - [Input](#23-input)
    - [Select](#24-select)
-   - [Badge](#25-badge)
+   - [DatePicker](#25-datepicker)
+   - [DateRangePicker](#26-daterangepicker)
+   - [TimePicker](#27-timepicker)
+   - [FormField](#28-formfield)
+   - [Checkbox](#28-checkbox)
+   - [Radio](#29-radio)
+   - [Switch](#210-switch)
+   - [Textarea](#211-textarea)
+   - [Badge](#212-badge)
 3. [Componentes de Layout](#3-componentes-de-layout)
    - [PageHeader](#31-pageheader)
-   - [SearchInput](#32-searchinput)
-   - [Tabs](#33-tabs)
+   - [Tabs](#32-tabs)
+   - [Grid](#33-grid)
+   - [Center](#34-center)
+   - [Spacer](#35-spacer)
+   - [Flex](#36-flex)
+   - [AspectRatio](#37-aspectratio)
+   - [VisuallyHidden](#38-visuallyhidden)
+   - [Show / Hide](#39-show--hide)
+   - [ScrollArea](#310-scrollarea)
+   - [Separator](#311-separator)
+   - [Box](#312-box)
+   - [Collapse](#313-collapse)
+   - [Portal](#314-portal)
+   - [Overlay](#315-overlay)
+   - [Stack](#316-stack)
+   - [Container](#317-container)
+   - [Divider](#318-divider)
 4. [Componentes de Feedback](#4-componentes-de-feedback)
    - [StatsCard](#41-statscard)
    - [EmptyState](#42-emptystate)
-   - [Avatar](#43-avatar)
+   - [LoadingState](#43-loadingstate)
+   - [Badge](#44-badge)
+   - [Skeleton](#45-skeleton)
+   - [SkeletonText](#46-skeletontext)
 5. [Componentes de Datos](#5-componentes-de-datos)
    - [DataTable](#51-datatable)
-6. [Componentes de Layout (Sistema)](#6-componentes-de-layout-sistema)
+   - [Pagination](#52-pagination)
+6. [Componentes de Sistema](#6-componentes-de-sistema)
    - [Modal](#61-modal)
-   - [Toast](#62-toast)
-   - [NotificationContext](#63-notificationcontext)
+   - [FormModal](#62-formmodal)
+   - [ModalField](#63-modalfield)
+   - [Toast](#64-toast)
+   - [NotificationContext](#65-notificationcontext)
 7. [Guia de Estilos](#7-guia-de-estilos)
    - [Patron de Estilos Separados](#71-patron-de-estilos-separados)
    - [Convenciones de Nomenclatura](#72-convenciones-de-nomenclatura)
    - [Responsive Design](#73-responsive-design)
+8. [Reglas de Espaciado y Zona Segura](#8-reglas-de-espaciado-y-zona-segura)
 
 ---
 
@@ -258,7 +288,7 @@ import type { ButtonProps } from '@/components/ui/Button';
 
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
-| `variant` | `'primary' \| 'secondary' \| 'outline' \| 'ghost' \| 'danger'` | `'primary'` | Variante visual del boton |
+| `variant` | `'primary' \| 'secondary' \| 'outline' \| 'ghost' \| 'danger' \| 'success' \| 'warning' \| 'info'` | `'primary'` | Variante visual del boton |
 | `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del boton |
 | `loading` | `boolean` | `false` | Muestra spinner y deshabilita el boton |
 | `icon` | `React.ReactNode` | `undefined` | Icono a mostrar junto al texto |
@@ -277,6 +307,9 @@ Tambien extiende todas las props nativas de `<button>` (`React.ButtonHTMLAttribu
 | `outline` | Sin fondo, borde gris (`border-2 border-slate-200`), texto gris |
 | `ghost` | Sin fondo ni borde, texto gris, solo background en hover |
 | `danger` | Fondo rojo (`bg-red-500`), texto blanco, sombra roja sutil |
+| `success` | Fondo verde (`bg-green-500`), texto blanco — usar para **crear** registros |
+| `warning` | Fondo amarillo (`bg-amber-500`), texto blanco — usar para **editar** registros |
+| `info` | Fondo azul (`bg-blue-500`), texto blanco — usar para **mostrar** informacion |
 
 #### Tamanos
 
@@ -509,7 +542,7 @@ import { Input } from '@/components/ui/Input';
 
 #### No usar cuando
 
-- No usar para busquedas con debounce — usar `SearchInput`.
+- No usar para busquedas con debounce — usar `SearchBar`.
 - No usar para seleccion multiple — usar `Select`.
 - No usar sin label a menos que el contexto sea obvio (dentro de un form con placeholder claro).
 
@@ -619,7 +652,496 @@ import { Select } from '@/components/ui/Select';
 
 ---
 
-### 2.5 Badge
+### 2.5 DatePicker
+
+Selector de fecha con calendario desplegable, navegacion por meses y formato `es-MX`.
+
+**Archivo:** `src/components/ui/DatePicker/DatePicker.tsx`
+
+**Importacion:**
+```tsx
+import { DatePicker } from '@/components/ui/DatePicker';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `Date \| null` | `undefined` | Fecha seleccionada (controlado) |
+| `defaultValue` | `Date \| null` | `null` | Fecha inicial (no controlado) |
+| `onChange` | `(date: Date \| null) => void` | `undefined` | Callback al seleccionar o limpiar |
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `placeholder` | `string` | `'Seleccionar fecha'` | Placeholder del input |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar el campo |
+| `min` | `Date` | `undefined` | Fecha minima seleccionable |
+| `max` | `Date` | `undefined` | Fecha maxima seleccionable |
+| `disabledDates` | `(date: Date) => boolean` | `undefined` | Funcion para deshabilitar fechas especificas |
+
+#### Ejemplo basico
+
+```tsx
+import { DatePicker } from '@/components/ui/DatePicker';
+import { useState } from 'react';
+
+function FormularioServicio() {
+  const [fecha, setFecha] = useState<Date | null>(new Date());
+
+  return (
+    <DatePicker
+      value={fecha}
+      onChange={setFecha}
+      label="Fecha de servicio"
+      placeholder="Seleccionar fecha"
+    />
+  );
+}
+```
+
+#### Ejemplo con restricciones
+
+```tsx
+<DatePicker
+  label="Fecha de entrega"
+  min={new Date()}
+  max={new Date(2025, 11, 31)}
+  disabledDates={(date) => date.getDay() === 0}
+  error="La fecha es obligatoria"
+/>
+```
+
+#### Cuando usar
+
+- Formularios que requieren una sola fecha (servicios, nómina, asistencia).
+- Filtros por fecha exacta.
+- Reemplazo de inputs `type="date"` nativos para mantener coherencia visual.
+
+#### No usar cuando
+
+- Se necesita seleccionar un rango — usar `DateRangePicker`.
+- Se necesita seleccionar fecha y hora — aun no hay componente de datetime.
+
+---
+
+### 2.6 DateRangePicker
+
+Selector de rango de fechas. Permite seleccionar fecha inicial y final con resaltado visual del intervalo.
+
+**Archivo:** `src/components/ui/DateRangePicker/DateRangePicker.tsx`
+
+**Importacion:**
+```tsx
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
+import type { DateRange } from '@/components/ui/DateRangePicker';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `DateRange` | `undefined` | Rango seleccionado (controlado) |
+| `defaultValue` | `DateRange` | `{ start: null, end: null }` | Rango inicial (no controlado) |
+| `onChange` | `(range: DateRange) => void` | `undefined` | Callback al cambiar el rango |
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `placeholder` | `string` | `'Seleccionar rango'` | Placeholder del input |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar el campo |
+| `min` | `Date` | `undefined` | Fecha minima seleccionable |
+| `max` | `Date` | `undefined` | Fecha maxima seleccionable |
+
+#### Tipo DateRange
+
+```ts
+interface DateRange {
+  start: Date | null;
+  end: Date | null;
+}
+```
+
+#### Ejemplo basico
+
+```tsx
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
+import type { DateRange } from '@/components/ui/DateRangePicker';
+import { useState } from 'react';
+
+function FiltroPeriodo() {
+  const [range, setRange] = useState<DateRange>({ start: null, end: null });
+
+  return (
+    <DateRangePicker
+      value={range}
+      onChange={setRange}
+      label="Periodo del reporte"
+      placeholder="Seleccionar rango de fechas"
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Filtros por periodo en reportes y finanzas.
+- Formularios que requieren fecha inicial y final (despachos, bitacoras, nómina).
+- Reemplazo de dos inputs de fecha sueltos.
+
+#### No usar cuando
+
+- Se necesita solo una fecha — usar `DatePicker`.
+- El rango siempre es fijo (ej. "esta semana") — usar botones predefinidos.
+
+---
+
+### 2.7 TimePicker
+
+Selector de hora con columnas de horas y minutos. Formato 24h estandar en Mexico.
+
+**Archivo:** `src/components/ui/TimePicker/TimePicker.tsx`
+
+**Importacion:**
+```tsx
+import { TimePicker } from '@/components/ui/TimePicker';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | `undefined` | Hora seleccionada — formato `"HH:mm"` |
+| `defaultValue` | `string` | `undefined` | Hora inicial no controlado |
+| `onChange` | `(time: string) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `placeholder` | `string` | `'Seleccionar hora'` | Placeholder del input |
+| `min` | `string` | `undefined` | Hora minima — formato `"HH:mm"` |
+| `max` | `string` | `undefined` | Hora maxima — formato `"HH:mm"` |
+| `minuteStep` | `number` | `5` | Intervalo de minutos (5, 10, 15, 30) |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+
+#### Ejemplo
+
+```tsx
+import { useState } from 'react';
+import { TimePicker } from '@/components/ui/TimePicker';
+
+function Horarios() {
+  const [horaEntrega, setHoraEntrega] = useState('08:30');
+
+  return (
+    <TimePicker
+      value={horaEntrega}
+      onChange={setHoraEntrega}
+      label="Hora de entrega"
+      min="06:00"
+      max="22:00"
+      minuteStep={15}
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Horarios de entrega, turnos, inicio/fin de jornada.
+- Formularios de nominas (horas entrada/salida).
+- Programacion de despachos y bitacoras.
+
+#### No usar cuando
+
+- Se necesita seleccionar fecha y hora juntas — usar `DatePicker` + `TimePicker` separados.
+- El formato de 12h es requerido — ajustar la presentacion manualmente.
+
+---
+
+### 2.8 FormField
+
+Wrapper estandar para agrupar un campo de formulario con su `label`, `hint` y `error`. Asegura consistencia visual en todos los formularios.
+
+**Archivo:** `src/components/ui/FormField/FormField.tsx`
+
+**Importacion:**
+```tsx
+import { FormField } from '@/components/ui/FormField';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `hint` | `string` | `undefined` | Texto de ayuda debajo del campo |
+| `error` | `string` | `undefined` | Mensaje de error (reemplaza al hint) |
+| `required` | `boolean` | `false` | Muestra asterisco de requerido |
+| `htmlFor` | `string` | `undefined` | ID del campo asociado al label |
+| `children` | `React.ReactNode` | *(requerido)* | Campo de entrada |
+
+#### Ejemplo
+
+```tsx
+import { FormField } from '@/components/ui/FormField';
+import { Input } from '@/components/ui/Input';
+
+<FormField
+  label="Nombre completo"
+  hint="Como aparece en la identificacion oficial"
+  required
+  htmlFor="nombre"
+>
+  <Input id="nombre" placeholder="Ej. Juan Perez" />
+</FormField>
+
+<FormField
+  label="Correo electronico"
+  error="El correo no es valido"
+  htmlFor="email"
+>
+  <Input id="email" type="email" />
+</FormField>
+```
+
+#### Cuando usar
+
+- Todos los campos de formulario que necesiten label, hint o error.
+- Agrupar inputs, selects, datepickers, textareas, etc.
+
+#### No usar cuando
+
+- El campo ya trae su propio label integrado (ej. `Input` si ya lo incluye).
+- No se necesita label ni validacion visual.
+
+---
+
+### 2.9 Checkbox
+
+Caja de verificacion con label, estados checked/unchecked/indeterminate y manejo de error.
+
+**Archivo:** `src/components/ui/Checkbox/Checkbox.tsx`
+
+**Importacion:**
+```tsx
+import { Checkbox } from '@/components/ui/Checkbox';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `checked` | `boolean` | `undefined` | Estado controlado |
+| `defaultChecked` | `boolean` | `false` | Estado inicial no controlado |
+| `onChange` | `(checked: boolean) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta al lado del checkbox |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+| `indeterminate` | `boolean` | `false` | Estado indeterminado |
+
+#### Ejemplo
+
+```tsx
+import { Checkbox } from '@/components/ui/Checkbox';
+import { useState } from 'react';
+
+function Filtros() {
+  const [aceptado, setAceptado] = useState(false);
+
+  return (
+    <Checkbox
+      checked={aceptado}
+      onChange={setAceptado}
+      label="Acepto los terminos y condiciones"
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Seleccion binaria (si/no, activo/inactivo).
+- Listas de opciones donde se pueden marcar multiples items.
+- Estado "seleccionar todos" con `indeterminate`.
+
+#### No usar cuando
+
+- Solo hay dos opciones mutuamente excluyentes y visibles — usar `Radio`.
+- La accion es un toggle inmediato sin confirmacion — usar `Switch`.
+
+---
+
+### 2.10 Radio
+
+Boton de opcion unica para grupos mutuamente excluyentes.
+
+**Archivo:** `src/components/ui/Radio/Radio.tsx`
+
+**Importacion:**
+```tsx
+import { Radio } from '@/components/ui/Radio';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `checked` | `boolean` | `undefined` | Estado controlado |
+| `defaultChecked` | `boolean` | `false` | Estado inicial no controlado |
+| `onChange` | `(checked: boolean) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta |
+| `name` | `string` | `undefined` | Nombre del grupo |
+| `value` | `string` | `undefined` | Valor del radio |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+| `error` | `boolean` | `false` | Indica error en el grupo |
+
+#### Ejemplo
+
+```tsx
+import { Radio } from '@/components/ui/Radio';
+import { useState } from 'react';
+
+function MetodoPago() {
+  const [metodo, setMetodo] = useState('transferencia');
+
+  return (
+    <div className="space-y-2">
+      <Radio
+        name="metodo"
+        value="transferencia"
+        checked={metodo === 'transferencia'}
+        onChange={() => setMetodo('transferencia')}
+        label="Transferencia SPEI"
+      />
+      <Radio
+        name="metodo"
+        value="efectivo"
+        checked={metodo === 'efectivo'}
+        onChange={() => setMetodo('efectivo')}
+        label="Efectivo"
+      />
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Seleccion unica entre varias opciones visibles.
+- Opciones mutuamente excluyentes (maximo 5-7 opciones).
+
+#### No usar cuando
+
+- Se pueden seleccionar multiples opciones — usar `Checkbox`.
+- Hay mas de 7 opciones — usar `Select` o `Combobox`.
+
+---
+
+### 2.11 Switch
+
+Toggle visual para activar/desactivar una opcion.
+
+**Archivo:** `src/components/ui/Switch/Switch.tsx`
+
+**Importacion:**
+```tsx
+import { Switch } from '@/components/ui/Switch';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `checked` | `boolean` | `undefined` | Estado controlado |
+| `defaultChecked` | `boolean` | `false` | Estado inicial no controlado |
+| `onChange` | `(checked: boolean) => void` | `undefined` | Callback al cambiar |
+| `label` | `string` | `undefined` | Etiqueta |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `disabled` | `boolean` | `false` | Deshabilitar |
+
+#### Ejemplo
+
+```tsx
+import { Switch } from '@/components/ui/Switch';
+import { useState } from 'react';
+
+function Notificaciones() {
+  const [activo, setActivo] = useState(true);
+
+  return (
+    <Switch
+      checked={activo}
+      onChange={setActivo}
+      label="Recibir notificaciones push"
+    />
+  );
+}
+```
+
+#### Cuando usar
+
+- Activar/desactivar una funcion o configuracion.
+- Cambios que aplican inmediatamente.
+- Estados ON/OFF claros.
+
+#### No usar cuando
+
+- La opcion requiere confirmacion adicional — usar `Checkbox`.
+- Hay multiples opciones excluyentes — usar `Radio`.
+
+---
+
+### 2.12 Textarea
+
+Campo de texto multilinea para descripciones, notas, comentarios y bitacoras.
+
+**Archivo:** `src/components/ui/Textarea/Textarea.tsx`
+
+**Importacion:**
+```tsx
+import { Textarea } from '@/components/ui/Textarea';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | `undefined` | Etiqueta del campo |
+| `error` | `string` | `undefined` | Mensaje de error |
+| `autoResize` | `boolean` | `false` | Auto-ajustar altura al escribir |
+| `showCounter` | `boolean` | `false` | Mostrar contador de caracteres |
+| `rows` | `number` | `4` | Numero de filas visibles |
+| `maxLength` | `number` | `undefined` | Limite de caracteres |
+| *(hereda)* | `TextareaHTMLAttributes` | — | Todas las props nativas de `<textarea>` |
+
+#### Ejemplo
+
+```tsx
+import { Textarea } from '@/components/ui/Textarea';
+
+<Textarea
+  label="Descripcion del trabajo"
+  placeholder="Detalles de la actividad realizada..."
+  rows={5}
+/>
+
+<Textarea
+  label="Notas de bitacora"
+  maxLength={500}
+  showCounter
+  error="La descripcion es obligatoria"
+/>
+```
+
+#### Cuando usar
+
+- Descripciones largas (notas de obra, comentarios, observaciones).
+- Campos de texto donde se espera contenido de multiples lineas.
+- Bitacoras y registros de actividades.
+
+#### No usar cuando
+
+- Se espera una respuesta corta (1 linea) — usar `Input`.
+- Es un campo con formato enriquecido — usar un editor WYSIWYG.
+
+---
+
+### 2.13 Badge
 
 Etiqueta visual compacta para mostrar estados, categorias o indicadores.
 
@@ -783,87 +1305,7 @@ import { Plus, Download } from 'lucide-react';
 
 ---
 
-### 3.2 SearchInput
-
-Campo de busqueda con icono de lupa, boton de limpiar y debounce integrado.
-
-**Archivo:** `src/components/ui/SearchInput/SearchInput.tsx`
-
-**Importacion:**
-```tsx
-import { SearchInput } from '@/components/ui/SearchInput';
-```
-
-#### Props
-
-| Prop | Tipo | Default | Descripcion |
-|------|------|---------|-------------|
-| `value` | `string` | *(no controlado)* | Valor controlado del input |
-| `placeholder` | `string` | `'Buscar...'` | Texto placeholder |
-| `onChange` | `(value: string) => void` | `undefined` | Callback en cada cambio de valor |
-| `onSearch` | `(value: string) => void` | `undefined` | Callback con debounce (para busquedas) |
-| `debounceMs` | `number` | `300` | Milisegundos de debounce para `onSearch` |
-
-#### Comportamiento
-
-- **Controlado vs No controlado:** Si se pasa `value`, funciona como componente controlado. Si no, mantiene su estado interno.
-- **Debounce:** `onSearch` se ejecuta despues de `debounceMs` milisegundos sin cambios en el valor.
-- **Boton limpiar:** Aparece automaticamente cuando hay texto, limpia el valor y ejecuta los callbacks con string vacio.
-
-#### Ejemplo basico
-
-```tsx
-const [busqueda, setBusqueda] = useState('');
-
-<SearchInput
-  value={busqueda}
-  onChange={setBusqueda}
-  placeholder="Buscar trabajadores..."
-/>
-```
-
-#### Ejemplo avanzado
-
-```tsx
-import { SearchInput } from '@/components/ui/SearchInput';
-import { useState } from 'react';
-
-function PaginaMaquinaria() {
-  const [busqueda, setBusqueda] = useState('');
-
-  const handleSearch = (query: string) => {
-    // Se ejecuta despues de 300ms sin cambios
-    fetchMaquinaria(query);
-  };
-
-  return (
-    <div className="flex items-center gap-4">
-      <SearchInput
-        value={busqueda}
-        onChange={setBusqueda}
-        onSearch={handleSearch}
-        placeholder="Buscar por nombre, ID o operador..."
-        debounceMs={500}
-      />
-    </div>
-  );
-}
-```
-
-#### Cuando usar
-
-- Filtrar listas de registros en tiempo real.
-- Busquedas que necesitan debounce para evitar llamadas excesivas.
-- Cualquier campo de busqueda visual con icono de lupa.
-
-#### No usar cuando
-
-- No usar para campos de formulario que no son busqueda — usar `Input`.
-- No usar sin debounce para busquedas que involucran API calls.
-
----
-
-### 3.3 Tabs
+### 3.2 Tabs
 
 Navegacion por pestanas con soporte para iconos, conteos y contenido condicional.
 
@@ -972,6 +1414,961 @@ function DetalleMaquinaria() {
 - No usar para navegacion principal del sitio (usar Sidebar).
 - No usar mas de 5-6 tabs — si hay mas, reconsiderar la informacion architecture.
 - No usar `TabPanel` sin envolver en `Tabs` — el contexto de `TabsContext` es necesario.
+
+---
+
+### 3.3 Grid
+
+Sistema de grillas para layouts responsivos. Soporta columnas fijas, columnas por breakpoint, gaps personalizados y alineacion.
+
+**Archivo:** `src/components/ui/Grid/Grid.tsx`
+
+**Importacion:**
+```tsx
+import { Grid } from '@/components/ui/Grid';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `columns` | `GridColumns \| ResponsiveColumns` | `1` | Numero de columnas |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Espaciado entre celdas |
+| `rowGap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Espaciado vertical (opcional) |
+| `columnGap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Espaciado horizontal (opcional) |
+| `alignItems` | `'start' \| 'center' \| 'end' \| 'stretch'` | `undefined` | Alineacion vertical de celdas |
+| `justifyItems` | `'start' \| 'center' \| 'end' \| 'stretch'` | `undefined` | Alineacion horizontal de celdas |
+| `as` | `'div' \| 'section' \| 'article' \| 'ul' \| 'ol'` | `'div'` | Elemento HTML |
+
+#### Columnas
+
+Puede ser un numero fijo:
+
+```tsx
+<Grid columns={4} gap="md">
+  <Card>A</Card>
+  <Card>B</Card>
+  <Card>C</Card>
+  <Card>D</Card>
+</Grid>
+```
+
+O un objeto responsive por breakpoint:
+
+```tsx
+<Grid columns={{ sm: 1, md: 2, lg: 4 }} gap="md">
+  <Card>A</Card>
+  <Card>B</Card>
+  <Card>C</Card>
+  <Card>D</Card>
+</Grid>
+```
+
+#### Tamanos de gap
+
+| Gap | Valor |
+|-----|-------|
+| `none` | 0px |
+| `xs` | 8px |
+| `sm` | 12px |
+| `md` | 16px |
+| `lg` | 24px |
+| `xl` | 32px |
+
+#### Ejemplos
+
+**Grid de KPIs (1 col movil, 2 tablet, 4 desktop):**
+
+```tsx
+<Grid columns={{ sm: 1, md: 2, lg: 4 }} gap="md">
+  <StatsCard icon={<Users size={22} />} value="1,248" label="Trabajadores" />
+  <StatsCard icon={<Truck size={22} />} value="36" label="Unidades" />
+  <StatsCard icon={<DollarSign size={22} />} value="$2.4M" label="Ingresos" />
+  <StatsCard icon={<Activity size={22} />} value="87%" label="Eficiencia" />
+</Grid>
+```
+
+**Grid con gaps separados:**
+
+```tsx
+<Grid columns={3} rowGap="lg" columnGap="sm">
+  <div>Item 1</div>
+  <div>Item 2</div>
+  <div>Item 3</div>
+</Grid>
+```
+
+#### Cuando usar
+
+- Layouts de dashboard con KPIs, cards o formularios.
+- Listados de tarjetas que deben adaptarse a diferentes tamanos de pantalla.
+- Reemplazar clases de Tailwind como `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`.
+
+#### No usar cuando
+
+- Para una sola columna simple — usar `Stack`.
+- Para alinear elementos en una sola fila sin grid — usar `Stack direction="horizontal"`.
+- Cuando se necesita control total de areas especificas — usar CSS Grid directo.
+
+---
+
+### 3.4 Center
+
+Componente para centrar contenido vertical y/o horizontalmente. Util para estados vacios, loaders, iconos centrados y contenido dentro de contenedores.
+
+**Archivo:** `src/components/ui/Center/Center.tsx`
+
+**Importacion:**
+```tsx
+import { Center } from '@/components/ui/Center';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `axis` | `'both' \| 'vertical' \| 'horizontal'` | `'both'` | Eje de centrado |
+| `inline` | `boolean` | `false` | Usar `inline-flex`. Cuando es `true`, el elemento por defecto es `span` para evitar errores de anidacion en `<p>`. |
+| `as` | `'div' \| 'span' \| 'section' \| 'article' \| 'main' \| 'header' \| 'footer'` | `'div'` (`'span'` si `inline`) | Elemento HTML |
+
+#### Ejemplos
+
+**Centrado completo:**
+
+```tsx
+<Center className="h-64">
+  <EmptyState title="Sin resultados" />
+</Center>
+```
+
+**Solo vertical:**
+
+```tsx
+<Center axis="vertical" className="h-32">
+  <p>Texto centrado verticalmente</p>
+</Center>
+```
+
+**Inline (dentro de texto):**
+
+```tsx
+<p>
+  Estado: <Center inline axis="both"><Badge>Activo</Badge></Center>
+</p>
+```
+
+#### Cuando usar
+
+- Estados vacios o de carga dentro de contenedores.
+- Iconos o badges centrados dentro de cards.
+- Contenido que debe estar perfectamente centrado sin hacks de margin.
+
+#### No usar cuando
+
+- Para alinear texto — usar clases de Tailwind como `text-center`.
+- Para layouts de una sola dimension con multiples elementos — usar `Stack`.
+- Para grillas — usar `Grid`.
+
+---
+
+### 3.5 Spacer
+
+Espaciador declarativo para separar elementos sin usar clases de margin. Util cuando el espaciado no es responsabilidad de los componentes hijos.
+
+**Archivo:** `src/components/ui/Spacer/Spacer.tsx`
+
+**Importacion:**
+```tsx
+import { Spacer } from '@/components/ui/Spacer';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `size` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl' \| '2xl' \| '3xl'` | `'md'` | Tamano del espaciador |
+| `axis` | `'vertical' \| 'horizontal' \| 'both'` | `'vertical'` | Direccion del espaciado |
+
+#### Tamanos
+
+| Size | Valor |
+|------|-------|
+| `none` | 0px |
+| `xs` | 8px |
+| `sm` | 12px |
+| `md` | 16px |
+| `lg` | 24px |
+| `xl` | 32px |
+| `2xl` | 48px |
+| `3xl` | 64px |
+
+#### Ejemplos
+
+**Espaciado vertical:**
+
+```tsx
+<div>
+  <h2>Seccion 1</h2>
+  <Spacer size="lg" />
+  <h2>Seccion 2</h2>
+</div>
+```
+
+**Espaciado horizontal:**
+
+```tsx
+<div className="flex items-center">
+  <span>Izquierda</span>
+  <Spacer axis="horizontal" size="md" />
+  <span>Derecha</span>
+</div>
+```
+
+#### Cuando usar
+
+- Cuando se necesita espacio entre elementos sin modificar sus estilos.
+- Para espaciado condicional o dinamico.
+- Para mantener componentes hijos desacoplados del layout que los rodea.
+
+#### No usar cuando
+
+- El espaciado es siempre el mismo y puede manejarse con `Stack` o `gap`.
+- Se puede usar padding/margin del contenedor padre.
+
+---
+
+### 3.6 Flex
+
+Wrapper flexbox de bajo nivel con control total de direccion, wrap, alineacion y gap. Usar para layouts de una dimension que requieren opciones avanzadas.
+
+**Archivo:** `src/components/ui/Flex/Flex.tsx`
+
+**Importacion:**
+```tsx
+import { Flex } from '@/components/ui/Flex';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `direction` | `'row' \| 'row-reverse' \| 'column' \| 'column-reverse'` | `'row'` | Direccion del flex |
+| `wrap` | `'nowrap' \| 'wrap' \| 'wrap-reverse'` | `'nowrap'` | Comportamiento de wrap |
+| `justify` | `'start' \| 'end' \| 'center' \| 'between' \| 'around' \| 'evenly'` | `undefined` | Alineacion principal |
+| `align` | `'start' \| 'end' \| 'center' \| 'baseline' \| 'stretch'` | `undefined` | Alineacion transversal |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Espaciado entre hijos |
+| `inline` | `boolean` | `false` | Usar `inline-flex` |
+| `fullWidth` | `boolean` | `false` | `w-full` |
+| `fullHeight` | `boolean` | `false` | `h-full` |
+| `as` | elemento HTML | `'div'` | Elemento a renderizar |
+
+#### Ejemplos
+
+**Fila con distribucion:**
+
+```tsx
+<Flex justify="between" align="center">
+  <h2>Titulo</h2>
+  <Button>Accion</Button>
+</Flex>
+```
+
+**Columna apilada:**
+
+```tsx
+<Flex direction="column" gap="sm">
+  <span>Paso 1</span>
+  <span>Descripcion</span>
+  <Badge>Completado</Badge>
+</Flex>
+```
+
+**Flex generico con wrap:**
+
+```tsx
+<Flex wrap="wrap" gap="sm">
+  {items.map((item) => <Tag key={item.id}>{item.name}</Tag>)}
+</Flex>
+```
+
+#### Cuando usar
+
+- Cuando se necesita control total de direccion, wrap o alineaciones.
+- Para filas de elementos con `justify="between"`.
+- Para layouts de una dimension complejos.
+
+#### No usar cuando
+
+- Para espaciado simple vertical u horizontal — usar `Stack`.
+- Para layouts de dos dimensiones — usar `Grid`.
+- Para centrar un solo elemento — usar `Center`.
+
+---
+
+### 3.7 AspectRatio
+
+Contenedor que mantiene una proporcion de aspecto fija. Util para imagenes, videos, tarjetas con imagenes y mapas.
+
+**Archivo:** `src/components/ui/AspectRatio/AspectRatio.tsx`
+
+**Importacion:**
+```tsx
+import { AspectRatio } from '@/components/ui/AspectRatio';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `ratio` | `AspectRatioValue` | `'video'` | Proporcion de aspecto |
+| `contentClassName` | `string` | `undefined` | Clases para el contenedor interno |
+| `as` | `'div' \| 'section' \| 'article' \| 'figure'` | `'div'` | Elemento HTML |
+
+#### Valores de ratio
+
+| Valor | Proporcion | Uso tipico |
+|-------|------------|------------|
+| `'square'` | 1 / 1 | Avatares, logos, thumbnails |
+| `'video'` | 16 / 9 | Videos, dashboards, graficas |
+| `'photo'` | 4 / 3 | Fotografias |
+| `'portrait'` | 3 / 4 | Fotos verticales, tarjetas |
+| `'wide'` | 21 / 9 | Pantallas panoramicas |
+| `'cinema'` | 2.39 / 1 | Contenido cinematografico |
+| `number` | custom | Cualquier proporcion (ej: `2.39`) |
+
+#### Ejemplos
+
+**Video placeholder:**
+
+```tsx
+<AspectRatio ratio="video" className="rounded-xl overflow-hidden bg-slate-900">
+  <video src="..." className="w-full h-full object-cover" />
+</AspectRatio>
+```
+
+**Imagen cuadrada:**
+
+```tsx
+<AspectRatio ratio="square" className="rounded-lg overflow-hidden">
+  <img src="..." alt="..." className="w-full h-full object-cover" />
+</AspectRatio>
+```
+
+**Ratio numerico personalizado:**
+
+```tsx
+<AspectRatio ratio={2.39} className="rounded-xl bg-slate-100">
+  <span>Cinema</span>
+</AspectRatio>
+```
+
+#### Cuando usar
+
+- Contenedores de video o imagen que deben mantener proporcion.
+- Placeholders de contenido multimedia.
+- Tarjetas con imagenes de tamano consistente.
+
+#### No usar cuando
+
+- El contenido no debe recortarse ni escalar — usar un contenedor flexible.
+- Se necesita altura fija independiente del ancho.
+
+---
+
+### 3.8 VisuallyHidden
+
+Oculta contenido visualmente manteniendolo accesible para lectores de pantalla. Esencial para accesibilidad (a11y).
+
+**Archivo:** `src/components/ui/VisuallyHidden/VisuallyHidden.tsx`
+
+**Importacion:**
+```tsx
+import { VisuallyHidden } from '@/components/ui/VisuallyHidden';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `focusable` | `boolean` | `false` | Hace el contenido visible al recibir foco (util para "skip links") |
+| `as` | `'span' \| 'div' \| 'label'` | `'span'` | Elemento HTML |
+
+#### Ejemplos
+
+**Texto para screen readers en boton con icono:**
+
+```tsx
+<button>
+  <Search size={20} />
+  <VisuallyHidden>Buscar trabajadores</VisuallyHidden>
+</button>
+```
+
+**Skip link (accesible por teclado):**
+
+```tsx
+<a href="#main-content">
+  <VisuallyHidden focusable>
+    Saltar al contenido principal
+  </VisuallyHidden>
+</a>
+```
+
+**Label oculto para input:**
+
+```tsx
+<label>
+  <VisuallyHidden as="label">Correo electronico</VisuallyHidden>
+  <input type="email" placeholder="correo@ejemplo.com" />
+</label>
+```
+
+#### Cuando usar
+
+- Botones que solo muestran iconos.
+- Enlaces "saltar al contenido".
+- Texto adicional para contexto sin alterar el diseno visual.
+- Labels de formularios cuando el placeholder es suficiente visualmente.
+
+#### No usar cuando
+
+- El contenido debe ser visible para todos los usuarios.
+- Se puede mostrar el texto sin romper el diseno.
+
+---
+
+### 3.9 Show / Hide
+
+Componentes para mostrar u ocultar contenido segun el breakpoint. Wrapper semantico sobre las clases de Tailwind.
+
+**Archivos:**
+- `src/components/ui/Show/Show.tsx`
+- `src/components/ui/Hide/Hide.tsx`
+
+**Importacion:**
+```tsx
+import { Show, Hide } from '@/components/ui/Show';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `above` | `'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Mostrar/ocultar por encima del breakpoint |
+| `below` | `'sm' \| 'md' \| 'lg' \| 'xl'` | `undefined` | Mostrar/ocultar por debajo del breakpoint |
+| `as` | `'div' \| 'span' \| 'section' \| 'article'` | `'div'` | Elemento HTML |
+
+#### Ejemplos
+
+**Mostrar solo en desktop:**
+
+```tsx
+<Show above="md">
+  <Sidebar />
+</Show>
+```
+
+**Ocultar en desktop:**
+
+```tsx
+<Hide above="md">
+  <MobileMenuButton />
+</Hide>
+```
+
+**Texto adaptativo:**
+
+```tsx
+<Show above="md">
+  <span>Vista desktop</span>
+</Show>
+<Hide above="md">
+  <span>Vista movil</span>
+</Hide>
+```
+
+#### Cuando usar
+
+- Mostrar u ocultar contenido segun el tamano de pantalla.
+- Renderizar interfaces diferentes para movil y desktop.
+- Evitar duplicar logica condicional con `useMediaQuery`.
+
+#### No usar cuando
+
+- Se necesita animacion de entrada/salida — usar CSS transitions o Framer Motion.
+- El contenido debe seguir en el DOM pero ser invisible — usar `hidden` directamente.
+
+---
+
+### 3.10 ScrollArea
+
+Contenedor con scroll controlado. Permite definir orientacion, dimensiones maximas, padding y ocultar la barra de scroll nativa.
+
+**Archivo:** `src/components/ui/ScrollArea/ScrollArea.tsx`
+
+**Importacion:**
+```tsx
+import { ScrollArea } from '@/components/ui/ScrollArea';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `orientation` | `'horizontal' \| 'vertical' \| 'both'` | `'vertical'` | Direccion del scroll |
+| `maxHeight` | `string` | `undefined` | Altura maxima (ej: `'200px'`) |
+| `maxWidth` | `string` | `undefined` | Ancho maxima |
+| `padding` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'none'` | Padding interno |
+| `hideScrollbar` | `boolean` | `false` | Ocultar scrollbar nativo |
+| `as` | `'div' \| 'section' \| 'article'` | `'div'` | Elemento HTML |
+
+#### Ejemplos
+
+**Scroll vertical:**
+
+```tsx
+<ScrollArea maxHeight="200px" orientation="vertical" padding="sm">
+  {items.map((item) => (
+    <p key={item.id}>{item.name}</p>
+  ))}
+</ScrollArea>
+```
+
+**Scroll horizontal:**
+
+```tsx
+<ScrollArea orientation="horizontal" padding="sm">
+  <div className="flex gap-3 min-w-max">
+    {tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}
+  </div>
+</ScrollArea>
+```
+
+**Sin scrollbar visible:**
+
+```tsx
+<ScrollArea maxHeight="160px" hideScrollbar>
+  {longContent}
+</ScrollArea>
+```
+
+#### Cuando usar
+
+- Listas largas dentro de cards o modales.
+- Tablas o tags que exceden el ancho disponible.
+- Cuando se necesita scroll pero sin mostrar la barra nativa.
+
+#### No usar cuando
+
+- El contenido debe expandirse naturalmente — usar `Stack` o `Grid`.
+- Se puede usar el scroll de la pagina completa.
+
+---
+
+### 3.11 Separator
+
+Separador visual simple que soporta orientacion horizontal y vertical. Mas ligero que `Divider` y util para separar elementos en filas o columnas.
+
+**Archivo:** `src/components/ui/Separator/Separator.tsx`
+
+**Importacion:**
+```tsx
+import { Separator } from '@/components/ui/Separator';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Orientacion del separador |
+| `size` | `'thin' \| 'medium' \| 'thick'` | `'thin'` | Grosor del separador |
+| `decorative` | `boolean` | `true` | Si es decorativo, no expone `role="separator"` |
+
+#### Ejemplos
+
+**Horizontal:**
+
+```tsx
+<div>
+  <p>Arriba</p>
+  <Separator />
+  <p>Abajo</p>
+</div>
+```
+
+**Vertical en una fila:**
+
+```tsx
+<div className="flex items-center gap-4">
+  <span>Izquierda</span>
+  <Separator orientation="vertical" size="medium" />
+  <span>Derecha</span>
+</div>
+```
+
+**Accesible (no decorativo):**
+
+```tsx
+<Separator decorative={false} aria-label="Seccion siguiente" />
+```
+
+#### Cuando usar
+
+- Separar elementos horizontalmente o verticalmente.
+- Cuando se necesita un separador simple sin label.
+- Dentro de toolbars, menus, o listas.
+
+#### No usar cuando
+
+- Se necesita un label centrado — usar `Divider`.
+- Se necesita un separador con estilo dashed/dotted — usar `Divider`.
+
+---
+
+### 3.12 Box
+
+Contenedor basico y flexible para agrupar contenido. Permite configurar padding, radio, sombra, fondo y borde de forma declarativa.
+
+**Archivo:** `src/components/ui/Box/Box.tsx`
+
+**Importacion:**
+```tsx
+import { Box } from '@/components/ui/Box';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `padding` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'none'` | Padding interno |
+| `radius` | `'none' \| 'sm' \| 'md' \| 'lg' \| 'xl' \| '2xl'` | `'none'` | Border radius |
+| `shadow` | `'none' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'none'` | Sombra |
+| `background` | `'transparent' \| 'white' \| 'slate' \| 'primary' \| 'secondary'` | `'transparent'` | Fondo |
+| `border` | `'none' \| 'default' \| 'primary'` | `'none'` | Borde |
+| `fullWidth` | `boolean` | `false` | `w-full` |
+| `fullHeight` | `boolean` | `false` | `h-full` |
+| `as` | elemento HTML | `'div'` | Elemento a renderizar |
+
+#### Ejemplos
+
+**Card simple:**
+
+```tsx
+<Box padding="md" radius="lg" background="white" border="default" shadow="sm">
+  <p>Contenido</p>
+</Box>
+```
+
+**Destacado:**
+
+```tsx
+<Box padding="lg" radius="xl" background="primary" border="primary">
+  <h3>Importante</h3>
+  <p>Informacion destacada</p>
+</Box>
+```
+
+**Ancho completo:**
+
+```tsx
+<Box padding="lg" background="white" border="default" shadow="md" fullWidth>
+  <p>Seccion completa</p>
+</Box>
+```
+
+#### Cuando usar
+
+- Para agrupar contenido sin crear un componente especifico.
+- Cuando se necesita un contenedor con padding/background/borde rapido.
+- Como base para layouts simples.
+
+#### No usar cuando
+
+- Se necesita un componente semantico especifico — usar `Card`, `Container`, etc.
+- El contenido requiere logica interna — crear un componente propio.
+
+---
+
+### 3.13 Collapse
+
+Componente para expandir/colapsar contenido con animacion suave. Utiliza `grid-template-rows` para lograr la transicion sin necesidad de conocer la altura del contenido.
+
+**Archivo:** `src/components/ui/Collapse/Collapse.tsx`
+
+**Importacion:**
+```tsx
+import { Collapse } from '@/components/ui/Collapse';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `in` | `boolean` | `false` | Controla si el contenido esta visible |
+| `innerClassName` | `string` | `undefined` | Clases para el contenedor interno |
+
+#### Ejemplo
+
+```tsx
+import { useState } from 'react';
+import { Collapse } from '@/components/ui/Collapse';
+import { Button } from '@/components/ui/Button';
+
+function Detalles() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <Button onClick={() => setOpen(!open)}>
+        {open ? 'Ocultar' : 'Mostrar'}
+      </Button>
+      <Collapse in={open}>
+        <div className="pt-4">
+          <p>Contenido expandible</p>
+        </div>
+      </Collapse>
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Acordiones simples.
+- Mostrar/ocultar detalles adicionales.
+- FAQ o secciones expandibles.
+
+#### No usar cuando
+
+- Se necesita animacion compleja — usar Framer Motion.
+- Se requiere solo un acordeon abierto a la vez — implementar logica de grupo.
+
+---
+
+### 3.14 Portal
+
+Renderiza contenido en un nodo DOM diferente al arbol principal. Util para modales, tooltips, dropdowns y overlays que deben escapar del stacking context del padre.
+
+**Archivo:** `src/components/ui/Portal/Portal.tsx`
+
+**Importacion:**
+```tsx
+import { Portal } from '@/components/ui/Portal';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `container` | `HTMLElement \| null` | `document.body` | Nodo DOM destino |
+| `children` | `React.ReactNode` | — | Contenido a renderizar |
+
+#### Ejemplo
+
+```tsx
+<Portal>
+  <div className="fixed inset-0 z-50">
+    Contenido fuera del DOM padre
+  </div>
+</Portal>
+```
+
+#### Cuando usar
+
+- Modales y dialogs.
+- Dropdowns que deben sobresalir de contenedores con `overflow: hidden`.
+- Tooltips y popovers.
+
+#### No usar cuando
+
+- El contenido debe heredar estilos del padre.
+- No hay necesidad de escapar del DOM actual.
+
+---
+
+### 3.15 Overlay
+
+Capa semitransparente que cubre toda la pantalla. Se usa detras de modales, drawers y menus moviles.
+
+**Archivo:** `src/components/ui/Overlay/Overlay.tsx`
+
+**Importacion:**
+```tsx
+import { Overlay } from '@/components/ui/Overlay';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `open` | `boolean` | `true` | Mostrar overlay |
+| `blur` | `boolean` | `false` | Aplicar backdrop-blur |
+| `dark` | `boolean` | `true` | Fondo oscuro semitransparente |
+| `offsetLeft` | `number` | `0` | Pixeles a omitir en el lado izquierdo (ej. ancho del sidebar) |
+| `onClick` | `() => void` | `undefined` | Click en el overlay |
+
+#### Ejemplo
+
+```tsx
+<Overlay onClick={closeModal} blur>
+  <ModalContent />
+</Overlay>
+```
+
+#### Cuando usar
+
+- Detras de modales para enfocar atencion.
+- Menus laterales (drawers) en movil.
+- Lightboxes y galerias.
+
+#### No usar cuando
+
+- Se necesita interactuar con el contenido de fondo.
+- Se puede usar un dropdown sin bloquear la pantalla.
+
+---
+
+### 3.16 Stack
+
+Componente de layout para espaciado consistente entre elementos. Reemplaza `space-y-*` y `gap-*` con una API semantica.
+
+**Archivo:** `src/components/ui/Stack/Stack.tsx`
+
+**Importacion:**
+```tsx
+import { Stack } from '@/components/ui/Stack';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `direction` | `'vertical' \| 'horizontal'` | `'vertical'` | Direccion del stack |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Espaciado entre elementos |
+| `align` | `'start' \| 'center' \| 'end' \| 'stretch'` | `'stretch'` | Alineacion transversal |
+| `wrap` | `boolean` | `false` | Permitir wrap en horizontal |
+| `as` | `'div' \| 'section' \| 'article' \| 'nav' \| 'ul' \| 'ol'` | `'div'` | Elemento HTML a renderizar |
+
+#### Tamanos de gap
+
+| Gap | Valor | Uso tipico |
+|-----|-------|------------|
+| `none` | 0px | Sin espaciado |
+| `xs` | 4px | Espaciado minimo |
+| `sm` | 8px | Elementos muy cercanos |
+| `md` | 16px | Espaciado estandar (default) |
+| `lg` | 24px | Entre secciones |
+| `xl` | 32px | Separacion amplia |
+
+#### Ejemplo
+
+```tsx
+import { Stack } from '@/components/ui/Stack';
+
+// Stack vertical (reemplaza space-y-4)
+<Stack gap="md">
+  <Card>Item 1</Card>
+  <Card>Item 2</Card>
+  <Card>Item 3</Card>
+</Stack>
+
+// Stack horizontal (reemplaza flex gap-4)
+<Stack direction="horizontal" gap="sm">
+  <Button>A</Button>
+  <Button>B</Button>
+  <Button>C</Button>
+</Stack>
+
+// Stack centrado
+<Stack gap="lg" align="center">
+  <Icon />
+  <Text />
+</Stack>
+```
+
+---
+
+### 3.17 Container
+
+Contenedor con max-width y padding centralizado. Define la "zona segura" del contenido.
+
+**Archivo:** `src/components/ui/Container/Container.tsx`
+
+**Importacion:**
+```tsx
+import { Container } from '@/components/ui/Container';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| 'full'` | `'xl'` | Max-width del contenedor |
+| `padding` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Padding interno |
+| `center` | `boolean` | `true` | Centrar horizontalmente |
+| `as` | `'div' \| 'section' \| 'article' \| 'main' \| 'aside'` | `'div'` | Elemento HTML |
+
+#### Max-widths
+
+| Size | Max-width |
+|------|-----------|
+| `sm` | 640px |
+| `md` | 768px |
+| `lg` | 1024px |
+| `xl` | 1280px |
+| `full` | 100% |
+
+#### Ejemplo
+
+```tsx
+import { Container } from '@/components/ui/Container';
+
+// Contenedor centrado con padding de 24px
+<Container size="xl" padding="md">
+  <h1>Mi Pagina</h1>
+</Container>
+
+// Contenedor estrecho para formularios
+<Container size="md" padding="lg">
+  <Form />
+</Container>
+```
+
+---
+
+### 3.18 Divider
+
+Separador visual horizontal con soporte para labels y variantes de borde.
+
+**Archivo:** `src/components/ui/Divider/Divider.tsx`
+
+**Importacion:**
+```tsx
+import { Divider } from '@/components/ui/Divider';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `variant` | `'solid' \| 'dashed' \| 'dotted'` | `'solid'` | Estilo del borde |
+| `spacing` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Espaciado vertical |
+| `label` | `string` | `undefined` | Texto centrado en el divisor |
+
+#### Ejemplo
+
+```tsx
+import { Divider } from '@/components/ui/Divider';
+
+// Linea simple
+<Divider />
+
+// Divider con label
+<Divider label="O seccion" />
+
+// Variante dashed con spacing amplio
+<Divider variant="dashed" spacing="lg" />
+```
 
 ---
 
@@ -1084,17 +2481,161 @@ import { Users, Truck, DollarSign, Activity } from 'lucide-react';
 />
 ```
 
-#### Cuando usar
+#### Ejemplos por categoria
+
+**KPIs Operativos:**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<Timer size={22} />}
+    value="8,420 h"
+    label="Horas Trabajadas"
+    color="info"
+    trend="up"
+    trendValue="+8%"
+  />
+  <StatsCard
+    icon={<Fuel size={22} />}
+    value="12,450 L"
+    label="Combustible Consumido"
+    color="warning"
+    trend="down"
+    trendValue="-3%"
+  />
+  <StatsCard
+    icon={<Wrench size={22} />}
+    value="7"
+    label="Mantenimientos Pendientes"
+    color="error"
+    trend="up"
+    trendValue="+2"
+  />
+  <StatsCard
+    icon={<HardHat size={22} />}
+    value="14"
+    label="Proyectos Activos"
+    color="success"
+    trend="neutral"
+    trendValue="0"
+  />
+</div>
+```
+
+**KPIs Financieros:**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<CreditCard size={22} />}
+    value="$845K"
+    label="Cuentas por Cobrar"
+    color="success"
+    trend="up"
+    trendValue="+4%"
+  />
+  <StatsCard
+    icon={<Banknote size={22} />}
+    value="$320K"
+    label="Cuentas por Pagar"
+    color="error"
+    trend="down"
+    trendValue="-12%"
+  />
+  <StatsCard
+    icon={<TrendingUp size={22} />}
+    value="32%"
+    label="Margen Bruto"
+    color="primary"
+    trend="up"
+    trendValue="+2%"
+  />
+  <StatsCard
+    icon={<DollarSign size={22} />}
+    value="$1.1M"
+    label="Costos Operativos"
+    color="neutral"
+    trend="down"
+    trendValue="-1%"
+  />
+</div>
+```
+
+**KPIs Interactivos (Clickables):**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<AlertTriangle size={22} />}
+    value="3"
+    label="Incidentes Reportados"
+    color="error"
+    trend="down"
+    trendValue="-1"
+    onClick={() => router.push('/incidentes')}
+  />
+  <StatsCard
+    icon={<Package size={22} />}
+    value="28"
+    label="Bajo Stock Inventario"
+    color="warning"
+    trend="up"
+    trendValue="+5"
+    onClick={() => router.push('/inventario')}
+  />
+  <StatsCard
+    icon={<MapPin size={22} />}
+    value="18"
+    label="Unidades en Ruta"
+    color="info"
+    trend="up"
+    trendValue="+2"
+    onClick={() => router.push('/gps')}
+  />
+  <StatsCard
+    icon={<CheckCircle2 size={22} />}
+    value="96%"
+    label="Tareas Completadas"
+    color="success"
+    trend="up"
+    trendValue="+3%"
+    onClick={() => router.push('/tareas')}
+  />
+</div>
+```
+
+**Sin Tendencia:**
+
+```tsx
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <StatsCard
+    icon={<Clock size={22} />}
+    value="6.2 h"
+    label="Horas Promedio por Turno"
+    color="neutral"
+  />
+  <StatsCard
+    icon={<Users size={22} />}
+    value="42"
+    label="Operadores Disponibles"
+    color="primary"
+  />
+</div>
+```
+
+### 4.2 Cuando usar
 
 - Dashboard principal con metricas resumen.
 - KPIs en la parte superior de paginas de modulo.
 - Resumenes de datos en cualquier vista de administracion.
+- Navegacion rapida a modulos usando `onClick`.
 
-#### No usar cuando
+### 4.3 No usar cuando
 
 - No usar para datos detallados — usar `DataTable`.
 - No usar sin icono — el icono es parte fundamental del diseno.
 - No abusar de los trends — solo mostrarlos cuando hay datos comparativos reales.
+- No agrupar KPIs de diferentes areas sin un titulo de seccion claro.
 
 ---
 
@@ -1272,13 +2813,225 @@ import { Avatar } from '@/components/ui/Avatar';
 
 ---
 
+### 4.4 LoadingState
+
+Componente de carga centrado con spinner animado, titulo y subtitulo opcional. Util para estados de carga de pagina completa o secciones grandes.
+
+**Archivo:** `src/components/ui/LoadingState/LoadingState.tsx`
+
+**Importacion:**
+```tsx
+import { LoadingState } from '@/components/ui/LoadingState';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `title` | `string` | `'Cargando...'` | Texto principal junto al spinner |
+| `subtitle` | `string` | `undefined` | Texto secundario descriptivo |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Tamano del spinner (16px / 24px / 32px) |
+
+#### Diseno visual
+
+- Container: flex centrado vertical y horizontalmente, `py-12`
+- Spinner: borde `slate-200` / `primary` con `animate-spin`, bordes redondeados
+- Titulo: `text-sm font-semibold text-slate-700`
+- Subtitulo: `text-xs text-slate-500`
+
+#### Ejemplo basico
+
+```tsx
+import { LoadingState } from '@/components/ui/LoadingState';
+
+<LoadingState />
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { LoadingState } from '@/components/ui/LoadingState';
+
+// Carga de pagina completa
+<LoadingState
+  title="Cargando trabajadores..."
+  subtitle="Esto puede tomar unos segundos"
+  size="lg"
+/>
+
+// Carga inline pequeña
+<LoadingState title="Guardando..." size="sm" />
+```
+
+#### Cuando usar
+
+- Carga inicial de paginas o modulos.
+- Operaciones largas (exportar, procesar nomina).
+- Fetching de datos antes de renderizar una tabla.
+
+#### No usar cuando
+
+- No usar para carga dentro de botones — usar `Button` con `loading`.
+- No usar para esqueletos de contenido — usar `Skeleton`.
+
+---
+
+### 4.5 Skeleton
+
+Placeholder visual animado que simula la estructura del contenido mientras se carga. Soporta multiples variantes predefinidas.
+
+**Archivo:** `src/components/ui/Skeleton/Skeleton.tsx`
+
+**Importacion:**
+```tsx
+import { Skeleton } from '@/components/ui/Skeleton';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `variant` | `'text' \| 'circle' \| 'avatar' \| 'button' \| 'card' \| 'row' \| 'table'` | `'text'` | Variante del esqueleto |
+| `lines` | `number` | `1` | Numero de lineas (solo para `text` y `table`) |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+#### Variantes
+
+| Variante | Descripcion | Uso tipico |
+|----------|-------------|------------|
+| `text` | Barra rectangular animada | Parrafos, titulos, datos |
+| `circle` | Circulo centrado | Iconos, indicadores |
+| `avatar` | Cuadrado redondeado (40x40) | Fotos de perfil |
+| `button` | Rectangulo con forma de boton | Botones de accion |
+| `card` | Card vacia con titulo + lineas | Tarjetas KPI, stat cards |
+| `row` | Avatar + 2 lineas en fila | Listas de usuarios |
+| `table` | Header + N filas de celdas | Tablas de datos |
+
+#### Ejemplo basico
+
+```tsx
+import { Skeleton } from '@/components/ui/Skeleton';
+
+<Skeleton />                          // Texto basico
+<Skeleton variant="avatar" />         // Avatar
+<Skeleton variant="card" />           // Tarjeta
+<Skeleton variant="table" lines={5} /> // Tabla
+```
+
+#### Ejemplo avanzado
+
+```tsx
+import { Skeleton } from '@/components/ui/Skeleton';
+
+// Estado de carga para una lista de trabajadores
+<div className="space-y-3">
+  <Skeleton variant="row" />
+  <Skeleton variant="row" />
+  <Skeleton variant="row" />
+</div>
+
+// Grid de tarjetas KPI
+<div className="grid grid-cols-3 gap-4">
+  <Skeleton variant="card" />
+  <Skeleton variant="card" />
+  <Skeleton variant="card" />
+</div>
+
+// Tabla de datos
+<Skeleton variant="table" lines={8} />
+```
+
+#### Cuando usar
+
+- Antes de que los datos se carguen en tablas, listas o tarjetas.
+- Para dar sensacion de rapidez al usuario (perceived performance).
+- Junto con `DataTable` cuando `loading={true}`.
+
+#### No usar cuando
+
+- No usar para contenido que ya esta cargado — es solo para estados de carga.
+- No abusar de variantes en la misma vista — elegir la mas representativa.
+
+---
+
+### 4.6 SkeletonText
+
+Placeholder especializado para texto. Mas flexible que `Skeleton variant="text"` porque permite controlar el ancho de cada linea, el ancho de la ultima linea y el espaciado.
+
+**Archivo:** `src/components/ui/SkeletonText/SkeletonText.tsx`
+
+**Importacion:**
+```tsx
+import { SkeletonText } from '@/components/ui/SkeletonText';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `lines` | `number` | `3` | Numero de lineas |
+| `width` | `'full' \| 'random' \| string[]` | `'full'` | Ancho de las lineas |
+| `lastLineWidth` | `string` | `undefined` | Ancho de la ultima linea |
+| `variant` | `'text' \| 'title'` | `'text'` | Altura de las lineas |
+| `gap` | `'none' \| 'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Espaciado entre lineas |
+| `noAnimation` | `boolean` | `false` | Desactivar animacion pulse |
+
+#### Ejemplos
+
+**Texto basico:**
+
+```tsx
+<SkeletonText lines={3} />
+```
+
+**Anchos aleatorios:**
+
+```tsx
+<SkeletonText lines={4} width="random" />
+```
+
+**Anchos personalizados por linea:**
+
+```tsx
+<SkeletonText
+  lines={3}
+  width={['w-full', 'w-3/4', 'w-1/2']}
+/>
+```
+
+**Titulo con ultima linea corta:**
+
+```tsx
+<SkeletonText
+  lines={2}
+  variant="title"
+  lastLineWidth="w-1/3"
+/>
+```
+
+#### Cuando usar
+
+- Para parrafos de carga con control visual detallado.
+- Cuando se necesita simular texto realista con lineas de diferentes anchos.
+- Para titulos con subtitulos en estados de carga.
+
+#### No usar cuando
+
+- Se necesita un esqueleto complejo (avatar + texto + boton) — usar `Skeleton variant="row"`.
+- Se necesita una tabla o card completa — usar `Skeleton`.
+
+---
+
 ## 5. Componentes de Datos
 
 ### 5.1 DataTable
 
-Tabla de datos generica con soporte para columnas custom, estados de carga y vacio, y filas clickeables.
+Tabla de datos generica con scroll horizontal/vertical, header sticky, headers naranja alternados y columnas adaptables al contenido.
 
-**Archivo:** `src/components/ui/DataTable/DataTable.tsx`
+**Archivos:**
+- `src/components/ui/DataTable/DataTable.tsx` — Componente principal
+- `src/components/ui/DataTable/DataTable.styles.ts` — Clases de estilos
+- `src/components/ui/DataTable/index.ts` — Re-exports
 
 **Importacion:**
 ```tsx
@@ -1295,18 +3048,65 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 | `loading` | `boolean` | `false` | Muestra skeleton de carga |
 | `emptyText` | `string` | `'No hay registros'` | Texto cuando no hay datos |
 | `onRowClick` | `(item: T) => void` | `undefined` | Callback al hacer click en una fila |
-| `maxBodyHeight` | `string` | `undefined` | Altura maxima del body con scroll (ej: `"400px"`) |
+| `maxBodyHeight` | `string` | `'400px'` | Altura maxima del body con scroll vertical |
+| `className` | `string` | `undefined` | Clases adicionales del container |
 
 #### Tipo Column<T>
 
 ```ts
 interface Column<T> {
-  key: string;            // Clave del campo en el objeto de datos
-  header: string;         // Texto del encabezado de columna
-  render?: (item: T) => React.ReactNode;  // Renderizado custom (opcional)
-  className?: string;     // Clases adicionales para la columna
+  key: string;                              // Clave del campo en el objeto
+  header: string;                           // Texto del encabezado
+  render?: (item: T) => React.ReactNode;    // Renderizado custom de celda
+  className?: string;                       // Clases adicionales
+  align?: 'left' | 'center' | 'right';     // Alineacion del contenido de la celda
+  minWidth?: string;                        // Ancho minimo (ej: '120px')
+  nowrap?: boolean;                         // No romper contenido
 }
 ```
+
+#### Headers Naranja Alternados
+
+Los headers usan el color de marca naranja alternando entre dos tonos:
+
+| Posicion | Fondo | Clase |
+|----------|-------|-------|
+| Impar (1, 3, 5...) | `#f97316` | `bg-primary` |
+| Par (2, 4, 6...) | `#ea580c` | `bg-primary-dark` |
+
+- **Todos los headers centrados** — incluyendo la columna de Acciones.
+- **Texto blanco** en todos los headers (`text-white`).
+- **`z-20`** en `<thead>` — evita que el contenido se sobreponga al header al hacer scroll.
+
+#### Arquitectura de Scroll
+
+```
+┌─── container (rounded-xl border bg-white) ──────────────┐
+│ ┌─── overflow-auto (H + V) ───────────────────────────┐ │
+│ │                                                      │ │
+│ │  ┌─── thead (sticky top-0 z-20) ─────────────────┐  │ │
+│ │  │  NOM (naranja) │ PUE (oscuro) │ RFC (naranja) │  │ │
+│ │  └────────────────────────────────────────────────┘  │ │
+│ │                                                      │ │
+│ │  ┌─── tbody (scroll vertical) ────────────────────┐  │ │
+│ │  │  Carlos    │ Operador  │ HERC85...  │ ...      │  │ │
+│ │  │  Maria     │ Tecnico   │ LOPM90...  │ ...      │  │ │
+│ │  │  Juan      │ Supervis  │ PEPJ75...  │ ...      │  │ │
+│ │  └────────────────────────────────────────────────┘  │ │
+│ └──────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### Reglas Criticas
+
+1. **UNA sola tabla** (`<table>`) — header y body comparten el mismo layout de columnas (siempre alineados).
+2. **`table-layout: auto`** — el navegador calcula el ancho de columna basado en el contenido, no al reves.
+3. **`overflow: auto`** en el wrapper — un solo scroll para ambas direcciones (H + V).
+4. **`sticky top-0 z-20`** en `<thead>` — header se queda fijo al hacer scroll vertical, con z-index alto para evitar overlap.
+5. **`whitespace-nowrap`** en celdas — el contenido nunca se rompe, cada columna mantiene su texto completo.
+6. **Zona segura** — `px-4` (16px) de padding en cada celda, contenido siempre centrado.
+7. **Headers siempre centrados** — incluyendo la columna de Acciones.
+8. **Naranja solido** — headers con fondo `primary` o `primary-dark` alternado, texto blanco.
 
 #### Estados
 
@@ -1319,10 +3119,10 @@ interface Column<T> {
 #### Diseno visual
 
 - Container: `rounded-xl border border-slate-200 bg-white`
-- Header: fondo `slate-50`, texto uppercase, `text-[10px] font-black`
+- Header: fondo naranja alternado (`primary` / `primary-dark`), texto blanco uppercase, `text-[10px] font-black`, `tracking-widest`, `text-center`
 - Filas: bordes `slate-100`, alternating rows (even/odd)
 - Filas interactivas: `hover:bg-slate-50/80 cursor-pointer`
-- Celdas: `px-4 py-3.5 text-sm text-slate-700`
+- Celdas: `px-4 py-3.5 text-sm text-slate-700 whitespace-nowrap`
 
 #### Ejemplo basico
 
@@ -1347,33 +3147,65 @@ const columns: Column<Trabajador>[] = [
 />
 ```
 
-#### Ejemplo avanzado
+#### Ejemplo avanzado — 10 columnas con acciones
 
 ```tsx
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Eye, Edit } from 'lucide-react';
+import { Eye, PencilLine, Trash2 } from 'lucide-react';
 
 interface TrabajadorRow {
   id: string;
   nombre: string;
   puesto: string;
+  telefono: string;
+  rfc: string;
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  fechaIngreso: string;
+  bodega: string;
   estado: string;
 }
 
 const columns: Column<TrabajadorRow>[] = [
-  { key: 'nombre', header: 'Nombre' },
-  { key: 'puesto', header: 'Puesto' },
+  { key: 'nombre', header: 'Nombre Completo', minWidth: '200px' },
+  { key: 'puesto', header: 'Puesto', minWidth: '130px' },
+  { key: 'telefono', header: 'Telefono', minWidth: '130px', nowrap: true },
+  { key: 'rfc', header: 'RFC', minWidth: '140px', nowrap: true },
+  {
+    key: 'sueldoFiscal',
+    header: 'Sueldo Fiscal',
+    minWidth: '130px',
+    align: 'right',
+    nowrap: true,
+    render: (row) => (
+      <span className="font-semibold text-slate-800">
+        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(row.sueldoFiscal)}
+      </span>
+    ),
+  },
+  {
+    key: 'sueldoEfectivo',
+    header: 'Sueldo Efectivo',
+    minWidth: '130px',
+    align: 'right',
+    nowrap: true,
+    render: (row) => (
+      <span className="font-semibold text-green-600">
+        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(row.sueldoEfectivo)}
+      </span>
+    ),
+  },
+  { key: 'fechaIngreso', header: 'Fecha Ingreso', minWidth: '120px', nowrap: true },
+  { key: 'bodega', header: 'Bodega', minWidth: '140px' },
   {
     key: 'estado',
     header: 'Estado',
+    minWidth: '110px',
     render: (row) => (
       <Badge
-        variant={
-          row.estado === 'Activo' ? 'success' :
-          row.estado === 'Inactivo' ? 'error' : 'warning'
-        }
+        variant={row.estado === 'Activo' ? 'success' : row.estado === 'Inactivo' ? 'error' : 'warning'}
         dot
       >
         {row.estado}
@@ -1383,41 +3215,45 @@ const columns: Column<TrabajadorRow>[] = [
   {
     key: 'acciones',
     header: 'Acciones',
+    minWidth: '220px',
+    nowrap: true,
     render: () => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" icon={<Eye size={14} />}>
+      <div className="flex items-center justify-center gap-1">
+        <Button variant="info" size="sm" icon={<Eye size={14} />}>
           Ver
         </Button>
-        <Button variant="ghost" size="sm" icon={<Edit size={14} />}>
+        <Button variant="warning" size="sm" icon={<PencilLine size={14} />}>
           Editar
+        </Button>
+        <Button variant="danger" size="sm" icon={<Trash2 size={14} />}>
+          Eliminar
         </Button>
       </div>
     ),
   },
 ];
 
+// Tabla completa con scroll vertical
 <DataTable<TrabajadorRow>
   columns={columns}
-  data={filteredWorkers}
+  data={trabajadores}
   keyExtractor={(w) => w.id}
   onRowClick={(w) => console.log('Clicked:', w.nombre)}
   maxBodyHeight="400px"
 />
 
-// Estado de carga
+// Con paginacion
 <DataTable<TrabajadorRow>
   columns={columns}
-  data={[]}
-  keyExtractor={() => ''}
-  loading
+  data={currentRows}
+  keyExtractor={(w) => w.id}
 />
-
-// Estado vacio con texto custom
-<DataTable<TrabajadorRow>
-  columns={columns}
-  data={[]}
-  keyExtractor={() => ''}
-  emptyText="No se encontraron trabajadores con los filtros aplicados"
+<Pagination
+  currentPage={3}
+  totalPages={10}
+  totalRecords={98}
+  pageSize={10}
+  onPageChange={(page) => setCurrentPage(page)}
 />
 ```
 
@@ -1425,103 +3261,502 @@ const columns: Column<TrabajadorRow>[] = [
 
 - Listas de datos tabulares (trabajadores, maquinaria, proyectos, etc.).
 - Cualquier vista que requiera mostrar registros en formato de tabla.
-- Datos que necesitan renderizado custom en celdas (badges, botones, etc.).
+- Datos que necesitan renderizado custom en celdas (badges, botones de accion, moneda).
+- Tablas con muitas columnas que necesitan scroll horizontal.
+- Tablas largas que necesitan scroll vertical con header fijo.
 
 #### No usar cuando
 
 - No usar para listas simples sin columnas — usar un `<ul>` con estilos.
 - No usar para datos que no son tabulares — usar cards o listas.
 - No abusar de `render` en todas las columnas — solo usarlo cuando el default `String(value)` no es suficiente.
+- No usar `minWidth` excesivamente grande — el contenido debe definir el ancho, no al reves.
+- No usar sin `keyExtractor` — cada fila necesita una key unica.
 
 ---
 
-## 6. Componentes de Layout (Sistema)
+### 5.2 Pagination
 
-Estos componentes son parte del layout general de la aplicacion y estan en `src/components/layout/`. No son parte del catalogo de componentes reutilizables pero son esenciales para entender la arquitectura.
+Componente de paginacion para tablas de datos. Muestra info de pagina actual, registros visibles y controles de navegacion.
 
-### 6.1 Modal
-
-Modal generico con overlay, header, contenido y botones de accion. Tambien exporta `ModalField`, `inputClass` y `selectClass`.
-
-**Archivo:** `src/components/layout/Modal.tsx`
+**Archivos:**
+- `src/components/ui/Pagination/Pagination.tsx` — Componente principal
+- `src/components/ui/Pagination/Pagination.styles.ts` — Clases de estilos
+- `src/components/ui/Pagination/index.ts` — Re-exports
 
 **Importacion:**
 ```tsx
-import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { Pagination } from '@/components/ui/Pagination';
 ```
 
 #### Props
 
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
-| `isOpen` | `boolean` | *(requerido)* | Controla la visibilidad del modal |
-| `onClose` | `() => void` | *(requerido)* | Callback al cerrar (overlay, Escape, boton cancelar) |
-| `onConfirm` | `() => void` | *(requerido)* | Callback al confirmar |
-| `title` | `string` | *(requerido)* | Titulo del modal |
-| `confirmLabel` | `string` | `'Guardar'` | Texto del boton de confirmacion |
-| `children` | `React.ReactNode` | *(requerido)* | Contenido del modal |
+| `currentPage` | `number` | *(requerido)* | Pagina actual (1-based) |
+| `totalPages` | `number` | *(requerido)* | Total de paginas |
+| `totalRecords` | `number` | *(requerido)* | Total de registros |
+| `pageSize` | `number` | *(requerido)* | Registros por pagina |
+| `onPageChange` | `(page: number) => void` | *(requerido)* | Callback al cambiar de pagina |
+| `showJumpButtons` | `boolean` | `true` | Mostrar botones de salto inicio/fin |
+| `className` | `string` | `undefined` | Clases adicionales del container |
 
-#### Funcionalidades
+#### Visual
 
-- Cierra con tecla `Escape`.
-- Cierra al hacer click en el overlay (fondo oscuro).
-- Animacion de entrada con `fadeScaleIn`.
-- Backdrop blur en el overlay.
-
-#### Uso de ModalField, inputClass, selectClass
-
-```tsx
-<Modal isOpen={open} onClose={() => setOpen(false)} onConfirm={handleSave} title="Nuevo Trabajador">
-  <ModalField label="Nombre">
-    <input className={inputClass} placeholder="Nombre completo" />
-  </ModalField>
-  <ModalField label="Puesto">
-    <select className={selectClass}>
-      <option>Operador</option>
-      <option>Mecanico</option>
-    </select>
-  </ModalField>
-</Modal>
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Pagina 3 de 10 — Mostrando 21-30 de 98 registros     «  ‹  1  2  [3]  4  5  ...  10  ›  »  │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Nota:** Estos estilos (`inputClass`, `selectClass`) son estilos inline legacy. Para nuevos componentes, usar los componentes `Input` y `Select` del catalogo UI.
+| Elemento | Icono | Funcion |
+|----------|-------|---------|
+| `«` | `ChevronsLeft` | Saltar a primera pagina |
+| `‹` | `ChevronLeft` | Pagina anterior |
+| `1 2 [3] 4 5 ... 10` | — | Numeros de pagina (con ellipsis) |
+| `›` | `ChevronRight` | Pagina siguiente |
+| `»` | `ChevronsRight` | Saltar a ultima pagina |
+
+#### Diseno visual
+
+- Container: `flex items-center justify-between`, `border-t border-slate-100`, `rounded-b-xl` (se pega al fondo de DataTable)
+- Info: `text-sm text-slate-500`, numeros resaltados en `font-semibold text-slate-700`
+- Botones: `h-8 min-w-[32px] rounded-lg`
+- Boton activo: `bg-primary text-white shadow-sm`
+- Boton disabled: `text-slate-300 cursor-not-allowed`
+- Gap de ellipsis: `text-slate-400`
+
+#### Ejemplo basico
+
+```tsx
+import { Pagination } from '@/components/ui/Pagination';
+
+<Pagination
+  currentPage={1}
+  totalPages={10}
+  totalRecords={98}
+  pageSize={10}
+  onPageChange={(page) => console.log('Page:', page)}
+/>
+```
+
+#### Ejemplo avanzado — Con DataTable
+
+```tsx
+import { useState } from 'react';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+
+function TrabajadoresPage() {
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Calcular datos de la pagina actual
+  const allData = getTrabajadores(); // API call
+  const totalPages = Math.ceil(allData.length / pageSize);
+  const currentRows = allData.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  return (
+    <div>
+      <DataTable<Trabajador>
+        columns={columns}
+        data={currentRows}
+        keyExtractor={(t) => t.id}
+      />
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalRecords={allData.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+      />
+    </div>
+  );
+}
+```
+
+#### Cuando usar
+
+- Tablas con mas de 10-20 registros que necesitan paginacion.
+- Cualquier lista de datos donde se quiera controlar la cantidad de registros visibles.
+- Junto con `DataTable` para CRUDs con muchos registros.
+
+#### No usar cuando
+
+- No usar para listas cortas (menos de 10 registros) — mostrar todos directamente.
+- No usar sin conectar a estado — el componente es controlado (`currentPage` + `onPageChange`).
+- No usar dentro de un `Card` con `overflow-hidden` — el padding inferior puede cortarse.
 
 ---
 
-### 6.2 Toast
+## 6. Componentes de Sistema
 
-Sistema de notificaciones toast (pop-ups temporales). Exporta el provider y el hook `useToast`.
+Estos componentes son esenciales para la arquitectura de la aplicacion. Los modales estan en `src/components/ui/Modal/` y los providers de notificaciones en `src/components/layout/`.
 
-**Archivo:** `src/components/layout/Toast.tsx`
+### 6.1 Modal
+
+Modal base con overlay, header, contenido scrollable y footer de acciones. Usa los componentes `Portal` y `Overlay` para renderizar fuera del DOM y manejar el backdrop. Compone sub-componentes (`ModalHeader`, `ModalBody`, `ModalFooter`) para flexibilidad total.
+
+**Archivo:** `src/components/ui/Modal/Modal.tsx`
+
+**Importacion:**
+```tsx
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `open` | `boolean` | *(requerido)* | Controla la visibilidad del modal |
+| `onClose` | `() => void` | *(requerido)* | Callback al cerrar (Escape, overlay, boton) |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del modal (componer con ModalHeader/Body/Footer) |
+| `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| 'full'` | `'md'` | Tamano maximo del modal |
+| `persistent` | `boolean` | `false` | Si es true, no cierra al hacer click en overlay ni con Escape |
+| `contentClassName` | `string` | `undefined` | Clases adicionales para el card interno |
+| `offsetLeft` | `number` | `0` | Omite el overlay en los primeros pixeles del lado izquierdo (util para no cubrir el sidebar) |
+
+#### Sub-componentes
+
+**ModalHeader:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `title` | `string` | *(requerido)* | Titulo del modal |
+| `subtitle` | `string` | `undefined` | Subtitulo descriptivo |
+| `onClose` | `() => void` | `undefined` | Callback del boton cerrar |
+| `hideClose` | `boolean` | `false` | Ocultar boton X |
+
+**ModalBody:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `React.ReactNode` | *(requerido)* | Contenido scrollable |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+**ModalFooter:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `React.ReactNode` | *(requerido)* | Botones de accion |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+#### Tamanos
+
+| Tamano | Max-width | Uso tipico |
+|--------|-----------|------------|
+| `sm` | `max-w-sm` (384px) | Confirmaciones, alertas simples |
+| `md` | `max-w-md` (448px) | Formularios cortos |
+| `lg` | `max-w-lg` (512px) | Formularios completos |
+| `xl` | `max-w-xl` (576px) | Formularios extensos |
+| `full` | `max-w-3xl` (768px) | Vistas complejas, previews |
+
+#### Funcionalidades
+
+- Renderiza en un `Portal` fuera del arbol DOM principal.
+- Usa el componente `Overlay` para el backdrop con blur.
+- Cierra con tecla `Escape` (excepto `persistent`).
+- Cierra al hacer click en el overlay (excepto `persistent`).
+- Bloquea scroll del body mientras esta abierto.
+- Animacion de entrada con `fadeScaleIn`.
+- Accesibilidad: `role="dialog"`, `aria-modal="true"`.
+
+#### Ejemplo basico
+
+```tsx
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+
+<Modal open={open} onClose={() => setOpen(false)} size="md">
+  <ModalHeader title="Detalle del Trabajador" onClose={() => setOpen(false)} />
+  <ModalBody>
+    <p className="text-sm text-slate-600">Contenido del modal aqui...</p>
+  </ModalBody>
+  <ModalFooter>
+    <Button variant="secondary" onClick={() => setOpen(false)}>Cerrar</Button>
+    <Button>Aceptar</Button>
+  </ModalFooter>
+</Modal>
+```
+
+#### Ejemplo: Modal de confirmacion (sin header)
+
+```tsx
+import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { AlertCircle, Trash2 } from 'lucide-react';
+
+<Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} size="sm">
+  <ModalBody>
+    <div className="flex flex-col items-center text-center py-2">
+      <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+        <AlertCircle size={32} className="text-red-500" />
+      </div>
+      <h3 className="text-lg font-bold text-slate-900">Eliminar Registro</h3>
+      <p className="text-sm text-slate-500 mt-1">
+        Esta accion es permanente.
+      </p>
+    </div>
+  </ModalBody>
+  <ModalFooter>
+    <Button variant="secondary" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+    <Button variant="danger" icon={<Trash2 size={16} />}>Eliminar</Button>
+  </ModalFooter>
+</Modal>
+```
+
+---
+
+### 6.2 FormModal
+
+Modal pre-armado para flujos CRUD. Incluye header con titulo/subtitulo, body con formulario scrollable, y footer con botones Cancelar/Guardar. Simplifica la creacion de modales con formulario.
+
+**Archivo:** `src/components/ui/Modal/FormModal.tsx`
+
+**Importacion:**
+```tsx
+import { FormModal } from '@/components/ui/Modal';
+```
+
+#### Props (hereda de Modal)
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `title` | `string` | *(requerido)* | Titulo del modal |
+| `subtitle` | `string` | `undefined` | Subtitulo descriptivo |
+| `children` | `React.ReactNode` | *(requerido)* | Contenido del formulario |
+| `submitLabel` | `string` | `'Guardar'` | Texto del boton de envio |
+| `cancelLabel` | `string` | `'Cancelar'` | Texto del boton de cancelar |
+| `onSubmit` | `() => void` | `undefined` | Callback al enviar el formulario |
+| `isSubmitting` | `boolean` | `false` | Estado de carga del boton guardar |
+| `submitDisabled` | `boolean` | `false` | Deshabilitar boton guardar |
+| `hideFooter` | `boolean` | `false` | Ocultar footer con botones |
+| `onCancel` | `() => void` | `undefined` | Alias para onClose |
+
+*Tambien acepta todas las props de `Modal` (`open`, `onClose`, `size`, `persistent`, etc.)*
+
+#### Ejemplo basico
+
+```tsx
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+
+<FormModal
+  open={open}
+  onClose={() => setOpen(false)}
+  title="Nuevo Trabajador"
+  subtitle="Completa los datos para registrar un nuevo trabajador"
+  submitLabel="Guardar Trabajador"
+  onSubmit={handleSave}
+  isSubmitting={saving}
+  size="lg"
+>
+  <div className="grid grid-cols-2 gap-4">
+    <ModalField label="Nombre" required>
+      <input className={modalInputClass} placeholder="Nombre completo" />
+    </ModalField>
+    <ModalField label="Puesto" required>
+      <select className={modalSelectClass}>
+        <option value="">Seleccionar...</option>
+        <option value="operador">Operador</option>
+      </select>
+    </ModalField>
+  </div>
+</FormModal>
+```
+
+---
+
+### 6.3 ModalField
+
+Wrapper de campo de formulario para modales. Incluye label, indicador de requerido, hint de ayuda y mensaje de error.
+
+**Archivo:** `src/components/ui/Modal/ModalField.tsx`
+
+**Importacion:**
+```tsx
+import { ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `label` | `string` | *(requerido)* | Texto del label |
+| `required` | `boolean` | `false` | Muestra asterisco rojo |
+| `hint` | `string` | `undefined` | Texto de ayuda debajo del campo |
+| `error` | `string` | `undefined` | Mensaje de error (reemplaza hint) |
+| `children` | `React.ReactNode` | *(requerido)* | Input/select/textarea |
+| `className` | `string` | `undefined` | Clases adicionales |
+
+#### Clases de inputs exportadas
+
+| Clase | Uso | Estilo |
+|-------|-----|--------|
+| `modalInputClass` | `<input>` | `h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm` |
+| `modalSelectClass` | `<select>` | Igual + `appearance-none pr-10` |
+| `modalTextareaClass` | `<textarea>` | Igual + `py-3 resize-none` |
+
+#### Ejemplo
+
+```tsx
+import { ModalField, modalInputClass } from '@/components/ui/Modal';
+
+// Campo basico
+<ModalField label="Nombre" required>
+  <input className={modalInputClass} placeholder="Nombre completo" />
+</ModalField>
+
+// Campo con error
+<ModalField label="RFC" error="El RFC debe tener 13 caracteres">
+  <input className={modalInputClass} maxLength={13} />
+</ModalField>
+
+// Campo con hint
+<ModalField label="Sueldo Fiscal" hint="Monto mensual antes de deducciones">
+  <div className="relative">
+    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+    <input className={modalInputClass + ' pl-8'} type="number" placeholder="0.00" />
+  </div>
+</ModalField>
+```
+
+> **Nota:** Los `modalInputClass`/`modalSelectClass`/`modalTextareaClass` son estilos consistenes para campos dentro de modales. Para campos fuera de modales, usar los componentes `Input` y `Select` del catalogo UI.
+
+---
+
+### 6.4 Toast
+
+Sistema completo de notificaciones con 6 posiciones, 4 tipos y 7 transiciones. Incluye barra de progreso, pausa al hover y auto-dismiss.
+
+**Archivos:**
+- `src/components/layout/Toast.tsx` — Provider + Componente
+- `src/components/layout/Toast.types.ts` — Tipos TypeScript
+- `src/components/layout/Toast.styles.ts` — Clases de posicion y animacion
 
 **Importacion:**
 ```tsx
 import { useToast } from '@/components/layout/Toast';
 ```
 
-#### Uso
+#### API del hook
 
-```tsx
-const { showToast } = useToast();
+```ts
+const { showToast, success, error, warning, info, dismiss, dismissAll } = useToast();
 
-showToast('Trabajador guardado correctamente', 'success');
-showToast('Error al eliminar el registro', 'error');
-showToast('Advertencia: campos obligatorios vacios', 'warning');
-showToast('Correo enviado exitosamente', 'info');
+// Metodos abreviados (mismo efecto que showToast)
+success('Trabajador guardado', { position: 'top-right', transition: 'bounceIn' });
+error('Error al eliminar', { position: 'bottom-left' });
+warning('Campos vacios', { position: 'top-center' });
+info('Datos actualizados', { position: 'bottom-right' });
+
+// Metodo generico
+showToast('Mensaje', 'success', { position, transition, duration, progress });
+
+// Control manual
+dismiss(id);     // Cerrar un toast especifico
+dismissAll();    // Cerrar todos
 ```
 
-#### Tipos de toast
+#### Posiciones
 
-| Tipo | Icono | Estilo |
-|------|-------|--------|
-| `success` | `CheckCircle2` (verde) | Borde verde, fondo oscuro |
-| `warning` | `AlertTriangle` (amber) | Borde amber, fondo oscuro |
-| `error` | `XCircle` (rojo) | Borde rojo, fondo oscuro |
-| `info` | `CheckCircle2` (azul) | Borde azul, fondo oscuro |
+| Posicion | Descripcion |
+|----------|-------------|
+| `top-left` | Esquina superior izquierda |
+| `top-center` | Centro superior |
+| `top-right` | Esquina superior derecha (default) |
+| `bottom-left` | Esquina inferior izquierda |
+| `bottom-center` | Centro inferior |
+| `bottom-right` | Esquina inferior derecha |
+
+#### Tipos de Toast
+
+| Tipo | Icono | Color | Uso en SVR-ERP |
+|------|-------|-------|----------------|
+| `success` | `CheckCircle2` | Verde | **Crear** registros |
+| `warning` | `AlertTriangle` | Amarillo | **Editar** registros |
+| `error` | `XCircle` | Rojo | **Eliminar** registros |
+| `info` | `Info` | Azul | **Mostrar** informacion |
+
+#### Transiciones
+
+| Transicion | Efecto |
+|------------|--------|
+| `fadeIn` | Desvanecimiento con desplazamiento suave (default) |
+| `bounceIn` | Rebote con escala (elastic bounce) |
+| `swingInverted` | Balanceo desde la derecha con rotacion |
+| `popUp` | Expansion desde abajo con overshoot |
+| `topBounce` | Rebote vertical desde arriba |
+| `bounceInDown` | Caida desde arriba con rebote multiple |
+| `bounceInUp` | Salto desde abajo con rebote multiple |
+
+#### ToastOptions
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `position` | `ToastPosition` | `'top-right'` | Posicion del contenedor |
+| `transition` | `ToastTransition` | `'fadeIn'` | Animacion de entrada |
+| `duration` | `number` | `4000` | Duracion en ms (0 = no auto-dismiss) |
+| `progress` | `boolean` | `true` | Mostrar barra de progreso |
+
+#### Ejemplo basico
+
+```tsx
+import { useToast } from '@/components/layout/Toast';
+
+function MiComponente() {
+  const toast = useToast();
+
+  return (
+    <Button onClick={() => toast.success('Guardado correctamente')}>
+      Guardar
+    </Button>
+  );
+}
+```
+
+#### Ejemplo avanzado
+
+```tsx
+const toast = useToast();
+
+// Toast de exito con posicion y transicion personalizadas
+toast.success('Trabajador creado', {
+  position: 'top-center',
+  transition: 'bounceIn',
+  duration: 5000,
+  progress: true,
+});
+
+// Toast de error sin auto-dismiss
+toast.error('Error critico del servidor', {
+  position: 'bottom-center',
+  transition: 'swingInverted',
+  duration: 0,  // No se cierra solo
+});
+
+// Lanzar los 4 tipos secuencialmente
+toast.success('Creado', { position: 'top-right', transition: 'fadeIn' });
+setTimeout(() => toast.warning('Editado', { position: 'top-right', transition: 'bounceIn' }), 200);
+setTimeout(() => toast.error('Eliminado', { position: 'top-right', transition: 'popUp' }), 400);
+setTimeout(() => toast.info('Informacion', { position: 'top-right', transition: 'topBounce' }), 600);
+```
+
+#### Funcionalidades
+
+- **Barra de progreso**: Muestra tiempo restante visualmente.
+- **Pausa al hover**: Se detiene cuando el mouse esta sobre el toast.
+- **Posiciones multiples**: 6 posiciones, cada una renderiza su propio contenedor.
+- **7 transiciones**: Animaciones CSS con cubic-bezier para efectos suaves.
+- **Colores semanticos**: Verde (crear), Amarillo (editar), Rojo (eliminar), Azul (info).
+- **Dismiss manual**: Boton X o llamada a `dismiss(id)`.
+- **Close con Escape**: Opcional, configurable.
 
 ---
 
-### 6.3 NotificationContext
+### 6.5 NotificationContext
 
 Contexto para el centro de alertas/notificaciones del Topbar. Provee estado global de notificaciones con operaciones CRUD basicas.
 
@@ -1651,3 +3886,810 @@ Iconos mas utilizados en SVR-ERP (todos de `lucide-react`):
 | `Settings` | `import { Settings } from 'lucide-react'` | Configuracion |
 | `Bell` | `import { Bell } from 'lucide-react'` | Notificaciones |
 | `Mail` | `import { Mail } from 'lucide-react'` | Correo |
+
+---
+
+## 8. Reglas de Espaciado y Zona Segura
+
+**REGLA CRITICA:** Todos los componentes y paginas deben respetar un sistema de espaciado consistente para crear una "zona segura" visual. Esto garantiza que el contenido nunca toque los bordes de la pantalla ni entre si de manera desordenada.
+
+### 8.1 Zona Segura de Pagina
+
+Toda pagina del dashboard debe usar el patron:
+
+```tsx
+<div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+  <PageHeader ... />
+  <section>...</section>
+  <section>...</section>
+</div>
+```
+
+- **`p-6`** (24px): Padding de pagina — el contenido nunca toca los bordes de la pantalla.
+- **`space-y-6`** (24px): Separacion entre secciones.
+- **`bg-slate-50`**: Fondo consistente en todas las paginas.
+
+### 8.2 Zona Segura de Cards
+
+Las cards internas deben usar:
+
+```tsx
+<Card className="space-y-6">     {/* Card con spacing interno */}
+  <h2>Titulo</h2>
+  <div className="space-y-4">    {/* Contenido */}
+    ...
+  </div>
+</Card>
+```
+
+- **`p-6`** o **`padding="md"`** en Card: Padding interno de 24px.
+- **`space-y-4`** o **`space-y-6`**: Entre elementos dentro de la card.
+- **`gap-4`** o **`gap-6`**: En grids dentro de cards.
+
+### 8.3 Tokens de Spacing (CSS Variables)
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `--spacing-page` | 24px | Padding de pagina |
+| `--spacing-section` | 24px | Entre secciones |
+| `--spacing-card` | 24px | Dentro de cards |
+| `--spacing-card-sm` | 16px | Card padding sm |
+| `--spacing-card-lg` | 32px | Card padding lg |
+| `--spacing-inline` | 12px | Entre elementos inline |
+| `--spacing-stack` | 16px | Stack vertical |
+| `--spacing-stack-sm` | 8px | Stack apretado |
+| `--spacing-stack-lg` | 24px | Stack amplio |
+| `--spacing-field` | 16px | Entre campos de formulario |
+| `--spacing-field-gap` | 6px | Entre label e input |
+
+### 8.4 Sombras
+
+| Clase | Uso |
+|-------|-----|
+| `shadow-sm` | Cards en reposo, elementos sutiles |
+| `shadow-md` | Cards con hover, dropdowns |
+| `shadow-lg` | Modales, popovers |
+| `shadow-xl` | Modales grandes, overlays |
+| `shadow-primary` | Botones primarios, CTAs |
+
+### 8.5 Border Radius
+
+| Clase | Valor | Uso |
+|-------|-------|-----|
+| `rounded-sm` | 6px | Badges, tags pequenos |
+| `rounded-md` | 8px | Inputs, botones sm |
+| `rounded-lg` | 12px | Cards, botones |
+| `rounded-xl` | 16px | Cards principales, modales |
+| `rounded-2xl` | 24px | Modales, paneles |
+| `rounded-full` | Infinito | Avatares, botones circulares |
+
+### 8.5 Regla de Oro
+
+> **Todo componente debe tener:** margin/padding suficiente para no pegarse a los bordes de su contenedor, y spacing consistente con los elementos vecinos. Usar `Stack` o `space-y-*` para separacion vertical, y `gap-*` o `Stack direction="horizontal"` para separacion horizontal. **NUNCA** usar valores magicos como `mt-[13px]` o `px-[17px]` — siempre usar los tokens del theme o las clases de Tailwind estandar.
+
+---
+
+## 9. SearchBar + FilterPanel + ActiveFilters
+
+Barra de busqueda con filtros avanzados y chips de filtros activos.
+
+### 9.1 SearchBar
+
+Barra de busqueda con input, boton de filtros y soporte para debounce.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | — | Valor de busqueda controlado |
+| `placeholder` | `string` | `'Buscar...'` | Placeholder del input |
+| `onChange` | `(value: string) => void` | — | Callback al cambiar valor |
+| `onSearch` | `(value: string) => void` | — | Callback al enviar (Enter) |
+| `debounceMs` | `number` | `300` | Tiempo de debounce |
+| `filters` | `FilterField[]` | `[]` | Campos de filtro disponibles |
+| `activeFilters` | `ActiveFilter[]` | `[]` | Filtros activos |
+| `onFilterChange` | `(key, value) => void` | — | Callback al cambiar filtro |
+| `onClearFilters` | `() => void` | — | Callback limpiar filtros |
+| `onRemoveFilter` | `(key) => void` | — | Callback eliminar filtro |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { SearchBar } from '@/components/ui/SearchBar';
+```
+
+#### Ejemplo
+
+```tsx
+<SearchBar
+  value={search}
+  placeholder="Buscar trabajador..."
+  onChange={setSearch}
+  filters={[
+    { key: "puesto", label: "Puesto", type: "select", options: [...] },
+    { key: "estado", label: "Estado", type: "select", options: [...] },
+  ]}
+  activeFilters={activeFilters}
+  onRemoveFilter={(key) => removeFilter(key)}
+  onClearFilters={() => clearFilters()}
+/>
+```
+
+### 9.2 FilterPanel
+
+Panel de filtros expandible con selects, fechas y inputs de texto.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `filters` | `FilterField[]` | — | Campos de filtro |
+| `values` | `Record<string, string>` | `{}` | Valores actuales |
+| `onChange` | `(key, value) => void` | — | Callback al cambiar |
+| `onClear` | `() => void` | — | Callback limpiar todo |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { FilterPanel } from '@/components/ui/SearchBar';
+```
+
+#### Ejemplo
+
+```tsx
+<FilterPanel
+  filters={[
+    { key: "puesto", label: "Puesto", type: "select", options: [...] },
+    { key: "fecha", label: "Fecha", type: "date" },
+  ]}
+  values={filters}
+  onChange={(key, value) => setFilter(key, value)}
+  onClear={() => clearFilters()}
+/>
+```
+
+### 9.3 ActiveFilters
+
+Chips que muestran los filtros activos con boton de eliminar.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `filters` | `ActiveFilter[]` | — | Filtros activos |
+| `onRemove` | `(key) => void` | — | Eliminar filtro individual |
+| `onClearAll` | `() => void` | — | Limpiar todos |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { ActiveFilters } from '@/components/ui/SearchBar';
+```
+
+#### Ejemplo
+
+```tsx
+<ActiveFilters
+  filters={[
+    { key: "puesto", label: "Puesto", value: "Operador" },
+    { key: "estado", label: "Estado", value: "Activo" },
+  ]}
+  onRemove={(key) => removeFilter(key)}
+  onClearAll={() => clearFilters()}
+/>
+```
+
+### 9.4 Cuando usar
+
+- **SearchBar**: Siempre que una tabla o lista necesite busqueda y filtros.
+- **FilterPanel**: Cuando hay multiples filtros complejos (selects, fechas).
+- **ActiveFilters**: Para mostrar visualmente los filtros aplicados.
+
+### 9.5 No usar cuando
+
+- La lista tiene menos de 5 elementos (no necesita busqueda).
+- Los filtros son solo un campo de texto (usar `SearchBar` sin filtros).
+- La busqueda es simple y no necesita debounce.
+
+---
+
+## 10. GPS Tracking Components
+
+Componentes para monitoreo en tiempo real de maquinaria de construccion.
+
+### 10.1 GpsMap
+
+Mapa simulado con marcadores de maquinaria, grid de fondo y lineas de carretera SVG.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `machines` | `GpsMachine[]` | — | Lista de maquinas |
+| `selectedId` | `string` | — | ID de maquina seleccionada |
+| `onSelect` | `(machine) => void` | — | Callback al seleccionar |
+| `height` | `string` | `'400px'` | Altura del mapa |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { GpsMap } from '@/components/ui/GpsTracking';
+```
+
+#### Ejemplo
+
+```tsx
+<GpsMap
+  machines={machines}
+  selectedId={selectedMachine?.id}
+  onSelect={setSelectedMachine}
+  height="350px"
+/>
+```
+
+### 10.2 TrackingPanel
+
+Panel de detalle con velocimetro, combustible, temperatura, horas y operador.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `machine` | `GpsMachine` | — | Maquina a mostrar |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { TrackingPanel } from '@/components/ui/GpsTracking';
+```
+
+### 10.3 SpeedGauge
+
+Velocimetro circular que muestra la velocidad actual en km/h.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `speed` | `number` | — | Velocidad actual |
+| `maxSpeed` | `number` | `80` | Velocidad maxima |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { SpeedGauge } from '@/components/ui/GpsTracking';
+```
+
+### 10.4 MachineList
+
+Lista scrollable de maquinas con badges de estado y seleccion.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `machines` | `GpsMachine[]` | — | Lista de maquinas |
+| `selectedId` | `string` | — | ID seleccionada |
+| `onSelect` | `(machine) => void` | — | Callback al seleccionar |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { MachineList } from '@/components/ui/GpsTracking';
+```
+
+### 10.5 GpsTimeline
+
+Linea de tiempo de actividad con dots y lineas conectoras.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `events` | `TimelineEvent[]` | — | Eventos a mostrar |
+| `className` | `string` | — | CSS adicional |
+
+#### Import
+
+```tsx
+import { GpsTimeline } from '@/components/ui/GpsTracking';
+```
+
+### 10.6 StatusBadge + LiveIndicator
+
+Badges de estado y indicador en vivo.
+
+```tsx
+import { StatusBadge, LiveIndicator } from '@/components/ui/GpsTracking';
+
+<LiveIndicator />
+<StatusBadge status="moving" />
+<StatusBadge status="idle" />
+<StatusBadge status="offline" />
+<StatusBadge status="alert" />
+```
+
+### 10.7 Cuando usar
+
+- **GpsMap**: Para visualizar la ubicacion de maquinaria en tiempo real.
+- **TrackingPanel**: Para ver detalles de una maquina especifica.
+- **MachineList**: Para listar y seleccionar maquinas.
+- **GpsTimeline**: Para historial de actividad de una maquina.
+- **SpeedGauge**: Para mostrar velocidad actual de forma visual.
+
+### 10.8 No usar cuando
+
+- La aplicacion no trackea ubicacion en tiempo real.
+- Se necesita un mapa real (usar Leaflet/Mapbox en su lugar).
+- Los datos son estaticos (no cambian en tiempo real).
+
+---
+
+## 11. Charts - Visualizacion de Datos
+
+Las graficas se implementan con la libreria **Recharts** para React/Next.js. Los wrappers en `apps/web/src/components/ui/Charts/` encapsulan la complejidad y aplican el diseno del sistema.
+
+### 11.0 Libreria Recharts
+
+```bash
+cd apps/web
+npm install recharts
+```
+
+Por que Recharts:
+- API declarativa basada en componentes JSX.
+- Funciona perfectamente con Next.js 16 y React 19.
+- Bundle razonable para dashboards ERP.
+- Facil de personalizar con Tailwind CSS.
+- Mas popular y mantenida que alternativas como Chart.js o Nivo.
+
+### 11.1 BarChart
+
+Grafica de barras verticales con grid, labels y tooltips.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `data` | `ChartDataPoint[]` | — | Datos a graficar |
+| `title` | `string` | — | Titulo de la grafica |
+| `subtitle` | `string` | — | Subtitulo |
+| `height` | `number` | `250` | Altura en px |
+| `showGrid` | `boolean` | `true` | Mostrar lineas de grid |
+| `showLabels` | `boolean` | `true` | Mostrar labels en eje X |
+| `showLegend` | `boolean` | `false` | Mostrar leyenda |
+
+#### Import
+
+```tsx
+import { BarChart } from '@/components/ui/Charts';
+```
+
+#### Ejemplo
+
+```tsx
+<BarChart
+  title="Produccion Mensual"
+  data={[
+    { label: 'Ene', value: 120 },
+    { label: 'Feb', value: 85 },
+    { label: 'Mar', value: 145 },
+  ]}
+  height={200}
+  showLegend
+/>
+```
+
+### 11.2 LineChart
+
+Grafica de lineas con multiples series.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `labels` | `string[]` | — | Labels del eje X |
+| `series` | `MultiSeriesData[]` | — | Series de datos |
+| `title` | `string` | — | Titulo |
+| `subtitle` | `string` | — | Subtitulo |
+| `height` | `number` | `250` | Altura en px |
+| `showGrid` | `boolean` | `true` | Mostrar grid |
+| `showLegend` | `boolean` | `true` | Mostrar leyenda |
+
+#### Import
+
+```tsx
+import { LineChart } from '@/components/ui/Charts';
+```
+
+#### Ejemplo
+
+```tsx
+<LineChart
+  title="Ingresos vs Egresos"
+  labels={['Ene', 'Feb', 'Mar', 'Abr']}
+  series={[
+    { name: 'Ingresos', data: [45, 52, 38, 65] },
+    { name: 'Egresos', data: [30, 35, 28, 42] },
+  ]}
+/>
+```
+
+### 11.3 AreaChart
+
+Grafica de area con relleno semitransparente.
+
+#### Props
+
+Misma estructura que `LineChart`.
+
+#### Import
+
+```tsx
+import { AreaChart } from '@/components/ui/Charts';
+```
+
+### 11.4 PieChart
+
+Grafica circular con porcentajes visibles.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `data` | `ChartDataPoint[]` | — | Datos |
+| `title` | `string` | — | Titulo |
+| `height` | `number` | `250` | Altura |
+| `showLegend` | `boolean` | `true` | Leyenda |
+
+#### Import
+
+```tsx
+import { PieChart } from '@/components/ui/Charts';
+```
+
+### 11.5 DoughnutChart
+
+Grafica de dona con total centrado.
+
+#### Import
+
+```tsx
+import { DoughnutChart } from '@/components/ui/Charts';
+```
+
+### 11.6 RadarChartComponent
+
+Grafica de radar para comparar multiples variables en una dimension radial.
+
+#### Import
+
+```tsx
+import { RadarChartComponent } from '@/components/ui/Charts';
+```
+
+#### Ejemplo
+
+```tsx
+<RadarChartComponent
+  title="Metricas del Equipo"
+  data={[
+    { label: 'Velocidad', value: 85 },
+    { label: 'Eficiencia', value: 72 },
+    { label: 'Seguridad', value: 95 },
+    { label: 'Calidad', value: 68 },
+  ]}
+/>
+```
+
+### 11.7 ScatterChartComponent
+
+Grafica de puntos para correlaciones.
+
+#### Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `points` | `ScatterPoint[]` | — | Puntos (x, y, label?) |
+| `title` | `string` | — | Titulo |
+| `height` | `number` | `250` | Altura |
+
+#### Import
+
+```tsx
+import { ScatterChartComponent } from '@/components/ui/Charts';
+```
+
+### 11.8 RadialBarChartComponent
+
+Barras radiales circulares concentricas.
+
+#### Import
+
+```tsx
+import { RadialBarChartComponent } from '@/components/ui/Charts';
+```
+
+### 11.9 Colores por Defecto
+
+```
+#ed8238  #3d9b6e  #557fb5  #d4963a  #c75450
+#8b5cf6  #ec4899  #14b8a6  #f97316  #6366f1
+```
+
+Cada punto de datos puede tener un `color` custom.
+
+### 11.10 Cuando usar
+
+- **BarChart**: Comparar cantidades entre categorias.
+- **LineChart**: Tendencias a lo largo del tiempo.
+- **AreaChart**: Volumen acumulado o tendencia con relleno.
+- **PieChart**: Proporciones de un total (pocas categorias).
+- **DoughnutChart**: Proporciones con total visible.
+- **RadarChartComponent**: Comparar categorias con dimension radial.
+- **ScatterChartComponent**: Correlacion entre dos variables.
+- **RadialBarChartComponent**: Metas o progreso circular.
+
+### 11.11 Cursor del Tooltip
+
+Para evitar lineas negras/artefactos visuales al pasar el mouse sobre las graficas, el cursor del tooltip esta configurado con un estilo gris punteado:
+
+```tsx
+const tooltipProps = {
+  cursor: { stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' },
+};
+```
+
+No usar el cursor por defecto de Recharts porque puede generar artefactos visuales en navegadores con aceleracion de GPU.
+
+### 11.12 No usar cuando
+
+- Mas de 10 categorias en Pie/Doughnut (usar BarChart).
+- Datos negativos en Pie/Doughnut/Polar (usar Line/Bar).
+- Series con mas de 5 lineas (usar legend select).
+
+---
+
+## 12. Reglas de Overflow Protection
+
+Todos los componentes UI protegen contra desbordamiento de contenido.
+
+### 12.1 Patron General
+
+| Proteccion | Clase CSS | Uso |
+|------------|-----------|-----|
+| **Recortar contenido** | `overflow-hidden` | Containers que no deben crecer |
+| **Truncar texto** | `truncate` | Texto largo que debe cortarse con `...` |
+| **Romper palabras** | `break-words` | Texto largo que debe saltar de linea |
+| **Minimo ancho** | `min-w-0` | Flex children que pueden crecer indefinidamente |
+| **No encoger** | `shrink-0` | Elementos que no deben cambiar de tamano |
+
+### 12.2 Componentes Protegidos
+
+| Componente | Proteccion Aplicada |
+|------------|---------------------|
+| **Card** | `overflow-hidden` en base |
+| **StatsCard** | `overflow-hidden` + `truncate` en value/label |
+| **PageHeader** | `min-w-0 flex-1` en titulo + `truncate` |
+| **Badge** | `overflow-hidden max-w-full` |
+| **Button** | `overflow-hidden min-w-0` + `truncate` en children |
+| **EmptyState** | `overflow-hidden` + `break-words` |
+| **Modal** | `max-h-[90vh]` + `overflow-y-auto` en body |
+| **DataTable** | `overflow-auto` en scroll container |
+| **Tabs** | `overflow-x-auto` en tab list |
+| **GpsTracking** | `min-w-0 truncate` en panel values |
+
+### 12.3 Regla de Oro
+
+> **TODO componente debe evitar que el texto o contenido salga de sus limites.** Usar `overflow-hidden` en containers, `truncate` en texto de una sola linea, `break-words` en texto multilinea, `min-w-0` en flex children, y `shrink-0` en iconos/badges que no deben cambiar de tamano. El contenido se desplaza o trunca en lugar de romper el layout.
+
+---
+
+## 13. Tooltip
+
+### 13.1 Descripcion
+
+Tooltip contextual con posicionamiento automatico. Funciona en desktop (hover) y mobile (tap), con auto-flip para evitar desbordamiento del viewport.
+
+### 13.2 Import
+
+```tsx
+import { Tooltip } from '@/components/ui/Tooltip';
+```
+
+### 13.3 Props
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `content` | `ReactNode` | **requerido** | Contenido del tooltip |
+| `placement` | `'top' \| 'bottom' \| 'left' \| 'right'` | `'top'` | Posicion preferida |
+| `delay` | `number` | `300` | Retraso en ms antes de mostrar (solo hover) |
+| `maxWidth` | `number` | `240` | Ancho maximo del tooltip |
+| `disabled` | `boolean` | `false` | Deshabilitar el tooltip |
+| `children` | `ReactElement` | **requerido** | Elemento trigger (se envuelve) |
+| `className` | `string` | `undefined` | Clase adicional en el wrapper |
+
+### 13.4 Ejemplo Basico
+
+```tsx
+<Tooltip content="Editar registro">
+  <Button onClick={handleEdit}>
+    <Pencil size={16} />
+  </Button>
+</Tooltip>
+```
+
+### 13.5 Ejemplo con Posicion
+
+```tsx
+<Tooltip content="Estado: Activo" placement="right">
+  <Badge variant="success">Activo</Badge>
+</Tooltip>
+
+<Tooltip content="Este campo es obligatorio" placement="bottom">
+  <Info size={14} className="text-slate-400" />
+</Tooltip>
+```
+
+### 13.6 Comportamiento
+
+| Plataforma | Accion | Resultado |
+|------------|--------|-----------|
+| Desktop | Hover | Muestra despues de 300ms |
+| Desktop | Mouse leave | Oculta inmediatamente |
+| Desktop | Focus (Tab) | Muestra despues de 300ms |
+| Mobile/Tap | Tap en trigger | Muestra inmediatamente |
+| Mobile/Tap | Tap fuera | Oculta |
+
+### 13.7 Auto-flip
+
+Si el tooltip no cabe en la posicion preferida, se reposiciona automaticamente:
+- `top` → intenta `bottom` → `right` → `left`
+- `bottom` → intenta `top` → `right` → `left`
+- `left` → intenta `right` → `bottom` → `top`
+- `right` → intenta `left` → `bottom` → `top`
+
+### 13.8 Accesibilidad
+
+- `role="tooltip"` en el elemento de tooltip
+- `aria-describedby` en el trigger apuntando al tooltip
+- Visible en focus (keyboard navigation)
+- `VisuallyHidden` no es necesario — el tooltip es percibible por screen readers
+
+### 13.9 Cuando USAR
+
+- Texto truncado que necesita mostrar el contenido completo
+- Iconos sin label visible
+- Botones de accion rapida (editar, eliminar, copiar)
+- Campos de formulario con explicacion adicional
+- Badges con significado no obvio
+
+### 13.10 Cuando NO usar
+
+- Para contenido largo o complejo → usar un Modal
+- Para menus de accion → usar DropdownMenu
+- Para errores de validacion → usar el `error` del form field
+- Para labels de campos → usar el `label` del form field
+
+---
+
+## 14. DropdownMenu
+
+### 14.1 Descripcion
+
+Menu flotante con compound component pattern. Soporta items, iconos, shortcuts, separadores, labels, items destructivos, deshabilitados, y navegacion por teclado (flechas, Escape, Home/End).
+
+### 14.2 Import
+
+```tsx
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from '@/components/ui/DropdownMenu';
+```
+
+### 14.3 Subcomponentes
+
+#### DropdownMenu (Root)
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Subcomponentes del menu |
+| `open` | `boolean` | interno | Control externo del estado |
+| `onOpenChange` | `(open: boolean) => void` | — | Callback al cambiar estado |
+| `className` | `string` | — | Clase adicional |
+
+#### DropdownMenuTrigger
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Elemento trigger |
+| `asChild` | `boolean` | `false` | Renderizar sin wrapper (clonar child) |
+
+#### DropdownMenuContent
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Items del menu |
+| `align` | `'start' \| 'center' \| 'end'` | `'end'` | Alineacion horizontal |
+| `width` | `number` | `200` | Ancho fijo del menu |
+
+#### DropdownMenuItem
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | **requerido** | Texto del item |
+| `icon` | `ReactNode` | — | Icono a la izquierda |
+| `shortcut` | `string` | — | Atajo a la derecha |
+| `destructive` | `boolean` | `false` | Texto rojo (eliminar) |
+| `disabled` | `boolean` | `false` | Deshabilitado |
+| `onClick` | `() => void` | — | Callback al seleccionar |
+
+#### DropdownMenuSeparator / DropdownMenuLabel
+
+Sin props adicionales.
+
+### 14.4 Ejemplo Basico
+
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger asChild>
+    <Button variant="outline">
+      Acciones <ChevronDown size={14} />
+    </Button>
+  </DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem icon={<Edit size={14} />}>Editar</DropdownMenuItem>
+    <DropdownMenuItem icon={<Copy size={14} />}>Duplicar</DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuItem icon={<Trash2 size={14} />} shortcut="Del" destructive>
+      Eliminar
+    </DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+### 14.5 Navegacion por Teclado
+
+| Tecla | Accion |
+|-------|--------|
+| `ArrowDown` | Siguiente item |
+| `ArrowUp` | Item anterior |
+| `Home` | Primer item |
+| `End` | Ultimo item |
+| `Escape` | Cerrar menu + focus en trigger |
+| `Enter` / `Space` | Seleccionar item enfocado |
+
+### 14.6 Comportamiento
+
+- **Click outside**: cierra el menu
+- **Touch**: tap para abrir, tap fuera para cerrar
+- **Auto-flip vertical**: si no cabe abajo, abre arriba del trigger
+- **Clamp horizontal**: nunca se sale del viewport
+- **Focus management**: al abrir, enfoca el primer item habilitado
+- **z-index**: 60 (sobre Sidebar, debajo de modales)
+
+### 14.7 Cuando USAR
+
+- Menus de acciones en tablas (editar, eliminar, duplicar)
+- Botones de "mas opciones" en cards/headers
+- Configuraciones contextuales
+- Cualquier menu flotante con items de accion
+
+### 14.8 Cuando NO usar
+
+- Para seleccionar un valor de una lista → usar Select
+- Para contenido informativo → usar Tooltip
+- Para contenido largo/scrollable → usar un Modal
+- Para navegacion principal → usar Sidebar

@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { Center } from '@/components/ui/Center';
 import { avatarClasses } from './Avatar.styles';
 
 export type AvatarSize = keyof typeof avatarClasses.sizes;
@@ -51,7 +52,8 @@ export function Avatar({
   }
 
   return (
-    <div
+    <Center
+      inline
       className={cn(
         avatarClasses.base,
         avatarClasses.sizes[size],
@@ -60,6 +62,6 @@ export function Avatar({
       )}
     >
       {getInitials(name)}
-    </div>
+    </Center>
   );
 }
