@@ -1,19 +1,27 @@
 "use client";
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Plus, Package, AlertTriangle, TrendingDown, ShoppingCart, Pencil, Trash2 } from 'lucide-react';
+import {
+  Plus, Package, AlertTriangle, TrendingDown, ShoppingCart,
+  Pencil, Trash2, SlidersHorizontal, X,
+} from 'lucide-react';
 import { inventario, type ArticuloInventario } from '@/lib/data';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { SearchBar, FilterPanel, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Pagination } from '@/components/ui/Pagination';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { cn } from '@/lib/utils';
 
-// ── Opciones de filtro ──
+// ── Constantes ──
+const PAGE_SIZE = 10;
+
+// ── Opciones de filtro (derivadas de los datos) ──
 const categorias = [...new Set(inventario.map(i => i.categoria))];
 const proveedores = [...new Set(inventario.map(i => i.proveedor))];
 
@@ -47,8 +55,12 @@ const filterFields: FilterField[] = [
 export default function InventarioPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+
+  // ── Estado local ──
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/inventario');
@@ -59,8 +71,7 @@ export default function InventarioPage() {
   // ── Datos calculados ──
   const lowStockItems = inventario.filter(item => item.stock <= item.stockMinimo);
   const totalValue = inventario.reduce((acc, item) => acc + item.stock * item.precioUnitario, 0);
-
-  // ── Filtros activos (para mostrar chips) ──
+  // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = useMemo(() => {
     const filters: ActiveFilter[] = [];
     if (filterValues.categoria) {
@@ -78,11 +89,10 @@ export default function InventarioPage() {
     return filters;
   }, [filterValues]);
 
-  // ── Filtro combinado (search + filtros) ──
+  // ── Filtro combinado (search + filtros) — sin recarga visual ──
   const filtered = useMemo(() => {
     let result = inventario;
 
-    // Filtro por búsqueda de texto
     if (search.trim()) {
       const term = search.toLowerCase();
       result = result.filter(item =>
@@ -92,17 +102,14 @@ export default function InventarioPage() {
       );
     }
 
-    // Filtro por categoría
     if (filterValues.categoria) {
       result = result.filter(item => item.categoria === filterValues.categoria);
     }
 
-    // Filtro por proveedor
     if (filterValues.proveedor) {
       result = result.filter(item => item.proveedor === filterValues.proveedor);
     }
 
-    // Filtro por estado de stock
     if (filterValues.stock) {
       if (filterValues.stock === 'bajo') {
         result = result.filter(item => item.stock <= item.stockMinimo);
@@ -114,13 +121,28 @@ export default function InventarioPage() {
     return result;
   }, [search, filterValues]);
 
-  // ── Handlers ──
+  // ── Paginación ──
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedData = filtered.slice(
+    (safeCurrentPage - 1) * PAGE_SIZE,
+    safeCurrentPage * PAGE_SIZE
+  );
+
+  // Resetear a página 1 cuando cambian los filtros
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setCurrentPage(1);
+  }, []);
+
   const handleFilterChange = useCallback((key: string, value: string) => {
     setFilterValues(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
   }, []);
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
+    setCurrentPage(1);
   }, []);
 
   const handleRemoveFilter = useCallback((key: string) => {
@@ -129,23 +151,21 @@ export default function InventarioPage() {
       delete next[key];
       return next;
     });
+    setCurrentPage(1);
   }, []);
 
+  // ── Acciones CRUD ──
   const handlePedirMas = useCallback((item: ArticuloInventario) => {
-    // En producción, esto abriría un modal de orden de compra o enviaría a un endpoint
     showToast(`Solicitando reposición de ${item.nombre} al proveedor ${item.proveedor}...`, 'info');
   }, [showToast]);
 
   const handleEdit = useCallback((item: ArticuloInventario) => {
-    // En producción, esto abriría un modal de edición con formulario
     showToast(`Editando artículo: ${item.nombre}`, 'info');
   }, [showToast]);
 
   const handleDelete = useCallback((item: ArticuloInventario) => {
-    // En producción, esto mostraría un confirm() antes de eliminar
     if (confirm(`¿Estás seguro de eliminar "${item.nombre}"? Esta acción no se puede deshacer.`)) {
       showToast(`Artículo "${item.nombre}" eliminado.`, 'success');
-      // Aquí iría la llamada a la API para eliminar
     }
   }, [showToast]);
 
@@ -205,46 +225,32 @@ export default function InventarioPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
-          {/* Botón "Pedir más" - visible si puede editar */}
           {puedeEditar && (
             <Button
               variant="info"
               size="sm"
               icon={<ShoppingCart className="w-3.5 h-3.5" />}
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePedirMas(item);
-              }}
+              onClick={(e) => { e.stopPropagation(); handlePedirMas(item); }}
             >
               Pedir
             </Button>
           )}
-
-          {/* Botón Editar - visible si puede editar */}
           {puedeEditar && (
             <Button
               variant="warning"
               size="sm"
               icon={<Pencil className="w-3.5 h-3.5" />}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEdit(item);
-              }}
+              onClick={(e) => { e.stopPropagation(); handleEdit(item); }}
             >
               Editar
             </Button>
           )}
-
-          {/* Botón Eliminar - visible si puede eliminar */}
           {puedeEliminar && (
             <Button
               variant="danger"
               size="sm"
               icon={<Trash2 className="w-3.5 h-3.5" />}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(item);
-              }}
+              onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
             >
               Eliminar
             </Button>
@@ -311,35 +317,118 @@ export default function InventarioPage() {
         />
       </div>
 
-      {/* Search Bar + Filters */}
-      <div className="space-y-3">
+      {/* Search + Toggle Filtros */}
+      <div className="flex flex-col sm:flex-row gap-3">
         <SearchBar
           value={search}
-          onChange={setSearch}
+          onChange={handleSearchChange}
           placeholder="Buscar refacción, categoría o proveedor..."
-          filters={filterFields}
-          activeFilters={activeFilters}
-          onFilterChange={handleFilterChange}
-          onClearFilters={handleClearFilters}
-          onRemoveFilter={handleRemoveFilter}
+          className="flex-1"
         />
-
-        <FilterPanel
-          filters={filterFields}
-          values={filterValues}
-          onChange={handleFilterChange}
-          onClear={handleClearFilters}
-        />
+        <Button
+          variant={showFilters ? 'primary' : 'secondary'}
+          size="md"
+          icon={<SlidersHorizontal className="w-4 h-4" />}
+          onClick={() => setShowFilters(prev => !prev)}
+          className="shrink-0"
+        >
+          Filtros
+          {activeFilters.length > 0 && (
+            <span className="ml-1.5 w-5 h-5 rounded-full bg-white/20 text-[10px] font-bold flex items-center justify-center">
+              {activeFilters.length}
+            </span>
+          )}
+        </Button>
       </div>
 
-      {/* Inventory Table */}
-      <DataTable
-        columns={columns}
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        emptyText="No se encontraron artículos que coincidan con la búsqueda."
-        maxBodyHeight="500px"
-      />
+      {/* Chips de filtros activos */}
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {activeFilters.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+            >
+              <span className="font-normal text-primary/70">{filter.label}:</span>
+              <span>{filter.value}</span>
+              <button
+                onClick={() => handleRemoveFilter(filter.key)}
+                className="ml-0.5 hover:text-primary-dark transition-colors"
+                aria-label={`Eliminar filtro ${filter.label}`}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          {activeFilters.length > 1 && (
+            <button
+              onClick={handleClearFilters}
+              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+            >
+              Limpiar todo
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Panel de filtros — solo visible al hacer clic en "Filtros" */}
+      {showFilters && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            {filterFields.map((filter) => (
+              <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  {filter.label}
+                </label>
+                <select
+                  value={filterValues[filter.key] || ''}
+                  onChange={(e) => handleFilterChange(filter.key, e.target.value)}
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                >
+                  <option value="">{filter.placeholder || 'Todos'}</option>
+                  {filter.options?.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+
+            {Object.values(filterValues).some(v => v !== '') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="text-red-600 hover:bg-red-50 shrink-0"
+              >
+                Limpiar
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tabla + Paginación */}
+      <div className="space-y-3">
+        <DataTable
+          columns={columns}
+          data={paginatedData}
+          keyExtractor={(item) => item.id}
+          emptyText="No se encontraron artículos que coincidan con la búsqueda."
+          maxBodyHeight="500px"
+        />
+
+        {filtered.length > PAGE_SIZE && (
+          <Pagination
+            currentPage={safeCurrentPage}
+            totalPages={totalPages}
+            totalRecords={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
+        )}
+      </div>
     </div>
   );
 }
