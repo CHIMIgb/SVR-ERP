@@ -245,6 +245,7 @@ Transacciones financieras. Faltan: `creado_por`, `actualizado_por`, `eliminado_e
 | `obra` / `obra_ubicacion` / `ubicacion` | **Convertir a tabla** `obras` | Entidad de negocio |
 | `parentesco` en `contactos_emergencia` | **Mantener TEXT o ENUM** | Lista pequena; si es fija, ENUM |
 | `tipo` en `licencias_trabajador` | **Convertir a ENUM** | Tipos de licencia estables |
+| `estado` en `obras` | **Convertir a ENUM (EstadoObra)** | RECIEN_INICIADA, EN_PROCESO, FINALIZADA |
 
 ---
 

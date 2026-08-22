@@ -266,7 +266,7 @@ export class BitacoraService {
       }),
       this.prisma.obras.findMany({
         where: { activo: true, eliminado_en: null },
-        select: { id: true, nombre: true },
+        select: { id: true, nombre: true, estado: true },
         orderBy: { nombre: 'asc' },
       }),
     ]);

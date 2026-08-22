@@ -245,6 +245,7 @@ export interface InventarioStats {
 export interface CatalogoItem {
   id: string;
   nombre: string;
+  estado?: string;
 }
 
 export interface CatalogoUnidad extends CatalogoItem {

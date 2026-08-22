@@ -28,6 +28,7 @@ const emptyForm = {
   actividad: '',
   maquinaId: '',
   obraTexto: '',
+  obraId: '',
   horas: '',
   fecha: '',
 };
@@ -208,6 +209,7 @@ export default function OperacionesPage() {
       actividad: item.actividad,
       maquinaId: item.maquinaId,
       obraTexto: item.obra,
+      obraId: item.obraId || '',
       horas: String(item.horas),
       fecha: item.fecha,
     });
@@ -241,6 +243,7 @@ export default function OperacionesPage() {
         actividad: form.actividad,
         maquinaId: form.maquinaId,
         obraTexto: form.obraTexto,
+        obraId: form.obraId || undefined,
         fecha: form.fecha,
         horas: Number(form.horas),
       });
@@ -268,6 +271,7 @@ export default function OperacionesPage() {
         actividad: form.actividad,
         maquinaId: form.maquinaId,
         obraTexto: form.obraTexto,
+        obraId: form.obraId || undefined,
         fecha: form.fecha,
         horas: Number(form.horas),
       });
@@ -629,13 +633,26 @@ export default function OperacionesPage() {
           </ModalField>
 
           <ModalField label="Obra" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Ej: Valle Sur"
-              value={form.obraTexto}
-              onChange={(e) => setForm({ ...form, obraTexto: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.obraId || ''}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                const selectedObra = catalogos.obras.find(o => o.id === selectedId);
+                setForm({ 
+                  ...form, 
+                  obraId: selectedId, 
+                  obraTexto: selectedObra ? selectedObra.nombre : '' 
+                });
+              }}
+            >
+              <option value="">Seleccione una obra...</option>
+              {catalogos.obras.map(obra => (
+                <option key={obra.id} value={obra.id}>
+                  {obra.nombre} {obra.estado ? `(${obra.estado.replace('_', ' ')})` : ''}
+                </option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Fecha" required>
@@ -698,13 +715,26 @@ export default function OperacionesPage() {
           </ModalField>
 
           <ModalField label="Obra" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Ej: Valle Sur"
-              value={form.obraTexto}
-              onChange={(e) => setForm({ ...form, obraTexto: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.obraId || ''}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                const selectedObra = catalogos.obras.find(o => o.id === selectedId);
+                setForm({ 
+                  ...form, 
+                  obraId: selectedId, 
+                  obraTexto: selectedObra ? selectedObra.nombre : '' 
+                });
+              }}
+            >
+              <option value="">Seleccione una obra...</option>
+              {catalogos.obras.map(obra => (
+                <option key={obra.id} value={obra.id}>
+                  {obra.nombre} {obra.estado ? `(${obra.estado.replace('_', ' ')})` : ''}
+                </option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Fecha" required>

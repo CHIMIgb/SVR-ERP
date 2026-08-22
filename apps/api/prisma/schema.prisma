@@ -973,6 +973,7 @@ model obras {
   id                                 String                   @id @db.Uuid
   codigo                             String?                  @unique
   nombre                             String
+  estado                             EstadoObra               @default(EN_PROCESO)
   proyecto_id                        String?                  @db.Uuid
   ubicacion                          String?
   lat                                Decimal?                 @db.Decimal(9, 6)
@@ -2014,4 +2015,10 @@ enum TipoTransaccion {
 enum Turno {
   MATUTINO
   VESPERTINO
+}
+
+enum EstadoObra {
+  RECIEN_INICIADA
+  EN_PROCESO
+  FINALIZADA
 }
