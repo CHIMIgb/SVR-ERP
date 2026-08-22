@@ -344,3 +344,94 @@ export const inventarioApi = {
   catalogos: () =>
     apiClient.get<InventarioCatalogos>('/inventario/catalogos'),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Bitácora API
+// ────────────────────────────────────────────────────────────
+
+/** Formato que devuelve el backend serializado */
+export interface BitacoraDTO {
+  id: string;
+  maquinaId: string;
+  maquina: string;
+  actividad: string;
+  horas: number;
+  fecha: string;
+  obra: string;
+  obraId: string | null;
+  codigo: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface BitacoraStats {
+  totalRegistros: number;
+  horasTotales: number;
+  maquinasActivas: number;
+}
+
+export interface BitacoraCatalogos {
+  maquinas: CatalogoItem[];
+  obras: CatalogoItem[];
+}
+
+export interface BitacoraCreateInput {
+  maquinaId: string;
+  actividad: string;
+  horas: number;
+  fecha: string;
+  obraTexto: string;
+  obraId?: string;
+  codigo?: string;
+}
+
+export const bitacoraApi = {
+  /** Listar registros de bitácora con búsqueda, filtros y paginación */
+  listar: (params?: {
+    search?: string;
+    maquinaId?: string;
+    obraId?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.obraId) searchParams.set('obraId', params.obraId);
+    if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
+    if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<BitacoraDTO>>(
+      `/bitacora${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un registro por ID */
+  obtener: (id: string) =>
+    apiClient.get<BitacoraDTO>(`/bitacora/${id}`),
+
+  /** Crear un registro de bitácora */
+  crear: (data: BitacoraCreateInput) =>
+    apiClient.post<BitacoraDTO>('/bitacora', data),
+
+  /** Actualizar un registro de bitácora */
+  actualizar: (id: string, data: Partial<BitacoraCreateInput>) =>
+    apiClient.patch<BitacoraDTO>(`/bitacora/${id}`, data),
+
+  /** Eliminar un registro (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/bitacora/${id}`),
+
+  /** Estadísticas de la bitácora */
+  stats: () =>
+    apiClient.get<BitacoraStats>('/bitacora/stats'),
+
+  /** Catálogos para selects (máquinas y obras) */
+  catalogos: () =>
+    apiClient.get<BitacoraCatalogos>('/bitacora/catalogos'),
+};

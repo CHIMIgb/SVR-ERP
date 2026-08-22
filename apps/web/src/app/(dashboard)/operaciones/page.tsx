@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, ClipboardList, Clock, HardHat, MapPin,
   Eye, Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
 } from 'lucide-react';
-import { operaciones as operacionesMock, maquinaria } from '@/lib/data';
-import type { Bitacora } from '@svr-erp/shared/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -20,6 +18,7 @@ import {
 import { TimelineCard } from '@/components/ui/TimelineCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { bitacoraApi, type BitacoraDTO, type BitacoraCatalogos } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -28,7 +27,7 @@ const PAGE_SIZE = 10;
 const emptyForm = {
   actividad: '',
   maquinaId: '',
-  obra: '',
+  obraTexto: '',
   horas: '',
   fecha: '',
 };
@@ -38,27 +37,13 @@ export default function OperacionesPage() {
   const { showToast } = useToast();
 
   // ── Estado de datos ──
-  // Mock local en el cliente — sin carga inicial. `refreshing` queda listo
-  // para la futura conexión con la API (overlay sutil sobre la tabla).
-  const [registros, setRegistros] = useState<Bitacora[]>(operacionesMock);
+  const [registros, setRegistros] = useState<BitacoraDTO[]>([]);
+  const [stats, setStats] = useState({ totalRegistros: 0, horasTotales: 0, maquinasActivas: 0 });
+  const [catalogos, setCatalogos] = useState<BitacoraCatalogos>({ maquinas: [], obras: [] });
+  const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
-
-  const simulateRefetch = useCallback(async () => {
-    if (!hasLoaded.current) {
-      hasLoaded.current = true;
-      return;
-    }
-    setRefreshing(true);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    setRefreshing(false);
-  }, []);
-
-  useEffect(() => {
-    simulateRefetch();
-  }, [simulateRefetch]);
-
-  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
@@ -70,7 +55,7 @@ export default function OperacionesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<Bitacora | null>(null);
+  const [selectedItem, setSelectedItem] = useState<BitacoraDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
@@ -80,75 +65,68 @@ export default function OperacionesPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
-  // ── Catálogos únicos de los datos ──
-  const maquinasOptions = useMemo(
-    () => maquinaria.map(m => ({ value: m.id, label: m.nombre })),
-    [],
-  );
-  const obrasOptions = useMemo(
-    () => [...new Set(registros.map(o => o.obra))].sort().map(o => ({ value: o, label: o })),
-    [registros],
-  );
-
-  const getMaquinaNombre = useCallback((maquinaId: string) => {
-    return maquinaria.find(m => m.id === maquinaId)?.nombre ?? maquinaId;
+  // ── Cargar catálogos (una sola vez) ──
+  useEffect(() => {
+    bitacoraApi.catalogos().then((res) => {
+      if (res.success && res.data) {
+        setCatalogos(res.data);
+      }
+    });
   }, []);
 
-  // ── Filtrado client-side ──
-  const filtered = useMemo(() => {
-    let result = registros;
-
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        o =>
-          o.actividad.toLowerCase().includes(q) ||
-          o.obra.toLowerCase().includes(q),
-      );
+  // ── Cargar datos ──
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    // Primera carga: skeleton dentro del DataTable
+    // Refetches: overlay sutil sobre datos existentes
+    if (!hasLoaded.current) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
     }
-
-    if (filterValues.maquinaId) {
-      result = result.filter(o => o.maquinaId === filterValues.maquinaId);
+    try {
+      const res = await bitacoraApi.listar({
+        search: searchVal || undefined,
+        maquinaId: filters?.maquinaId || undefined,
+        obraId: filters?.obraId || undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      if (res.success && res.data) {
+        setRegistros(res.data.items);
+        setPagination(res.data.pagination);
+      } else {
+        showToast('Error al cargar la bitácora.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      hasLoaded.current = true;
+      setInitialLoading(false);
+      setRefreshing(false);
     }
+  }, [showToast]);
 
-    if (filterValues.obra) {
-      result = result.filter(o => o.obra === filterValues.obra);
+  const fetchStats = useCallback(async () => {
+    const res = await bitacoraApi.stats();
+    if (res.success && res.data) {
+      setStats(res.data);
     }
+  }, []);
 
-    return result;
-  }, [registros, search, filterValues]);
-
-  // ── Paginación client-side (total/páginas derivados de la lista filtrada) ──
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-
-  const paginated = useMemo(
-    () =>
-      filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [filtered, currentPage],
-  );
-
-  // ── Estadísticas (sobre todo el dataset) ──
-  const stats = useMemo(
-    () => ({
-      totalOperaciones: registros.length,
-      horasTotales: registros.reduce((acc, o) => acc + o.horas, 0),
-      maquinasActivas: new Set(registros.map(o => o.maquinaId)).size,
-    }),
-    [registros],
-  );
+  useEffect(() => {
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
   if (filterValues.maquinaId) {
-    activeFilters.push({
-      key: 'maquinaId',
-      label: 'Máquina',
-      value: getMaquinaNombre(filterValues.maquinaId),
-    });
+    const maquina = catalogos.maquinas.find(m => m.id === filterValues.maquinaId);
+    activeFilters.push({ key: 'maquinaId', label: 'Máquina', value: maquina?.nombre ?? filterValues.maquinaId });
   }
-  if (filterValues.obra) {
-    activeFilters.push({ key: 'obra', label: 'Obra', value: filterValues.obra });
+  if (filterValues.obraId) {
+    const obra = catalogos.obras.find(o => o.id === filterValues.obraId);
+    activeFilters.push({ key: 'obraId', label: 'Obra', value: obra?.nombre ?? filterValues.obraId });
   }
 
   // ── Filtros para SearchBar ──
@@ -157,14 +135,14 @@ export default function OperacionesPage() {
       key: 'maquinaId',
       label: 'Máquina',
       type: 'select',
-      options: maquinasOptions,
+      options: catalogos.maquinas.map(m => ({ value: m.id, label: m.nombre })),
       placeholder: 'Todas',
     },
     {
-      key: 'obra',
+      key: 'obraId',
       label: 'Obra',
       type: 'select',
-      options: obrasOptions,
+      options: catalogos.obras.map(o => ({ value: o.id, label: o.nombre })),
       placeholder: 'Todas',
     },
   ];
@@ -174,25 +152,31 @@ export default function OperacionesPage() {
     setSearch(value);
   }, []);
 
+  const handleSearch = useCallback(() => {
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
+
   const handleFilterChange = useCallback((key: string, value: string) => {
-    setFilterValues(prev => ({ ...prev, [key]: value }));
-  }, []);
+    const next = { ...filterValues, [key]: value };
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleRemoveFilter = useCallback((key: string) => {
-    setFilterValues(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, []);
+    const next = { ...filterValues };
+    delete next[key];
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
-  }, []);
+    fetchData(1, search, {});
+  }, [fetchData, search]);
 
   const handlePageChange = useCallback((nextPage: number) => {
-    setPage(nextPage);
-  }, []);
+    fetchData(nextPage, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   // ── Formateo de fechas ──
   const formatFecha = useCallback((fecha: string) => {
@@ -203,7 +187,7 @@ export default function OperacionesPage() {
   }, []);
 
   // ── Handlers de modales ──
-  const openDetail = useCallback((item: Bitacora) => {
+  const openDetail = useCallback((item: BitacoraDTO) => {
     setSelectedItem(item);
     setDetailOpen(true);
   }, []);
@@ -218,26 +202,26 @@ export default function OperacionesPage() {
     setCreateOpen(true);
   }, []);
 
-  const openEdit = useCallback((item: Bitacora) => {
+  const openEdit = useCallback((item: BitacoraDTO) => {
     setSelectedItem(item);
     setForm({
       actividad: item.actividad,
       maquinaId: item.maquinaId,
-      obra: item.obra,
+      obraTexto: item.obra,
       horas: String(item.horas),
       fecha: item.fecha,
     });
     setEditOpen(true);
   }, []);
 
-  const openDelete = useCallback((item: Bitacora) => {
+  const openDelete = useCallback((item: BitacoraDTO) => {
     setSelectedItem(item);
     setDeleteOpen(true);
   }, []);
 
   // ── Validación compartida del formulario ──
   const validateForm = useCallback(() => {
-    if (!form.actividad || !form.maquinaId || !form.obra || !form.horas || !form.fecha) {
+    if (!form.actividad || !form.maquinaId || !form.obraTexto || !form.horas || !form.fecha) {
       showToast('Actividad, máquina, obra, horas y fecha son obligatorios.', 'error');
       return false;
     }
@@ -248,90 +232,84 @@ export default function OperacionesPage() {
     return true;
   }, [form, showToast]);
 
-  // ── Genera el siguiente ID secuencial (mock local) ──
-  const getNextId = useCallback(() => {
-    const maxNum = registros.reduce((max, r) => {
-      const num = Number(r.id.replace(/\D/g, ''));
-      return Number.isFinite(num) && num > max ? num : max;
-    }, 0);
-    return `B${String(maxNum + 1).padStart(3, '0')}`;
-  }, [registros]);
-
   // ── CRUD Handlers ──
   const handleCreate = useCallback(async () => {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const nuevo: Bitacora = {
-        id: getNextId(),
-        maquinaId: form.maquinaId,
+      const res = await bitacoraApi.crear({
         actividad: form.actividad,
-        horas: Number(form.horas),
+        maquinaId: form.maquinaId,
+        obraTexto: form.obraTexto,
         fecha: form.fecha,
-        obra: form.obra,
-      };
-      setRegistros(prev => [nuevo, ...prev]);
-      showToast(`Operación "${form.actividad}" registrada exitosamente.`, 'success');
-      setCreateOpen(false);
-      await simulateRefetch();
+        horas: Number(form.horas),
+      });
+      if (res.success) {
+        showToast(`Operación "${form.actividad}" registrada exitosamente.`, 'success');
+        setCreateOpen(false);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al registrar la operación.', 'error');
+      }
     } catch {
-      showToast('Error al registrar la operación.', 'error');
+      showToast('Error de conexión al registrar la operación.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [validateForm, getNextId, form, showToast, simulateRefetch]);
+  }, [validateForm, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem) return;
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      setRegistros(prev =>
-        prev.map(r =>
-          r.id === selectedItem.id
-            ? {
-                ...r,
-                maquinaId: form.maquinaId,
-                actividad: form.actividad,
-                horas: Number(form.horas),
-                fecha: form.fecha,
-                obra: form.obra,
-              }
-            : r,
-        ),
-      );
-      showToast(`Operación "${form.actividad}" actualizada exitosamente.`, 'success');
-      setEditOpen(false);
-      setSelectedItem(null);
-      await simulateRefetch();
+      const res = await bitacoraApi.actualizar(selectedItem.id, {
+        actividad: form.actividad,
+        maquinaId: form.maquinaId,
+        obraTexto: form.obraTexto,
+        fecha: form.fecha,
+        horas: Number(form.horas),
+      });
+      if (res.success) {
+        showToast(`Operación "${form.actividad}" actualizada exitosamente.`, 'success');
+        setEditOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar la operación.', 'error');
+      }
     } catch {
-      showToast('Error al actualizar la operación.', 'error');
+      showToast('Error de conexión al actualizar la operación.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, validateForm, form, showToast, simulateRefetch]);
+  }, [selectedItem, validateForm, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      setRegistros(prev => prev.filter(r => r.id !== selectedItem.id));
-      showToast(`Operación "${selectedItem.actividad}" eliminada exitosamente.`, 'success');
-      setDeleteOpen(false);
-      setSelectedItem(null);
-      await simulateRefetch();
+      const res = await bitacoraApi.eliminar(selectedItem.id);
+      if (res.success) {
+        showToast(`Operación "${selectedItem.actividad}" eliminada exitosamente.`, 'success');
+        setDeleteOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar la operación.', 'error');
+      }
     } catch {
-      showToast('Error al eliminar la operación.', 'error');
+      showToast('Error de conexión al eliminar la operación.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, showToast, simulateRefetch]);
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Columnas de DataTable ──
-  const columns: Column<Bitacora>[] = [
+  const columns: Column<BitacoraDTO>[] = [
     {
       key: 'fecha',
       header: 'Fecha',
@@ -357,9 +335,7 @@ export default function OperacionesPage() {
       key: 'maquina',
       header: 'Máquina',
       render: (item) => (
-        <span className="font-semibold text-slate-600">
-          {getMaquinaNombre(item.maquinaId)}
-        </span>
+        <span className="font-semibold text-slate-600">{item.maquina}</span>
       ),
     },
     {
@@ -427,7 +403,7 @@ export default function OperacionesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <StatsCard
           icon={<ClipboardList className="w-6 h-6" />}
-          value={stats.totalOperaciones}
+          value={stats.totalRegistros}
           label="Total Operaciones"
           color="info"
         />
@@ -450,6 +426,7 @@ export default function OperacionesPage() {
         <SearchBar
           value={search}
           onChange={handleSearchChange}
+          onSearch={handleSearch}
           placeholder="Buscar actividad, obra..."
           className="flex-1"
         />
@@ -530,23 +507,24 @@ export default function OperacionesPage() {
       <div className="space-y-3">
         <div className="relative">
           {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
-          {refreshing && (
+          {refreshing && !initialLoading && (
             <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
           <DataTable
             columns={columns}
-            data={paginated}
+            data={registros}
+            loading={initialLoading}
             keyExtractor={(item) => item.id}
-            emptyText="No se encontraron operaciones que coincidan con la búsqueda."
+            emptyText="No se encontraron registros de bitácora."
             maxBodyHeight="500px"
           />
         </div>
         <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalRecords={filtered.length}
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
           pageSize={PAGE_SIZE}
           onPageChange={handlePageChange}
         />
@@ -579,7 +557,7 @@ export default function OperacionesPage() {
                   {
                     icon: <HardHat className="w-3.5 h-3.5" />,
                     label: 'Máquina:',
-                    value: getMaquinaNombre(selectedItem.maquinaId),
+                    value: selectedItem.maquina,
                   },
                 ]}
                 badges={[
@@ -644,8 +622,8 @@ export default function OperacionesPage() {
               onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
             >
               <option value="">Seleccionar...</option>
-              {maquinasOptions.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
+              {catalogos.maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -655,8 +633,8 @@ export default function OperacionesPage() {
               type="text"
               className={modalInputClass}
               placeholder="Ej: Valle Sur"
-              value={form.obra}
-              onChange={(e) => setForm({ ...form, obra: e.target.value })}
+              value={form.obraTexto}
+              onChange={(e) => setForm({ ...form, obraTexto: e.target.value })}
             />
           </ModalField>
 
@@ -713,8 +691,8 @@ export default function OperacionesPage() {
               onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
             >
               <option value="">Seleccionar...</option>
-              {maquinasOptions.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
+              {catalogos.maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -724,8 +702,8 @@ export default function OperacionesPage() {
               type="text"
               className={modalInputClass}
               placeholder="Ej: Valle Sur"
-              value={form.obra}
-              onChange={(e) => setForm({ ...form, obra: e.target.value })}
+              value={form.obraTexto}
+              onChange={(e) => setForm({ ...form, obraTexto: e.target.value })}
             />
           </ModalField>
 
@@ -776,7 +754,7 @@ export default function OperacionesPage() {
               {selectedItem.actividad}
             </p>
             <p className="text-xs text-slate-500">
-              {getMaquinaNombre(selectedItem.maquinaId)} — {selectedItem.obra} · {selectedItem.horas} hrs
+              {selectedItem.maquina} — {selectedItem.obra} · {selectedItem.horas} hrs
             </p>
           </div>
         )}
