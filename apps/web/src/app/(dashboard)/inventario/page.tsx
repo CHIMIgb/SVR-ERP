@@ -19,7 +19,7 @@ import { useToast } from '@/components/layout/Toast';
 import { cn } from '@/lib/utils';
 
 // ── Constantes ──
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 2;
 
 // ── Opciones de filtro (derivadas de los datos) ──
 const categorias = [...new Set(inventario.map(i => i.categoria))];
