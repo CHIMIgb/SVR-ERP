@@ -1,18 +1,15 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Timer, ArrowUpRight, ArrowDownRight, Search, Filter, 
+import {
+  Timer, ArrowUpRight, ArrowDownRight, Search, Filter,
   Calendar, Plus, Gauge, DollarSign, Wrench, ShieldCheck,
   AlertTriangle, Truck, User, Building2, ChevronRight,
-  Printer, CheckCircle2, Clock, Activity, Zap
+  Printer, CheckCircle2, Clock, Activity, Zap, Loader2
 } from 'lucide-react';
-import { 
-  lecturasHorometro as initialLecturas, 
-  maquinaria, 
-  proyectos 
-} from '@/lib/data';
+import type { LecturaHorometro, Maquina } from '@svr-erp/shared';
+import { apiClient } from '@/lib/api';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
@@ -24,15 +21,46 @@ export default function HorometroPage() {
   const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
   // State
-  const [lecturas, setLecturas] = useState(initialLecturas);
+  const [lecturas, setLecturas] = useState<LecturaHorometro[]>([]);
+  const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'hoy' | 'historial' | 'ciclos'>('hoy');
   const [search, setSearch] = useState('');
   const [selectedMachineFilter, setSelectedMachineFilter] = useState<string>('Todas');
-  
+  const [guardando, setGuardando] = useState(false);
+
+  const cargarDatos = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    const [resLecturas, resMaquinas] = await Promise.all([
+      apiClient.get<LecturaHorometro[]>('/lecturas-horometro'),
+      apiClient.get<Maquina[]>('/maquinas'),
+    ]);
+
+    if (!resLecturas.success || !resMaquinas.success) {
+      setErrorCarga(
+        (!resLecturas.success && resLecturas.error.message) ||
+        (!resMaquinas.success && resMaquinas.error.message) ||
+        'No se pudo cargar la información de horómetros.'
+      );
+      setCargando(false);
+      return;
+    }
+
+    setLecturas(resLecturas.data);
+    setMaquinaria(resMaquinas.data);
+    setCargando(false);
+  }, []);
+
+  useEffect(() => {
+    cargarDatos();
+  }, [cargarDatos]);
+
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
-    maquinaId: maquinaria[0]?.id ?? 'M001',
+    maquinaId: '',
     fecha: new Date().toISOString().split('T')[0],
     lecturaInicial: '1240.0',
     lecturaFinal: '1248.5',
@@ -42,6 +70,12 @@ export default function HorometroPage() {
     tarifaHora: '1450',
     notas: 'Jornada ordinaria de excavación y carga.'
   });
+
+  useEffect(() => {
+    if (maquinaria.length > 0 && !form.maquinaId) {
+      setForm((f) => ({ ...f, maquinaId: maquinaria[0].id }));
+    }
+  }, [maquinaria, form.maquinaId]);
 
   // Rates by machine type for billing
   const getTarifaHora = (maquinaId: string) => {
@@ -71,7 +105,7 @@ export default function HorometroPage() {
   });
 
   // Submit New Reading
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const lIni = parseFloat(form.lecturaInicial) || 0;
     const lFin = parseFloat(form.lecturaFinal) || 0;
 
@@ -80,20 +114,25 @@ export default function HorometroPage() {
       return;
     }
 
-    const hrs = +(lFin - lIni).toFixed(1);
-    const tarifa = parseFloat(form.tarifaHora) || getTarifaHora(form.maquinaId);
-    const importe = hrs * tarifa;
-
-    const nuevaLectura = {
-      id: `H${Date.now()}`,
+    setGuardando(true);
+    const res = await apiClient.post<LecturaHorometro>('/lecturas-horometro', {
       maquinaId: form.maquinaId,
       fecha: form.fecha,
       lecturaInicial: lIni,
       lecturaFinal: lFin,
-      horasTrabajadas: hrs
-    };
+    });
+    setGuardando(false);
 
-    setLecturas(prev => [nuevaLectura, ...prev]);
+    if (!res.success) {
+      showToast(`Error: ${res.error.message}`, 'error');
+      return;
+    }
+
+    const hrs = res.data.horasTrabajadas;
+    const tarifa = parseFloat(form.tarifaHora) || getTarifaHora(form.maquinaId);
+    const importe = hrs * tarifa;
+
+    setLecturas(prev => [res.data, ...prev]);
     setModalOpen(false);
 
     showToast(`✅ Lectura registrada: ${form.maquinaId} (+${hrs} hrs = ${fmt.format(importe)} facturables).`, 'success');
@@ -104,9 +143,29 @@ export default function HorometroPage() {
     });
   };
 
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
+        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
+        <p className="text-sm font-bold text-red-700">{errorCarga}</p>
+        <button onClick={cargarDatos} className="btn-primary text-xs">
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      
+
       {/* ── 1. HEADER EJECUTIVO ULTRA-PREMIUM ── */}
       <div className="relative bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 rounded-3xl p-6 md:p-8 text-white shadow-2xl overflow-hidden border border-slate-800">
         
@@ -547,7 +606,7 @@ export default function HorometroPage() {
           onClose={() => setModalOpen(false)}
           onConfirm={handleSubmit}
           title="Registrar Lectura de Horómetro"
-          confirmLabel="Guardar Lectura"
+          confirmLabel={guardando ? 'Guardando…' : 'Guardar Lectura'}
         >
           <div className="space-y-3">
             

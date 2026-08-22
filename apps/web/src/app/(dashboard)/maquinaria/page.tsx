@@ -1,27 +1,26 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Plus, Search, Filter, Calendar as CalendarIcon, Grid as GridIcon, 
+import {
+  Plus, Search, Filter, Calendar as CalendarIcon, Grid as GridIcon,
   Truck, ArrowRight, AlertTriangle, ShieldCheck, Hammer,
   ClipboardCheck, CheckCircle2, XCircle, Clock, AlertCircle,
   Wrench, Fuel, Gauge, Navigation, Building2, ChevronRight,
-  Zap, CalendarDays, Award, Layers
+  Zap, CalendarDays, Award, Layers, Loader2
 } from 'lucide-react';
-import { 
-  maquinaria as initialMaquinaria, 
-  proyectos as allProyectos, 
-  despachosFlota as initialDespachos, 
-  checklistsPreoperacionales as initialChecklists,
-  Maquina, 
-  DespachoMaquina,
-  ChecklistPreoperacional
-} from '@/lib/data';
+import type { Maquina, DespachoMaquina, ChecklistPreoperacional } from '@svr-erp/shared';
+import { apiClient } from '@/lib/api';
 import MachineCard from '@/components/machinery/MachineCard';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
+
+interface ProyectoLite {
+  id: string;
+  nombre: string;
+  ubicacion: string;
+}
 
 const dateRange = [
   "2025-04-21", "2025-04-22", "2025-04-23", "2025-04-24", "2025-04-25",
@@ -38,23 +37,58 @@ export default function MaquinariaPage() {
   const router = useRouter();
   
   // State
-  const [maquinaria, setMaquinaria] = useState<Maquina[]>(initialMaquinaria);
-  const [despachos, setDespachos] = useState<DespachoMaquina[]>(initialDespachos);
-  const [checklists, setChecklists] = useState<ChecklistPreoperacional[]>(initialChecklists);
+  const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
+  const [despachos, setDespachos] = useState<DespachoMaquina[]>([]);
+  const [checklists, setChecklists] = useState<ChecklistPreoperacional[]>([]);
+  const [allProyectos, setAllProyectos] = useState<ProyectoLite[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'grid' | 'calendar' | 'checklists' | 'mantenimiento'>('grid');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'Todos' | 'Excavación' | 'Grúa' | 'Transporte'>('Todos');
   const [search, setSearch] = useState('');
-  
+
+  const cargarDatos = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    const [resMaquinas, resDespachos, resChecklists, resProyectos] = await Promise.all([
+      apiClient.get<Maquina[]>('/maquinas'),
+      apiClient.get<DespachoMaquina[]>('/despachos'),
+      apiClient.get<ChecklistPreoperacional[]>('/checklists'),
+      apiClient.get<ProyectoLite[]>('/catalogos/proyectos'),
+    ]);
+
+    const responses = [resMaquinas, resDespachos, resChecklists, resProyectos];
+    const fallo = responses.find((r) => !r.success);
+    if (fallo && !fallo.success) {
+      setErrorCarga(fallo.error.message || 'No se pudo cargar la información de flota.');
+      setCargando(false);
+      return;
+    }
+
+    if (resMaquinas.success) setMaquinaria(resMaquinas.data);
+    if (resDespachos.success) setDespachos(resDespachos.data);
+    if (resChecklists.success) setChecklists(resChecklists.data);
+    if (resProyectos.success) setAllProyectos(resProyectos.data);
+    setCargando(false);
+  }, []);
+
+  useEffect(() => {
+    cargarDatos();
+  }, [cargarDatos]);
+
   // Modals state
   const [machineModalOpen, setMachineModalOpen] = useState(false);
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [checklistModalOpen, setChecklistModalOpen] = useState(false);
-  
+  const [guardandoMaquina, setGuardandoMaquina] = useState(false);
+  const [guardandoDespacho, setGuardandoDespacho] = useState(false);
+  const [guardandoChecklist, setGuardandoChecklist] = useState(false);
+
   // Forms state
-  const [machineForm, setMachineForm] = useState({ 
-    id: '', 
-    nombre: '', 
-    tipo: 'Excavación', 
+  const [machineForm, setMachineForm] = useState({
+    id: '',
+    nombre: '',
+    tipo: 'Excavación',
     operador: '',
     horometro: '0',
     combustible: '100',
@@ -80,7 +114,7 @@ export default function MaquinariaPage() {
     sistemaFrenos: 'Correcto' | 'Falla';
     observaciones: string;
   }>({
-    maquinaId: maquinaria[0]?.id ?? 'M001',
+    maquinaId: '',
     operador: 'Juan Pérez',
     horometroInicial: '1240.0',
     nivelAceiteMotor: 'Correcto',
@@ -91,6 +125,12 @@ export default function MaquinariaPage() {
     sistemaFrenos: 'Correcto',
     observaciones: 'Inspección pre-operacional en orden.'
   });
+
+  useEffect(() => {
+    if (maquinaria.length > 0 && !checklistForm.maquinaId) {
+      setChecklistForm((f) => ({ ...f, maquinaId: maquinaria[0].id }));
+    }
+  }, [maquinaria, checklistForm.maquinaId]);
 
   // Filtering
   const filtered = maquinaria.filter((m) => {
@@ -111,42 +151,37 @@ export default function MaquinariaPage() {
   const checklistsFallas = checklists.filter(c => c.estado === 'Con Falla').length;
 
   // Submit New Machine
-  const handleMachineSubmit = () => {
+  const handleMachineSubmit = async () => {
     if (!machineForm.id.trim() || !machineForm.nombre.trim()) {
       showToast('ID y nombre son obligatorios.', 'error');
       return;
     }
-    const nueva: Maquina = {
+
+    setGuardandoMaquina(true);
+    const res = await apiClient.post<Maquina>('/maquinas', {
       id: machineForm.id.toUpperCase(),
-      nombre: machineForm.nombre,
       tipo: machineForm.tipo,
-      estado: 'Apagada',
+      nombre: machineForm.nombre,
+      operador: machineForm.operador || undefined,
       horometro: parseFloat(machineForm.horometro) || 0,
       combustible: parseFloat(machineForm.combustible) || 100,
-      operador: machineForm.operador || 'Sin asignar',
-      lat: 19.4326,
-      lng: -99.1332,
-      dieselHoy: 0,
-      proximoMantenimiento: 'En 250 hrs',
-      consumoEsperadoLtsHora: parseFloat(machineForm.consumoEsperado) || 14.0,
-      rendimientoActualLtsHora: parseFloat(machineForm.consumoEsperado) || 14.0,
-      alertaConsumoAnormal: false,
-      checklistHoy: {
-        id: `CHK-${Date.now()}`,
-        estado: 'Pendiente',
-        hora: '—',
-        operador: machineForm.operador || 'Sin asignar',
-        observaciones: 'Pendiente de inspección matutina.'
-      }
-    };
-    setMaquinaria((prev) => [nueva, ...prev]);
+      consumoEsperado: parseFloat(machineForm.consumoEsperado) || 14.0,
+    });
+    setGuardandoMaquina(false);
+
+    if (!res.success) {
+      showToast(`Error: ${res.error.message}`, 'error');
+      return;
+    }
+
+    setMaquinaria((prev) => [res.data, ...prev]);
     setMachineForm({ id: '', nombre: '', tipo: 'Excavación', operador: '', horometro: '0', combustible: '100', consumoEsperado: '14.0' });
     setMachineModalOpen(false);
-    showToast(`✅ Máquina ${nueva.id} dada de alta correctamente.`, 'success');
+    showToast(`✅ Máquina ${res.data.id} dada de alta correctamente.`, 'success');
   };
 
   // Submit Machine Dispatch
-  const handleDispatchSubmit = () => {
+  const handleDispatchSubmit = async () => {
     const { maquinaId, proyectoId, fechaInicio, fechaFin } = dispatchForm;
     if (!maquinaId || !proyectoId || !fechaInicio || !fechaFin) {
       showToast('Todos los campos son obligatorios.', 'error');
@@ -157,60 +192,54 @@ export default function MaquinariaPage() {
       return;
     }
 
-    const overlap = despachos.find(d => 
-      d.maquinaId === maquinaId && 
-      !(fechaFin < d.fechaInicio || fechaInicio > d.fechaFin)
-    );
-
-    if (overlap) {
-      const proj = allProyectos.find(p => p.id === overlap.proyectoId);
-      showToast(`⚠️ Conflicto: La máquina ya está asignada a "${proj?.nombre || overlap.proyectoId}" del ${overlap.fechaInicio} al ${overlap.fechaFin}`, 'error');
-      return;
-    }
-
-    const nuevoDespacho: DespachoMaquina = {
-      id: `DSP${Date.now()}`,
+    setGuardandoDespacho(true);
+    const res = await apiClient.post<DespachoMaquina>('/despachos', {
       maquinaId,
       proyectoId,
       fechaInicio,
-      fechaFin
-    };
+      fechaFin,
+    });
+    setGuardandoDespacho(false);
 
-    setDespachos(prev => [...prev, nuevoDespacho]);
+    if (!res.success) {
+      // El backend valida el traslape con datos actuales de TODA la
+      // flota (409 CONFLICT), no solo con lo que ya cargó el frontend.
+      showToast(`⚠️ ${res.error.message}`, 'error');
+      return;
+    }
+
+    setDespachos(prev => [...prev, res.data]);
     setDispatchModalOpen(false);
     setDispatchForm({ maquinaId: '', proyectoId: '', fechaInicio: '2025-04-21', fechaFin: '2025-04-27' });
     showToast(`✅ Máquina ${maquinaId} asignada correctamente a la obra.`, 'success');
   };
 
   // Submit Preoperational Checklist
-  const handleChecklistSubmit = () => {
-    const tieneFalla = 
-      checklistForm.fugasVisibles || 
-      checklistForm.nivelAceiteMotor === 'Bajo' || 
-      checklistForm.nivelHidraulico === 'Bajo' ||
-      checklistForm.sistemaFrenos === 'Falla' ||
-      checklistForm.estadoLlantasOrugas === 'Daño';
-
-    const nuevoChecklist: ChecklistPreoperacional = {
-      id: `CHK-${Date.now()}`,
+  const handleChecklistSubmit = async () => {
+    setGuardandoChecklist(true);
+    const res = await apiClient.post<ChecklistPreoperacional>('/checklists', {
       maquinaId: checklistForm.maquinaId,
-      fecha: new Date().toISOString().split('T')[0],
-      hora: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true }),
       operador: checklistForm.operador,
       horometroInicial: parseFloat(checklistForm.horometroInicial) || 1240.0,
       nivelAceiteMotor: checklistForm.nivelAceiteMotor,
       nivelHidraulico: checklistForm.nivelHidraulico,
       fugasVisibles: checklistForm.fugasVisibles,
       estadoLlantasOrugas: checklistForm.estadoLlantasOrugas,
-      lucesYAlarmas: checklistForm.lucesYAlarmas,
       sistemaFrenos: checklistForm.sistemaFrenos,
-      estado: tieneFalla ? 'Con Falla' : 'Aprobado',
-      observaciones: checklistForm.observaciones
-    };
+      observaciones: checklistForm.observaciones,
+    });
+    setGuardandoChecklist(false);
 
+    if (!res.success) {
+      showToast(`Error: ${res.error.message}`, 'error');
+      return;
+    }
+
+    const nuevoChecklist = res.data;
     setChecklists(prev => [nuevoChecklist, ...prev]);
 
-    // Update machine status
+    // Refleja el checklist recién creado en la ficha de la máquina sin
+    // esperar a un refetch completo.
     setMaquinaria(prev => prev.map(m => {
       if (m.id === checklistForm.maquinaId) {
         return {
@@ -229,7 +258,7 @@ export default function MaquinariaPage() {
 
     setChecklistModalOpen(false);
 
-    if (tieneFalla) {
+    if (nuevoChecklist.estado === 'Con Falla') {
       showToast(`⚠️ Checklist registrado CON FALLA para ${checklistForm.maquinaId}. Alerta enviada a Mantenimiento.`, 'warning');
       addNotification({
         titulo: `⚠️ Alerta Mecánica: ${checklistForm.maquinaId}`,
@@ -241,9 +270,29 @@ export default function MaquinariaPage() {
     }
   };
 
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
+        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
+        <p className="text-sm font-bold text-red-700">{errorCarga}</p>
+        <button onClick={cargarDatos} className="btn-primary text-xs">
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      
+
       {/* ── 1. HEADER EJECUTIVO ULTRA-PREMIUM ── */}
       <div className="relative bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 rounded-3xl p-6 md:p-8 text-white shadow-2xl overflow-hidden border border-slate-800">
         
@@ -747,7 +796,7 @@ export default function MaquinariaPage() {
           onClose={() => setMachineModalOpen(false)}
           onConfirm={handleMachineSubmit}
           title="Alta de Maquinaria Pesada"
-          confirmLabel="Registrar Equipo"
+          confirmLabel={guardandoMaquina ? 'Guardando…' : 'Registrar Equipo'}
         >
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -825,7 +874,7 @@ export default function MaquinariaPage() {
           onClose={() => setDispatchModalOpen(false)}
           onConfirm={handleDispatchSubmit}
           title="Despachar Maquinaria a Obra"
-          confirmLabel="Confirmar Despacho"
+          confirmLabel={guardandoDespacho ? 'Guardando…' : 'Confirmar Despacho'}
         >
           <div className="space-y-3">
             <ModalField label="Seleccionar Maquinaria *">
@@ -884,7 +933,7 @@ export default function MaquinariaPage() {
           onClose={() => setChecklistModalOpen(false)}
           onConfirm={handleChecklistSubmit}
           title="Inspección Pre-operacional Diaria"
-          confirmLabel="Guardar Checklist"
+          confirmLabel={guardandoChecklist ? 'Guardando…' : 'Guardar Checklist'}
         >
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

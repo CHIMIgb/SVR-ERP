@@ -3,6 +3,11 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { MaquinasModule } from './modules/maquinas/maquinas.module';
+import { HorometroModule } from './modules/horometro/horometro.module';
+import { DespachosModule } from './modules/despachos/despachos.module';
+import { ChecklistsModule } from './modules/checklists/checklists.module';
+import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -29,6 +34,11 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     ]),
     PrismaModule,
     AuthModule,
+    MaquinasModule,
+    HorometroModule,
+    DespachosModule,
+    ChecklistsModule,
+    CatalogosModule,
   ],
   providers: [
     // Guard global de rate limiting
