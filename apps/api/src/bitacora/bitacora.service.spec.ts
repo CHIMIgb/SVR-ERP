@@ -40,11 +40,25 @@ describe('BitacoraService', () => {
       },
       maquinas: {
         findFirst: jest.fn().mockResolvedValue(mockMaquina),
-        findMany: jest.fn().mockResolvedValue([mockMaquina]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        findMany: jest.fn().mockImplementation((args: any) => {
+          // Para findStats: retorna máquinas sin mantenimiento/sin fallas
+          if (args?.where?.estado === 'MANTENIMIENTO') return Promise.resolve([]);
+          if (args?.where?.fallas_mecanicas?.some) return Promise.resolve([]);
+          // Para findCatalogos: retorna máquina con fallas_mecanicas vacías
+          return Promise.resolve([{ ...mockMaquina, fallas_mecanicas: [] }]);
+        }),
       },
       obras: {
         findFirst: jest.fn().mockResolvedValue({ id: 'o1', nombre: 'Valle Sur', activo: true, eliminado_en: null }),
-        findMany: jest.fn().mockResolvedValue([{ id: 'o1', nombre: 'Valle Sur' }]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        findMany: jest.fn().mockImplementation((args: any) => {
+          // Para findCatalogos con filtro FINALIZADA
+          if (args?.where?.estado?.not === 'FINALIZADA') {
+            return Promise.resolve([{ id: 'o1', nombre: 'Valle Sur', estado: 'EN_PROCESO' }]);
+          }
+          return Promise.resolve([{ id: 'o1', nombre: 'Valle Sur' }]);
+        }),
       },
     };
 
@@ -200,7 +214,37 @@ describe('BitacoraService', () => {
       expect(result).toHaveProperty('maquinasActivas');
       expect(result.totalRegistros).toBe(1);
       expect(result.horasTotales).toBe(8);
+      // maquinasActivas = 1 (machines with bitacora minus those in maintenance/with faults)
       expect(result.maquinasActivas).toBe(1);
+    });
+
+    it('should exclude machines in MANTENIMIENTO from maquinasActivas count', async () => {
+      // Simulate the machine in bitacora is in MANTENIMIENTO
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.maquinas.findMany.mockImplementation((args: any) => {
+        if (args?.where?.estado === 'MANTENIMIENTO') {
+          return Promise.resolve([{ id: 'm1c2d3e4-f5a6-7890-abcd-ef1234567890' }]);
+        }
+        if (args?.where?.fallas_mecanicas?.some) return Promise.resolve([]);
+        return Promise.resolve([]);
+      });
+
+      const result = await service.findStats();
+      expect(result.maquinasActivas).toBe(0);
+    });
+
+    it('should exclude machines with active faults from maquinasActivas count', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.maquinas.findMany.mockImplementation((args: any) => {
+        if (args?.where?.estado === 'MANTENIMIENTO') return Promise.resolve([]);
+        if (args?.where?.fallas_mecanicas?.some) {
+          return Promise.resolve([{ id: 'm1c2d3e4-f5a6-7890-abcd-ef1234567890' }]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const result = await service.findStats();
+      expect(result.maquinasActivas).toBe(0);
     });
   });
 
@@ -212,6 +256,36 @@ describe('BitacoraService', () => {
       expect(result).toHaveProperty('obras');
       expect(result.maquinas).toHaveLength(1);
       expect(result.obras).toHaveLength(1);
+    });
+
+    it('should exclude machines with active faults from catalog', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.maquinas.findMany.mockImplementation((args: any) => {
+        if (args?.where?.fallas_mecanicas?.some) {
+          // Machine has active faults — returned by query but filtered in code
+          return Promise.resolve([
+            { id: 'm1', nombre: 'Excavadora CAT 320', fallas_mecanicas: [{ id: 'f1' }] },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const result = await service.findCatalogos();
+      expect(result.maquinas).toHaveLength(0);
+    });
+
+    it('should exclude FINALIZADA obras from catalog', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.obras.findMany.mockImplementation((args: any) => {
+        if (args?.where?.estado?.not === 'FINALIZADA') {
+          // No obras returned because all are FINALIZADA
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const result = await service.findCatalogos();
+      expect(result.obras).toHaveLength(0);
     });
   });
 });

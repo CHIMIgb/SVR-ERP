@@ -231,8 +231,37 @@ export class BitacoraService {
 
   // ────────────────────────────────────────────
   //  ESTADÍSTICAS
+  //  maquinasActivas = máquinas con registros en bitácora
+  //  que NO estén en MANTENIMIENTO y sin fallas pendientes
   // ────────────────────────────────────────────
   async findStats() {
+    // IDs de máquinas NO disponibles (mantenimiento o con fallas activas)
+    const [maquinasMantenimiento, maquinasConFallas] = await Promise.all([
+      this.prisma.maquinas.findMany({
+        where: { estado: 'MANTENIMIENTO', activo: true, eliminado_en: null },
+        select: { id: true },
+      }),
+      this.prisma.maquinas.findMany({
+        where: {
+          activo: true,
+          eliminado_en: null,
+          fallas_mecanicas: {
+            some: {
+              activo: true,
+              eliminado_en: null,
+              fecha_resolucion: null,
+            },
+          },
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const idsNoDisponibles = new Set([
+      ...maquinasMantenimiento.map((m) => m.id),
+      ...maquinasConFallas.map((m) => m.id),
+    ]);
+
     const bitacoras = await this.prisma.bitacoras_operacion.findMany({
       where: { eliminado_en: null, activo: true },
       select: { horas: true, maquina_id: true },
@@ -243,9 +272,14 @@ export class BitacoraService {
       (acc, b) => acc + Number(b.horas),
       0,
     );
-    const maquinasActivas = new Set(
+
+    // Contar solo máquinas con bitácora que estén disponibles
+    const maquinasConBitacora = new Set(
       bitacoras.map((b) => b.maquina_id),
-    ).size;
+    );
+    const maquinasActivas = [...maquinasConBitacora].filter(
+      (id) => !idsNoDisponibles.has(id),
+    ).length;
 
     return {
       totalRegistros,
@@ -256,20 +290,48 @@ export class BitacoraService {
 
   // ────────────────────────────────────────────
   //  CATÁLOGOS (máquinas y obras para selects)
+  //  - Obras: excluye FINALIZADA
+  //  - Máquinas: excluye MANTENIMIENTO y con fallas sin resolver
   // ────────────────────────────────────────────
   async findCatalogos() {
-    const [maquinas, obras] = await Promise.all([
-      this.prisma.maquinas.findMany({
-        where: { activo: true, eliminado_en: null },
-        select: { id: true, nombre: true },
-        orderBy: { nombre: 'asc' },
-      }),
-      this.prisma.obras.findMany({
-        where: { activo: true, eliminado_en: null },
-        select: { id: true, nombre: true, estado: true },
-        orderBy: { nombre: 'asc' },
-      }),
-    ]);
+    // Máquinas disponibles: activas, no en mantenimiento, sin fallas pendientes
+    const todasLasMaquinas = await this.prisma.maquinas.findMany({
+      where: {
+        activo: true,
+        eliminado_en: null,
+        estado: { not: 'MANTENIMIENTO' },
+      },
+      select: {
+        id: true,
+        nombre: true,
+        fallas_mecanicas: {
+          where: {
+            activo: true,
+            eliminado_en: null,
+            fecha_resolucion: null,
+          },
+          select: { id: true },
+          take: 1,
+        },
+      },
+      orderBy: { nombre: 'asc' },
+    });
+
+    // Filtrar máquinas con fallas activas
+    const maquinas = todasLasMaquinas
+      .filter((m) => m.fallas_mecanicas.length === 0)
+      .map(({ fallas_mecanicas: _, ...rest }) => rest);
+
+    // Obras: excluye FINALIZADA
+    const obras = await this.prisma.obras.findMany({
+      where: {
+        activo: true,
+        eliminado_en: null,
+        estado: { not: 'FINALIZADA' },
+      },
+      select: { id: true, nombre: true, estado: true },
+      orderBy: { nombre: 'asc' },
+    });
 
     return { maquinas, obras };
   }
