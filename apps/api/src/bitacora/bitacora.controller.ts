@@ -111,7 +111,11 @@ export class BitacoraController {
   @RequirePermission('operaciones', 'operaciones', 'eliminar')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.bitacoraService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.bitacoraService.remove(id, user.id);
   }
 }

@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { BitacoraService } from './bitacora.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('BitacoraService', () => {
   let service: BitacoraService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
 
   const mockBitacora = {
     id: 'b1c2d3e4-f5a6-7890-abcd-ef1234567890',
@@ -66,6 +68,7 @@ describe('BitacoraService', () => {
       providers: [
         BitacoraService,
         { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -141,10 +144,18 @@ describe('BitacoraService', () => {
       obraTexto: 'Valle Sur',
     };
 
-    it('should create a new bitacora', async () => {
+    it('should create a new bitacora and log BITACORA_CREADA', async () => {
       const result = await service.create(createDto, 'user-1');
       expect(result.actividad).toBe('Excavación para cimentación profunda');
       expect(prisma.bitacoras_operacion.create).toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'BITACORA_CREADA',
+          entityType: 'bitacoras_operacion',
+          actorUserId: 'user-1',
+          result: 'SUCCESS',
+        }),
+      );
     });
 
     it('should throw BadRequestException if machine not found', async () => {
@@ -164,10 +175,18 @@ describe('BitacoraService', () => {
 
   // ── update ──
   describe('update', () => {
-    it('should update a bitacora', async () => {
+    it('should update a bitacora and log BITACORA_ACTUALIZADA', async () => {
       const result = await service.update(mockBitacora.id, { actividad: 'Nueva actividad' }, 'user-1');
       expect(prisma.bitacoras_operacion.update).toHaveBeenCalled();
       expect(result.actividad).toBe('Excavación para cimentación profunda');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'BITACORA_ACTUALIZADA',
+          entityType: 'bitacoras_operacion',
+          actorUserId: 'user-1',
+          result: 'SUCCESS',
+        }),
+      );
     });
 
     it('should throw NotFoundException if bitacora not found', async () => {
@@ -187,19 +206,27 @@ describe('BitacoraService', () => {
 
   // ── remove ──
   describe('remove', () => {
-    it('should soft delete a bitacora', async () => {
-      const result = await service.remove(mockBitacora.id);
+    it('should soft delete a bitacora and log BITACORA_ELIMINADA', async () => {
+      const result = await service.remove(mockBitacora.id, 'user-1');
       expect(result.message).toContain('Bitácora eliminada');
       expect(prisma.bitacoras_operacion.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ eliminado_en: expect.any(Date) }),
         }),
       );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'BITACORA_ELIMINADA',
+          entityType: 'bitacoras_operacion',
+          actorUserId: 'user-1',
+          result: 'SUCCESS',
+        }),
+      );
     });
 
     it('should throw NotFoundException if bitacora not found', async () => {
       prisma.bitacoras_operacion.findFirst.mockResolvedValue(null);
-      await expect(service.remove('non-existent')).rejects.toThrow(
+      await expect(service.remove('non-existent', 'user-1')).rejects.toThrow(
         NotFoundException,
       );
     });

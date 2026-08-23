@@ -4,7 +4,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateBitacoraDto } from './dto/create-bitacora.dto';
 import { UpdateBitacoraDto } from './dto/update-bitacora.dto';
 import { QueryBitacorasDto } from './dto/query-bitacoras.dto';
@@ -18,7 +20,10 @@ const BITACORA_INCLUDE = {
 
 @Injectable()
 export class BitacoraService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
@@ -148,7 +153,20 @@ export class BitacoraService {
       include: BITACORA_INCLUDE,
     });
 
-    return this.serialize(bitacora);
+    const serialized = this.serialize(bitacora);
+
+    await this.auditService.log({
+      action: AuditAction.BITACORA_CREADA,
+      entityType: 'bitacoras_operacion',
+      entityId: bitacora.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: serialized,
+    });
+
+    return serialized;
   }
 
   // ────────────────────────────────────────────
@@ -204,13 +222,35 @@ export class BitacoraService {
       include: BITACORA_INCLUDE,
     });
 
-    return this.serialize(bitacora);
+    const serialized = this.serialize(bitacora);
+
+    await this.auditService.log({
+      action: AuditAction.BITACORA_ACTUALIZADA,
+      entityType: 'bitacoras_operacion',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: {
+        actividad: existente.actividad,
+        horas: Number(existente.horas),
+        fecha: existente.fecha instanceof Date
+          ? existente.fecha.toISOString().split('T')[0]
+          : String(existente.fecha),
+        obraTexto: existente.obra_texto,
+        maquinaId: existente.maquina_id,
+      },
+      newValue: serialized,
+    });
+
+    return serialized;
   }
 
   // ────────────────────────────────────────────
   //  ELIMINAR (soft delete)
   // ────────────────────────────────────────────
-  async remove(id: string) {
+  async remove(id: string, userId: string) {
     const existente = await this.prisma.bitacoras_operacion.findFirst({
       where: { id, eliminado_en: null },
     });
@@ -224,6 +264,25 @@ export class BitacoraService {
     await this.prisma.bitacoras_operacion.update({
       where: { id },
       data: { eliminado_en: new Date(), activo: false },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.BITACORA_ELIMINADA,
+      entityType: 'bitacoras_operacion',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: {
+        actividad: existente.actividad,
+        horas: Number(existente.horas),
+        fecha: existente.fecha instanceof Date
+          ? existente.fecha.toISOString().split('T')[0]
+          : String(existente.fecha),
+        obraTexto: existente.obra_texto,
+        maquinaId: existente.maquina_id,
+      },
     });
 
     return { message: 'Bitácora eliminada exitosamente' };

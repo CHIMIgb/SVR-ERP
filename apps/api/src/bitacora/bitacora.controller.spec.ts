@@ -103,10 +103,11 @@ describe('BitacoraController', () => {
   });
 
   describe('remove', () => {
-    it('should soft delete a bitacora', async () => {
-      const result = await controller.remove('b1');
+    it('should soft delete a bitacora passing userId', async () => {
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.remove('b1', req as never);
       expect(result.message).toContain('eliminado');
-      expect(service.remove).toHaveBeenCalledWith('b1');
+      expect(service.remove).toHaveBeenCalledWith('b1', 'user-1');
     });
   });
 
