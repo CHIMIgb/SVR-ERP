@@ -1,27 +1,28 @@
 'use client';
 
-import React, { useMemo, useState, useCallback } from 'react';
-import { ShieldAlert, AlertTriangle, Clock, Pencil, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import {
+  Plus, ShieldAlert, AlertTriangle, Clock,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
+} from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Card } from '@/components/ui/Card';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { SearchBar } from '@/components/ui/SearchBar';
-import { Select } from '@/components/ui/Select';
-import { Input } from '@/components/ui/Input';
-import { Textarea } from '@/components/ui/Textarea';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingState } from '@/components/ui/LoadingState';
-import { Modal, ModalHeader, ModalBody, ModalFooter, FormModal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
+import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { incidentes as incidentesMock } from '@/lib/mock-data/operaciones';
 import { formatDate } from '@/lib/formatters';
-import { cn } from '@/lib/utils';
 import type { Incidente } from '@svr-erp/shared';
 import type { BadgeVariant } from '@/components/ui/Badge';
 
 // ── Constantes ──
+const PAGE_SIZE = 10;
+
 const PRIORIDADES: Incidente['prioridad'][] = ['Crítica', 'Alta', 'Media', 'Baja'];
 const ESTADOS: Incidente['estado'][] = ['Abierto', 'En Revisión', 'Resuelto'];
 
@@ -38,13 +39,6 @@ const estadoVariant: Record<Incidente['estado'], BadgeVariant> = {
   Resuelto: 'success',
 };
 
-const prioridadIconClass: Record<Incidente['prioridad'], string> = {
-  Crítica: 'bg-red-500 text-white shadow-red-500/20',
-  Alta: 'bg-orange-500 text-white shadow-orange-500/20',
-  Media: 'bg-yellow-500 text-secondary shadow-yellow-500/20',
-  Baja: 'bg-blue-500 text-white shadow-blue-500/20',
-};
-
 const emptyForm = {
   titulo: '',
   descripcion: '',
@@ -56,7 +50,7 @@ const emptyForm = {
 };
 
 export default function IncidentesPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const { showToast } = useToast();
 
   // ── Permisos RBAC ──
@@ -68,8 +62,9 @@ export default function IncidentesPage() {
   // ── Estado de datos ──
   const [incidentes, setIncidentes] = useState<Incidente[]>(incidentesMock);
   const [search, setSearch] = useState('');
-  const [prioridadFiltro, setPrioridadFiltro] = useState('');
-  const [estadoFiltro, setEstadoFiltro] = useState('');
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
 
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
@@ -87,22 +82,98 @@ export default function IncidentesPage() {
         !q ||
         inc.titulo.toLowerCase().includes(q) ||
         inc.descripcion.toLowerCase().includes(q) ||
-        inc.obra.toLowerCase().includes(q);
-      const matchesPrioridad = !prioridadFiltro || inc.prioridad === prioridadFiltro;
-      const matchesEstado = !estadoFiltro || inc.estado === estadoFiltro;
+        inc.obra.toLowerCase().includes(q) ||
+        (inc.maquinaId && inc.maquinaId.toLowerCase().includes(q));
+      const matchesPrioridad = !filterValues.prioridad || inc.prioridad === filterValues.prioridad;
+      const matchesEstado = !filterValues.estado || inc.estado === filterValues.estado;
       return matchesSearch && matchesPrioridad && matchesEstado;
     });
-  }, [incidentes, search, prioridadFiltro, estadoFiltro]);
+  }, [incidentes, search, filterValues]);
 
-  // ── Handlers de formulario ──
-  const resetForm = useCallback(() => {
-    setForm(emptyForm);
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(incidentesFiltrados.length / PAGE_SIZE)), [incidentesFiltrados]);
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return incidentesFiltrados.slice(start, start + PAGE_SIZE);
+  }, [incidentesFiltrados, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filterValues]);
+
+  // ── Estadísticas ──
+  const stats = useMemo(() => {
+    const abiertos = incidentes.filter((i) => i.estado !== 'Resuelto').length;
+    const criticos = incidentes.filter((i) => i.prioridad === 'Crítica' && i.estado !== 'Resuelto').length;
+    return { total: incidentes.length, abiertos, criticos };
+  }, [incidentes]);
+
+  const hayCriticosAbiertos = stats.criticos > 0;
+
+  // ── Filtros activos (chips) ──
+  const activeFilters: ActiveFilter[] = [];
+  if (filterValues.prioridad) {
+    activeFilters.push({ key: 'prioridad', label: 'Prioridad', value: filterValues.prioridad });
+  }
+  if (filterValues.estado) {
+    activeFilters.push({ key: 'estado', label: 'Estado', value: filterValues.estado });
+  }
+
+  const filterFields: FilterField[] = [
+    {
+      key: 'prioridad',
+      label: 'Prioridad',
+      type: 'select',
+      options: PRIORIDADES.map((p) => ({ value: p, label: p })),
+      placeholder: 'Todas',
+    },
+    {
+      key: 'estado',
+      label: 'Estado',
+      type: 'select',
+      options: ESTADOS.map((e) => ({ value: e, label: e })),
+      placeholder: 'Todos',
+    },
+  ];
+
+  // ── Handlers de filtros ──
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
   }, []);
 
+  const handleSearch = useCallback(() => {
+    setPage(1);
+  }, []);
+
+  const handleFilterChange = useCallback((key: string, value: string) => {
+    setFilterValues((prev) => ({ ...prev, [key]: value }));
+    setPage(1);
+  }, []);
+
+  const handleRemoveFilter = useCallback((key: string) => {
+    setFilterValues((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setPage(1);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setFilterValues({});
+    setPage(1);
+  }, []);
+
+  const handleFilterCritical = useCallback(() => {
+    setFilterValues({ prioridad: 'Crítica', estado: 'Abierto' });
+    setPage(1);
+  }, []);
+
+  // ── Handlers de modales ──
   const openCreate = useCallback(() => {
-    resetForm();
+    setForm(emptyForm);
     setCreateOpen(true);
-  }, [resetForm]);
+  }, []);
 
   const openEdit = useCallback((item: Incidente) => {
     setSelectedItem(item);
@@ -123,6 +194,7 @@ export default function IncidentesPage() {
     setDeleteOpen(true);
   }, []);
 
+  // ── Validación ──
   const validateForm = useCallback(() => {
     if (!form.titulo.trim() || !form.obra.trim() || !form.fecha) {
       showToast('Título, obra y fecha son obligatorios.', 'error');
@@ -135,6 +207,7 @@ export default function IncidentesPage() {
     return true;
   }, [form, showToast]);
 
+  // ── CRUD local ──
   const handleCreate = useCallback(() => {
     if (!validateForm()) return;
     setSubmitting(true);
@@ -152,11 +225,11 @@ export default function IncidentesPage() {
       setIncidentes((prev) => [nuevo, ...prev]);
       showToast(`Incidente "${nuevo.titulo}" reportado exitosamente.`, 'success');
       setCreateOpen(false);
-      resetForm();
+      setForm(emptyForm);
     } finally {
       setSubmitting(false);
     }
-  }, [form, validateForm, showToast, resetForm]);
+  }, [form, validateForm, showToast]);
 
   const handleEdit = useCallback(() => {
     if (!selectedItem || !validateForm()) return;
@@ -181,11 +254,11 @@ export default function IncidentesPage() {
       showToast(`Incidente "${form.titulo.trim()}" actualizado exitosamente.`, 'success');
       setEditOpen(false);
       setSelectedItem(null);
-      resetForm();
+      setForm(emptyForm);
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, form, validateForm, showToast, resetForm]);
+  }, [selectedItem, form, validateForm, showToast]);
 
   const handleDelete = useCallback(() => {
     if (!selectedItem) return;
@@ -200,165 +273,237 @@ export default function IncidentesPage() {
     }
   }, [selectedItem, showToast]);
 
-  const clearFilters = useCallback(() => {
-    setPrioridadFiltro('');
-    setEstadoFiltro('');
-    setSearch('');
-  }, []);
-
-  if (!isAuthenticated || !user) {
-    return (
-      <div className="p-6 min-h-screen bg-slate-50">
-        <LoadingState text="Verificando sesión..." />
-      </div>
-    );
-  }
+  // ── Columnas de DataTable ──
+  const columns: Column<Incidente>[] = [
+    {
+      key: 'titulo',
+      header: 'Incidente / Obra',
+      render: (item) => (
+        <div>
+          <div className="font-black text-slate-900">{item.titulo}</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.obra}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'prioridad',
+      header: 'Prioridad',
+      render: (item) => (
+        <Badge variant={prioridadVariant[item.prioridad]} size="sm">{item.prioridad}</Badge>
+      ),
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (item) => (
+        <Badge variant={estadoVariant[item.estado]} size="sm">{item.estado}</Badge>
+      ),
+    },
+    {
+      key: 'fecha',
+      header: 'Fecha',
+      render: (item) => (
+        <span className="whitespace-nowrap font-bold text-slate-600">{formatDate(item.fecha)}</span>
+      ),
+    },
+    {
+      key: 'maquinaId',
+      header: 'Máquina',
+      render: (item) => (
+        <span className="font-semibold text-slate-600">{item.maquinaId || '—'}</span>
+      ),
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center justify-end gap-1">
+          {puedeEditar && (
+            <Button
+              variant="warning"
+              size="sm"
+              icon={<Pencil className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openEdit(item); }}
+            >
+              Editar
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openDelete(item); }}
+            >
+              Eliminar
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="p-6 space-y-6 min-h-screen bg-slate-50">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="Seguridad e Incidentes"
-        subtitle="Reporte de fallas, accidentes y retrasos operativos en obra."
+        subtitle="Registro y seguimiento de fallas, accidentes y retrasos operativos en obra."
         action={
           puedeCrear ? (
-            <Button variant="danger" icon={<ShieldAlert className="w-5 h-5" />} onClick={openCreate}>
+            <Button variant="danger" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Reportar Incidente
             </Button>
           ) : undefined
         }
       />
 
-      {/* ── Búsqueda y filtros ── */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <SearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar incidente, obra..."
-          className="flex-1"
+      {hayCriticosAbiertos && (
+        <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-red-900 font-bold text-sm">Incidentes Críticos Abiertos</p>
+              <p className="text-red-700 text-xs font-medium">
+                Hay {stats.criticos} incidente{stats.criticos > 1 ? 's' : ''} crítico{stats.criticos > 1 ? 's' : ''} sin resolver.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<Eye className="w-3.5 h-3.5" />}
+            onClick={handleFilterCritical}
+          >
+            Ver críticos abiertos
+          </Button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <StatsCard
+          icon={<ShieldAlert className="w-6 h-6" />}
+          value={stats.total}
+          label="Total Incidentes"
+          color="info"
         />
-        <Select
-          label="Prioridad"
-          placeholder="Todas"
-          value={prioridadFiltro}
-          onChange={(e) => setPrioridadFiltro(e.target.value)}
-          options={PRIORIDADES.map((p) => ({ value: p, label: p }))}
-          className="w-full sm:w-44"
+        <StatsCard
+          icon={<Clock className="w-6 h-6" />}
+          value={stats.abiertos}
+          label="Incidentes Abiertos"
+          color={stats.abiertos > 0 ? 'warning' : 'success'}
         />
-        <Select
-          label="Estado"
-          placeholder="Todos"
-          value={estadoFiltro}
-          onChange={(e) => setEstadoFiltro(e.target.value)}
-          options={ESTADOS.map((e) => ({ value: e, label: e }))}
-          className="w-full sm:w-44"
+        <StatsCard
+          icon={<AlertTriangle className="w-6 h-6" />}
+          value={stats.criticos}
+          label="Críticos Sin Resolver"
+          color={stats.criticos > 0 ? 'error' : 'success'}
         />
       </div>
 
-      {/* ── Grid de incidentes ── */}
-      {incidentesFiltrados.length === 0 ? (
-        <EmptyState
-          icon={<ShieldAlert className="w-10 h-10 text-red-500" />}
-          title="No hay incidentes reportados"
-          subtitle={
-            search || prioridadFiltro || estadoFiltro
-              ? 'No se encontraron incidentes con los filtros seleccionados.'
-              : 'Aún no hay incidentes registrados en el sistema.'
-          }
-          action={
-            (search || prioridadFiltro || estadoFiltro) ? (
-              <Button variant="secondary" onClick={clearFilters}>
-                Limpiar filtros
-              </Button>
-            ) : puedeCrear ? (
-              <Button variant="danger" icon={<ShieldAlert className="w-4 h-4" />} onClick={openCreate}>
-                Reportar Incidente
-              </Button>
-            ) : undefined
-          }
+      <div className="flex flex-col sm:flex-row gap-3">
+        <SearchBar
+          value={search}
+          onChange={handleSearchChange}
+          onSearch={handleSearch}
+          placeholder="Buscar incidente, obra o máquina..."
+          className="flex-1"
         />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {incidentesFiltrados.map((inc) => (
-            <Card key={inc.id} className="group overflow-hidden">
-              <div className="flex justify-between items-start gap-3 mb-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={cn(
-                      'p-2 rounded-lg shadow-lg shrink-0',
-                      prioridadIconClass[inc.prioridad]
-                    )}
-                  >
-                    <AlertTriangle className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-black text-slate-900 text-base sm:text-lg leading-tight truncate">
-                      {inc.titulo}
-                    </h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 truncate">
-                      {inc.obra}
-                    </p>
-                  </div>
-                </div>
-                <Badge variant={estadoVariant[inc.estado]} size="sm">
-                  {inc.estado}
-                </Badge>
-              </div>
+        <Button
+          variant={showFilters ? 'primary' : 'secondary'}
+          size="md"
+          icon={<SlidersHorizontal className="w-4 h-4" />}
+          onClick={() => setShowFilters((prev) => !prev)}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <span className="whitespace-nowrap">Filtros</span>
+          {activeFilters.length > 0 && (
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+              {activeFilters.length}
+            </span>
+          )}
+        </Button>
+      </div>
 
-              <div className="flex flex-wrap gap-2 mb-4">
-                <Badge variant={prioridadVariant[inc.prioridad]} size="sm">
-                  {inc.prioridad}
-                </Badge>
-              </div>
-
-              <p className="text-sm text-slate-600 font-medium mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                &ldquo;{inc.descripcion}&rdquo;
-              </p>
-
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 gap-3">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                    <span className="text-[10px] font-black text-slate-400 uppercase">
-                      {formatDate(inc.fecha)}
-                    </span>
-                  </div>
-                  {inc.maquinaId && (
-                    <span className="text-[10px] font-black text-primary uppercase truncate">
-                      Máquina: {inc.maquinaId}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {puedeEditar && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<Pencil className="w-3.5 h-3.5" />}
-                      onClick={() => openEdit(inc)}
-                      aria-label="Editar incidente"
-                    />
-                  )}
-                  {puedeEliminar && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
-                      onClick={() => openDelete(inc)}
-                      aria-label="Eliminar incidente"
-                    />
-                  )}
-                </div>
-              </div>
-            </Card>
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {activeFilters.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+            >
+              <span className="font-normal text-primary/70">{filter.label}:</span>
+              <span>{filter.value}</span>
+              <button
+                onClick={() => handleRemoveFilter(filter.key)}
+                className="ml-0.5 hover:text-primary-dark transition-colors"
+                aria-label={`Eliminar filtro ${filter.label}`}
+              >
+                <X size={12} />
+              </button>
+            </span>
           ))}
+          {activeFilters.length > 1 && (
+            <button
+              onClick={handleClearFilters}
+              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+            >
+              Limpiar todo
+            </button>
+          )}
         </div>
       )}
+
+      {showFilters && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            {filterFields.map((filter) => (
+              <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  {filter.label}
+                </label>
+                <select
+                  value={filterValues[filter.key] || ''}
+                  onChange={(e) => handleFilterChange(filter.key, e.target.value)}
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                >
+                  <option value="">{filter.placeholder || 'Todos'}</option>
+                  {filter.options?.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <DataTable
+          columns={columns}
+          data={paginated}
+          loading={false}
+          keyExtractor={(item) => item.id}
+          emptyText="No se encontraron incidentes que coincidan con la búsqueda."
+          maxBodyHeight="500px"
+        />
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalRecords={incidentesFiltrados.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      </div>
 
       {/* ═══════════════════════════════════════════
           MODALES
           ═══════════════════════════════════════════ */}
 
-      {/* Crear */}
       <FormModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -371,153 +516,190 @@ export default function IncidentesPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input
-            label="Título"
-            placeholder="Ej: Fuga de aceite hidráulico"
-            value={form.titulo}
-            onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-            required
-            className="sm:col-span-2"
-          />
-          <Textarea
-            label="Descripción"
-            placeholder="Describe el incidente con detalle..."
-            value={form.descripcion}
-            onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-            required
-            className="sm:col-span-2"
-          />
-          <Select
-            label="Prioridad"
-            value={form.prioridad}
-            onChange={(e) => setForm({ ...form, prioridad: e.target.value as Incidente['prioridad'] })}
-            options={PRIORIDADES.map((p) => ({ value: p, label: p }))}
-            required
-          />
-          <Select
-            label="Estado"
-            value={form.estado}
-            onChange={(e) => setForm({ ...form, estado: e.target.value as Incidente['estado'] })}
-            options={ESTADOS.map((e) => ({ value: e, label: e }))}
-            required
-          />
-          <Input
-            label="Obra"
-            placeholder="Ej: Valle Sur"
-            value={form.obra}
-            onChange={(e) => setForm({ ...form, obra: e.target.value })}
-            required
-          />
-          <Input
-            label="Máquina (opcional)"
-            placeholder="Ej: M001"
-            value={form.maquinaId}
-            onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-          />
-          <Input
-            label="Fecha"
-            type="date"
-            value={form.fecha}
-            onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            required
-          />
+          <ModalField label="Título" required className="sm:col-span-2">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Ej: Fuga de aceite hidráulico"
+              value={form.titulo}
+              onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Descripción" required className="sm:col-span-2">
+            <textarea
+              className={modalTextareaClass}
+              placeholder="Describe el incidente con detalle..."
+              rows={4}
+              value={form.descripcion}
+              onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Prioridad" required>
+            <select
+              className={modalSelectClass}
+              value={form.prioridad}
+              onChange={(e) => setForm({ ...form, prioridad: e.target.value as Incidente['prioridad'] })}
+            >
+              {PRIORIDADES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Estado" required>
+            <select
+              className={modalSelectClass}
+              value={form.estado}
+              onChange={(e) => setForm({ ...form, estado: e.target.value as Incidente['estado'] })}
+            >
+              {ESTADOS.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Obra" required>
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Ej: Valle Sur"
+              value={form.obra}
+              onChange={(e) => setForm({ ...form, obra: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Máquina (opcional)">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Ej: M001"
+              value={form.maquinaId}
+              onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={form.fecha}
+              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            />
+          </ModalField>
         </div>
       </FormModal>
 
-      {/* Editar */}
       <FormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onCancel={() => setEditOpen(false)}
         title="Editar Incidente"
-        subtitle={selectedItem ? `Incidente ${selectedItem.id}` : undefined}
+        subtitle={selectedItem ? `Editando: ${selectedItem.titulo}` : undefined}
         submitLabel="Guardar Cambios"
         cancelLabel="Cancelar"
         onSubmit={handleEdit}
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input
-            label="Título"
-            value={form.titulo}
-            onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-            required
-            className="sm:col-span-2"
-          />
-          <Textarea
-            label="Descripción"
-            value={form.descripcion}
-            onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-            required
-            className="sm:col-span-2"
-          />
-          <Select
-            label="Prioridad"
-            value={form.prioridad}
-            onChange={(e) => setForm({ ...form, prioridad: e.target.value as Incidente['prioridad'] })}
-            options={PRIORIDADES.map((p) => ({ value: p, label: p }))}
-            required
-          />
-          <Select
-            label="Estado"
-            value={form.estado}
-            onChange={(e) => setForm({ ...form, estado: e.target.value as Incidente['estado'] })}
-            options={ESTADOS.map((e) => ({ value: e, label: e }))}
-            required
-          />
-          <Input
-            label="Obra"
-            value={form.obra}
-            onChange={(e) => setForm({ ...form, obra: e.target.value })}
-            required
-          />
-          <Input
-            label="Máquina (opcional)"
-            value={form.maquinaId}
-            onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-          />
-          <Input
-            label="Fecha"
-            type="date"
-            value={form.fecha}
-            onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            required
-          />
+          <ModalField label="Título" required className="sm:col-span-2">
+            <input
+              type="text"
+              className={modalInputClass}
+              value={form.titulo}
+              onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Descripción" required className="sm:col-span-2">
+            <textarea
+              className={modalTextareaClass}
+              rows={4}
+              value={form.descripcion}
+              onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Prioridad" required>
+            <select
+              className={modalSelectClass}
+              value={form.prioridad}
+              onChange={(e) => setForm({ ...form, prioridad: e.target.value as Incidente['prioridad'] })}
+            >
+              {PRIORIDADES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Estado" required>
+            <select
+              className={modalSelectClass}
+              value={form.estado}
+              onChange={(e) => setForm({ ...form, estado: e.target.value as Incidente['estado'] })}
+            >
+              {ESTADOS.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Obra" required>
+            <input
+              type="text"
+              className={modalInputClass}
+              value={form.obra}
+              onChange={(e) => setForm({ ...form, obra: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Máquina (opcional)">
+            <input
+              type="text"
+              className={modalInputClass}
+              value={form.maquinaId}
+              onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={form.fecha}
+              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            />
+          </ModalField>
         </div>
       </FormModal>
 
-      {/* Eliminar */}
-      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} size="sm">
-        <ModalHeader
-          title="Eliminar Incidente"
-          subtitle="Esta acción no se puede deshacer."
-          onClose={() => setDeleteOpen(false)}
-        />
-        <ModalBody>
-          {selectedItem && (
-            <div className="flex flex-col items-center text-center py-4">
-              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                <AlertTriangle className="w-7 h-7 text-red-500" />
-              </div>
-              <p className="text-sm text-slate-700 mb-1">
-                ¿Estás seguro de eliminar este incidente?
-              </p>
-              <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.titulo}</p>
-              <p className="text-xs text-slate-500">
-                {selectedItem.obra} · {selectedItem.prioridad}
-              </p>
+      <FormModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onCancel={() => setDeleteOpen(false)}
+        title="Eliminar Incidente"
+        subtitle="Esta acción no se puede deshacer."
+        submitLabel="Sí, Eliminar"
+        cancelLabel="Cancelar"
+        onSubmit={handleDelete}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setDeleteOpen(false)} disabled={submitting}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={handleDelete} loading={submitting} disabled={submitting}>
-            Sí, Eliminar
-          </Button>
-        </ModalFooter>
-      </Modal>
+            <p className="text-sm text-slate-700 mb-1">
+              ¿Estás seguro de eliminar este incidente?
+            </p>
+            <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.titulo}</p>
+            <p className="text-xs text-slate-500">
+              {selectedItem.obra} · {selectedItem.prioridad}
+            </p>
+          </div>
+        )}
+      </FormModal>
     </div>
   );
 }
