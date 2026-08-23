@@ -31,7 +31,6 @@ export class InventarioController {
   /**
    * GET /api/inventario
    * Lista artículos con búsqueda, filtros y paginación.
-   * Permiso: operaciones.inventario.ver
    */
   @RequirePermission('operaciones', 'inventario', 'ver')
   @Get()
@@ -42,7 +41,6 @@ export class InventarioController {
   /**
    * GET /api/inventario/stats
    * Estadísticas del inventario (total, stock bajo, valor).
-   * Permiso: operaciones.inventario.ver
    */
   @RequirePermission('operaciones', 'inventario', 'ver')
   @Get('stats')
@@ -53,7 +51,6 @@ export class InventarioController {
   /**
    * GET /api/inventario/catalogos
    * Catálogos para selects: categorías, proveedores, unidades.
-   * Permiso: operaciones.inventario.ver
    */
   @RequirePermission('operaciones', 'inventario', 'ver')
   @Get('catalogos')
@@ -64,7 +61,6 @@ export class InventarioController {
   /**
    * GET /api/inventario/:id
    * Obtener un artículo por ID.
-   * Permiso: operaciones.inventario.ver
    */
   @RequirePermission('operaciones', 'inventario', 'ver')
   @Get(':id')
@@ -75,7 +71,6 @@ export class InventarioController {
   /**
    * POST /api/inventario
    * Crear un nuevo artículo.
-   * Permiso: operaciones.inventario.crear
    */
   @RequirePermission('operaciones', 'inventario', 'crear')
   @Post()
@@ -91,7 +86,6 @@ export class InventarioController {
   /**
    * PATCH /api/inventario/:id
    * Actualizar un artículo existente.
-   * Permiso: operaciones.inventario.editar
    */
   @RequirePermission('operaciones', 'inventario', 'editar')
   @Patch(':id')
@@ -107,7 +101,6 @@ export class InventarioController {
   /**
    * DELETE /api/inventario/:id
    * Eliminar (soft delete) un artículo.
-   * Permiso: operaciones.inventario.eliminar
    */
   @RequirePermission('operaciones', 'inventario', 'eliminar')
   @Delete(':id')
@@ -123,7 +116,6 @@ export class InventarioController {
   /**
    * POST /api/inventario/movimiento
    * Registrar movimiento de stock (entrada/salida).
-   * Permiso: operaciones.inventario.editar
    */
   @RequirePermission('operaciones', 'inventario', 'editar')
   @Post('movimiento')

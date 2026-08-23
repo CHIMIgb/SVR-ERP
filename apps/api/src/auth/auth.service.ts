@@ -278,6 +278,7 @@ export class AuthService {
       email: user.email,
       jti: accessJti,
       tipo: 'access',
+      sessionId: session.id,
     };
 
     const refreshPayload: JwtPayload = {
@@ -505,7 +506,7 @@ export class AuthService {
     const accessJti = randomUUID();
 
     const accessToken = this.jwtService.sign(
-      { sub: userId, email: user.email, jti: accessJti, tipo: 'access' },
+      { sub: userId, email: user.email, jti: accessJti, tipo: 'access', sessionId: session.id },
       {
         expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
         secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',

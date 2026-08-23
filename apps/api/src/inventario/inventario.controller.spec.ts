@@ -83,7 +83,7 @@ describe('InventarioController', () => {
   });
 
   describe('create', () => {
-    it('should create a new article with AuditContext', async () => {
+    it('should create a new article passing userId', async () => {
       const dto = {
         nombre: 'Nuevo',
         categoriaId: 'c1',
@@ -93,59 +93,43 @@ describe('InventarioController', () => {
         stockMinimo: 2,
         precioUnitario: 100,
       };
-      const req = { user: { id: 'user-1' }, ip: '127.0.0.1', headers: { 'user-agent': 'TestAgent' }, socket: { remoteAddress: '127.0.0.1' } };
+      const req = { user: { id: 'user-1' } };
       const result = await controller.create(dto as never, req as never);
       expect(result.nombre).toBe('Filtro de Aceite');
-      expect(service.create).toHaveBeenCalledWith(dto, {
-        userId: 'user-1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'TestAgent',
-      });
+      expect(service.create).toHaveBeenCalledWith(dto, 'user-1');
     });
   });
 
   describe('update', () => {
-    it('should update an article with AuditContext', async () => {
-      const req = { user: { id: 'user-1' }, ip: '127.0.0.1', headers: { 'user-agent': 'TestAgent' }, socket: { remoteAddress: '127.0.0.1' } };
+    it('should update an article passing userId', async () => {
+      const req = { user: { id: 'user-1' } };
       const result = await controller.update('a1', { nombre: 'X' }, req as never);
       expect(result).toBeDefined();
-      expect(service.update).toHaveBeenCalledWith('a1', { nombre: 'X' }, {
-        userId: 'user-1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'TestAgent',
-      });
+      expect(service.update).toHaveBeenCalledWith('a1', { nombre: 'X' }, 'user-1');
     });
   });
 
   describe('remove', () => {
-    it('should soft delete an article with AuditContext', async () => {
-      const req = { user: { id: 'user-1' }, ip: '127.0.0.1', headers: { 'user-agent': 'TestAgent' }, socket: { remoteAddress: '127.0.0.1' } };
+    it('should soft delete an article passing userId', async () => {
+      const req = { user: { id: 'user-1' } };
       const result = await controller.remove('a1', req as never);
       expect(result.message).toContain('eliminado');
-      expect(service.remove).toHaveBeenCalledWith('a1', {
-        userId: 'user-1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'TestAgent',
-      });
+      expect(service.remove).toHaveBeenCalledWith('a1', 'user-1');
     });
   });
 
   describe('crearMovimiento', () => {
-    it('should create a stock movement with AuditContext', async () => {
+    it('should create a stock movement passing userId', async () => {
       const dto = {
         articuloId: 'a1',
         tipo: 'ENTRADA' as const,
         cantidad: 10,
       };
-      const req = { user: { id: 'user-1' }, ip: '127.0.0.1', headers: { 'user-agent': 'TestAgent' }, socket: { remoteAddress: '127.0.0.1' } };
+      const req = { user: { id: 'user-1' } };
       const result = await controller.crearMovimiento(dto, req as never);
       expect(result.tipo).toBe('ENTRADA');
       expect(result.stockResultante).toBe(22);
-      expect(service.crearMovimiento).toHaveBeenCalledWith(dto, {
-        userId: 'user-1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'TestAgent',
-      });
+      expect(service.crearMovimiento).toHaveBeenCalledWith(dto, 'user-1');
     });
   });
 

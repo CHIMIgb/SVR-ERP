@@ -21,6 +21,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { BloqueoService } from '../bloqueo/bloqueo.service';
 import { AuditService } from '../audit/audit.service';
+import { AuditContextService } from '../audit/audit-context.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const TEST_EMAIL = `inttest-${TEST_ID}@svr-erp.local`;
@@ -54,6 +55,7 @@ describe('Auth Integration (Real DB)', () => {
         AuthService,
         IntentosLoginService,
         BloqueoService,
+        AuditContextService,
         AuditService,
         JwtStrategy,
         JwtRefreshStrategy,

@@ -13,13 +13,6 @@ import { QueryArticulosDto } from './dto/query-articulos.dto';
 import { CreateMovimientoDto } from './dto/create-movimiento.dto';
 import { Prisma } from '@prisma/client';
 
-/** Contexto HTTP que el controller extrae de la request y pasa al service. */
-export interface AuditContext {
-  userId: string;
-  ipAddress?: string;
-  userAgent?: string;
-}
-
 /** Incluye relacion para el SELECT del front */
 const ARTICULO_INCLUDE = {
   categorias_inventario: { select: { id: true, nombre: true } },
@@ -34,14 +27,6 @@ export class InventarioService {
     private readonly auditService: AuditService,
   ) {}
 
-  /** Extrae campos HTTP del contexto para pasarlos al AuditService. */
-  private auditHttp(ctx?: AuditContext) {
-    return {
-      ipAddress: ctx?.ipAddress,
-      userAgent: ctx?.userAgent,
-    };
-  }
-
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
   // ────────────────────────────────────────────
@@ -54,7 +39,6 @@ export class InventarioService {
       activo: true,
     };
 
-    // Búsqueda por nombre, categoría o proveedor
     if (query.search) {
       where.OR = [
         { nombre: { contains: query.search, mode: 'insensitive' } },
@@ -82,14 +66,12 @@ export class InventarioService {
     const needsPostFilter = !!query.stockEstado;
 
     if (needsPostFilter) {
-      // Cuando se filtra por stock, necesitamos traer TODO y post-filtrar ANTES de paginar.
       const allItems = await this.prisma.articulos_inventario.findMany({
         where,
         include: ARTICULO_INCLUDE,
         orderBy: { creado_en: 'desc' },
       });
 
-      // Post-filtro de stock (Decimal no soporta comparación con ref en Prisma)
       let filtered = allItems;
       if (query.stockEstado === 'bajo') {
         filtered = allItems.filter(
@@ -101,7 +83,6 @@ export class InventarioService {
         );
       }
 
-      // Paginar sobre los filtrados
       const total = filtered.length;
       const start = (page - 1) * limit;
       const paged = filtered.slice(start, start + limit);
@@ -117,7 +98,6 @@ export class InventarioService {
       };
     }
 
-    // Sin post-filtro: paginación directa en DB (rápido)
     const [items, total] = await Promise.all([
       this.prisma.articulos_inventario.findMany({
         where,
@@ -159,10 +139,7 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  CREAR
   // ────────────────────────────────────────────
-  async create(dto: CreateArticuloDto, ctx: AuditContext) {
-    const { userId } = ctx;
-    const http = this.auditHttp(ctx);
-    // Verificar que la categoría exista
+  async create(dto: CreateArticuloDto, userId: string) {
     const categoria = await this.prisma.categorias_inventario.findUnique({
       where: { id: dto.categoriaId },
     });
@@ -176,14 +153,12 @@ export class InventarioService {
         actorRole: 'autenticado',
         errorCode: 'CATEGORY_NOT_FOUND',
         metadata: { nombre: dto.nombre, categoriaId: dto.categoriaId },
-        ...http,
       });
       throw new BadRequestException(
         `Categoría con id "${dto.categoriaId}" no encontrada`,
       );
     }
 
-    // Verificar que el proveedor exista
     const proveedor = await this.prisma.proveedores.findFirst({
       where: { id: dto.proveedorId, eliminado_en: null },
     });
@@ -197,14 +172,12 @@ export class InventarioService {
         actorRole: 'autenticado',
         errorCode: 'SUPPLIER_NOT_FOUND',
         metadata: { nombre: dto.nombre, proveedorId: dto.proveedorId },
-        ...http,
       });
       throw new BadRequestException(
         `Proveedor con id "${dto.proveedorId}" no encontrado`,
       );
     }
 
-    // Verificar que la unidad exista
     const unidad = await this.prisma.unidades_medida.findUnique({
       where: { id: dto.unidadId },
     });
@@ -218,7 +191,6 @@ export class InventarioService {
         actorRole: 'autenticado',
         errorCode: 'UNIT_NOT_FOUND',
         metadata: { nombre: dto.nombre, unidadId: dto.unidadId },
-        ...http,
       });
       throw new BadRequestException(
         `Unidad de medida con id "${dto.unidadId}" no encontrada`,
@@ -255,10 +227,8 @@ export class InventarioService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serialized,
-      ...http,
     });
 
-    // Alerta: si el stock ya es bajo al crear
     if (dto.stock <= dto.stockMinimo) {
       await this.auditService.log({
         action: AuditAction.STOCK_BAJO_DETECTADO,
@@ -274,7 +244,6 @@ export class InventarioService {
           stockMinimo: dto.stockMinimo,
           contexto: 'Creación con stock bajo',
         },
-        ...http,
       });
     }
 
@@ -284,9 +253,7 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  ACTUALIZAR
   // ────────────────────────────────────────────
-  async update(id: string, dto: UpdateArticuloDto, ctx: AuditContext) {
-    const { userId } = ctx;
-    const http = this.auditHttp(ctx);
+  async update(id: string, dto: UpdateArticuloDto, userId: string) {
     const existente = await this.prisma.articulos_inventario.findFirst({
       where: { id, eliminado_en: null },
     });
@@ -295,7 +262,6 @@ export class InventarioService {
       throw new NotFoundException(`Artículo con id "${id}" no encontrado`);
     }
 
-    // Validar relaciones si se proporcionan
     if (dto.categoriaId) {
       const cat = await this.prisma.categorias_inventario.findUnique({
         where: { id: dto.categoriaId },
@@ -310,7 +276,6 @@ export class InventarioService {
           actorRole: 'autenticado',
           errorCode: 'CATEGORY_NOT_FOUND',
           metadata: { categoriaId: dto.categoriaId },
-          ...http,
         });
         throw new BadRequestException(
           `Categoría con id "${dto.categoriaId}" no encontrada`,
@@ -332,7 +297,6 @@ export class InventarioService {
           actorRole: 'autenticado',
           errorCode: 'SUPPLIER_NOT_FOUND',
           metadata: { proveedorId: dto.proveedorId },
-          ...http,
         });
         throw new BadRequestException(
           `Proveedor con id "${dto.proveedorId}" no encontrado`,
@@ -354,7 +318,6 @@ export class InventarioService {
           actorRole: 'autenticado',
           errorCode: 'UNIT_NOT_FOUND',
           metadata: { unidadId: dto.unidadId },
-          ...http,
         });
         throw new BadRequestException(
           `Unidad de medida con id "${dto.unidadId}" no encontrada`,
@@ -400,16 +363,13 @@ export class InventarioService {
         nombre: existente.nombre,
       },
       newValue: serialized,
-      ...http,
     });
 
-    // Detectar cambios en el umbral de stock
     const stockActual = dto.stock !== undefined ? dto.stock : Number(existente.stock);
     const minimoActual = dto.stockMinimo !== undefined ? dto.stockMinimo : Number(existente.stock_minimo);
     const minimoAnterior = Number(existente.stock_minimo);
     const stockAnterior = Number(existente.stock);
 
-    // Stock bajo recién detectado (cruzó el umbral hacia abajo)
     if (stockActual <= minimoActual && stockAnterior > minimoAnterior) {
       await this.auditService.log({
         action: AuditAction.STOCK_BAJO_DETECTADO,
@@ -425,11 +385,9 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: 'Actualización cruzó umbral hacia abajo',
         },
-        ...http,
       });
     }
 
-    // Stock bajo resuelto (cruzó el umbral hacia arriba)
     if (stockActual > minimoActual && stockAnterior <= minimoAnterior) {
       await this.auditService.log({
         action: AuditAction.STOCK_BAJO_RESUELTO,
@@ -445,7 +403,6 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: 'Actualización resolvió stock bajo',
         },
-        ...http,
       });
     }
 
@@ -455,9 +412,7 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  ELIMINAR (soft delete)
   // ────────────────────────────────────────────
-  async remove(id: string, ctx?: AuditContext) {
-    const { userId } = ctx ?? ({} as AuditContext);
-    const http = this.auditHttp(ctx);
+  async remove(id: string, userId: string) {
     const existente = await this.prisma.articulos_inventario.findFirst({
       where: { id, eliminado_en: null },
     });
@@ -480,7 +435,6 @@ export class InventarioService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: this.serialize(existente),
-      ...http,
     });
 
     return { message: 'Artículo eliminado exitosamente' };
@@ -489,9 +443,7 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  MOVIMIENTO DE STOCK (entrada/salida)
   // ────────────────────────────────────────────
-  async crearMovimiento(dto: CreateMovimientoDto, ctx: AuditContext) {
-    const { userId } = ctx;
-    const http = this.auditHttp(ctx);
+  async crearMovimiento(dto: CreateMovimientoDto, userId: string) {
     const articulo = await this.prisma.articulos_inventario.findFirst({
       where: { id: dto.articuloId, eliminado_en: null },
     });
@@ -509,7 +461,6 @@ export class InventarioService {
     if (dto.tipo === 'ENTRADA') {
       nuevoStock = stockActual + dto.cantidad;
     } else {
-      // SALIDA
       if (dto.cantidad > stockActual) {
         await this.auditService.logFailure({
           action: AuditAction.STOCK_INSUFICIENTE,
@@ -524,7 +475,6 @@ export class InventarioService {
             stockActual,
             solicitado: dto.cantidad,
           },
-          ...http,
         });
         throw new BadRequestException(
           `Stock insuficiente. Disponible: ${stockActual}, solicitado: ${dto.cantidad}`,
@@ -533,7 +483,6 @@ export class InventarioService {
       nuevoStock = stockActual - dto.cantidad;
     }
 
-    // Transacción: actualizar stock + registrar movimiento
     await this.prisma.$transaction([
       this.prisma.articulos_inventario.update({
         where: { id: dto.articuloId },
@@ -570,11 +519,8 @@ export class InventarioService {
         stockResultante: nuevoStock,
         motivo: dto.motivo,
       },
-      ...http,
     });
 
-    // Detectar alertas de stock después del movimiento
-    // SALIDA que cruza umbral hacia abajo
     if (
       dto.tipo === 'SALIDA' &&
       nuevoStock <= minimoActual &&
@@ -594,11 +540,9 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: `Salida de ${dto.cantidad} unidades`,
         },
-        ...http,
       });
     }
 
-    // ENTRADA que resuelve stock bajo
     if (
       dto.tipo === 'ENTRADA' &&
       nuevoStock > minimoActual &&
@@ -618,7 +562,6 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: `Entrada de ${dto.cantidad} unidades`,
         },
-        ...http,
       });
     }
 

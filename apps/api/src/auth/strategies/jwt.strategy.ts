@@ -18,6 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     id: string;
     email: string;
     jti: string;
+    sessionId?: string;
   }> {
     // 1. Verificar que el access token no esté en la blacklist (revocado por logout)
     const blacklisted = await this.prisma.token_blacklist.findUnique({
@@ -38,6 +39,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Usuario no válido o deshabilitado');
     }
 
-    return { id: user.id, email: user.email, jti: payload.jti };
+    return {
+      id: user.id,
+      email: user.email,
+      jti: payload.jti,
+      sessionId: payload.sessionId,
+    };
   }
 }
