@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
@@ -21,6 +22,8 @@ async function bootstrap() {
           'http://127.0.0.1:3000',
           'http://127.0.0.1:3001',
         ];
+
+  console.log(`CORS origenes permitidos: ${allowedOrigins.join(', ')}`);
 
   app.enableCors({
     origin: (
