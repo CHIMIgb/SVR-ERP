@@ -1,0 +1,4 @@
+-- Agregar valores de auditoría para el módulo de incidentes
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'INCIDENTE_CREADO';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'INCIDENTE_ACTUALIZADO';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'INCIDENTE_ELIMINADO';

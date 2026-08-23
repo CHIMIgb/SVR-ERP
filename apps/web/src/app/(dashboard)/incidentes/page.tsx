@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, ShieldAlert, AlertTriangle, Clock,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
@@ -15,25 +15,40 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { incidentes as incidentesMock } from '@/lib/mock-data/operaciones';
+import {
+  incidentesApi,
+  type IncidenteDTO,
+  type IncidenteStats,
+  type IncidenteCatalogos,
+  type IncidenteCreateInput,
+} from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
-import type { Incidente } from '@svr-erp/shared';
 import type { BadgeVariant } from '@/components/ui/Badge';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
 
-const PRIORIDADES: Incidente['prioridad'][] = ['Crítica', 'Alta', 'Media', 'Baja'];
-const ESTADOS: Incidente['estado'][] = ['Abierto', 'En Revisión', 'Resuelto'];
+const PRIORIDADES: { value: IncidenteCreateInput['prioridad']; label: string }[] = [
+  { value: 'CRITICA', label: 'Crítica' },
+  { value: 'ALTA', label: 'Alta' },
+  { value: 'MEDIA', label: 'Media' },
+  { value: 'BAJA', label: 'Baja' },
+];
 
-const prioridadVariant: Record<Incidente['prioridad'], BadgeVariant> = {
+const ESTADOS: { value: IncidenteCreateInput['estado']; label: string }[] = [
+  { value: 'ABIERTO', label: 'Abierto' },
+  { value: 'EN_REVISION', label: 'En Revisión' },
+  { value: 'RESUELTO', label: 'Resuelto' },
+];
+
+const prioridadVariant: Record<IncidenteDTO['prioridad'], BadgeVariant> = {
   Crítica: 'error',
   Alta: 'warning',
   Media: 'primary',
   Baja: 'info',
 };
 
-const estadoVariant: Record<Incidente['estado'], BadgeVariant> = {
+const estadoVariant: Record<IncidenteDTO['estado'], BadgeVariant> = {
   Abierto: 'error',
   'En Revisión': 'warning',
   Resuelto: 'success',
@@ -42,9 +57,9 @@ const estadoVariant: Record<Incidente['estado'], BadgeVariant> = {
 const emptyForm = {
   titulo: '',
   descripcion: '',
-  prioridad: 'Media' as Incidente['prioridad'],
-  estado: 'Abierto' as Incidente['estado'],
-  obra: '',
+  prioridad: 'MEDIA' as IncidenteCreateInput['prioridad'],
+  estado: 'ABIERTO' as IncidenteCreateInput['estado'],
+  obraId: '',
   maquinaId: '',
   fecha: new Date().toISOString().split('T')[0],
 };
@@ -60,79 +75,128 @@ export default function IncidentesPage() {
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
   // ── Estado de datos ──
-  const [incidentes, setIncidentes] = useState<Incidente[]>(incidentesMock);
+  const [registros, setRegistros] = useState<IncidenteDTO[]>([]);
+  const [stats, setStats] = useState<IncidenteStats>({ total: 0, abiertos: 0, criticos: 0 });
+  const [catalogos, setCatalogos] = useState<IncidenteCatalogos>({ maquinas: [], obras: [] });
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+
+  // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [page, setPage] = useState(1);
 
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<Incidente | null>(null);
+  const [selectedItem, setSelectedItem] = useState<IncidenteDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Filtros ──
-  const incidentesFiltrados = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return incidentes.filter((inc) => {
-      const matchesSearch =
-        !q ||
-        inc.titulo.toLowerCase().includes(q) ||
-        inc.descripcion.toLowerCase().includes(q) ||
-        inc.obra.toLowerCase().includes(q) ||
-        (inc.maquinaId && inc.maquinaId.toLowerCase().includes(q));
-      const matchesPrioridad = !filterValues.prioridad || inc.prioridad === filterValues.prioridad;
-      const matchesEstado = !filterValues.estado || inc.estado === filterValues.estado;
-      return matchesSearch && matchesPrioridad && matchesEstado;
+  // ── Cargar catálogos ──
+  useEffect(() => {
+    incidentesApi.catalogos().then((res) => {
+      if (res.success && res.data) {
+        setCatalogos(res.data);
+      }
     });
-  }, [incidentes, search, filterValues]);
+  }, []);
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(incidentesFiltrados.length / PAGE_SIZE)), [incidentesFiltrados]);
+  // ── Cargar datos ──
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    if (!hasLoaded.current) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    try {
+      const res = await incidentesApi.listar({
+        search: searchVal || undefined,
+        prioridad: (filters?.prioridad as IncidenteCreateInput['prioridad']) || undefined,
+        estado: (filters?.estado as IncidenteCreateInput['estado']) || undefined,
+        maquinaId: filters?.maquinaId || undefined,
+        obraId: filters?.obraId || undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      if (res.success && res.data) {
+        setRegistros(res.data.items);
+        setPagination(res.data.pagination);
+      } else {
+        showToast('Error al cargar incidentes.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      hasLoaded.current = true;
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [showToast]);
 
-  const paginated = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return incidentesFiltrados.slice(start, start + PAGE_SIZE);
-  }, [incidentesFiltrados, page]);
+  const fetchStats = useCallback(async () => {
+    const res = await incidentesApi.stats();
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+  }, []);
 
   useEffect(() => {
-    setPage(1);
-  }, [search, filterValues]);
-
-  // ── Estadísticas ──
-  const stats = useMemo(() => {
-    const abiertos = incidentes.filter((i) => i.estado !== 'Resuelto').length;
-    const criticos = incidentes.filter((i) => i.prioridad === 'Crítica' && i.estado !== 'Resuelto').length;
-    return { total: incidentes.length, abiertos, criticos };
-  }, [incidentes]);
-
-  const hayCriticosAbiertos = stats.criticos > 0;
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
   if (filterValues.prioridad) {
-    activeFilters.push({ key: 'prioridad', label: 'Prioridad', value: filterValues.prioridad });
+    const label = PRIORIDADES.find((p) => p.value === filterValues.prioridad)?.label ?? filterValues.prioridad;
+    activeFilters.push({ key: 'prioridad', label: 'Prioridad', value: label });
   }
   if (filterValues.estado) {
-    activeFilters.push({ key: 'estado', label: 'Estado', value: filterValues.estado });
+    const label = ESTADOS.find((e) => e.value === filterValues.estado)?.label ?? filterValues.estado;
+    activeFilters.push({ key: 'estado', label: 'Estado', value: label });
+  }
+  if (filterValues.maquinaId) {
+    const maquina = catalogos.maquinas.find((m) => m.id === filterValues.maquinaId);
+    activeFilters.push({ key: 'maquinaId', label: 'Máquina', value: maquina?.nombre ?? filterValues.maquinaId });
+  }
+  if (filterValues.obraId) {
+    const obra = catalogos.obras.find((o) => o.id === filterValues.obraId);
+    activeFilters.push({ key: 'obraId', label: 'Obra', value: obra?.nombre ?? filterValues.obraId });
   }
 
+  // ── Filtros para SearchBar ──
   const filterFields: FilterField[] = [
     {
       key: 'prioridad',
       label: 'Prioridad',
       type: 'select',
-      options: PRIORIDADES.map((p) => ({ value: p, label: p })),
+      options: PRIORIDADES.map((p) => ({ value: p.value, label: p.label })),
       placeholder: 'Todas',
     },
     {
       key: 'estado',
       label: 'Estado',
       type: 'select',
-      options: ESTADOS.map((e) => ({ value: e, label: e })),
+      options: ESTADOS.map((e) => ({ value: e.value, label: e.label })),
       placeholder: 'Todos',
+    },
+    {
+      key: 'maquinaId',
+      label: 'Máquina',
+      type: 'select',
+      options: catalogos.maquinas.map((m) => ({ value: m.id, label: m.nombre })),
+      placeholder: 'Todas',
+    },
+    {
+      key: 'obraId',
+      label: 'Obra',
+      type: 'select',
+      options: catalogos.obras.map((o) => ({ value: o.id, label: o.nombre })),
+      placeholder: 'Todas',
     },
   ];
 
@@ -142,32 +206,36 @@ export default function IncidentesPage() {
   }, []);
 
   const handleSearch = useCallback(() => {
-    setPage(1);
-  }, []);
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
-    setFilterValues((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
-  }, []);
+    const next = { ...filterValues, [key]: value };
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleRemoveFilter = useCallback((key: string) => {
-    setFilterValues((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setPage(1);
-  }, []);
+    const next = { ...filterValues };
+    delete next[key];
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
-    setPage(1);
-  }, []);
+    fetchData(1, search, {});
+  }, [fetchData, search]);
 
   const handleFilterCritical = useCallback(() => {
-    setFilterValues({ prioridad: 'Crítica', estado: 'Abierto' });
-    setPage(1);
-  }, []);
+    const next = { prioridad: 'CRITICA', estado: 'ABIERTO' };
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search]);
+
+  const handlePageChange = useCallback((page: number) => {
+    fetchData(page, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
@@ -175,28 +243,48 @@ export default function IncidentesPage() {
     setCreateOpen(true);
   }, []);
 
-  const openEdit = useCallback((item: Incidente) => {
+  const openEdit = useCallback((item: IncidenteDTO) => {
     setSelectedItem(item);
     setForm({
       titulo: item.titulo,
       descripcion: item.descripcion,
-      prioridad: item.prioridad,
-      estado: item.estado,
-      obra: item.obra,
+      prioridad: prioridadToValue(item.prioridad),
+      estado: estadoToValue(item.estado),
+      obraId: item.obraId,
       maquinaId: item.maquinaId || '',
       fecha: item.fecha,
     });
     setEditOpen(true);
   }, []);
 
-  const openDelete = useCallback((item: Incidente) => {
+  const openDelete = useCallback((item: IncidenteDTO) => {
     setSelectedItem(item);
     setDeleteOpen(true);
   }, []);
 
+  // ── Helpers de conversión label ↔ valor ──
+  function prioridadToValue(label: IncidenteDTO['prioridad']): IncidenteCreateInput['prioridad'] {
+    const map: Record<IncidenteDTO['prioridad'], IncidenteCreateInput['prioridad']> = {
+      Crítica: 'CRITICA',
+      Alta: 'ALTA',
+      Media: 'MEDIA',
+      Baja: 'BAJA',
+    };
+    return map[label];
+  }
+
+  function estadoToValue(label: IncidenteDTO['estado']): IncidenteCreateInput['estado'] {
+    const map: Record<IncidenteDTO['estado'], IncidenteCreateInput['estado']> = {
+      Abierto: 'ABIERTO',
+      'En Revisión': 'EN_REVISION',
+      Resuelto: 'RESUELTO',
+    };
+    return map[label];
+  }
+
   // ── Validación ──
   const validateForm = useCallback(() => {
-    if (!form.titulo.trim() || !form.obra.trim() || !form.fecha) {
+    if (!form.titulo.trim() || !form.obraId || !form.fecha) {
       showToast('Título, obra y fecha son obligatorios.', 'error');
       return false;
     }
@@ -207,74 +295,89 @@ export default function IncidentesPage() {
     return true;
   }, [form, showToast]);
 
-  // ── CRUD local ──
-  const handleCreate = useCallback(() => {
+  // ── CRUD Handlers ──
+  const handleCreate = useCallback(async () => {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      const nuevo: Incidente = {
-        id: `IN${Date.now().toString().slice(-3)}`,
-        titulo: form.titulo.trim(),
-        descripcion: form.descripcion.trim(),
+      const res = await incidentesApi.crear({
+        titulo: form.titulo,
+        descripcion: form.descripcion,
         prioridad: form.prioridad,
         estado: form.estado,
-        obra: form.obra.trim(),
-        maquinaId: form.maquinaId.trim() || undefined,
         fecha: form.fecha,
-      };
-      setIncidentes((prev) => [nuevo, ...prev]);
-      showToast(`Incidente "${nuevo.titulo}" reportado exitosamente.`, 'success');
-      setCreateOpen(false);
-      setForm(emptyForm);
+        obraId: form.obraId,
+        maquinaId: form.maquinaId || undefined,
+      });
+      if (res.success) {
+        showToast(`Incidente "${form.titulo}" reportado exitosamente.`, 'success');
+        setCreateOpen(false);
+        setForm(emptyForm);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al reportar incidente.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al reportar incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [form, validateForm, showToast]);
+  }, [validateForm, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  const handleEdit = useCallback(() => {
+  const handleEdit = useCallback(async () => {
     if (!selectedItem || !validateForm()) return;
     setSubmitting(true);
     try {
-      setIncidentes((prev) =>
-        prev.map((inc) =>
-          inc.id === selectedItem.id
-            ? {
-                ...inc,
-                titulo: form.titulo.trim(),
-                descripcion: form.descripcion.trim(),
-                prioridad: form.prioridad,
-                estado: form.estado,
-                obra: form.obra.trim(),
-                maquinaId: form.maquinaId.trim() || undefined,
-                fecha: form.fecha,
-              }
-            : inc,
-        ),
-      );
-      showToast(`Incidente "${form.titulo.trim()}" actualizado exitosamente.`, 'success');
-      setEditOpen(false);
-      setSelectedItem(null);
-      setForm(emptyForm);
+      const res = await incidentesApi.actualizar(selectedItem.id, {
+        titulo: form.titulo,
+        descripcion: form.descripcion,
+        prioridad: form.prioridad,
+        estado: form.estado,
+        fecha: form.fecha,
+        obraId: form.obraId,
+        maquinaId: form.maquinaId || undefined,
+      });
+      if (res.success) {
+        showToast(`Incidente "${form.titulo}" actualizado exitosamente.`, 'success');
+        setEditOpen(false);
+        setSelectedItem(null);
+        setForm(emptyForm);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar incidente.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, form, validateForm, showToast]);
+  }, [selectedItem, validateForm, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      setIncidentes((prev) => prev.filter((inc) => inc.id !== selectedItem.id));
-      showToast('Incidente eliminado exitosamente.', 'success');
-      setDeleteOpen(false);
-      setSelectedItem(null);
+      const res = await incidentesApi.eliminar(selectedItem.id);
+      if (res.success) {
+        showToast('Incidente eliminado exitosamente.', 'success');
+        setDeleteOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar incidente.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al eliminar incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, showToast]);
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Columnas de DataTable ──
-  const columns: Column<Incidente>[] = [
+  const columns: Column<IncidenteDTO>[] = [
     {
       key: 'titulo',
       header: 'Incidente / Obra',
@@ -307,10 +410,10 @@ export default function IncidentesPage() {
       ),
     },
     {
-      key: 'maquinaId',
+      key: 'maquina',
       header: 'Máquina',
       render: (item) => (
-        <span className="font-semibold text-slate-600">{item.maquinaId || '—'}</span>
+        <span className="font-semibold text-slate-600">{item.maquina || '—'}</span>
       ),
     },
     {
@@ -358,7 +461,7 @@ export default function IncidentesPage() {
         }
       />
 
-      {hayCriticosAbiertos && (
+      {stats.criticos > 0 && (
         <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
@@ -483,20 +586,27 @@ export default function IncidentesPage() {
       )}
 
       <div className="space-y-3">
-        <DataTable
-          columns={columns}
-          data={paginated}
-          loading={false}
-          keyExtractor={(item) => item.id}
-          emptyText="No se encontraron incidentes que coincidan con la búsqueda."
-          maxBodyHeight="500px"
-        />
+        <div className="relative">
+          {refreshing && !initialLoading && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <DataTable
+            columns={columns}
+            data={registros}
+            loading={initialLoading}
+            keyExtractor={(item) => item.id}
+            emptyText="No se encontraron incidentes que coincidan con la búsqueda."
+            maxBodyHeight="500px"
+          />
+        </div>
         <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          totalRecords={incidentesFiltrados.length}
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
           pageSize={PAGE_SIZE}
-          onPageChange={setPage}
+          onPageChange={handlePageChange}
         />
       </div>
 
@@ -540,10 +650,10 @@ export default function IncidentesPage() {
             <select
               className={modalSelectClass}
               value={form.prioridad}
-              onChange={(e) => setForm({ ...form, prioridad: e.target.value as Incidente['prioridad'] })}
+              onChange={(e) => setForm({ ...form, prioridad: e.target.value as IncidenteCreateInput['prioridad'] })}
             >
               {PRIORIDADES.map((p) => (
-                <option key={p} value={p}>{p}</option>
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
           </ModalField>
@@ -552,32 +662,40 @@ export default function IncidentesPage() {
             <select
               className={modalSelectClass}
               value={form.estado}
-              onChange={(e) => setForm({ ...form, estado: e.target.value as Incidente['estado'] })}
+              onChange={(e) => setForm({ ...form, estado: e.target.value as IncidenteCreateInput['estado'] })}
             >
               {ESTADOS.map((e) => (
-                <option key={e} value={e}>{e}</option>
+                <option key={e.value} value={e.value}>{e.label}</option>
               ))}
             </select>
           </ModalField>
 
           <ModalField label="Obra" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Ej: Valle Sur"
-              value={form.obra}
-              onChange={(e) => setForm({ ...form, obra: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.obraId}
+              onChange={(e) => setForm({ ...form, obraId: e.target.value })}
+            >
+              <option value="">Seleccionar obra...</option>
+              {catalogos.obras.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nombre} {o.estado ? `(${o.estado.replace('_', ' ')})` : ''}
+                </option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Máquina (opcional)">
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Ej: M001"
+            <select
+              className={modalSelectClass}
               value={form.maquinaId}
               onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-            />
+            >
+              <option value="">Seleccionar máquina...</option>
+              {catalogos.maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Fecha" required>
@@ -625,10 +743,10 @@ export default function IncidentesPage() {
             <select
               className={modalSelectClass}
               value={form.prioridad}
-              onChange={(e) => setForm({ ...form, prioridad: e.target.value as Incidente['prioridad'] })}
+              onChange={(e) => setForm({ ...form, prioridad: e.target.value as IncidenteCreateInput['prioridad'] })}
             >
               {PRIORIDADES.map((p) => (
-                <option key={p} value={p}>{p}</option>
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
           </ModalField>
@@ -637,30 +755,40 @@ export default function IncidentesPage() {
             <select
               className={modalSelectClass}
               value={form.estado}
-              onChange={(e) => setForm({ ...form, estado: e.target.value as Incidente['estado'] })}
+              onChange={(e) => setForm({ ...form, estado: e.target.value as IncidenteCreateInput['estado'] })}
             >
               {ESTADOS.map((e) => (
-                <option key={e} value={e}>{e}</option>
+                <option key={e.value} value={e.value}>{e.label}</option>
               ))}
             </select>
           </ModalField>
 
           <ModalField label="Obra" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              value={form.obra}
-              onChange={(e) => setForm({ ...form, obra: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.obraId}
+              onChange={(e) => setForm({ ...form, obraId: e.target.value })}
+            >
+              <option value="">Seleccionar obra...</option>
+              {catalogos.obras.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nombre} {o.estado ? `(${o.estado.replace('_', ' ')})` : ''}
+                </option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Máquina (opcional)">
-            <input
-              type="text"
-              className={modalInputClass}
+            <select
+              className={modalSelectClass}
               value={form.maquinaId}
               onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-            />
+            >
+              <option value="">Seleccionar máquina...</option>
+              {catalogos.maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Fecha" required>

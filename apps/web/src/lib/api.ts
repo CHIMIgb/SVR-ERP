@@ -591,3 +591,87 @@ export const combustibleApi = {
   /** Estadísticas para las tarjetas */
   stats: () => apiClient.get<CombustibleStats>('/combustible/stats'),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Incidentes API
+// ────────────────────────────────────────────────────────────
+
+export interface IncidenteDTO {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  prioridad: 'Crítica' | 'Alta' | 'Media' | 'Baja';
+  estado: 'Abierto' | 'En Revisión' | 'Resuelto';
+  fecha: string;
+  maquinaId: string | null;
+  maquina: string | null;
+  obraId: string;
+  obra: string;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface IncidenteStats {
+  total: number;
+  abiertos: number;
+  criticos: number;
+}
+
+export interface IncidenteCatalogos {
+  maquinas: CatalogoItem[];
+  obras: CatalogoItem[];
+}
+
+export interface IncidenteCreateInput {
+  titulo: string;
+  descripcion: string;
+  prioridad: 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
+  estado: 'ABIERTO' | 'EN_REVISION' | 'RESUELTO';
+  fecha: string;
+  maquinaId?: string;
+  obraId: string;
+}
+
+export const incidentesApi = {
+  listar: (params?: {
+    search?: string;
+    prioridad?: 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
+    estado?: 'ABIERTO' | 'EN_REVISION' | 'RESUELTO';
+    maquinaId?: string;
+    obraId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.prioridad) searchParams.set('prioridad', params.prioridad);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.obraId) searchParams.set('obraId', params.obraId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<IncidenteDTO>>(
+      `/incidentes${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  obtener: (id: string) =>
+    apiClient.get<IncidenteDTO>(`/incidentes/${id}`),
+
+  crear: (data: IncidenteCreateInput) =>
+    apiClient.post<IncidenteDTO>('/incidentes', data),
+
+  actualizar: (id: string, data: Partial<IncidenteCreateInput>) =>
+    apiClient.patch<IncidenteDTO>(`/incidentes/${id}`, data),
+
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/incidentes/${id}`),
+
+  stats: () =>
+    apiClient.get<IncidenteStats>('/incidentes/stats'),
+
+  catalogos: () =>
+    apiClient.get<IncidenteCatalogos>('/incidentes/catalogos'),
+};
