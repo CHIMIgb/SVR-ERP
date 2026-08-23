@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
-import { 
-  Plus, Fuel, DollarSign, BarChart2, Search, Filter, 
-  AlertTriangle, ShieldAlert, ShieldCheck, TrendingUp,
-  Activity, ArrowUpRight, CheckCircle2, Droplets
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Plus, Fuel, DollarSign, Search,
+  AlertTriangle, ShieldAlert, ShieldCheck, Activity, Loader2,
 } from 'lucide-react';
-import { cargasCombustible as initialCargas, maquinaria, CargaCombustible } from '@/lib/data';
+import type { CargaCombustible, Maquina } from '@svr-erp/shared';
+import { apiClient } from '@/lib/api';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
@@ -16,84 +16,147 @@ export default function CombustiblePage() {
   const { addNotification } = useNotifications();
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
-  const [cargas, setCargas] = useState<CargaCombustible[]>(initialCargas);
+  const [cargas, setCargas] = useState<CargaCombustible[]>([]);
+  const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
   const [search, setSearch] = useState('');
   const [filterAlertsOnly, setFilterAlertsOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  
-  const [form, setForm] = useState({ 
-    maquinaId: maquinaria[0]?.id ?? '', 
-    litros: '120', 
-    costo: '2760', 
-    lugar: 'Autoconsumo en Obra', 
+
+  const [form, setForm] = useState({
+    maquinaId: '',
+    litros: '120',
+    costo: '2760',
+    lugar: 'Autoconsumo en Obra',
     operador: '',
     horasTrabajadas: '8.0'
   });
 
+  const cargarDatos = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    const [resCargas, resMaquinas] = await Promise.all([
+      apiClient.get<CargaCombustible[]>('/combustible'),
+      apiClient.get<Maquina[]>('/maquinas'),
+    ]);
+
+    if (!resCargas.success || !resMaquinas.success) {
+      setErrorCarga(
+        (!resCargas.success && resCargas.error.message) ||
+        (!resMaquinas.success && resMaquinas.error.message) ||
+        'No se pudo cargar la información de combustible.'
+      );
+      setCargando(false);
+      return;
+    }
+
+    setCargas(resCargas.data);
+    setMaquinaria(resMaquinas.data);
+    setCargando(false);
+  }, []);
+
+  useEffect(() => {
+    cargarDatos();
+  }, [cargarDatos]);
+
+  useEffect(() => {
+    if (maquinaria.length > 0 && !form.maquinaId) {
+      setForm((f) => ({ ...f, maquinaId: maquinaria[0].id }));
+    }
+  }, [maquinaria, form.maquinaId]);
+
   const totalLitros = cargas.reduce((acc, curr) => acc + curr.litros, 0);
   const totalCosto = cargas.reduce((acc, curr) => acc + curr.costo, 0);
   const totalAlertasOrdena = cargas.filter(c => c.alertaOrdena).length;
+  const rendimientoPromedio = cargas.length > 0
+    ? cargas.reduce((acc, c) => acc + c.rendimientoLtsHora, 0) / cargas.length
+    : 0;
 
   const filtered = cargas.filter((c) => {
     const maq = maquinaria.find(m => m.id === c.maquinaId);
-    const matchSearch = 
+    const matchSearch =
       c.maquinaId.toLowerCase().includes(search.toLowerCase()) ||
       c.operador.toLowerCase().includes(search.toLowerCase()) ||
-      maq?.nombre.toLowerCase().includes(search.toLowerCase());
+      (maq?.nombre.toLowerCase().includes(search.toLowerCase()) ?? false);
 
     if (!matchSearch) return false;
     if (filterAlertsOnly && !c.alertaOrdena) return false;
     return true;
   });
 
-  const handleSubmit = () => {
+  // Previsualización en cliente — únicamente para orientar al usuario mientras
+  // llena el formulario. El servidor recalcula todo (rendimiento, desviación,
+  // alerta de ordeña) y es la única fuente de verdad de lo que se guarda.
+  const maquinaSeleccionada = maquinaria.find(m => m.id === form.maquinaId);
+  const esperadoPreview = maquinaSeleccionada?.consumoEsperadoLtsHora ?? 14.0;
+  const rendimientoPreview = (parseFloat(form.horasTrabajadas) || 0) > 0
+    ? (parseFloat(form.litros) || 0) / (parseFloat(form.horasTrabajadas) || 1)
+    : esperadoPreview;
+
+  const handleSubmit = async () => {
     if (!form.maquinaId || !form.litros) {
       showToast('Máquina y litros son obligatorios.', 'error');
       return;
     }
 
-    const maq = maquinaria.find(m => m.id === form.maquinaId);
-    const lts = parseFloat(form.litros) || 0;
-    const hrs = parseFloat(form.horasTrabajadas) || 8.0;
-    const esperado = maq?.consumoEsperadoLtsHora ?? 14.0;
-    const rendimientoCalculado = hrs > 0 ? lts / hrs : esperado;
-    const desviacion = ((rendimientoCalculado - esperado) / esperado) * 100;
-    const esAlerta = desviacion > 35; // Más del 35% de sobreconsumo
-
-    const nueva: CargaCombustible = {
-      id: `F${Date.now()}`,
+    setGuardando(true);
+    const res = await apiClient.post<CargaCombustible>('/combustible', {
       maquinaId: form.maquinaId,
-      fecha: new Date().toISOString().split('T')[0],
-      litros: lts,
-      costo: parseFloat(form.costo) || lts * 23,
-      operador: form.operador || maq?.operador || 'Sin registrar',
+      litros: parseFloat(form.litros) || 0,
+      costo: form.costo ? parseFloat(form.costo) : undefined,
       lugar: form.lugar || 'Autoconsumo Obra',
-      horometroActual: (maq?.horometro ?? 1000) + hrs,
-      horasTrabajadasPeriodo: hrs,
-      consumoEsperadoLtsHora: esperado,
-      rendimientoLtsHora: parseFloat(rendimientoCalculado.toFixed(2)),
-      alertaOrdena: esAlerta,
-      desviacionPorcentaje: parseFloat(desviacion.toFixed(1))
-    };
+      operador: form.operador || undefined,
+      horasTrabajadasPeriodo: parseFloat(form.horasTrabajadas) || 0,
+    });
+    setGuardando(false);
 
+    if (!res.success) {
+      showToast(`Error: ${res.error.message}`, 'error');
+      return;
+    }
+
+    const nueva = res.data;
     setCargas((prev) => [nueva, ...prev]);
     setModalOpen(false);
 
-    if (esAlerta) {
-      showToast(`🚨 ALERTA: Rendimiento anormal de ${rendimientoCalculado.toFixed(1)} L/hr (+${desviacion.toFixed(0)}%) en ${maq?.nombre}.`, 'error');
+    if (nueva.alertaOrdena) {
+      showToast(`🚨 ALERTA: Rendimiento anormal de ${nueva.rendimientoLtsHora} L/hr (+${nueva.desviacionPorcentaje}%) en ${nueva.maquinaId}.`, 'error');
       addNotification({
-        titulo: `🚨 Alerta de Ordeña/Sobreconsumo: ${maq?.nombre}`,
-        mensaje: `Registró ${rendimientoCalculado.toFixed(1)} L/hr (+${desviacion.toFixed(0)}% vs esperado de ${esperado} L/hr). Operador: ${nueva.operador}.`,
+        titulo: `🚨 Alerta de Ordeña/Sobreconsumo: ${nueva.maquinaId}`,
+        mensaje: `Registró ${nueva.rendimientoLtsHora} L/hr (+${nueva.desviacionPorcentaje}% vs esperado de ${nueva.consumoEsperadoLtsHora} L/hr). Operador: ${nueva.operador}.`,
         tipo: 'alerta'
       });
     } else {
-      showToast(`✅ Carga de ${nueva.litros}L registrada. Rendimiento óptimo (${rendimientoCalculado.toFixed(1)} L/hr).`, 'success');
+      showToast(`✅ Carga de ${nueva.litros}L registrada. Rendimiento óptimo (${nueva.rendimientoLtsHora} L/hr).`, 'success');
     }
   };
 
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
+        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
+        <p className="text-sm font-bold text-red-700">{errorCarga}</p>
+        <button onClick={cargarDatos} className="btn-primary text-xs">
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -117,7 +180,7 @@ export default function CombustiblePage() {
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
+
         <div className="card flex items-center gap-4 py-5">
           <div className="w-12 h-12 bg-orange-50 text-primary rounded-2xl flex items-center justify-center border border-orange-200/60">
             <Fuel className="w-6 h-6" />
@@ -144,15 +207,15 @@ export default function CombustiblePage() {
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rendimiento Promedio</p>
-            <h4 className="text-xl font-black text-slate-900">14.2 L/hr</h4>
+            <h4 className="text-xl font-black text-slate-900">{rendimientoPromedio.toFixed(1)} L/hr</h4>
           </div>
         </div>
 
-        <div 
+        <div
           onClick={() => setFilterAlertsOnly(!filterAlertsOnly)}
           className={`card flex items-center gap-4 py-5 cursor-pointer transition-all border ${
-            totalAlertasOrdena > 0 
-              ? filterAlertsOnly ? 'border-red-500 bg-red-50 shadow-md' : 'border-red-200 bg-red-50/40 hover:border-red-300' 
+            totalAlertasOrdena > 0
+              ? filterAlertsOnly ? 'border-red-500 bg-red-50 shadow-md' : 'border-red-200 bg-red-50/40 hover:border-red-300'
               : 'border-slate-200'
           }`}
         >
@@ -220,7 +283,7 @@ export default function CombustiblePage() {
                 const maquina = maquinaria.find(m => m.id === carga.maquinaId);
                 return (
                   <tr key={carga.id} className={`hover:bg-slate-50/50 transition-colors ${carga.alertaOrdena ? 'bg-red-50/30' : ''}`}>
-                    
+
                     {/* Machine */}
                     <td className="px-6 py-4">
                       <div className="font-black text-slate-900 text-sm">{carga.maquinaId} — {maquina?.nombre}</div>
@@ -242,7 +305,7 @@ export default function CombustiblePage() {
                     {/* Hours worked */}
                     <td className="px-6 py-4 text-center">
                       <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        {carga.horasTrabajadasPeriodo ?? 8.0} hrs
+                        {carga.horasTrabajadasPeriodo} hrs
                       </span>
                     </td>
 
@@ -250,10 +313,10 @@ export default function CombustiblePage() {
                     <td className="px-6 py-4">
                       <div>
                         <span className={`text-sm font-black ${carga.alertaOrdena ? 'text-red-600' : 'text-slate-900'}`}>
-                          {carga.rendimientoLtsHora ?? 14.0} L/hr
+                          {carga.rendimientoLtsHora} L/hr
                         </span>
                         <div className="text-[10px] text-slate-400 font-medium">
-                          Esperado: {carga.consumoEsperadoLtsHora ?? 14.0} L/hr
+                          Esperado: {carga.consumoEsperadoLtsHora} L/hr
                         </div>
                       </div>
                     </td>
@@ -291,12 +354,12 @@ export default function CombustiblePage() {
         onClose={() => setModalOpen(false)}
         onConfirm={handleSubmit}
         title="Registrar Carga de Diésel con Telemetría"
-        confirmLabel="Validar y Guardar Carga"
+        confirmLabel={guardando ? 'Guardando…' : 'Validar y Guardar Carga'}
       >
         <ModalField label="Máquina Asignada *">
-          <select 
-            className={selectClass} 
-            value={form.maquinaId} 
+          <select
+            className={selectClass}
+            value={form.maquinaId}
             onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
           >
             {maquinaria.map(m => (
@@ -309,23 +372,23 @@ export default function CombustiblePage() {
 
         <div className="grid grid-cols-2 gap-3">
           <ModalField label="Litros Cargados *">
-            <input 
-              type="number" 
-              className={inputClass} 
-              placeholder="120" 
-              value={form.litros} 
-              onChange={(e) => setForm({ ...form, litros: e.target.value, costo: String((parseFloat(e.target.value) || 0) * 23) })} 
+            <input
+              type="number"
+              className={inputClass}
+              placeholder="120"
+              value={form.litros}
+              onChange={(e) => setForm({ ...form, litros: e.target.value, costo: String((parseFloat(e.target.value) || 0) * 23) })}
             />
           </ModalField>
 
           <ModalField label="Horas Operadas en Periodo">
-            <input 
-              type="number" 
+            <input
+              type="number"
               step="0.5"
-              className={inputClass} 
-              placeholder="8.0" 
-              value={form.horasTrabajadas} 
-              onChange={(e) => setForm({ ...form, horasTrabajadas: e.target.value })} 
+              className={inputClass}
+              placeholder="8.0"
+              value={form.horasTrabajadas}
+              onChange={(e) => setForm({ ...form, horasTrabajadas: e.target.value })}
             />
           </ModalField>
         </div>
@@ -333,35 +396,35 @@ export default function CombustiblePage() {
         <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs">
           <span className="font-bold text-slate-500">Rendimiento Estimado:</span>
           <span className="font-black text-slate-900 text-sm">
-            {((parseFloat(form.litros) || 0) / (parseFloat(form.horasTrabajadas) || 1)).toFixed(2)} L/hr
+            {rendimientoPreview.toFixed(2)} L/hr
           </span>
         </div>
 
         <ModalField label="Costo Total Diésel (MXN)">
-          <input 
-            type="number" 
-            className={inputClass} 
-            placeholder="2760" 
-            value={form.costo} 
-            onChange={(e) => setForm({ ...form, costo: e.target.value })} 
+          <input
+            type="number"
+            className={inputClass}
+            placeholder="2760"
+            value={form.costo}
+            onChange={(e) => setForm({ ...form, costo: e.target.value })}
           />
         </ModalField>
 
         <ModalField label="Punto de Carga / Gasolinera">
-          <input 
-            className={inputClass} 
-            placeholder="Autoconsumo en Obra Valle Sur" 
-            value={form.lugar} 
-            onChange={(e) => setForm({ ...form, lugar: e.target.value })} 
+          <input
+            className={inputClass}
+            placeholder="Autoconsumo en Obra Valle Sur"
+            value={form.lugar}
+            onChange={(e) => setForm({ ...form, lugar: e.target.value })}
           />
         </ModalField>
 
         <ModalField label="Operador que Recibió">
-          <input 
-            className={inputClass} 
-            placeholder="Juan Pérez" 
-            value={form.operador} 
-            onChange={(e) => setForm({ ...form, operador: e.target.value })} 
+          <input
+            className={inputClass}
+            placeholder="Juan Pérez"
+            value={form.operador}
+            onChange={(e) => setForm({ ...form, operador: e.target.value })}
           />
         </ModalField>
       </Modal>

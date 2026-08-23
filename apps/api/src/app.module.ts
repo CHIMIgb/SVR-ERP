@@ -8,6 +8,8 @@ import { HorometroModule } from './modules/horometro/horometro.module';
 import { DespachosModule } from './modules/despachos/despachos.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { CatalogosModule } from './modules/catalogos/catalogos.module';
+import { MantenimientoModule } from './modules/mantenimiento/mantenimiento.module';
+import { CombustibleModule } from './modules/combustible/combustible.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -42,6 +44,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     DespachosModule,
     ChecklistsModule,
     CatalogosModule,
+    MantenimientoModule,
+    CombustibleModule,
     InventarioModule,
     BitacoraModule,
   ],
