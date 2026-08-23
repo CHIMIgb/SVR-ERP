@@ -58,6 +58,32 @@ cd apps/web
 npm run dev              # http://localhost:3000
 ```
 
+### Desarrollo desde la IP de tu laptop (red local)
+
+Para acceder al frontend desde otros dispositivos de tu red (móvil, tablet, otra laptop) usando la IP local en lugar de `localhost`:
+
+1. Configura `apps/web/.env` con tu IP y los orígenes permitidos:
+
+```env
+NEXT_PUBLIC_API_URL=http://192.168.0.105:3001/api
+ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
+```
+
+2. Inicia el frontend atado a la IP:
+
+```bash
+cd apps/web
+npx next dev --turbopack --hostname 192.168.0.105
+```
+
+3. Accede desde cualquier dispositivo de la red:
+
+```text
+http://192.168.0.105:3000
+```
+
+> **Nota:** `ALLOWED_DEV_ORIGINS` se lee en `next.config.ts` y evita el error de Cross-Origin de Next.js HMR cuando accedes por IP. Los valores se separan por comas. Incluye siempre `localhost` para seguir usandolo localmente.
+
 Si el puerto `3000` está ocupado y Next.js salta al `3001`, mueve el frontend a otro puerto:
 
 ```bash
@@ -101,6 +127,7 @@ BLOQUEO_IP_MINUTOS=60
 ```env
 PORT=3000
 NEXT_PUBLIC_API_URL=http://localhost:3001/api
+ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 ```
 
 ### Credenciales de Acceso (API)
