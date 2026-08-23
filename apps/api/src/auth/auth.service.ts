@@ -16,9 +16,15 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponse, JwtPayload } from './types/auth.types';
 
-const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY = '7d';
-const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+const ACCESS_TOKEN_EXPIRY_SECONDS = parseInt(
+  process.env.ACCESS_TOKEN_EXPIRY_SECONDS || '900',
+  10,
+); // 900s = 15min
+const REFRESH_TOKEN_EXPIRY_SECONDS = parseInt(
+  process.env.REFRESH_TOKEN_EXPIRY_SECONDS || '604800',
+  10,
+); // 604800s = 7d
+const REFRESH_TOKEN_EXPIRY_DAYS = REFRESH_TOKEN_EXPIRY_SECONDS / 86400;
 const SALT_ROUNDS = 12;
 
 const USER_INCLUDE = {
@@ -278,12 +284,12 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(accessPayload, {
-      expiresIn: ACCESS_TOKEN_EXPIRY,
+      expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
       secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
     });
 
     const refreshToken = this.jwtService.sign(refreshPayload, {
-      expiresIn: REFRESH_TOKEN_EXPIRY,
+      expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
       secret: process.env.JWT_REFRESH_SECRET || 'svr-erp-refresh-secret-dev',
     });
 
@@ -444,6 +450,19 @@ export class AuthService {
         },
       });
 
+      // Blacklistear el refresh token viejo (rotado = ya no válido)
+      await tx.token_blacklist.create({
+        data: {
+          id: randomUUID(),
+          jti: oldRefreshJti,
+          token_hash: oldRefreshToken.token_hash,
+          tipo: 'refresh',
+          user_id: userId,
+          razon: 'Rotación de token',
+          expira_en: oldRefreshToken.expira_en,
+        },
+      });
+
       // Crear nuevo refresh token
       await tx.refresh_tokens.create({
         data: {
@@ -474,12 +493,16 @@ export class AuthService {
       select: { email: true },
     });
 
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
     const accessJti = randomUUID();
 
     const accessToken = this.jwtService.sign(
-      { sub: userId, email: user!.email, jti: accessJti, tipo: 'access' },
+      { sub: userId, email: user.email, jti: accessJti, tipo: 'access' },
       {
-        expiresIn: ACCESS_TOKEN_EXPIRY,
+        expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
         secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
       },
     );
@@ -487,12 +510,12 @@ export class AuthService {
     const refreshToken = this.jwtService.sign(
       {
         sub: userId,
-        email: user!.email,
+        email: user.email,
         jti: newRefreshJti,
         tipo: 'refresh',
       },
       {
-        expiresIn: REFRESH_TOKEN_EXPIRY,
+        expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
         secret: process.env.JWT_REFRESH_SECRET || 'svr-erp-refresh-secret-dev',
       },
     );
@@ -503,43 +526,64 @@ export class AuthService {
   }
 
   /**
-   * Logout: cierra sesión y revoca tokens.
+   * Logout: cierra SOLO la sesión actual del usuario (identificada por el JTI del access token)
+   * y escribe el access token a la blacklist para invalidarlo inmediatamente.
    */
-  async logout(userId: string, refreshJti?: string): Promise<void> {
-    // Cerrar todas las sesiones activas del usuario (o una específica)
-    const whereClause: Record<string, unknown> = {
-      user_id: userId,
-      activa: true,
-    };
+  async logout(
+    userId: string,
+    accessJti: string,
+    accessTokenHash: string,
+  ): Promise<void> {
+    // 1. Encontrar la sesión activa más reciente del usuario
+    //    (el access token actual pertenece a alguna sesión activa)
+    const session = await this.prisma.sessions.findFirst({
+      where: { user_id: userId, activa: true },
+      orderBy: { iniciada_en: 'desc' },
+    });
 
-    if (refreshJti) {
-      whereClause.refresh_token_jti = refreshJti;
+    if (session) {
+      // 2. Cerrar solo ESA sesión
+      await this.prisma.sessions.update({
+        where: { id: session.id },
+        data: {
+          activa: false,
+          cerrada_en: new Date(),
+          motivo_cierre: 'Logout manual',
+          actualizado_en: new Date(),
+        },
+      });
+
+      // 3. Revocar los refresh tokens de ESA sesión
+      await this.prisma.refresh_tokens.updateMany({
+        where: { session_id: session.id, activo: true },
+        data: {
+          revocado_en: new Date(),
+          motivo_revocado: 'Logout',
+          activo: false,
+        },
+      });
     }
 
-    await this.prisma.sessions.updateMany({
-      where: whereClause,
-      data: {
-        activa: false,
-        cerrada_en: new Date(),
-        motivo_cierre: 'Logout manual',
-        actualizado_en: new Date(),
-      },
-    });
+    // 4. Blacklistear el access token actual (invalidación inmediata)
+    if (accessJti && accessTokenHash) {
+      await this.prisma.token_blacklist.create({
+        data: {
+          id: randomUUID(),
+          jti: accessJti,
+          token_hash: accessTokenHash,
+          tipo: 'access',
+          user_id: userId,
+          razon: 'Logout manual',
+          expira_en: new Date(
+            Date.now() + ACCESS_TOKEN_EXPIRY_SECONDS * 1000,
+          ),
+        },
+      });
+    }
 
-    // Revocar refresh tokens activos de esas sesiones
-    await this.prisma.refresh_tokens.updateMany({
-      where: {
-        sessions: { user_id: userId },
-        activo: true,
-      },
-      data: {
-        revocado_en: new Date(),
-        motivo_revocado: 'Logout',
-        activo: false,
-      },
-    });
-
-    this.logger.log(`Logout exitoso: usuario ${userId}`);
+    this.logger.log(
+      `Logout exitoso: usuario ${userId}, sesión ${session?.id ?? 'desconocida'}`,
+    );
 
     await this.auditService.log({
       action: AuditAction.LOGOUT,
@@ -548,7 +592,7 @@ export class AuthService {
       result: AuditResult.SUCCESS,
       actorUserId: userId,
       actorRole: 'autenticado',
-      metadata: { motivo: 'Logout manual' },
+      metadata: { motivo: 'Logout manual', sessionId: session?.id },
     });
   }
 

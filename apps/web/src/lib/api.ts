@@ -15,30 +15,45 @@ interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
+// ── Access token: almacenado EN MEMORIA (no localStorage) para mitigar XSS ──
+// Solo el refresh token persiste en localStorage (necesario para Capacitor/offline)
+let inMemoryAccessToken: string | null = null;
 let isRefreshing = false;
 let refreshSubscribers: Array<(token: string) => void> = [];
 
-function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+export function getAccessToken(): string | null {
+  return inMemoryAccessToken;
 }
 
-function getRefreshToken(): string | null {
+// Exponer setter para AuthProvider después de login/refresh
+export function setAccessToken(token: string | null): void {
+  inMemoryAccessToken = token;
+}
+
+export function getRefreshToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 }
 
-function setTokens(accessToken: string, refreshToken: string): void {
+function setRefreshToken(refreshToken: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
   localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
 }
 
-function clearTokens(): void {
+export function clearTokens(): void {
+  inMemoryAccessToken = null;
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.USER);
+}
+
+/**
+ * Persiste ambos tokens después de login/refresh.
+ * El access token va a memoria; el refresh a localStorage.
+ */
+export function setTokens(accessToken: string, refreshToken: string): void {
+  inMemoryAccessToken = accessToken;
+  setRefreshToken(refreshToken);
 }
 
 function notifySubscribers(token: string): void {
@@ -76,6 +91,24 @@ async function refreshAccessToken(): Promise<string | null> {
     clearTokens();
     return null;
   }
+}
+
+/**
+ * Intenta obtener un access token válido al cargar la app.
+ * Si el refresh token existe en localStorage, rota para obtener un access token fresco.
+ * Retorna true si se obtuvo un token válido, false si no (sesión expirada).
+ */
+export async function initializeAuth(): Promise<boolean> {
+  // Si ya tenemos un access token en memoria, la sesión está activa
+  if (inMemoryAccessToken) return true;
+
+  // Si no hay refresh token, no hay sesión que restaurar
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  // Intentar rotar el refresh token para obtener un access token nuevo
+  const newToken = await refreshAccessToken();
+  return newToken !== null;
 }
 
 async function request<T>(
@@ -211,7 +244,8 @@ export const authApi = {
   profile: () => apiClient.get<UserAuth>('/auth/profile'),
 };
 
-export { setTokens, clearTokens, getAccessToken, getRefreshToken };
+// setTokens, clearTokens, getAccessToken, getRefreshToken, initializeAuth
+// ya están exportados inline con `export function` arriba.
 
 // ────────────────────────────────────────────────────────────
 //  Inventario API
