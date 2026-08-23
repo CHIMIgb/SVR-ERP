@@ -16,10 +16,11 @@ import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { InventarioService } from './inventario.service';
+import { InventarioService, AuditContext } from './inventario.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
+const CTX: AuditContext = { userId: ACTOR_USER_ID, ipAddress: '127.0.0.1', userAgent: 'IntegrationTest/1.0' };
 
 describe('Inventario Audit (Real DB)', () => {
   let app: INestApplication;
@@ -135,7 +136,7 @@ describe('Inventario Audit (Real DB)', () => {
   describe('ARTICULO_CREADO', () => {
     it('debe crear artículo y registrar ARTICULO_CREADO en registro_auditoria', async () => {
       const dto = createDto({ stock: 20, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       const audits = await findAudits('ARTICULO_CREADO', articulo.id);
@@ -155,7 +156,7 @@ describe('Inventario Audit (Real DB)', () => {
   describe('STOCK_BAJO_DETECTADO al crear', () => {
     it('debe registrar STOCK_BAJO_DETECTADO cuando se crea con stock <= stock_minimo', async () => {
       const dto = createDto({ stock: 2, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       const audits = await findAudits('STOCK_BAJO_DETECTADO', articulo.id);
@@ -169,7 +170,7 @@ describe('Inventario Audit (Real DB)', () => {
     it('debe registrar ARTICULO_CREADO FAIL con CATEGORY_NOT_FOUND', async () => {
       const dto = createDto({ categoriaId: randomUUID() });
 
-      await expect(service.create(dto, ACTOR_USER_ID)).rejects.toThrow();
+      await expect(service.create(dto, CTX)).rejects.toThrow();
 
       const audits = await findAudits('ARTICULO_CREADO');
       const failed = audits.find(
@@ -183,10 +184,10 @@ describe('Inventario Audit (Real DB)', () => {
   describe('ARTICULO_ACTUALIZADO', () => {
     it('debe actualizar y registrar ARTICULO_ACTUALIZADO', async () => {
       const dto = createDto();
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
-      await service.update(articulo.id, { nombre: 'Nombre Actualizado' }, ACTOR_USER_ID);
+      await service.update(articulo.id, { nombre: 'Nombre Actualizado' }, CTX);
 
       const audits = await findAudits('ARTICULO_ACTUALIZADO', articulo.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
@@ -200,11 +201,11 @@ describe('Inventario Audit (Real DB)', () => {
   describe('STOCK_BAJO_DETECTADO al actualizar', () => {
     it('debe detectar cruce de umbral hacia abajo al reducir stock', async () => {
       const dto = createDto({ stock: 20, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       // stock=20 → stock=2, que es <= stockMinimo=5
-      await service.update(articulo.id, { stock: 2 }, ACTOR_USER_ID);
+      await service.update(articulo.id, { stock: 2 }, CTX);
 
       const audits = await findAudits('STOCK_BAJO_DETECTADO', articulo.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
@@ -214,11 +215,11 @@ describe('Inventario Audit (Real DB)', () => {
   describe('STOCK_BAJO_RESUELTO al actualizar', () => {
     it('debe resolver stock bajo al aumentar stock por encima del mínimo', async () => {
       const dto = createDto({ stock: 2, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       // stock=2 (bajo) → stock=10 (>5), resuelve alerta
-      await service.update(articulo.id, { stock: 10 }, ACTOR_USER_ID);
+      await service.update(articulo.id, { stock: 10 }, CTX);
 
       const audits = await findAudits('STOCK_BAJO_RESUELTO', articulo.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
@@ -228,10 +229,10 @@ describe('Inventario Audit (Real DB)', () => {
   describe('ARTICULO_ELIMINADO', () => {
     it('debe soft-delete y registrar ARTICULO_ELIMINADO', async () => {
       const dto = createDto();
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       // No push to createdArticuloIds — it's been soft-deleted
 
-      await service.remove(articulo.id, ACTOR_USER_ID);
+      await service.remove(articulo.id, CTX);
 
       const audits = await findAudits('ARTICULO_ELIMINADO', articulo.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
@@ -243,12 +244,12 @@ describe('Inventario Audit (Real DB)', () => {
   describe('MOVIMIENTO_REGISTRADO — ENTRADA', () => {
     it('debe registrar movimiento ENTRADA y guardar auditoría', async () => {
       const dto = createDto({ stock: 10 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       await service.crearMovimiento(
         { articuloId: articulo.id, tipo: 'ENTRADA', cantidad: 5 },
-        ACTOR_USER_ID,
+        CTX,
       );
 
       const audits = await findAudits('MOVIMIENTO_REGISTRADO', articulo.id);
@@ -269,12 +270,12 @@ describe('Inventario Audit (Real DB)', () => {
   describe('MOVIMIENTO_REGISTRADO — SALIDA', () => {
     it('debe registrar movimiento SALIDA y guardar auditoría', async () => {
       const dto = createDto({ stock: 20 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       await service.crearMovimiento(
         { articuloId: articulo.id, tipo: 'SALIDA', cantidad: 3 },
-        ACTOR_USER_ID,
+        CTX,
       );
 
       const audits = await findAudits('MOVIMIENTO_REGISTRADO', articulo.id);
@@ -293,13 +294,13 @@ describe('Inventario Audit (Real DB)', () => {
   describe('STOCK_BAJO_DETECTADO por SALIDA', () => {
     it('debe detectar stock bajo cuando una SALIDA cruza el umbral', async () => {
       const dto = createDto({ stock: 10, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       // stock=10 → SALIDA de 8 → stock=2 ≤ 5
       await service.crearMovimiento(
         { articuloId: articulo.id, tipo: 'SALIDA', cantidad: 8 },
-        ACTOR_USER_ID,
+        CTX,
       );
 
       const audits = await findAudits('STOCK_BAJO_DETECTADO', articulo.id);
@@ -310,13 +311,13 @@ describe('Inventario Audit (Real DB)', () => {
   describe('STOCK_BAJO_RESUELTO por ENTRADA', () => {
     it('debe resolver stock bajo cuando una ENTRADA supera el umbral', async () => {
       const dto = createDto({ stock: 2, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       // stock=2 (bajo) → ENTRADA de 5 → stock=7 > 5
       await service.crearMovimiento(
         { articuloId: articulo.id, tipo: 'ENTRADA', cantidad: 5 },
-        ACTOR_USER_ID,
+        CTX,
       );
 
       const audits = await findAudits('STOCK_BAJO_RESUELTO', articulo.id);
@@ -327,13 +328,13 @@ describe('Inventario Audit (Real DB)', () => {
   describe('STOCK_INSUFICIENTE', () => {
     it('debe registrar STOCK_INSUFICIENTE cuando SALIDA excede stock', async () => {
       const dto = createDto({ stock: 3 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
+      const articulo = await service.create(dto, CTX);
       createdArticuloIds.push(articulo.id);
 
       await expect(
         service.crearMovimiento(
           { articuloId: articulo.id, tipo: 'SALIDA', cantidad: 50 },
-          ACTOR_USER_ID,
+          CTX,
         ),
       ).rejects.toThrow();
 

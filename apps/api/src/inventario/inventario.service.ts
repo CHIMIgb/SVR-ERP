@@ -13,6 +13,13 @@ import { QueryArticulosDto } from './dto/query-articulos.dto';
 import { CreateMovimientoDto } from './dto/create-movimiento.dto';
 import { Prisma } from '@prisma/client';
 
+/** Contexto HTTP que el controller extrae de la request y pasa al service. */
+export interface AuditContext {
+  userId: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
 /** Incluye relacion para el SELECT del front */
 const ARTICULO_INCLUDE = {
   categorias_inventario: { select: { id: true, nombre: true } },
@@ -26,6 +33,14 @@ export class InventarioService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
+
+  /** Extrae campos HTTP del contexto para pasarlos al AuditService. */
+  private auditHttp(ctx?: AuditContext) {
+    return {
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+    };
+  }
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
@@ -144,7 +159,9 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  CREAR
   // ────────────────────────────────────────────
-  async create(dto: CreateArticuloDto, userId: string) {
+  async create(dto: CreateArticuloDto, ctx: AuditContext) {
+    const { userId } = ctx;
+    const http = this.auditHttp(ctx);
     // Verificar que la categoría exista
     const categoria = await this.prisma.categorias_inventario.findUnique({
       where: { id: dto.categoriaId },
@@ -159,6 +176,7 @@ export class InventarioService {
         actorRole: 'autenticado',
         errorCode: 'CATEGORY_NOT_FOUND',
         metadata: { nombre: dto.nombre, categoriaId: dto.categoriaId },
+        ...http,
       });
       throw new BadRequestException(
         `Categoría con id "${dto.categoriaId}" no encontrada`,
@@ -179,6 +197,7 @@ export class InventarioService {
         actorRole: 'autenticado',
         errorCode: 'SUPPLIER_NOT_FOUND',
         metadata: { nombre: dto.nombre, proveedorId: dto.proveedorId },
+        ...http,
       });
       throw new BadRequestException(
         `Proveedor con id "${dto.proveedorId}" no encontrado`,
@@ -199,6 +218,7 @@ export class InventarioService {
         actorRole: 'autenticado',
         errorCode: 'UNIT_NOT_FOUND',
         metadata: { nombre: dto.nombre, unidadId: dto.unidadId },
+        ...http,
       });
       throw new BadRequestException(
         `Unidad de medida con id "${dto.unidadId}" no encontrada`,
@@ -235,6 +255,7 @@ export class InventarioService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serialized,
+      ...http,
     });
 
     // Alerta: si el stock ya es bajo al crear
@@ -253,6 +274,7 @@ export class InventarioService {
           stockMinimo: dto.stockMinimo,
           contexto: 'Creación con stock bajo',
         },
+        ...http,
       });
     }
 
@@ -262,7 +284,9 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  ACTUALIZAR
   // ────────────────────────────────────────────
-  async update(id: string, dto: UpdateArticuloDto, userId: string) {
+  async update(id: string, dto: UpdateArticuloDto, ctx: AuditContext) {
+    const { userId } = ctx;
+    const http = this.auditHttp(ctx);
     const existente = await this.prisma.articulos_inventario.findFirst({
       where: { id, eliminado_en: null },
     });
@@ -286,6 +310,7 @@ export class InventarioService {
           actorRole: 'autenticado',
           errorCode: 'CATEGORY_NOT_FOUND',
           metadata: { categoriaId: dto.categoriaId },
+          ...http,
         });
         throw new BadRequestException(
           `Categoría con id "${dto.categoriaId}" no encontrada`,
@@ -307,6 +332,7 @@ export class InventarioService {
           actorRole: 'autenticado',
           errorCode: 'SUPPLIER_NOT_FOUND',
           metadata: { proveedorId: dto.proveedorId },
+          ...http,
         });
         throw new BadRequestException(
           `Proveedor con id "${dto.proveedorId}" no encontrado`,
@@ -328,6 +354,7 @@ export class InventarioService {
           actorRole: 'autenticado',
           errorCode: 'UNIT_NOT_FOUND',
           metadata: { unidadId: dto.unidadId },
+          ...http,
         });
         throw new BadRequestException(
           `Unidad de medida con id "${dto.unidadId}" no encontrada`,
@@ -373,6 +400,7 @@ export class InventarioService {
         nombre: existente.nombre,
       },
       newValue: serialized,
+      ...http,
     });
 
     // Detectar cambios en el umbral de stock
@@ -397,6 +425,7 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: 'Actualización cruzó umbral hacia abajo',
         },
+        ...http,
       });
     }
 
@@ -416,6 +445,7 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: 'Actualización resolvió stock bajo',
         },
+        ...http,
       });
     }
 
@@ -425,7 +455,9 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  ELIMINAR (soft delete)
   // ────────────────────────────────────────────
-  async remove(id: string, userId?: string) {
+  async remove(id: string, ctx?: AuditContext) {
+    const { userId } = ctx ?? ({} as AuditContext);
+    const http = this.auditHttp(ctx);
     const existente = await this.prisma.articulos_inventario.findFirst({
       where: { id, eliminado_en: null },
     });
@@ -448,6 +480,7 @@ export class InventarioService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: this.serialize(existente),
+      ...http,
     });
 
     return { message: 'Artículo eliminado exitosamente' };
@@ -456,7 +489,9 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  MOVIMIENTO DE STOCK (entrada/salida)
   // ────────────────────────────────────────────
-  async crearMovimiento(dto: CreateMovimientoDto, userId: string) {
+  async crearMovimiento(dto: CreateMovimientoDto, ctx: AuditContext) {
+    const { userId } = ctx;
+    const http = this.auditHttp(ctx);
     const articulo = await this.prisma.articulos_inventario.findFirst({
       where: { id: dto.articuloId, eliminado_en: null },
     });
@@ -489,6 +524,7 @@ export class InventarioService {
             stockActual,
             solicitado: dto.cantidad,
           },
+          ...http,
         });
         throw new BadRequestException(
           `Stock insuficiente. Disponible: ${stockActual}, solicitado: ${dto.cantidad}`,
@@ -534,6 +570,7 @@ export class InventarioService {
         stockResultante: nuevoStock,
         motivo: dto.motivo,
       },
+      ...http,
     });
 
     // Detectar alertas de stock después del movimiento
@@ -557,6 +594,7 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: `Salida de ${dto.cantidad} unidades`,
         },
+        ...http,
       });
     }
 
@@ -580,6 +618,7 @@ export class InventarioService {
           stockMinimo: minimoActual,
           contexto: `Entrada de ${dto.cantidad} unidades`,
         },
+        ...http,
       });
     }
 

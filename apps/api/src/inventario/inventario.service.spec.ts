@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { InventarioService } from './inventario.service';
+import { InventarioService, AuditContext } from './inventario.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+const CTX: AuditContext = { userId: 'user-1', ipAddress: '127.0.0.1', userAgent: 'TestAgent' };
 
 describe('InventarioService', () => {
   let service: InventarioService;
@@ -161,7 +163,7 @@ describe('InventarioService', () => {
     };
 
     it('should create a new article and register audit', async () => {
-      const result = await service.create(createDto, 'user-1');
+      const result = await service.create(createDto, CTX);
       expect(result.nombre).toBe('Filtro de Aceite CAT');
       expect(prisma.articulos_inventario.create).toHaveBeenCalled();
       expect(auditService.log).toHaveBeenCalledWith(
@@ -169,13 +171,15 @@ describe('InventarioService', () => {
           action: 'ARTICULO_CREADO',
           result: 'SUCCESS',
           actorUserId: 'user-1',
+          ipAddress: '127.0.0.1',
+          userAgent: 'TestAgent',
         }),
       );
     });
 
     it('should log STOCK_BAJO_DETECTADO when created with low stock', async () => {
       const lowStockDto = { ...createDto, stock: 2, stockMinimo: 10 };
-      await service.create(lowStockDto, 'user-1');
+      await service.create(lowStockDto, CTX);
 
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -189,7 +193,7 @@ describe('InventarioService', () => {
       prisma.categorias_inventario.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.create({ ...createDto, categoriaId: 'bad' }, 'user-1'),
+        service.create({ ...createDto, categoriaId: 'bad' }, CTX),
       ).rejects.toThrow(BadRequestException);
       expect(auditService.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -203,7 +207,7 @@ describe('InventarioService', () => {
       prisma.proveedores.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.create({ ...createDto, proveedorId: 'bad' }, 'user-1'),
+        service.create({ ...createDto, proveedorId: 'bad' }, CTX),
       ).rejects.toThrow(BadRequestException);
       expect(auditService.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -217,7 +221,7 @@ describe('InventarioService', () => {
       prisma.unidades_medida.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.create({ ...createDto, unidadId: 'bad' }, 'user-1'),
+        service.create({ ...createDto, unidadId: 'bad' }, CTX),
       ).rejects.toThrow(BadRequestException);
       expect(auditService.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -231,7 +235,7 @@ describe('InventarioService', () => {
   // ── update ──
   describe('update', () => {
     it('should update an article and register audit', async () => {
-      const result = await service.update(mockArticulo.id, { nombre: 'Nuevo Nombre' }, 'user-1');
+      const result = await service.update(mockArticulo.id, { nombre: 'Nuevo Nombre' }, CTX);
       expect(prisma.articulos_inventario.update).toHaveBeenCalled();
       expect(result.nombre).toBe('Filtro de Aceite CAT');
       expect(auditService.log).toHaveBeenCalledWith(
@@ -244,7 +248,7 @@ describe('InventarioService', () => {
 
     it('should log STOCK_BAJO_DETECTADO when stock drops below threshold', async () => {
       // Current: stock=12, min=5. Update: stock=3 → 3<=5 but was >5
-      await service.update(mockArticulo.id, { stock: 3 }, 'user-1');
+      await service.update(mockArticulo.id, { stock: 3 }, CTX);
 
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -261,7 +265,7 @@ describe('InventarioService', () => {
         stock_minimo: 5,
       });
 
-      await service.update(mockArticulo.id, { stock: 10 }, 'user-1');
+      await service.update(mockArticulo.id, { stock: 10 }, CTX);
 
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -274,7 +278,7 @@ describe('InventarioService', () => {
       prisma.articulos_inventario.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.update('non-existent', { nombre: 'X' }, 'user-1'),
+        service.update('non-existent', { nombre: 'X' }, CTX),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -282,7 +286,7 @@ describe('InventarioService', () => {
       prisma.categorias_inventario.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.update(mockArticulo.id, { categoriaId: 'bad' }, 'user-1'),
+        service.update(mockArticulo.id, { categoriaId: 'bad' }, CTX),
       ).rejects.toThrow(BadRequestException);
       expect(auditService.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -296,7 +300,7 @@ describe('InventarioService', () => {
   // ── remove ──
   describe('remove', () => {
     it('should soft delete an article and register audit', async () => {
-      const result = await service.remove(mockArticulo.id, 'user-1');
+      const result = await service.remove(mockArticulo.id, CTX);
       expect(result.message).toContain('eliminado');
       expect(prisma.articulos_inventario.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -315,7 +319,7 @@ describe('InventarioService', () => {
     it('should throw NotFoundException if article not found', async () => {
       prisma.articulos_inventario.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('non-existent', 'user-1')).rejects.toThrow(
+      await expect(service.remove('non-existent', CTX)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -330,7 +334,7 @@ describe('InventarioService', () => {
           tipo: 'ENTRADA',
           cantidad: 10,
         },
-        'user-1',
+        CTX,
       );
 
       expect(result.tipo).toBe('ENTRADA');
@@ -353,7 +357,7 @@ describe('InventarioService', () => {
           tipo: 'SALIDA',
           cantidad: 5,
         },
-        'user-1',
+        CTX,
       );
 
       expect(result.tipo).toBe('SALIDA');
@@ -368,7 +372,7 @@ describe('InventarioService', () => {
           tipo: 'SALIDA',
           cantidad: 10,
         },
-        'user-1',
+        CTX,
       );
 
       expect(auditService.log).toHaveBeenCalledWith(
@@ -392,7 +396,7 @@ describe('InventarioService', () => {
           tipo: 'ENTRADA',
           cantidad: 5,
         },
-        'user-1',
+        CTX,
       );
 
       expect(auditService.log).toHaveBeenCalledWith(
@@ -410,7 +414,7 @@ describe('InventarioService', () => {
             tipo: 'SALIDA',
             cantidad: 100,
           },
-          'user-1',
+          CTX,
         ),
       ).rejects.toThrow(BadRequestException);
 
@@ -428,7 +432,7 @@ describe('InventarioService', () => {
       await expect(
         service.crearMovimiento(
           { articuloId: 'bad', tipo: 'ENTRADA', cantidad: 1 },
-          'user-1',
+          CTX,
         ),
       ).rejects.toThrow(NotFoundException);
     });
