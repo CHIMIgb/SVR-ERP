@@ -118,6 +118,12 @@ Hay un template en `apps/web/.env.local.example`.
 
 #### API (`apps/api/.env`)
 
+Copia el ejemplo y ajusta los valores reales:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+```
+
 ```env
 DATABASE_URL="postgresql://postgres:admin123@localhost:5432/svr_erp"
 JWT_ACCESS_SECRET="..."
@@ -134,9 +140,19 @@ CORS_ORIGINS=http://localhost:3000,http://192.168.0.105:3000
 BLOQUEO_IP_MAX_INTENTOS=10
 BLOQUEO_IP_VENTANA_MINUTOS=15
 BLOQUEO_IP_MINUTOS=60
+
+# Zona horaria
+TZ=America/Mexico_City
+TIMEZONE=America/Mexico_City
 ```
 
 #### Web (`apps/web/.env.local`)
+
+Copia el ejemplo y ajusta los valores reales:
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
 
 ```env
 PORT=3000
