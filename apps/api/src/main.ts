@@ -1,3 +1,5 @@
+import 'dotenv/config';
+process.env.TZ = process.env.TZ || process.env.TIMEZONE || 'America/Mexico_City';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
@@ -12,7 +14,7 @@ async function bootstrap() {
   // CORS — permitir frontend en desarrollo
   const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',')
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
     : frontendUrl
       ? [frontendUrl]
       : [
@@ -21,6 +23,8 @@ async function bootstrap() {
           'http://127.0.0.1:3000',
           'http://127.0.0.1:3001',
         ];
+
+  console.log(`CORS origenes permitidos: ${allowedOrigins.join(', ')}`);
 
   app.enableCors({
     origin: (
@@ -52,6 +56,9 @@ async function bootstrap() {
   );
 
   await app.listen(port, '0.0.0.0');
-  console.log(`API SVR-ERP corriendo en http://localhost:${port}/api`);
+  console.log(`Zona horaria configurada: ${process.env.TZ}`);
+  console.log(
+    `API SVR-ERP corriendo en http://localhost:${port}/api (y en todos las interfaces de red, ej. http://192.168.x.x:${port}/api)`,
+  );
 }
 bootstrap();

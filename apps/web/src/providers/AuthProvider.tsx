@@ -16,7 +16,7 @@ import {
   type ApiResponse,
   type AuthResponse,
 } from "@svr-erp/shared";
-import { authApi, clearTokens, setTokens } from "@/lib/api";
+import { authApi, clearTokens, setTokens, initializeAuth } from "@/lib/api";
 
 interface AuthState {
   user: UserAuth | null;
@@ -195,17 +195,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const clearError = useCallback(() => setError(null), []);
 
-  // Inicialización: recuperar usuario de localStorage y validar token
+  // Inicialización: recuperar usuario de localStorage y restaurar sesión desde refresh token
   useEffect(() => {
     const storedUser = getStoredUser();
     if (storedUser) {
       setUser(storedUser);
-      // Refrescar perfil en segundo plano para validar el token
-      refreshProfile().catch(() => {
-        // logout ya se llama dentro de refreshProfile en caso de error
-      });
     }
-    setIsInitialized(true);
+
+    // Intentar restaurar el access token desde el refresh token en localStorage
+    initializeAuth()
+      .then((hasToken) => {
+        if (hasToken && storedUser) {
+          // Token restaurado: refrescar perfil en segundo plano para validar
+          refreshProfile().catch(() => {});
+        } else if (!hasToken && storedUser) {
+          // Refresh token expirado o inválido: cerrar sesión
+          clearTokens();
+          setUser(null);
+        }
+      })
+      .catch(() => {
+        // Error de red: mantener usuario cacheado si existe
+      })
+      .finally(() => {
+        setIsInitialized(true);
+      });
   }, [refreshProfile]);
 
   const value: AuthContextValue = useMemo(

@@ -121,6 +121,7 @@ por sus componentes equivalentes. **Nunca re-implementar lo que ya existe.**
 | Search + filter manual | `<SearchBar>` + `<FilterPanel>` | `@/components/ui/SearchBar` |
 | Currency: `new Intl.NumberFormat(...)` | Formatear con utilidad compartida | Ver abajo |
 | Stat cards manuales con icono + valor | `<StatsCard />` | `@/components/ui/StatsCard` |
+| Timeline/bitácora manual con fecha sidebar | `<TimelineCard />` | `@/components/ui/TimelineCard` |
 
 ### Formateo de Moneda
 
@@ -282,6 +283,46 @@ describe('AuthService', () => {
 5. Tests must be isolated (no real DB dependency, no dependency on other tests)
 6. Use `describe()` to group by method, `it()` for each scenario
 7. AAA pattern: **Arrange** (setup), **Act** (execute), **Assert** (verify)
+
+### Integration Tests — Audit Logging
+
+**ANY TEST THAT VERIFIES AUDIT LOGS (`registro_auditoria`) MUST BE AN INTEGRATION TEST.**
+
+Audit records live in PostgreSQL and are immutable (DB trigger blocks DELETE/UPDATE). Unit tests with mocks cannot verify real persistence. Therefore:
+
+- **File**: `*.integration.spec.ts` alongside the source file
+- **Run**: `npm run test:integration` (NOT `npm run test`)
+- **Config**: `jest.integration.config.js` (separate Jest config with `dotenv/config` + `forceExit: true`)
+- **Pattern**: Use `PrismaService` directly (real DB), NO mocks for Prisma/Audit
+- **Cleanup**: Delete test data in FK-safe order. Leave `registro_auditoria` records (immutable).
+- **Isolation**: Each test uses unique UUIDs or prefixed data to avoid collisions
+
+```ts
+// inventario.integration.spec.ts
+describe('Inventario Audit (Real DB)', () => {
+  let prisma: PrismaService;
+  let service: InventarioService;
+
+  beforeAll(async () => {
+    // Boot real PrismaService + InventarioService + AuditService
+  });
+
+  afterAll(async () => {
+    // Cleanup: movimientos, artículos, categorías, proveedores, unidades
+    // registro_auditoria is IMMUTABLE — leave records
+    await prisma.$disconnect();
+  });
+
+  it('debe crear artículo y registrar ARTICULO_CREADO en registro_auditoria', async () => {
+    const articulo = await service.create(dto, userId);
+    const audit = await prisma.registro_auditoria.findFirst({
+      where: { action: 'ARTICULO_CREADO', entity_id: articulo.id },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.result).toBe('SUCCESS');
+  });
+});
+```
 
 ### Frontend (Jest + React Testing Library) — Coming Soon
 

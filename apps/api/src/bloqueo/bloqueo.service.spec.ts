@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BloqueoService } from './bloqueo.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('BloqueoService', () => {
   let service: BloqueoService;
   let prisma: Record<string, any>;
+  let auditService: { log: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -24,13 +26,17 @@ describe('BloqueoService', () => {
       },
       intentos_login: {
         count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
+
+    auditService = { log: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BloqueoService,
         { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: auditService },
       ],
     }).compile();
 
@@ -50,7 +56,7 @@ describe('BloqueoService', () => {
     });
 
     it('debe retornar bloqueado: true con minutos restantes si hay bloqueo activo', async () => {
-      const futuro = new Date(Date.now() + 30 * 60000); // 30 min en el futuro
+      const futuro = new Date(Date.now() + 30 * 60000);
       prisma.usuarios_bloqueados.findFirst.mockResolvedValue({
         id: 'b1',
         user_id: 'user-1',
@@ -90,9 +96,6 @@ describe('BloqueoService', () => {
     });
 
     it('debe ignorar bloqueos expirados', async () => {
-      const pasado = new Date(Date.now() - 10 * 60000); // hace 10 min
-
-      // Mock inteligente: solo retorna si bloqueado_hasta > now
       prisma.usuarios_bloqueados.findFirst.mockImplementation(
         (args: any) => {
           const hasta = args?.where?.bloqueado_hasta?.gt;
@@ -117,28 +120,48 @@ describe('BloqueoService', () => {
   // ── registrarIntentoFallido (usuario) ──
 
   describe('registrarIntentoFallido', () => {
-    it('debe incrementar intentos sin bloquear si es menor a 5', async () => {
+    it('debe retornar 4 intentos restantes en el primer fallo (sin registro previo)', async () => {
+      // Sin registro en usuarios_bloqueados, 0 fallos recientes en intentos_login
+      prisma.intentos_login.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.count.mockResolvedValue(0);
+
       const result = await service.registrarIntentoFallido('user-1', '10.0.0.1');
 
       expect(result.bloqueado).toBe(false);
       expect(result.intentosRestantes).toBe(4);
-      expect(prisma.usuarios_bloqueados.create).toHaveBeenCalled();
+      // NO debe crear registro en usuarios_bloqueados (CHECK constraint lo impide)
+      expect(prisma.usuarios_bloqueados.create).not.toHaveBeenCalled();
+      expect(prisma.usuarios_bloqueados.update).not.toHaveBeenCalled();
     });
 
-    it('debe bloquear al usuario al alcanzar 5 intentos fallidos', async () => {
-      prisma.usuarios_bloqueados.findFirst.mockResolvedValue({
-        id: 'b1',
-        user_id: 'user-1',
-        intentos_fallidos_consecutivos: 4,
-        nivel_numero: 0,
-        activo: true,
-      });
+    it('debe bloquear al alcanzar 5 intentos fallidos contando desde intentos_login', async () => {
+      // Sin registro previo en usuarios_bloqueados, pero 4 fallos en intentos_login
+      prisma.usuarios_bloqueados.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.findFirst.mockResolvedValue(null); // sin último éxito
+      prisma.intentos_login.count.mockResolvedValue(4); // 4 fallos previos + 1 actual = 5
 
       const result = await service.registrarIntentoFallido('user-1');
 
       expect(result.bloqueado).toBe(true);
       expect(result.intentosRestantes).toBe(0);
       expect(result.minutosBloqueo).toBe(5);
+      expect(prisma.usuarios_bloqueados.create).toHaveBeenCalled();
+    });
+
+    it('debe incrementar desde registro previo si existe', async () => {
+      prisma.usuarios_bloqueados.findFirst.mockResolvedValue({
+        id: 'b1',
+        user_id: 'user-1',
+        intentos_fallidos_consecutivos: 3,
+        nivel_numero: 0,
+        activo: true,
+      });
+
+      const result = await service.registrarIntentoFallido('user-1', '10.0.0.1');
+
+      expect(result.bloqueado).toBe(false);
+      expect(result.intentosRestantes).toBe(1); // 5 - (3+1)
+      expect(prisma.usuarios_bloqueados.update).toHaveBeenCalled();
     });
 
     it('debe escalar nivel de bloqueo si ya tuvo bloqueos previos', async () => {
@@ -149,8 +172,7 @@ describe('BloqueoService', () => {
           intentos_fallidos_consecutivos: 4,
           nivel_numero: 1,
           activo: true,
-        })
-        .mockResolvedValueOnce(null); // verificarBloqueoPorIP
+        });
 
       prisma.niveles_bloqueo.findFirst
         .mockResolvedValueOnce({
@@ -166,15 +188,40 @@ describe('BloqueoService', () => {
       expect(result.minutosBloqueo).toBe(15);
     });
 
-    it('debe registrar intento por IP cuando se proporciona IP', async () => {
-      // IP no bloqueada actualmente, menos de 10 fallos
+    it('debe contar desde intentos_login desde el último éxito', async () => {
+      const ultimoExito = new Date('2026-08-22T20:00:00Z');
       prisma.usuarios_bloqueados.findFirst.mockResolvedValue(null);
-      prisma.intentos_login.count.mockResolvedValue(3);
+      prisma.intentos_login.findFirst.mockResolvedValue({
+        creado_en: ultimoExito,
+      });
+      // 4 fallos desde el último éxito + 1 actual = 5
+      prisma.intentos_login.count.mockResolvedValue(4);
 
-      const result = await service.registrarIntentoFallido('user-1', '192.168.1.1');
+      const result = await service.registrarIntentoFallido('user-1');
 
+      expect(result.bloqueado).toBe(true);
+      // Verificar que contó desde la fecha del último éxito
+      expect(prisma.intentos_login.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            user_id: 'user-1',
+            exitoso: false,
+            creado_en: { gte: ultimoExito },
+          }),
+        }),
+      );
+    });
+
+    it('no debe lanzar error si registrarIntentoUsuario falla (try/catch)', async () => {
+      prisma.usuarios_bloqueados.findFirst.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
+
+      const result = await service.registrarIntentoFallido('user-1', '10.0.0.1');
+
+      // No debe lanzar — fallback seguro
       expect(result.bloqueado).toBe(false);
-      expect(result.bloqueadoPorIP).toBe(false);
+      expect(result.intentosRestantes).toBe(4);
     });
   });
 
@@ -219,7 +266,6 @@ describe('BloqueoService', () => {
       const result = await service.registrarIntentoFallidoPorIP('10.0.0.1');
 
       expect(result.bloqueado).toBe(true);
-      // No debe contar intentos ni crear nuevo registro
       expect(prisma.intentos_login.count).not.toHaveBeenCalled();
     });
   });
@@ -289,6 +335,64 @@ describe('BloqueoService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // ── Auditoría de bloqueos ──
+
+  describe('auditoría de bloqueos', () => {
+    it('debe registrar auditoría USUARIO_BLOQUEADO con actorType SYSTEM cuando se bloquea un usuario', async () => {
+      // 4 intentos previos en intentos_login → el 5to bloquea
+      prisma.usuarios_bloqueados.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.count.mockResolvedValue(4);
+
+      await service.registrarIntentoFallido('user-1');
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'USUARIO_BLOQUEADO',
+          entityType: 'usuarios_bloqueados',
+          entityId: 'user-1',
+          actorType: 'SYSTEM',
+          result: 'SUCCESS',
+        }),
+      );
+    });
+
+    it('debe registrar auditoría IP_BLOQUEADA con actorType SYSTEM cuando se bloquea una IP', async () => {
+      prisma.usuarios_bloqueados.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.count.mockResolvedValue(10);
+
+      await service.registrarIntentoFallidoPorIP('10.0.0.1');
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'IP_BLOQUEADA',
+          entityType: 'usuarios_bloqueados',
+          entityId: '10.0.0.1',
+          actorType: 'SYSTEM',
+          result: 'SUCCESS',
+        }),
+      );
+    });
+
+    it('no debe registrar auditoría de bloqueo si el usuario no alcanza el umbral', async () => {
+      prisma.usuarios_bloqueados.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.findFirst.mockResolvedValue(null);
+      prisma.intentos_login.count.mockResolvedValue(0);
+
+      await service.registrarIntentoFallido('user-1');
+
+      expect(auditService.log).not.toHaveBeenCalled();
+    });
+
+    it('no debe registrar auditoría de IP si hay menos de 10 fallos', async () => {
+      prisma.intentos_login.count.mockResolvedValue(5);
+
+      await service.registrarIntentoFallidoPorIP('10.0.0.1');
+
+      expect(auditService.log).not.toHaveBeenCalled();
     });
   });
 });

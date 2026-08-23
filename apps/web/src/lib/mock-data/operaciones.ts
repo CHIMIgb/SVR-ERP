@@ -114,8 +114,8 @@ export const incidentes: Incidente[] = [
 ];
 
 export const operaciones: Bitacora[] = [
-  { id: "B001", maquinaId: "M001", actividad: "Excavación para cimentación profunda", horas: 8, fecha: "2025-04-27", obra: "Valle Sur" },
-  { id: "B002", maquinaId: "M004", actividad: "Acarreo de escombro a tiro autorizado", horas: 6, fecha: "2025-04-27", obra: "Valle Sur" },
+  { id: "B001", maquinaId: "M001", maquina: "Excavadora CAT 320", actividad: "Excavación para cimentación profunda", horas: 8, fecha: "2025-04-27", obra: "Valle Sur", obraId: null },
+  { id: "B002", maquinaId: "M004", maquina: "Miniexcavadora Kubota KX040", actividad: "Acarreo de escombro a tiro autorizado", horas: 6, fecha: "2025-04-27", obra: "Valle Sur", obraId: null },
 ];
 
 export const lecturasHorometro: LecturaHorometro[] = [

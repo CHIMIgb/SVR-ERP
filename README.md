@@ -39,7 +39,8 @@ cd apps/web && npm run start  # Servir frontend en producción
 ```bash
 cd apps/api
 npm run dev              # NestJS en http://localhost:3001/api
-npm run test             # Ejecutar tests unitarios
+npm run test             # Tests unitarios (sin DB)
+npm run test:integration # Tests de integración (requiere DB)
 npm run test:cov         # Tests con reporte de cobertura
 ```
 
@@ -56,6 +57,45 @@ npm run dev              # http://localhost:3001/api
 cd apps/web
 npm run dev              # http://localhost:3000
 ```
+
+### Desarrollo desde la IP de tu laptop (red local)
+
+Para acceder al frontend desde otros dispositivos de tu red (móvil, tablet, otra laptop) usando la IP local en lugar de `localhost`:
+
+1. Configura `apps/web/.env` con tu IP y los orígenes permitidos:
+
+```env
+NEXT_PUBLIC_API_URL=http://192.168.0.105:3001/api
+ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
+```
+
+2. Configura `apps/api/.env` para que la API permita CORS desde el frontend por IP:
+
+```env
+CORS_ORIGINS=http://localhost:3000,http://192.168.0.105:3000
+```
+
+3. Inicia la API (ya escucha en `0.0.0.0`, así que es accesible por IP):
+
+```bash
+cd apps/api
+npm run dev
+```
+
+4. Inicia el frontend atado a la IP:
+
+```bash
+cd apps/web
+npx next dev --turbopack --hostname 192.168.0.105
+```
+
+5. Accede desde cualquier dispositivo de la red:
+
+```text
+http://192.168.0.105:3000
+```
+
+> **Nota:** `ALLOWED_DEV_ORIGINS` se lee en `next.config.ts` y evita el error de Cross-Origin de Next.js HMR cuando accedes por IP. `CORS_ORIGINS` configura qué orígenes acepta la API. Los valores se separan por comas. Incluye siempre `localhost` para seguir usandolo localmente.
 
 Si el puerto `3000` está ocupado y Next.js salta al `3001`, mueve el frontend a otro puerto:
 
@@ -78,6 +118,12 @@ Hay un template en `apps/web/.env.local.example`.
 
 #### API (`apps/api/.env`)
 
+Copia el ejemplo y ajusta los valores reales:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+```
+
 ```env
 DATABASE_URL="postgresql://postgres:admin123@localhost:5432/svr_erp"
 JWT_ACCESS_SECRET="..."
@@ -86,20 +132,32 @@ JWT_REFRESH_SECRET="..."
 PORT=3001
 FRONTEND_URL=http://localhost:3000
 
-# Opcional: lista de origenes CORS separada por comas
-# CORS_ORIGINS=http://localhost:3000,http://localhost:3002
+# Lista de origenes CORS separada por comas.
+# Incluye localhost y la IP de tu laptop si accedes desde red local.
+CORS_ORIGINS=http://localhost:3000,http://192.168.0.105:3000
 
 # Bloqueo por IP (anti brute-force)
 BLOQUEO_IP_MAX_INTENTOS=10
 BLOQUEO_IP_VENTANA_MINUTOS=15
 BLOQUEO_IP_MINUTOS=60
+
+# Zona horaria
+TZ=America/Mexico_City
+TIMEZONE=America/Mexico_City
 ```
 
 #### Web (`apps/web/.env.local`)
 
+Copia el ejemplo y ajusta los valores reales:
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
 ```env
 PORT=3000
 NEXT_PUBLIC_API_URL=http://localhost:3001/api
+ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 ```
 
 ### Credenciales de Acceso (API)
@@ -158,22 +216,59 @@ Los tests unitarios usan **Jest** y se ejecutan desde `apps/api/`:
 ```bash
 cd apps/api
 
-npm run test             # Ejecutar todos los tests
+npm run test             # Ejecutar todos los tests unitarios
 npm run test:watch       # Modo watch (re-ejecuta al guardar)
 npm run test:cov         # Tests con reporte de cobertura
 ```
 
-**Ubicación de los tests:**
+**Ubicación de los tests unitarios:**
 
 | Archivo | Qué testea |
 |---------|------------|
-| `src/auth/auth.service.spec.ts` | Login, register, logout, getProfile (12 tests) |
+| `src/auth/auth.service.spec.ts` | Login, register, logout, getProfile (28 tests) |
 | `src/auth/auth.controller.spec.ts` | Endpoints del controller (5 tests) |
 | `src/auth/intentos-login.service.spec.ts` | Registro de intentos de sesión (9 tests) |
-| `src/bloqueo/bloqueo.service.spec.ts` | Bloqueo escalonado por intentos fallidos (8 tests) |
+| `src/auth/strategies/jwt.strategy.spec.ts` | Validación JWT y blacklist (12 tests) |
+| `src/auth/guards/permissions.guard.spec.ts` | RBAC guards (8 tests) |
+| `src/bloqueo/bloqueo.service.spec.ts` | Bloqueo escalonado + auditoría (18 tests) |
+| `src/inventario/inventario.service.spec.ts` | CRUD de inventario (12 tests) |
+| `src/inventario/inventario.controller.spec.ts` | Controller de inventario (7 tests) |
+| `src/bitacora/bitacora.service.spec.ts` | CRUD de bitácora (13 tests) |
+| `src/bitacora/bitacora.controller.spec.ts` | Controller de bitácora (7 tests) |
 | `src/common/filters/throttler-exception.filter.spec.ts` | Error 429 en español (2 tests) |
 
-**Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Ver `AGENTS.md` para las reglas completas de testing.
+### Testing (Integration Tests — Real DB)
+
+Los tests de integración ejecutan el flujo completo de autenticación contra la base de datos real (PostgreSQL). No usan mocks — verifican las tablas `intentos_login`, `sessions`, `refresh_tokens`, `token_blacklist`, `usuarios_bloqueados` y `registro_auditoria`.
+
+```bash
+cd apps/api
+
+npm run test:integration  # Ejecutar tests de integración (requiere PostgreSQL)
+```
+
+**Requisitos:**
+- PostgreSQL corriendo con la base `svr_erp` disponible
+- Archivo `.env` configurado con `DATABASE_URL`
+
+**Ubicación de los tests de integración:**
+
+| Archivo | Qué testea |
+|---------|------------|
+| `src/auth/auth.integration.spec.ts` | Flujo completo de auth contra DB real (6 tests) |
+
+**Escenarios cubiertos:**
+
+| # | Escenario | Tablas verificadas |
+|---|-----------|-------------------|
+| 1 | Login exitoso | `intentos_login` (exitoso), `sessions`, `refresh_tokens`, `registro_auditoria` (LOGIN_EXITOSO) |
+| 2 | Login fallido (email no existe) | `intentos_login` (fallido), `registro_auditoria` (USER_NOT_FOUND) |
+| 3 | Login fallido (contraseña incorrecta) | `intentos_login` (fallido), `registro_auditoria` (INVALID_PASSWORD) |
+| 4 | Bloqueo tras 5 fallos | `usuarios_bloqueados`, `registro_auditoria` (USUARIO_BLOQUEADO), rechazo en 6to intento (ACCOUNT_LOCKED) |
+| 5 | Logout | `sessions` (cerrada), `refresh_tokens` (revocados), `token_blacklist`, `registro_auditoria` (LOGOUT) |
+| 6 | Refresh token rotation | `token_blacklist` (REFRESH rotado), `refresh_tokens` (nuevo activo), `sessions` (JTI actualizado) |
+
+**Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Los tests de integración usan el sufijo `*.integration.spec.ts` y se ejecutan por separado. Ver `AGENTS.md` para las reglas completas de testing.
 
 ### Base de Datos — Prisma
 
@@ -195,6 +290,34 @@ npx prisma migrate dev --name <nombre_migracion>
 # 5. Deploy de migraciones en producción
 npx prisma migrate deploy
 ```
+
+### Migraciones manuales (one-off scripts)
+
+Algunos cambios de esquema no se manejan con `prisma migrate dev` directamente. Están versionados como scripts en `apps/api/scripts/` y deben ejecutarse manualmente contra la base de datos real:
+
+```bash
+cd apps/api
+
+# Convertir todas las columnas timestamp sin zona a timestamptz (America/Mexico_City)
+npx ts-node scripts/migrate-to-timestamptz.ts
+
+# (Uso interno) Actualizar schema.prisma para que todos los DateTime usen @db.Timestamptz()
+npx ts-node scripts/add-timestamptz-to-schema.ts
+```
+
+> **Nota:** `migrate-to-timestamptz.ts` altera 193 columnas. Ejecútalo solo una vez por base de datos.
+
+### Zona horaria
+
+La empresa opera en **Nayarit Costa Sur**, que comparte horario con Ciudad de México:
+
+```env
+# apps/api/.env
+TZ=America/Mexico_City
+TIMEZONE=America/Mexico_City
+```
+
+El frontend usa `APP_TIMEZONE = 'America/Mexico_City'` en `apps/web/src/lib/formatters.ts` para mostrar fechas/horas siempre en esa zona, independientemente del reloj del dispositivo del usuario.
 
 **Archivos clave:**
 

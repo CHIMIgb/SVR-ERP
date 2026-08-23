@@ -3,6 +3,7 @@ export interface JwtPayload {
   email: string;
   jti: string;       // unique token ID (UUID)
   tipo: 'access' | 'refresh';
+  sessionId?: string; // session UUID (solo en access tokens)
 }
 
 export interface AuthResponse {

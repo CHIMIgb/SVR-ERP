@@ -88,10 +88,12 @@ export interface Incidente {
 export interface Bitacora {
   id: string;
   maquinaId: string;
+  maquina: string;
   actividad: string;
   horas: number;
   fecha: string;
   obra: string;
+  obraId: string | null;
 }
 
 export interface LecturaHorometro {

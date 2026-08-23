@@ -3,15 +3,13 @@ import { AuditAction, AuditResult, AuditSeverity, ActorType } from '@prisma/clie
 /**
  * DTO para registrar un evento de auditoría.
  *
- * Versión reducida de lo que propone audit-service-guide.md: aquí el
- * contexto HTTP (ip, userAgent, sessionId) se pasa explícito en vez de
- * leerse de un AsyncLocalStorage automático — mismo patrón que ya usa
- * IntentosLoginService.registrar(), para no introducir la maquinaria de
- * CLS/interceptor/decoradores hasta que haya módulos de negocio reales
- * que la necesiten.
+ * El contexto HTTP (ip, userAgent, sessionId) se rellena automáticamente
+ * vía AuditContextInterceptor + AsyncLocalStorage. Los campos aquí son
+ * opcionales y sirven principalmente para overrides explícitos (por ejemplo,
+ * login/logout donde el sessionId se conoce durante la operación).
  *
  * @example
- * // Caso mínimo:
+ * // Caso mínimo: ip/userAgent/sessionId vienen del request automáticamente
  * await this.auditService.log({
  *   action: AuditAction.LOGOUT,
  *   entityType: 'sessions',
@@ -73,6 +71,7 @@ export type AuditLogFailureDto = Pick<
   | 'metadata'
   | 'actorUserId'
   | 'actorRole'
+  | 'actorType'
   | 'ipAddress'
   | 'userAgent'
 > & {
