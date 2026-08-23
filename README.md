@@ -39,7 +39,8 @@ cd apps/web && npm run start  # Servir frontend en producción
 ```bash
 cd apps/api
 npm run dev              # NestJS en http://localhost:3001/api
-npm run test             # Ejecutar tests unitarios
+npm run test             # Tests unitarios (sin DB)
+npm run test:integration # Tests de integración (requiere DB)
 npm run test:cov         # Tests con reporte de cobertura
 ```
 
@@ -158,22 +159,59 @@ Los tests unitarios usan **Jest** y se ejecutan desde `apps/api/`:
 ```bash
 cd apps/api
 
-npm run test             # Ejecutar todos los tests
+npm run test             # Ejecutar todos los tests unitarios
 npm run test:watch       # Modo watch (re-ejecuta al guardar)
 npm run test:cov         # Tests con reporte de cobertura
 ```
 
-**Ubicación de los tests:**
+**Ubicación de los tests unitarios:**
 
 | Archivo | Qué testea |
 |---------|------------|
-| `src/auth/auth.service.spec.ts` | Login, register, logout, getProfile (12 tests) |
+| `src/auth/auth.service.spec.ts` | Login, register, logout, getProfile (28 tests) |
 | `src/auth/auth.controller.spec.ts` | Endpoints del controller (5 tests) |
 | `src/auth/intentos-login.service.spec.ts` | Registro de intentos de sesión (9 tests) |
-| `src/bloqueo/bloqueo.service.spec.ts` | Bloqueo escalonado por intentos fallidos (8 tests) |
+| `src/auth/strategies/jwt.strategy.spec.ts` | Validación JWT y blacklist (12 tests) |
+| `src/auth/guards/permissions.guard.spec.ts` | RBAC guards (8 tests) |
+| `src/bloqueo/bloqueo.service.spec.ts` | Bloqueo escalonado + auditoría (18 tests) |
+| `src/inventario/inventario.service.spec.ts` | CRUD de inventario (12 tests) |
+| `src/inventario/inventario.controller.spec.ts` | Controller de inventario (7 tests) |
+| `src/bitacora/bitacora.service.spec.ts` | CRUD de bitácora (13 tests) |
+| `src/bitacora/bitacora.controller.spec.ts` | Controller de bitácora (7 tests) |
 | `src/common/filters/throttler-exception.filter.spec.ts` | Error 429 en español (2 tests) |
 
-**Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Ver `AGENTS.md` para las reglas completas de testing.
+### Testing (Integration Tests — Real DB)
+
+Los tests de integración ejecutan el flujo completo de autenticación contra la base de datos real (PostgreSQL). No usan mocks — verifican las tablas `intentos_login`, `sessions`, `refresh_tokens`, `token_blacklist`, `usuarios_bloqueados` y `registro_auditoria`.
+
+```bash
+cd apps/api
+
+npm run test:integration  # Ejecutar tests de integración (requiere PostgreSQL)
+```
+
+**Requisitos:**
+- PostgreSQL corriendo con la base `svr_erp` disponible
+- Archivo `.env` configurado con `DATABASE_URL`
+
+**Ubicación de los tests de integración:**
+
+| Archivo | Qué testea |
+|---------|------------|
+| `src/auth/auth.integration.spec.ts` | Flujo completo de auth contra DB real (6 tests) |
+
+**Escenarios cubiertos:**
+
+| # | Escenario | Tablas verificadas |
+|---|-----------|-------------------|
+| 1 | Login exitoso | `intentos_login` (exitoso), `sessions`, `refresh_tokens`, `registro_auditoria` (LOGIN_EXITOSO) |
+| 2 | Login fallido (email no existe) | `intentos_login` (fallido), `registro_auditoria` (USER_NOT_FOUND) |
+| 3 | Login fallido (contraseña incorrecta) | `intentos_login` (fallido), `registro_auditoria` (INVALID_PASSWORD) |
+| 4 | Bloqueo tras 5 fallos | `usuarios_bloqueados`, `registro_auditoria` (USUARIO_BLOQUEADO), rechazo en 6to intento (ACCOUNT_LOCKED) |
+| 5 | Logout | `sessions` (cerrada), `refresh_tokens` (revocados), `token_blacklist`, `registro_auditoria` (LOGOUT) |
+| 6 | Refresh token rotation | `token_blacklist` (REFRESH rotado), `refresh_tokens` (nuevo activo), `sessions` (JTI actualizado) |
+
+**Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Los tests de integración usan el sufijo `*.integration.spec.ts` y se ejecutan por separado. Ver `AGENTS.md` para las reglas completas de testing.
 
 ### Base de Datos — Prisma
 
