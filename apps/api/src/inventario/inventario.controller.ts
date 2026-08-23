@@ -112,8 +112,12 @@ export class InventarioController {
   @RequirePermission('operaciones', 'inventario', 'eliminar')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inventarioService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.inventarioService.remove(id, user.id);
   }
 
   /**

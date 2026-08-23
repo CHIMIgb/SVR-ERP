@@ -28,7 +28,7 @@ describe('InventarioController', () => {
     findOne: jest.fn().mockResolvedValue(mockResult.items[0]),
     create: jest.fn().mockResolvedValue(mockResult.items[0]),
     update: jest.fn().mockResolvedValue(mockResult.items[0]),
-    remove: jest.fn().mockResolvedValue({ message: 'eliminado' }),
+    remove: jest.fn().mockResolvedValue({ message: 'Artículo eliminado exitosamente' }),
     crearMovimiento: jest.fn().mockResolvedValue({
       articuloId: 'a1',
       tipo: 'ENTRADA',
@@ -115,9 +115,10 @@ describe('InventarioController', () => {
 
   describe('remove', () => {
     it('should soft delete an article', async () => {
-      const result = await controller.remove('a1');
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.remove('a1', req as never);
       expect(result.message).toContain('eliminado');
-      expect(service.remove).toHaveBeenCalledWith('a1');
+      expect(service.remove).toHaveBeenCalledWith('a1', 'user-1');
     });
   });
 

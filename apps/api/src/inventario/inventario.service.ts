@@ -4,7 +4,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateArticuloDto } from './dto/create-articulo.dto';
 import { UpdateArticuloDto } from './dto/update-articulo.dto';
 import { QueryArticulosDto } from './dto/query-articulos.dto';
@@ -20,7 +22,10 @@ const ARTICULO_INCLUDE = {
 
 @Injectable()
 export class InventarioService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
@@ -145,6 +150,16 @@ export class InventarioService {
       where: { id: dto.categoriaId },
     });
     if (!categoria) {
+      await this.auditService.logFailure({
+        action: AuditAction.ARTICULO_CREADO,
+        entityType: 'articulos_inventario',
+        entityId: '',
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        errorCode: 'CATEGORY_NOT_FOUND',
+        metadata: { nombre: dto.nombre, categoriaId: dto.categoriaId },
+      });
       throw new BadRequestException(
         `Categoría con id "${dto.categoriaId}" no encontrada`,
       );
@@ -155,6 +170,16 @@ export class InventarioService {
       where: { id: dto.proveedorId, eliminado_en: null },
     });
     if (!proveedor) {
+      await this.auditService.logFailure({
+        action: AuditAction.ARTICULO_CREADO,
+        entityType: 'articulos_inventario',
+        entityId: '',
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        errorCode: 'SUPPLIER_NOT_FOUND',
+        metadata: { nombre: dto.nombre, proveedorId: dto.proveedorId },
+      });
       throw new BadRequestException(
         `Proveedor con id "${dto.proveedorId}" no encontrado`,
       );
@@ -165,6 +190,16 @@ export class InventarioService {
       where: { id: dto.unidadId },
     });
     if (!unidad) {
+      await this.auditService.logFailure({
+        action: AuditAction.ARTICULO_CREADO,
+        entityType: 'articulos_inventario',
+        entityId: '',
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        errorCode: 'UNIT_NOT_FOUND',
+        metadata: { nombre: dto.nombre, unidadId: dto.unidadId },
+      });
       throw new BadRequestException(
         `Unidad de medida con id "${dto.unidadId}" no encontrada`,
       );
@@ -189,7 +224,39 @@ export class InventarioService {
       include: ARTICULO_INCLUDE,
     });
 
-    return this.serialize(articulo);
+    const serialized = this.serialize(articulo);
+
+    await this.auditService.log({
+      action: AuditAction.ARTICULO_CREADO,
+      entityType: 'articulos_inventario',
+      entityId: articulo.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: serialized,
+    });
+
+    // Alerta: si el stock ya es bajo al crear
+    if (dto.stock <= dto.stockMinimo) {
+      await this.auditService.log({
+        action: AuditAction.STOCK_BAJO_DETECTADO,
+        entityType: 'articulos_inventario',
+        entityId: articulo.id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        metadata: {
+          nombre: dto.nombre,
+          stock: dto.stock,
+          stockMinimo: dto.stockMinimo,
+          contexto: 'Creación con stock bajo',
+        },
+      });
+    }
+
+    return serialized;
   }
 
   // ────────────────────────────────────────────
@@ -210,6 +277,16 @@ export class InventarioService {
         where: { id: dto.categoriaId },
       });
       if (!cat) {
+        await this.auditService.logFailure({
+          action: AuditAction.ARTICULO_ACTUALIZADO,
+          entityType: 'articulos_inventario',
+          entityId: id,
+          actorUserId: userId,
+          actorType: 'USER',
+          actorRole: 'autenticado',
+          errorCode: 'CATEGORY_NOT_FOUND',
+          metadata: { categoriaId: dto.categoriaId },
+        });
         throw new BadRequestException(
           `Categoría con id "${dto.categoriaId}" no encontrada`,
         );
@@ -221,6 +298,16 @@ export class InventarioService {
         where: { id: dto.proveedorId, eliminado_en: null },
       });
       if (!prov) {
+        await this.auditService.logFailure({
+          action: AuditAction.ARTICULO_ACTUALIZADO,
+          entityType: 'articulos_inventario',
+          entityId: id,
+          actorUserId: userId,
+          actorType: 'USER',
+          actorRole: 'autenticado',
+          errorCode: 'SUPPLIER_NOT_FOUND',
+          metadata: { proveedorId: dto.proveedorId },
+        });
         throw new BadRequestException(
           `Proveedor con id "${dto.proveedorId}" no encontrado`,
         );
@@ -232,6 +319,16 @@ export class InventarioService {
         where: { id: dto.unidadId },
       });
       if (!uni) {
+        await this.auditService.logFailure({
+          action: AuditAction.ARTICULO_ACTUALIZADO,
+          entityType: 'articulos_inventario',
+          entityId: id,
+          actorUserId: userId,
+          actorType: 'USER',
+          actorRole: 'autenticado',
+          errorCode: 'UNIT_NOT_FOUND',
+          metadata: { unidadId: dto.unidadId },
+        });
         throw new BadRequestException(
           `Unidad de medida con id "${dto.unidadId}" no encontrada`,
         );
@@ -260,13 +357,75 @@ export class InventarioService {
       include: ARTICULO_INCLUDE,
     });
 
-    return this.serialize(articulo);
+    const serialized = this.serialize(articulo);
+
+    await this.auditService.log({
+      action: AuditAction.ARTICULO_ACTUALIZADO,
+      entityType: 'articulos_inventario',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: {
+        stock: Number(existente.stock),
+        stockMinimo: Number(existente.stock_minimo),
+        nombre: existente.nombre,
+      },
+      newValue: serialized,
+    });
+
+    // Detectar cambios en el umbral de stock
+    const stockActual = dto.stock !== undefined ? dto.stock : Number(existente.stock);
+    const minimoActual = dto.stockMinimo !== undefined ? dto.stockMinimo : Number(existente.stock_minimo);
+    const minimoAnterior = Number(existente.stock_minimo);
+    const stockAnterior = Number(existente.stock);
+
+    // Stock bajo recién detectado (cruzó el umbral hacia abajo)
+    if (stockActual <= minimoActual && stockAnterior > minimoAnterior) {
+      await this.auditService.log({
+        action: AuditAction.STOCK_BAJO_DETECTADO,
+        entityType: 'articulos_inventario',
+        entityId: id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        metadata: {
+          nombre: articulo.nombre,
+          stock: stockActual,
+          stockMinimo: minimoActual,
+          contexto: 'Actualización cruzó umbral hacia abajo',
+        },
+      });
+    }
+
+    // Stock bajo resuelto (cruzó el umbral hacia arriba)
+    if (stockActual > minimoActual && stockAnterior <= minimoAnterior) {
+      await this.auditService.log({
+        action: AuditAction.STOCK_BAJO_RESUELTO,
+        entityType: 'articulos_inventario',
+        entityId: id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        metadata: {
+          nombre: articulo.nombre,
+          stock: stockActual,
+          stockMinimo: minimoActual,
+          contexto: 'Actualización resolvió stock bajo',
+        },
+      });
+    }
+
+    return serialized;
   }
 
   // ────────────────────────────────────────────
   //  ELIMINAR (soft delete)
   // ────────────────────────────────────────────
-  async remove(id: string) {
+  async remove(id: string, userId?: string) {
     const existente = await this.prisma.articulos_inventario.findFirst({
       where: { id, eliminado_en: null },
     });
@@ -278,6 +437,17 @@ export class InventarioService {
     await this.prisma.articulos_inventario.update({
       where: { id },
       data: { eliminado_en: new Date(), activo: false },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.ARTICULO_ELIMINADO,
+      entityType: 'articulos_inventario',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: this.serialize(existente),
     });
 
     return { message: 'Artículo eliminado exitosamente' };
@@ -298,6 +468,7 @@ export class InventarioService {
     }
 
     const stockActual = Number(articulo.stock);
+    const minimoActual = Number(articulo.stock_minimo);
     let nuevoStock: number;
 
     if (dto.tipo === 'ENTRADA') {
@@ -305,6 +476,20 @@ export class InventarioService {
     } else {
       // SALIDA
       if (dto.cantidad > stockActual) {
+        await this.auditService.logFailure({
+          action: AuditAction.STOCK_INSUFICIENTE,
+          entityType: 'articulos_inventario',
+          entityId: dto.articuloId,
+          actorUserId: userId,
+          actorType: 'USER',
+          actorRole: 'autenticado',
+          errorCode: 'INSUFFICIENT_STOCK',
+          metadata: {
+            nombre: articulo.nombre,
+            stockActual,
+            solicitado: dto.cantidad,
+          },
+        });
         throw new BadRequestException(
           `Stock insuficiente. Disponible: ${stockActual}, solicitado: ${dto.cantidad}`,
         );
@@ -333,6 +518,70 @@ export class InventarioService {
         },
       }),
     ]);
+
+    await this.auditService.log({
+      action: AuditAction.MOVIMIENTO_REGISTRADO,
+      entityType: 'articulos_inventario',
+      entityId: dto.articuloId,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: { stock: stockActual },
+      newValue: {
+        tipo: dto.tipo,
+        cantidad: dto.cantidad,
+        stockResultante: nuevoStock,
+        motivo: dto.motivo,
+      },
+    });
+
+    // Detectar alertas de stock después del movimiento
+    // SALIDA que cruza umbral hacia abajo
+    if (
+      dto.tipo === 'SALIDA' &&
+      nuevoStock <= minimoActual &&
+      stockActual > minimoActual
+    ) {
+      await this.auditService.log({
+        action: AuditAction.STOCK_BAJO_DETECTADO,
+        entityType: 'articulos_inventario',
+        entityId: dto.articuloId,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        metadata: {
+          nombre: articulo.nombre,
+          stock: nuevoStock,
+          stockMinimo: minimoActual,
+          contexto: `Salida de ${dto.cantidad} unidades`,
+        },
+      });
+    }
+
+    // ENTRADA que resuelve stock bajo
+    if (
+      dto.tipo === 'ENTRADA' &&
+      nuevoStock > minimoActual &&
+      stockActual <= minimoActual
+    ) {
+      await this.auditService.log({
+        action: AuditAction.STOCK_BAJO_RESUELTO,
+        entityType: 'articulos_inventario',
+        entityId: dto.articuloId,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        metadata: {
+          nombre: articulo.nombre,
+          stock: nuevoStock,
+          stockMinimo: minimoActual,
+          contexto: `Entrada de ${dto.cantidad} unidades`,
+        },
+      });
+    }
 
     return {
       articuloId: dto.articuloId,
