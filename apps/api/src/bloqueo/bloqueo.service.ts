@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 /** Intentos fallidos de USUARIO antes de bloqueo escalonado */
 const MAX_INTENTOS_USUARIO = 5;
@@ -20,7 +22,10 @@ const VENTANA_IP_MINUTOS = envInt('BLOQUEO_IP_VENTANA_MINUTOS', 15);
 export class BloqueoService {
   private readonly logger = new Logger(BloqueoService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ─────────────────────────────────────────────────────
   //  VERIFICACIONES
@@ -100,14 +105,32 @@ export class BloqueoService {
     minutosBloqueoIP?: number;
   }> {
     // 1. Tracking por usuario (escalonado)
-    const resultadoUsuario = await this.registrarIntentoUsuario(userId);
+    let resultadoUsuario;
+    try {
+      resultadoUsuario = await this.registrarIntentoUsuario(userId);
+    } catch (error) {
+      this.logger.error(
+        `Error al registrar intento de usuario ${userId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Fallback seguro: no bloquear, reportar 4 intentos restantes
+      resultadoUsuario = {
+        bloqueado: false,
+        intentosRestantes: MAX_INTENTOS_USUARIO - 1,
+      };
+    }
 
     // 2. Tracking por IP (fijo)
     let minutosBloqueoIP: number | undefined;
     if (ip) {
-      const resultadoIP = await this.verificarYBloquearIP(ip);
-      if (resultadoIP.bloqueado) {
-        minutosBloqueoIP = resultadoIP.minutosBloqueo;
+      try {
+        const resultadoIP = await this.verificarYBloquearIP(ip);
+        if (resultadoIP.bloqueado) {
+          minutosBloqueoIP = resultadoIP.minutosBloqueo;
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error al verificar bloqueo por IP ${ip}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
@@ -203,7 +226,10 @@ export class BloqueoService {
   // ─────────────────────────────────────────────────────
 
   /**
-   * Tracking por usuario — usa la tabla usuarios_bloqueados directamente.
+   * Tracking por usuario — cuenta desde intentos_login cuando no hay bloqueo previo,
+   * y solo crea registros en usuarios_bloqueados cuando se alcanza el umbral.
+   *
+   * La CHECK constraint de la BD exige: intentos_fallidos_consecutivos >= 5
    */
   private async registrarIntentoUsuario(
     userId: string,
@@ -220,66 +246,58 @@ export class BloqueoService {
       orderBy: { creado_en: 'desc' },
     });
 
-    const intentosActuales = registro?.intentos_fallidos_consecutivos || 0;
-    const nuevosIntentos = intentosActuales + 1;
+    // Contar intentos fallidos recientes
+    let nuevosIntentos: number;
+    if (registro) {
+      // Tiene registro previo — incrementar desde ahí
+      nuevosIntentos = registro.intentos_fallidos_consecutivos + 1;
+    } else {
+      // Sin registro previo — contar desde intentos_login desde el último éxito
+      nuevosIntentos =
+        (await this.contarFallidosDesdeUltimoExito(userId)) + 1;
+    }
 
-    if (nuevosIntentos >= MAX_INTENTOS_USUARIO) {
-      const nivel = await this.determinarNivelBloqueo(
-        registro?.nivel_numero || 0,
-      );
-
-      const bloqueadoDesde = new Date();
-      const bloqueadoHasta = new Date(
-        bloqueadoDesde.getTime() + nivel.duracion_minutos * 60000,
-      );
-
+    // ── Aún no alcanza el umbral ──
+    if (nuevosIntentos < MAX_INTENTOS_USUARIO) {
       if (registro) {
         await this.prisma.usuarios_bloqueados.update({
           where: { id: registro.id },
           data: {
             intentos_fallidos_consecutivos: nuevosIntentos,
-            nivel_id: nivel.id,
-            nivel_numero: nivel.nivel,
-            bloqueado_desde: bloqueadoDesde,
-            bloqueado_hasta: bloqueadoHasta,
-            desbloqueado_en: null,
-            motivo: `Bloqueo automático: ${nuevosIntentos} intentos fallidos consecutivos`,
-            actualizado_en: new Date(),
-          },
-        });
-      } else {
-        await this.prisma.usuarios_bloqueados.create({
-          data: {
-            id: randomUUID(),
-            user_id: userId,
-            nivel_id: nivel.id,
-            nivel_numero: nivel.nivel,
-            intentos_fallidos_consecutivos: nuevosIntentos,
-            bloqueado_desde: bloqueadoDesde,
-            bloqueado_hasta: bloqueadoHasta,
-            motivo: `Bloqueo automático: ${nuevosIntentos} intentos fallidos consecutivos`,
             actualizado_en: new Date(),
           },
         });
       }
-
-      this.logger.warn(
-        `Usuario ${userId} bloqueado por ${nivel.duracion_minutos} minutos (nivel ${nivel.nivel})`,
-      );
+      // Sin registro: NO crear en usuarios_bloqueados (CHECK constraint lo impide).
+      // El intento ya queda registrado en intentos_login por IntentosLoginService.
 
       return {
-        bloqueado: true,
-        intentosRestantes: 0,
-        minutosBloqueo: nivel.duracion_minutos,
+        bloqueado: false,
+        intentosRestantes: MAX_INTENTOS_USUARIO - nuevosIntentos,
       };
     }
 
-    // Incrementar intentos sin bloquear
+    // ── Alcanzó el umbral — bloquear ──
+    const nivel = await this.determinarNivelBloqueo(
+      registro?.nivel_numero || 0,
+    );
+
+    const bloqueadoDesde = new Date();
+    const bloqueadoHasta = new Date(
+      bloqueadoDesde.getTime() + nivel.duracion_minutos * 60000,
+    );
+
     if (registro) {
       await this.prisma.usuarios_bloqueados.update({
         where: { id: registro.id },
         data: {
           intentos_fallidos_consecutivos: nuevosIntentos,
+          nivel_id: nivel.id,
+          nivel_numero: nivel.nivel,
+          bloqueado_desde: bloqueadoDesde,
+          bloqueado_hasta: bloqueadoHasta,
+          desbloqueado_en: null,
+          motivo: `Bloqueo automático: ${nuevosIntentos} intentos fallidos consecutivos`,
           actualizado_en: new Date(),
         },
       });
@@ -288,19 +306,65 @@ export class BloqueoService {
         data: {
           id: randomUUID(),
           user_id: userId,
-          nivel_numero: 0,
+          nivel_id: nivel.id,
+          nivel_numero: nivel.nivel,
           intentos_fallidos_consecutivos: nuevosIntentos,
-          bloqueado_desde: new Date(),
-          bloqueado_hasta: new Date(),
+          bloqueado_desde: bloqueadoDesde,
+          bloqueado_hasta: bloqueadoHasta,
+          motivo: `Bloqueo automático: ${nuevosIntentos} intentos fallidos consecutivos`,
           actualizado_en: new Date(),
         },
       });
     }
 
+    this.logger.warn(
+      `Usuario ${userId} bloqueado por ${nivel.duracion_minutos} minutos (nivel ${nivel.nivel})`,
+    );
+
+    await this.auditService.log({
+      action: AuditAction.USUARIO_BLOQUEADO,
+      entityType: 'usuarios_bloqueados',
+      entityId: userId,
+      result: AuditResult.SUCCESS,
+      actorType: 'SYSTEM',
+      actorRole: 'sistema',
+      metadata: {
+        userId,
+        nivel: nivel.nivel,
+        duracionMinutos: nivel.duracion_minutos,
+        intentosFallidos: nuevosIntentos,
+      },
+    });
+
     return {
-      bloqueado: false,
-      intentosRestantes: MAX_INTENTOS_USUARIO - nuevosIntentos,
+      bloqueado: true,
+      intentosRestantes: 0,
+      minutosBloqueo: nivel.duracion_minutos,
     };
+  }
+
+  /**
+   * Cuenta intentos fallidos desde el último login exitoso del usuario.
+   * Si nunca ha tenido éxito, busca en los últimos 60 minutos.
+   */
+  private async contarFallidosDesdeUltimoExito(userId: string): Promise<number> {
+    // Buscar el último login exitoso de este usuario
+    const ultimoExito = await this.prisma.intentos_login.findFirst({
+      where: { user_id: userId, exitoso: true },
+      orderBy: { creado_en: 'desc' },
+    });
+
+    const desde = ultimoExito
+      ? ultimoExito.creado_en
+      : new Date(Date.now() - 60 * 60000);
+
+    return this.prisma.intentos_login.count({
+      where: {
+        user_id: userId,
+        exitoso: false,
+        creado_en: { gte: desde },
+      },
+    });
   }
 
   /**
@@ -357,6 +421,22 @@ export class BloqueoService {
     this.logger.warn(
       `IP ${ip} bloqueada por ${BLOQUEO_IP_MINUTOS} minutos (${intentosFallidos} fallos en ${VENTANA_IP_MINUTOS} min)`,
     );
+
+    await this.auditService.log({
+      action: AuditAction.IP_BLOQUEADA,
+      entityType: 'usuarios_bloqueados',
+      entityId: ip,
+      result: AuditResult.SUCCESS,
+      actorType: 'SYSTEM',
+      actorRole: 'sistema',
+      ipAddress: ip,
+      metadata: {
+        ip,
+        intentosFallidos,
+        ventanaMinutos: VENTANA_IP_MINUTOS,
+        duracionMinutos: BLOQUEO_IP_MINUTOS,
+      },
+    });
 
     return { bloqueado: true, minutosBloqueo: BLOQUEO_IP_MINUTOS };
   }

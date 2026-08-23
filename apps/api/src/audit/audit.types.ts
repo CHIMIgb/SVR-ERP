@@ -73,6 +73,7 @@ export type AuditLogFailureDto = Pick<
   | 'metadata'
   | 'actorUserId'
   | 'actorRole'
+  | 'actorType'
   | 'ipAddress'
   | 'userAgent'
 > & {

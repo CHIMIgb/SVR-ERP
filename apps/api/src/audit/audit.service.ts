@@ -64,7 +64,7 @@ export class AuditService {
     } catch (error) {
       // Nunca propagar: la auditoría es secundaria a la operación de negocio.
       this.logger.error(
-        `Error al registrar auditoría [${dto.action}]: ${error instanceof Error ? error.message : String(error)}`,
+        `AUDIT_FAIL [${dto.action}] entity=${dto.entityType}/${dto.entityId}: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
     }
