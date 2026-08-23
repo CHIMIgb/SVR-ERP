@@ -103,6 +103,10 @@ describe('AuthService', () => {
         update: jest.fn(),
         updateMany: jest.fn(),
       },
+      token_blacklist: {
+        create: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       personas: {
         create: jest.fn(),
         findFirst: jest.fn(),
@@ -383,17 +387,27 @@ describe('AuthService', () => {
   });
 
   describe('logout', () => {
-    it('debe cerrar sesiones y revocar tokens', async () => {
-      prisma.sessions.updateMany.mockResolvedValue({ count: 1 });
+    it('debe cerrar solo la sesión activa del usuario y blacklistear el access token', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({
+        id: 'session-1',
+        user_id: 'user-1',
+        activa: true,
+      });
+      prisma.sessions.update.mockResolvedValue({});
       prisma.refresh_tokens.updateMany.mockResolvedValue({ count: 1 });
+      prisma.token_blacklist.create.mockResolvedValue({});
 
-      await service.logout('user-1');
+      await service.logout('user-1', 'access-jti-1', 'token-hash-abc');
 
-      expect(prisma.sessions.updateMany).toHaveBeenCalledWith({
-        where: {
-          user_id: 'user-1',
-          activa: true,
-        },
+      // Debe buscar solo la sesión activa más reciente
+      expect(prisma.sessions.findFirst).toHaveBeenCalledWith({
+        where: { user_id: 'user-1', activa: true },
+        orderBy: { iniciada_en: 'desc' },
+      });
+
+      // Debe cerrar solo ESA sesión
+      expect(prisma.sessions.update).toHaveBeenCalledWith({
+        where: { id: 'session-1' },
         data: {
           activa: false,
           cerrada_en: expect.any(Date),
@@ -401,6 +415,153 @@ describe('AuthService', () => {
           actualizado_en: expect.any(Date),
         },
       });
+
+      // Debe revocar tokens de esa sesión
+      expect(prisma.refresh_tokens.updateMany).toHaveBeenCalledWith({
+        where: { session_id: 'session-1', activo: true },
+        data: {
+          revocado_en: expect.any(Date),
+          motivo_revocado: 'Logout',
+          activo: false,
+        },
+      });
+
+      // Debe escribir el access token a la blacklist
+      expect(prisma.token_blacklist.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          jti: 'access-jti-1',
+          token_hash: 'token-hash-abc',
+          tipo: 'ACCESS',
+          user_id: 'user-1',
+          razon: 'Logout manual',
+        }),
+      });
+    });
+
+    it('debe funcionar aunque no haya sesión activa (solo blacklistea el token)', async () => {
+      prisma.sessions.findFirst.mockResolvedValue(null);
+      prisma.token_blacklist.create.mockResolvedValue({});
+
+      await service.logout('user-1', 'access-jti-1', 'token-hash-abc');
+
+      expect(prisma.sessions.update).not.toHaveBeenCalled();
+      expect(prisma.token_blacklist.create).toHaveBeenCalled();
+    });
+  });
+
+  // ── refresh ──
+  describe('refresh', () => {
+    const mockSession = {
+      id: 'session-1',
+      user_id: 'user-1',
+      refresh_token_jti: 'old-refresh-jti',
+      activa: true,
+    };
+
+    const mockRefreshToken = {
+      id: 'rt-1',
+      session_id: 'session-1',
+      jti: 'old-refresh-jti',
+      token_hash: '$2b$12$hashed',
+      activo: true,
+      revocado_en: null,
+      expira_en: new Date('2026-12-31'),
+    };
+
+    beforeEach(() => {
+      prisma.sessions.findFirst.mockResolvedValue(mockSession);
+      prisma.refresh_tokens.findFirst.mockResolvedValue(mockRefreshToken);
+      prisma.$transaction.mockImplementation(async (fn: Function) => fn({
+        refresh_tokens: {
+          update: jest.fn().mockResolvedValue({}),
+          create: jest.fn().mockResolvedValue({}),
+        },
+        sessions: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        token_blacklist: {
+          create: jest.fn().mockResolvedValue({}),
+        },
+      }));
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+      });
+      (bcrypt.hash as jest.Mock).mockResolvedValue('$2b$12$new-hash');
+    });
+
+    it('debe rotar tokens exitosamente', async () => {
+      const result = await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+      expect(jwtService.sign).toHaveBeenCalledTimes(2); // access + refresh
+    });
+
+    it('debe blacklistear el refresh token viejo en la transacción', async () => {
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      // La transacción debe incluir un create a token_blacklist
+      const txFn = prisma.$transaction.mock.calls[0][0];
+      const mockTx = {
+        refresh_tokens: {
+          update: jest.fn().mockResolvedValue({}),
+          create: jest.fn().mockResolvedValue({}),
+        },
+        sessions: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        token_blacklist: {
+          create: jest.fn().mockResolvedValue({}),
+        },
+      };
+
+      await txFn(mockTx);
+
+      expect(mockTx.token_blacklist.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          jti: 'old-refresh-jti',
+          tipo: 'REFRESH',
+          user_id: 'user-1',
+          razon: 'Rotación de token',
+        }),
+      });
+    });
+
+    it('debe lanzar 401 si la sesión no existe', async () => {
+      prisma.sessions.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.refresh('user-1', 'invalid-jti'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('debe lanzar 401 si el refresh token fue revocado', async () => {
+      prisma.refresh_tokens.findFirst.mockResolvedValue({
+        ...mockRefreshToken,
+        revocado_en: new Date(),
+      });
+
+      await expect(
+        service.refresh('user-1', 'old-refresh-jti'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('debe lanzar 401 si el refresh token no está activo', async () => {
+      // La query incluye activo: true en el where, así que si activo=false, no lo encuentra
+      prisma.refresh_tokens.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.refresh('user-1', 'old-refresh-jti'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('debe lanzar 401 si el usuario no existe', async () => {
+      prisma.users.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.refresh('user-1', 'old-refresh-jti'),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

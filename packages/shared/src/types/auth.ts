@@ -88,7 +88,10 @@ export interface ApiSuccess<T> {
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
 export const STORAGE_KEYS = {
+  /** Access token: se almacena EN MEMORIA (api.ts), NO en localStorage */
   ACCESS_TOKEN: 'svr_access_token',
+  /** Refresh token: persiste en localStorage para compatibilidad con Capacitor */
   REFRESH_TOKEN: 'svr_refresh_token',
+  /** Datos del usuario serializados */
   USER: 'svr_user',
 } as const;

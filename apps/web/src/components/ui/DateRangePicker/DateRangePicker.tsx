@@ -3,6 +3,7 @@
 import { useState, useLayoutEffect, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import { dateRangePickerClasses } from './DateRangePicker.styles';
 
 export interface DateRange {
@@ -61,14 +62,6 @@ function isAfterDay(a: Date, b: Date): boolean {
 
 function isBetweenDays(target: Date, start: Date, end: Date): boolean {
   return isAfterDay(target, start) && isBeforeDay(target, end);
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat('es-MX', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(date);
 }
 
 function formatRange(range: DateRange): string {

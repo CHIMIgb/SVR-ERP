@@ -79,8 +79,14 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: Request) {
-    const user = req.user as { id: string };
-    await this.authService.logout(user.id, '');
+    const user = req.user as { id: string; jti: string };
+    // Calcular hash del token para blacklistearlo
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.replace('Bearer ', '') || '';
+    // El token es un JWT, usamos su hash para la blacklist
+    const tokenHash = await import('crypto')
+      .then((c) => c.createHash('sha256').update(token).digest('hex'));
+    await this.authService.logout(user.id, user.jti, tokenHash);
     return { message: 'Sesión cerrada exitosamente' };
   }
 

@@ -17,8 +17,19 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: JwtPayload): Promise<{
     id: string;
     email: string;
+    jti: string;
+    sessionId?: string;
   }> {
-    // Verificar que el usuario exista y esté activo
+    // 1. Verificar que el access token no esté en la blacklist (revocado por logout)
+    const blacklisted = await this.prisma.token_blacklist.findUnique({
+      where: { jti: payload.jti },
+    });
+
+    if (blacklisted) {
+      throw new UnauthorizedException('Token de acceso revocado');
+    }
+
+    // 2. Verificar que el usuario exista y esté activo
     const user = await this.prisma.users.findUnique({
       where: { id: payload.sub },
       select: { id: true, email: true, activo: true, eliminado_en: true },
@@ -28,6 +39,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Usuario no válido o deshabilitado');
     }
 
-    return { id: user.id, email: user.email };
+    return {
+      id: user.id,
+      email: user.email,
+      jti: payload.jti,
+      sessionId: payload.sessionId,
+    };
   }
 }

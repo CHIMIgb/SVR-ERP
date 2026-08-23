@@ -3,6 +3,7 @@
 import { useState, useLayoutEffect, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import { datePickerClasses } from './DatePicker.styles';
 
 export interface DatePickerProps {
@@ -54,14 +55,6 @@ function isAfterDay(a: Date, b: Date): boolean {
   const aa = new Date(a.getFullYear(), a.getMonth(), a.getDate());
   const bb = new Date(b.getFullYear(), b.getMonth(), b.getDate());
   return aa.getTime() > bb.getTime();
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat('es-MX', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(date);
 }
 
 function getCalendarDays(year: number, month: number): Date[] {

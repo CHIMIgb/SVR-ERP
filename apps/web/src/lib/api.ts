@@ -15,30 +15,45 @@ interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
+// ── Access token: almacenado EN MEMORIA (no localStorage) para mitigar XSS ──
+// Solo el refresh token persiste en localStorage (necesario para Capacitor/offline)
+let inMemoryAccessToken: string | null = null;
 let isRefreshing = false;
 let refreshSubscribers: Array<(token: string) => void> = [];
 
-function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+export function getAccessToken(): string | null {
+  return inMemoryAccessToken;
 }
 
-function getRefreshToken(): string | null {
+// Exponer setter para AuthProvider después de login/refresh
+export function setAccessToken(token: string | null): void {
+  inMemoryAccessToken = token;
+}
+
+export function getRefreshToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 }
 
-function setTokens(accessToken: string, refreshToken: string): void {
+function setRefreshToken(refreshToken: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
   localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
 }
 
-function clearTokens(): void {
+export function clearTokens(): void {
+  inMemoryAccessToken = null;
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.USER);
+}
+
+/**
+ * Persiste ambos tokens después de login/refresh.
+ * El access token va a memoria; el refresh a localStorage.
+ */
+export function setTokens(accessToken: string, refreshToken: string): void {
+  inMemoryAccessToken = accessToken;
+  setRefreshToken(refreshToken);
 }
 
 function notifySubscribers(token: string): void {
@@ -76,6 +91,24 @@ async function refreshAccessToken(): Promise<string | null> {
     clearTokens();
     return null;
   }
+}
+
+/**
+ * Intenta obtener un access token válido al cargar la app.
+ * Si el refresh token existe en localStorage, rota para obtener un access token fresco.
+ * Retorna true si se obtuvo un token válido, false si no (sesión expirada).
+ */
+export async function initializeAuth(): Promise<boolean> {
+  // Si ya tenemos un access token en memoria, la sesión está activa
+  if (inMemoryAccessToken) return true;
+
+  // Si no hay refresh token, no hay sesión que restaurar
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  // Intentar rotar el refresh token para obtener un access token nuevo
+  const newToken = await refreshAccessToken();
+  return newToken !== null;
 }
 
 async function request<T>(
@@ -211,4 +244,229 @@ export const authApi = {
   profile: () => apiClient.get<UserAuth>('/auth/profile'),
 };
 
-export { setTokens, clearTokens, getAccessToken, getRefreshToken };
+// setTokens, clearTokens, getAccessToken, getRefreshToken, initializeAuth
+// ya están exportados inline con `export function` arriba.
+
+// ────────────────────────────────────────────────────────────
+//  Inventario API
+// ────────────────────────────────────────────────────────────
+
+/** Formato que devuelve el backend serializado */
+export interface ArticuloInventarioDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  stock: number;
+  stockMinimo: number;
+  precioUnitario: number;
+  categoria: string;
+  categoriaId: string;
+  proveedor: string;
+  proveedorId: string;
+  unidad: string;
+  unidadId: string;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface InventarioStats {
+  totalArticulos: number;
+  stockBajo: number;
+  valorTotal: number;
+}
+
+export interface CatalogoItem {
+  id: string;
+  nombre: string;
+  estado?: string;
+}
+
+export interface CatalogoUnidad extends CatalogoItem {
+  codigo: string;
+}
+
+export interface InventarioCatalogos {
+  categorias: CatalogoItem[];
+  proveedores: CatalogoItem[];
+  unidades: CatalogoUnidad[];
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ArticuloCreateInput {
+  nombre: string;
+  codigo?: string;
+  categoriaId: string;
+  proveedorId: string;
+  unidadId: string;
+  stock: number;
+  stockMinimo: number;
+  precioUnitario: number;
+}
+
+export interface MovimientoInput {
+  articuloId: string;
+  tipo: 'ENTRADA' | 'SALIDA';
+  cantidad: number;
+  motivo?: string;
+  referenciaTipo?: string;
+  referenciaId?: string;
+}
+
+export const inventarioApi = {
+  /** Listar artículos con búsqueda, filtros y paginación */
+  listar: (params?: {
+    search?: string;
+    categoriaId?: string;
+    proveedorId?: string;
+    stockEstado?: 'bajo' | 'ok';
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.categoriaId) searchParams.set('categoriaId', params.categoriaId);
+    if (params?.proveedorId) searchParams.set('proveedorId', params.proveedorId);
+    if (params?.stockEstado) searchParams.set('stockEstado', params.stockEstado);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ArticuloInventarioDTO>>(
+      `/inventario${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un artículo por ID */
+  obtener: (id: string) =>
+    apiClient.get<ArticuloInventarioDTO>(`/inventario/${id}`),
+
+  /** Crear un artículo */
+  crear: (data: ArticuloCreateInput) =>
+    apiClient.post<ArticuloInventarioDTO>('/inventario', data),
+
+  /** Actualizar un artículo */
+  actualizar: (id: string, data: Partial<ArticuloCreateInput>) =>
+    apiClient.patch<ArticuloInventarioDTO>(`/inventario/${id}`, data),
+
+  /** Eliminar un artículo (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/inventario/${id}`),
+
+  /** Registrar movimiento de stock */
+  movimiento: (data: MovimientoInput) =>
+    apiClient.post<{
+      articuloId: string;
+      tipo: string;
+      cantidad: number;
+      stockAnterior: number;
+      stockResultante: number;
+    }>('/inventario/movimiento', data),
+
+  /** Estadísticas del inventario */
+  stats: () =>
+    apiClient.get<InventarioStats>('/inventario/stats'),
+
+  /** Catálogos para selects (categorías, proveedores, unidades) */
+  catalogos: () =>
+    apiClient.get<InventarioCatalogos>('/inventario/catalogos'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Bitácora API
+// ────────────────────────────────────────────────────────────
+
+/** Formato que devuelve el backend serializado */
+export interface BitacoraDTO {
+  id: string;
+  maquinaId: string;
+  maquina: string;
+  actividad: string;
+  horas: number;
+  fecha: string;
+  obra: string;
+  obraId: string | null;
+  codigo: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface BitacoraStats {
+  totalRegistros: number;
+  horasTotales: number;
+  maquinasActivas: number;
+}
+
+export interface BitacoraCatalogos {
+  maquinas: CatalogoItem[];
+  obras: CatalogoItem[];
+}
+
+export interface BitacoraCreateInput {
+  maquinaId: string;
+  actividad: string;
+  horas: number;
+  fecha: string;
+  obraTexto: string;
+  obraId?: string;
+  codigo?: string;
+}
+
+export const bitacoraApi = {
+  /** Listar registros de bitácora con búsqueda, filtros y paginación */
+  listar: (params?: {
+    search?: string;
+    maquinaId?: string;
+    obraId?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.obraId) searchParams.set('obraId', params.obraId);
+    if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
+    if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<BitacoraDTO>>(
+      `/bitacora${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un registro por ID */
+  obtener: (id: string) =>
+    apiClient.get<BitacoraDTO>(`/bitacora/${id}`),
+
+  /** Crear un registro de bitácora */
+  crear: (data: BitacoraCreateInput) =>
+    apiClient.post<BitacoraDTO>('/bitacora', data),
+
+  /** Actualizar un registro de bitácora */
+  actualizar: (id: string, data: Partial<BitacoraCreateInput>) =>
+    apiClient.patch<BitacoraDTO>(`/bitacora/${id}`, data),
+
+  /** Eliminar un registro (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/bitacora/${id}`),
+
+  /** Estadísticas de la bitácora */
+  stats: () =>
+    apiClient.get<BitacoraStats>('/bitacora/stats'),
+
+  /** Catálogos para selects (máquinas y obras) */
+  catalogos: () =>
+    apiClient.get<BitacoraCatalogos>('/bitacora/catalogos'),
+};

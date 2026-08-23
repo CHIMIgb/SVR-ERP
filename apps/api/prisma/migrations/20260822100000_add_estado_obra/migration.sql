@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "EstadoObra" AS ENUM ('RECIEN_INICIADA', 'EN_PROCESO', 'FINALIZADA');
+
+-- AlterTable
+ALTER TABLE "obras" ADD COLUMN "estado" "EstadoObra" NOT NULL DEFAULT 'EN_PROCESO';

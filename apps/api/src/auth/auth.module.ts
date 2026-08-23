@@ -9,12 +9,17 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { BloqueoModule } from '../bloqueo/bloqueo.module';
 import { AuditModule } from '../audit/audit.module';
 
+const ACCESS_TOKEN_EXPIRY_SECONDS = parseInt(
+  process.env.ACCESS_TOKEN_EXPIRY_SECONDS || '900',
+  10,
+);
+
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
-      signOptions: { expiresIn: '15m' },
+      signOptions: { expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS },
     }),
     BloqueoModule,
     AuditModule,

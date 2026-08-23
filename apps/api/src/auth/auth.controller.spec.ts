@@ -110,12 +110,21 @@ describe('AuthController', () => {
   });
 
   describe('logout', () => {
-    it('debe llamar a authService.logout con userId', async () => {
-      const req = mockRequest();
+    it('debe llamar a authService.logout con userId, jti y tokenHash', async () => {
+      const req = mockRequest({
+        headers: {
+          'user-agent': 'TestAgent/1.0',
+          authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.test-token.signature',
+        },
+      });
 
       const resultado = await controller.logout(req as any);
 
-      expect(authService.logout).toHaveBeenCalledWith('user-1', '');
+      expect(authService.logout).toHaveBeenCalledWith(
+        'user-1',
+        'jti-1',
+        expect.any(String), // SHA-256 hash del token
+      );
       expect(resultado.message).toBe('Sesión cerrada exitosamente');
     });
   });

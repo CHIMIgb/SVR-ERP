@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditContextService } from './audit-context.service';
 import { AuditLogDto, AuditLogFailureDto } from './audit.types';
 import { ACTION_SEVERITY_MAP, AUDIT_SENSITIVE_FIELDS } from './audit.constants';
 
@@ -11,7 +12,10 @@ const SYSTEM_ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditContext: AuditContextService,
+  ) {}
 
   /**
    * Registra un evento de auditoría. NUNCA lanza errores — si falla el
@@ -30,6 +34,9 @@ export class AuditService {
    */
   async log(dto: AuditLogDto): Promise<void> {
     try {
+      // Merge: el contexto de la request (AsyncLocalStorage) provee defaults.
+      // Los campos explícitos del DTO tienen prioridad (override).
+      const ctx = this.auditContext.getContext();
       const severity = dto.severity ?? ACTION_SEVERITY_MAP[dto.action] ?? 'INFO';
       const previousValue = dto.previousValue ? this.sanitize(dto.previousValue) : undefined;
       const newValue = dto.newValue ? this.sanitize(dto.newValue) : undefined;
@@ -46,9 +53,9 @@ export class AuditService {
           entity_id: dto.entityId,
           result: dto.result,
           severity,
-          ip_address: dto.ipAddress ?? 'unknown',
-          user_agent: dto.userAgent ?? 'unknown',
-          session_id: dto.sessionId ?? null,
+          ip_address: dto.ipAddress ?? ctx?.ipAddress ?? 'unknown',
+          user_agent: dto.userAgent ?? ctx?.userAgent ?? 'unknown',
+          session_id: dto.sessionId ?? ctx?.sessionId ?? null,
           request_id: randomUUID(),
           correlation_id: randomUUID(),
           error_code: dto.errorCode ?? null,
@@ -64,7 +71,7 @@ export class AuditService {
     } catch (error) {
       // Nunca propagar: la auditoría es secundaria a la operación de negocio.
       this.logger.error(
-        `Error al registrar auditoría [${dto.action}]: ${error instanceof Error ? error.message : String(error)}`,
+        `AUDIT_FAIL [${dto.action}] entity=${dto.entityType}/${dto.entityId}: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
     }
