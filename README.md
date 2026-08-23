@@ -275,6 +275,34 @@ npx prisma migrate dev --name <nombre_migracion>
 npx prisma migrate deploy
 ```
 
+### Migraciones manuales (one-off scripts)
+
+Algunos cambios de esquema no se manejan con `prisma migrate dev` directamente. Están versionados como scripts en `apps/api/scripts/` y deben ejecutarse manualmente contra la base de datos real:
+
+```bash
+cd apps/api
+
+# Convertir todas las columnas timestamp sin zona a timestamptz (America/Mexico_City)
+npx ts-node scripts/migrate-to-timestamptz.ts
+
+# (Uso interno) Actualizar schema.prisma para que todos los DateTime usen @db.Timestamptz()
+npx ts-node scripts/add-timestamptz-to-schema.ts
+```
+
+> **Nota:** `migrate-to-timestamptz.ts` altera 193 columnas. Ejecútalo solo una vez por base de datos.
+
+### Zona horaria
+
+La empresa opera en **Nayarit Costa Sur**, que comparte horario con Ciudad de México:
+
+```env
+# apps/api/.env
+TZ=America/Mexico_City
+TIMEZONE=America/Mexico_City
+```
+
+El frontend usa `APP_TIMEZONE = 'America/Mexico_City'` en `apps/web/src/lib/formatters.ts` para mostrar fechas/horas siempre en esa zona, independientemente del reloj del dispositivo del usuario.
+
 **Archivos clave:**
 
 | Archivo | Descripción |
