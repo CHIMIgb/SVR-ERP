@@ -431,7 +431,7 @@ describe('AuthService', () => {
         data: expect.objectContaining({
           jti: 'access-jti-1',
           token_hash: 'token-hash-abc',
-          tipo: 'access',
+          tipo: 'ACCESS',
           user_id: 'user-1',
           razon: 'Logout manual',
         }),
@@ -521,7 +521,7 @@ describe('AuthService', () => {
       expect(mockTx.token_blacklist.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           jti: 'old-refresh-jti',
-          tipo: 'refresh',
+          tipo: 'REFRESH',
           user_id: 'user-1',
           razon: 'Rotación de token',
         }),

@@ -456,7 +456,7 @@ export class AuthService {
           id: randomUUID(),
           jti: oldRefreshJti,
           token_hash: oldRefreshToken.token_hash,
-          tipo: 'refresh',
+          tipo: 'REFRESH',
           user_id: userId,
           razon: 'Rotación de token',
           expira_en: oldRefreshToken.expira_en,
@@ -571,7 +571,7 @@ export class AuthService {
           id: randomUUID(),
           jti: accessJti,
           token_hash: accessTokenHash,
-          tipo: 'access',
+          tipo: 'ACCESS',
           user_id: userId,
           razon: 'Logout manual',
           expira_en: new Date(
