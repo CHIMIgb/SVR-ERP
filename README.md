@@ -69,20 +69,33 @@ NEXT_PUBLIC_API_URL=http://192.168.0.105:3001/api
 ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 ```
 
-2. Inicia el frontend atado a la IP:
+2. Configura `apps/api/.env` para que la API permita CORS desde el frontend por IP:
+
+```env
+CORS_ORIGINS=http://localhost:3000,http://192.168.0.105:3000
+```
+
+3. Inicia la API (ya escucha en `0.0.0.0`, así que es accesible por IP):
+
+```bash
+cd apps/api
+npm run dev
+```
+
+4. Inicia el frontend atado a la IP:
 
 ```bash
 cd apps/web
 npx next dev --turbopack --hostname 192.168.0.105
 ```
 
-3. Accede desde cualquier dispositivo de la red:
+5. Accede desde cualquier dispositivo de la red:
 
 ```text
 http://192.168.0.105:3000
 ```
 
-> **Nota:** `ALLOWED_DEV_ORIGINS` se lee en `next.config.ts` y evita el error de Cross-Origin de Next.js HMR cuando accedes por IP. Los valores se separan por comas. Incluye siempre `localhost` para seguir usandolo localmente.
+> **Nota:** `ALLOWED_DEV_ORIGINS` se lee en `next.config.ts` y evita el error de Cross-Origin de Next.js HMR cuando accedes por IP. `CORS_ORIGINS` configura qué orígenes acepta la API. Los valores se separan por comas. Incluye siempre `localhost` para seguir usandolo localmente.
 
 Si el puerto `3000` está ocupado y Next.js salta al `3001`, mueve el frontend a otro puerto:
 
@@ -113,8 +126,9 @@ JWT_REFRESH_SECRET="..."
 PORT=3001
 FRONTEND_URL=http://localhost:3000
 
-# Opcional: lista de origenes CORS separada por comas
-# CORS_ORIGINS=http://localhost:3000,http://localhost:3002
+# Lista de origenes CORS separada por comas.
+# Incluye localhost y la IP de tu laptop si accedes desde red local.
+CORS_ORIGINS=http://localhost:3000,http://192.168.0.105:3000
 
 # Bloqueo por IP (anti brute-force)
 BLOQUEO_IP_MAX_INTENTOS=10

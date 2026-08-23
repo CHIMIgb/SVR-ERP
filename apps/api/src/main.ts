@@ -12,7 +12,7 @@ async function bootstrap() {
   // CORS — permitir frontend en desarrollo
   const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',')
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
     : frontendUrl
       ? [frontendUrl]
       : [
@@ -52,6 +52,8 @@ async function bootstrap() {
   );
 
   await app.listen(port, '0.0.0.0');
-  console.log(`API SVR-ERP corriendo en http://localhost:${port}/api`);
+  console.log(
+    `API SVR-ERP corriendo en http://localhost:${port}/api (y en todos las interfaces de red, ej. http://192.168.x.x:${port}/api)`,
+  );
 }
 bootstrap();
