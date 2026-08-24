@@ -7,6 +7,8 @@ import { AuditLogDto, AuditLogFailureDto } from './audit.types';
 import { ACTION_SEVERITY_MAP, AUDIT_SENSITIVE_FIELDS } from './audit.constants';
 
 const SYSTEM_ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+/** Metadata de respaldo para registros sin contexto HTTP (jobs/cron del sistema). */
+const SYSTEM_METADATA_SOURCE = { source: 'SYSTEM' };
 
 @Injectable()
 export class AuditService {
@@ -106,7 +108,7 @@ export class AuditService {
 
     const merged: Record<string, unknown> = { ...auto, ...(dto.metadata ?? {}) };
 
-    return Object.keys(merged).length > 0 ? merged : { source: 'SYSTEM' };
+    return Object.keys(merged).length > 0 ? merged : SYSTEM_METADATA_SOURCE;
   }
 
   /**
