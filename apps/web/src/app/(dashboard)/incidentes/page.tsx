@@ -549,7 +549,7 @@ export default function IncidentesPage() {
         subtitle="Registro y seguimiento de fallas, accidentes y retrasos operativos en obra."
         action={
           puedeCrear ? (
-            <Button variant="danger" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Reportar Incidente
             </Button>
           ) : undefined
