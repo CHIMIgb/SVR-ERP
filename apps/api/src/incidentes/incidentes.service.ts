@@ -16,6 +16,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { UpdateIncidenteDto } from './dto/update-incidente.dto';
 import { QueryIncidentesDto } from './dto/query-incidentes.dto';
+import { ReportarIncidenteDto } from './dto/reportar-incidente.dto';
 
 const INCIDENTE_INCLUDE = {
   maquinas: { select: { id: true, nombre: true } },
@@ -307,6 +308,45 @@ export class IncidentesService {
   }
 
   // ────────────────────────────────────────────
+  //  REPORTAR (informe formal con descripción)
+  // ────────────────────────────────────────────
+  async reportar(id: string, dto: ReportarIncidenteDto, userId: string) {
+    const existente = await this.prisma.incidentes.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      throw new NotFoundException(`Incidente con id "${id}" no encontrado`);
+    }
+
+    const incidente = await this.prisma.incidentes.update({
+      where: { id },
+      data: {
+        reporte_descripcion: dto.descripcion,
+        reportado_por: userId,
+        reportado_en: new Date(),
+        actualizado_por: userId,
+      },
+      include: INCIDENTE_INCLUDE,
+    });
+
+    const serialized = this.serialize(incidente);
+
+    await this.auditService.log({
+      action: AuditAction.INCIDENTE_REPORTADO,
+      entityType: 'incidentes',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { descripcion: dto.descripcion },
+    });
+
+    return serialized;
+  }
+
+  // ────────────────────────────────────────────
   //  ESTADÍSTICAS
   // ────────────────────────────────────────────
   async findStats() {
@@ -390,12 +430,15 @@ export class IncidentesService {
       estado: this.formatEstado(incidente.estado as EstadoIncidente),
       fecha:
         incidente.fecha instanceof Date
-          ? incidente.fecha.toISOString().split('T')[0]
-          : String(incidente.fecha).split('T')[0],
+          ? incidente.fecha.toISOString()
+          : String(incidente.fecha),
       maquinaId: incidente.maquina_id,
       maquina: incidente.maquinas?.nombre ?? null,
       obraId: incidente.obra_id,
       obra: incidente.obra_texto,
+      reporteDescripcion: incidente.reporte_descripcion,
+      reportadoEn:
+        incidente.reportado_en?.toISOString?.() ?? incidente.reportado_en,
       activo: incidente.activo,
       creadoEn: incidente.creado_en?.toISOString?.() ?? incidente.creado_en,
       actualizadoEn:

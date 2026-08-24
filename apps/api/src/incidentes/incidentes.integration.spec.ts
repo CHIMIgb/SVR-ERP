@@ -210,4 +210,39 @@ describe('Incidentes Audit (Real DB)', () => {
       await expect(service.resolver(incidente.id, ACTOR_USER_ID)).rejects.toThrow('ya está resuelto');
     });
   });
+
+  describe('INCIDENTE_REPORTADO', () => {
+    it('debe reportar incidente y registrar INCIDENTE_REPORTADO en registro_auditoria', async () => {
+      const dto = createDto();
+      const incidente = await service.create(dto, ACTOR_USER_ID);
+      createdIncidenteIds.push(incidente.id);
+
+      const descripcion = 'Se reporta por riesgo de caída de material';
+      const reportado = await service.reportar(incidente.id, { descripcion }, ACTOR_USER_ID);
+      expect(reportado.reporteDescripcion).toBe(descripcion);
+      expect(reportado.reportadoEn).not.toBeNull();
+
+      // Persistencia real de los campos de reporte
+      const row = await prisma.incidentes.findUnique({ where: { id: incidente.id } });
+      expect(row?.reporte_descripcion).toBe(descripcion);
+      expect(row?.reportado_por).toBe(ACTOR_USER_ID);
+      expect(row?.reportado_en).not.toBeNull();
+
+      // Auditoría
+      const audits = await findAudits(AuditAction.INCIDENTE_REPORTADO, incidente.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue).not.toBeNull();
+      expect(newValue?.descripcion).toBe(descripcion);
+    });
+
+    it('debe rechazar reportar un incidente inexistente', async () => {
+      await expect(
+        service.reportar(randomUUID(), { descripcion: 'test' }, ACTOR_USER_ID),
+      ).rejects.toThrow('no encontrado');
+    });
+  });
 });

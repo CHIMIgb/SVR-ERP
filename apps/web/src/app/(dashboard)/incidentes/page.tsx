@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, ShieldAlert, AlertTriangle, Clock,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Check,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Check, Flag,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -22,7 +22,7 @@ import {
   type IncidenteCatalogos,
   type IncidenteCreateInput,
 } from '@/lib/api';
-import { formatDate } from '@/lib/formatters';
+import { formatDateTime } from '@/lib/formatters';
 import type { BadgeVariant } from '@/components/ui/Badge';
 
 // ── Constantes ──
@@ -62,7 +62,19 @@ const emptyForm = {
   obraId: '',
   maquinaId: '',
   fecha: new Date().toISOString().split('T')[0],
+  hora: new Date().toTimeString().slice(0, 5),
 };
+
+// Convierte un ISO datetime a las partes que consumen <input type="date"> / <input type="time">
+function toInputParts(iso: string): { fecha: string; hora: string } {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return { fecha: '', hora: '' };
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    fecha: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    hora: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
 
 export default function IncidentesPage() {
   const { user } = useAuth();
@@ -93,6 +105,8 @@ export default function IncidentesPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportDescripcion, setReportDescripcion] = useState('');
   const [selectedItem, setSelectedItem] = useState<IncidenteDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -246,6 +260,7 @@ export default function IncidentesPage() {
 
   const openEdit = useCallback((item: IncidenteDTO) => {
     setSelectedItem(item);
+    const parts = toInputParts(item.fecha);
     setForm({
       titulo: item.titulo,
       descripcion: item.descripcion,
@@ -253,7 +268,8 @@ export default function IncidentesPage() {
       estado: estadoToValue(item.estado),
       obraId: item.obraId,
       maquinaId: item.maquinaId || '',
-      fecha: item.fecha,
+      fecha: parts.fecha,
+      hora: parts.hora,
     });
     setEditOpen(true);
   }, []);
@@ -266,6 +282,12 @@ export default function IncidentesPage() {
   const openResolve = useCallback((item: IncidenteDTO) => {
     setSelectedItem(item);
     setResolveOpen(true);
+  }, []);
+
+  const openReport = useCallback((item: IncidenteDTO) => {
+    setSelectedItem(item);
+    setReportDescripcion(item.reporteDescripcion || '');
+    setReportOpen(true);
   }, []);
 
   // ── Helpers de conversión label ↔ valor ──
@@ -311,7 +333,7 @@ export default function IncidentesPage() {
         descripcion: form.descripcion,
         prioridad: form.prioridad,
         estado: form.estado,
-        fecha: form.fecha,
+        fecha: `${form.fecha}T${form.hora}`,
         obraId: form.obraId,
         maquinaId: form.maquinaId || undefined,
       });
@@ -340,7 +362,7 @@ export default function IncidentesPage() {
         descripcion: form.descripcion,
         prioridad: form.prioridad,
         estado: form.estado,
-        fecha: form.fecha,
+        fecha: `${form.fecha}T${form.hora}`,
         obraId: form.obraId,
         maquinaId: form.maquinaId || undefined,
       });
@@ -403,6 +425,32 @@ export default function IncidentesPage() {
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
+  const handleReport = useCallback(async () => {
+    if (!selectedItem) return;
+    if (!reportDescripcion.trim()) {
+      showToast('La descripción del reporte es obligatoria.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await incidentesApi.reportar(selectedItem.id, { descripcion: reportDescripcion.trim() });
+      if (res.success) {
+        showToast('Incidente reportado exitosamente.', 'success');
+        setReportOpen(false);
+        setSelectedItem(null);
+        setReportDescripcion('');
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al reportar incidente.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al reportar incidente.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, reportDescripcion, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+
   // ── Columnas de DataTable ──
   const columns: Column<IncidenteDTO>[] = [
     {
@@ -433,7 +481,7 @@ export default function IncidentesPage() {
       key: 'fecha',
       header: 'Fecha',
       render: (item) => (
-        <span className="whitespace-nowrap font-bold text-slate-600">{formatDate(item.fecha)}</span>
+        <span className="whitespace-nowrap font-bold text-slate-600">{formatDateTime(item.fecha)}</span>
       ),
     },
     {
@@ -457,6 +505,16 @@ export default function IncidentesPage() {
               onClick={(e) => { e.stopPropagation(); openResolve(item); }}
             >
               Resolver
+            </Button>
+          )}
+          {puedeEditar && (
+            <Button
+              variant="info"
+              size="sm"
+              icon={<Flag className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openReport(item); }}
+            >
+              Reportar
             </Button>
           )}
           {puedeEditar && (
@@ -743,6 +801,15 @@ export default function IncidentesPage() {
               onChange={(e) => setForm({ ...form, fecha: e.target.value })}
             />
           </ModalField>
+
+          <ModalField label="Hora">
+            <input
+              type="time"
+              className={modalInputClass}
+              value={form.hora}
+              onChange={(e) => setForm({ ...form, hora: e.target.value })}
+            />
+          </ModalField>
         </div>
       </FormModal>
 
@@ -836,6 +903,15 @@ export default function IncidentesPage() {
               onChange={(e) => setForm({ ...form, fecha: e.target.value })}
             />
           </ModalField>
+
+          <ModalField label="Hora">
+            <input
+              type="time"
+              className={modalInputClass}
+              value={form.hora}
+              onChange={(e) => setForm({ ...form, hora: e.target.value })}
+            />
+          </ModalField>
         </div>
       </FormModal>
 
@@ -889,6 +965,48 @@ export default function IncidentesPage() {
             <p className="text-xs text-slate-500">
               {selectedItem.obra} · {selectedItem.prioridad}
             </p>
+          </div>
+        )}
+      </FormModal>
+
+      <FormModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        onCancel={() => setReportOpen(false)}
+        title="Reportar Incidente"
+        subtitle={selectedItem ? `Informe formal de: ${selectedItem.titulo}` : undefined}
+        submitLabel="Registrar Reporte"
+        cancelLabel="Cancelar"
+        onSubmit={handleReport}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-3">
+              <Flag className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-black text-slate-900 text-sm">{selectedItem.titulo}</p>
+                <p className="text-xs text-slate-500">
+                  {selectedItem.obra} · {selectedItem.prioridad} · {selectedItem.estado}
+                </p>
+                {selectedItem.reportadoEn && (
+                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1.5">
+                    Último reporte: {formatDateTime(selectedItem.reportadoEn)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <ModalField label="Motivo del reporte" required hint="Describe por qué se está reportando este incidente.">
+              <textarea
+                className={modalTextareaClass}
+                placeholder="Ej: Se reporta a seguridad e higiene por riesgo de caída de material en el área de carga..."
+                rows={5}
+                maxLength={2000}
+                value={reportDescripcion}
+                onChange={(e) => setReportDescripcion(e.target.value)}
+              />
+            </ModalField>
           </div>
         )}
       </FormModal>

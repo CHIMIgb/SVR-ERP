@@ -607,6 +607,8 @@ export interface IncidenteDTO {
   maquina: string | null;
   obraId: string;
   obra: string;
+  reporteDescripcion: string | null;
+  reportadoEn: string | null;
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
@@ -631,6 +633,10 @@ export interface IncidenteCreateInput {
   fecha: string;
   maquinaId?: string;
   obraId: string;
+}
+
+export interface IncidenteReportarInput {
+  descripcion: string;
 }
 
 export const incidentesApi = {
@@ -671,6 +677,9 @@ export const incidentesApi = {
 
   resolver: (id: string) =>
     apiClient.patch<IncidenteDTO>(`/incidentes/${id}/resolver`, {}),
+
+  reportar: (id: string, data: IncidenteReportarInput) =>
+    apiClient.patch<IncidenteDTO>(`/incidentes/${id}/reportar`, data),
 
   stats: () =>
     apiClient.get<IncidenteStats>('/incidentes/stats'),

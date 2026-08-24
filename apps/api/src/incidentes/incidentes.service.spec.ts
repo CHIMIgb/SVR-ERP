@@ -268,6 +268,32 @@ describe('IncidentesService', () => {
     });
   });
 
+  describe('reportar', () => {
+    const reportarDto = { descripcion: 'Se reporta por riesgo de caída de material' };
+
+    it('should register report and log INCIDENTE_REPORTADO', async () => {
+      const result = await service.reportar(mockIncidente.id, reportarDto, 'user-1');
+      expect(prisma.incidentes.update).toHaveBeenCalled();
+      expect(result).toBeDefined();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.INCIDENTE_REPORTADO,
+          entityType: 'incidentes',
+          actorUserId: 'user-1',
+          result: AuditResult.SUCCESS,
+          newValue: { descripcion: reportarDto.descripcion },
+        }),
+      );
+    });
+
+    it('should throw NotFoundException if incidente not found', async () => {
+      prisma.incidentes.findFirst.mockResolvedValue(null);
+      await expect(
+        service.reportar('non-existent', reportarDto, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('findStats', () => {
     it('should return total, abiertos and criticos', async () => {
       prisma.incidentes.count = jest.fn().mockResolvedValueOnce(10).mockResolvedValueOnce(4).mockResolvedValueOnce(1);

@@ -18,6 +18,7 @@ import { IncidentesService } from './incidentes.service';
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { UpdateIncidenteDto } from './dto/update-incidente.dto';
 import { QueryIncidentesDto } from './dto/query-incidentes.dto';
+import { ReportarIncidenteDto } from './dto/reportar-incidente.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -116,6 +117,22 @@ export class IncidentesController {
   ) {
     const user = req.user as { id: string };
     return this.incidentesService.resolver(id, user.id);
+  }
+
+  /**
+   * PATCH /api/incidentes/:id/reportar
+   * Registra el informe formal del incidente con su descripción.
+   * Permiso: operaciones.incidentes.editar
+   */
+  @RequirePermission('operaciones', 'incidentes', 'editar')
+  @Patch(':id/reportar')
+  async reportar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReportarIncidenteDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.incidentesService.reportar(id, dto, user.id);
   }
 
   /**
