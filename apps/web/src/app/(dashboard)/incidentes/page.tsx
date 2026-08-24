@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, ShieldAlert, AlertTriangle, Clock,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Check,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -92,6 +92,7 @@ export default function IncidentesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [resolveOpen, setResolveOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<IncidenteDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -262,6 +263,11 @@ export default function IncidentesPage() {
     setDeleteOpen(true);
   }, []);
 
+  const openResolve = useCallback((item: IncidenteDTO) => {
+    setSelectedItem(item);
+    setResolveOpen(true);
+  }, []);
+
   // ── Helpers de conversión label ↔ valor ──
   function prioridadToValue(label: IncidenteDTO['prioridad']): IncidenteCreateInput['prioridad'] {
     const map: Record<IncidenteDTO['prioridad'], IncidenteCreateInput['prioridad']> = {
@@ -376,6 +382,27 @@ export default function IncidentesPage() {
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
+  const handleResolve = useCallback(async () => {
+    if (!selectedItem) return;
+    setSubmitting(true);
+    try {
+      const res = await incidentesApi.resolver(selectedItem.id);
+      if (res.success) {
+        showToast('Incidente marcado como resuelto.', 'success');
+        setResolveOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al resolver incidente.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al resolver incidente.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+
   // ── Columnas de DataTable ──
   const columns: Column<IncidenteDTO>[] = [
     {
@@ -422,6 +449,16 @@ export default function IncidentesPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
+          {puedeEditar && item.estado !== 'Resuelto' && (
+            <Button
+              variant="success"
+              size="sm"
+              icon={<Check className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openResolve(item); }}
+            >
+              Resolver
+            </Button>
+          )}
           {puedeEditar && (
             <Button
               variant="warning"
@@ -820,6 +857,33 @@ export default function IncidentesPage() {
             </div>
             <p className="text-sm text-slate-700 mb-1">
               ¿Estás seguro de eliminar este incidente?
+            </p>
+            <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.titulo}</p>
+            <p className="text-xs text-slate-500">
+              {selectedItem.obra} · {selectedItem.prioridad}
+            </p>
+          </div>
+        )}
+      </FormModal>
+
+      <FormModal
+        open={resolveOpen}
+        onClose={() => setResolveOpen(false)}
+        onCancel={() => setResolveOpen(false)}
+        title="Resolver Incidente"
+        subtitle="Se marcará como Resuelto y se registrará en auditoría."
+        submitLabel="Sí, Resolver"
+        cancelLabel="Cancelar"
+        onSubmit={handleResolve}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
+              <Check className="w-7 h-7 text-green-600" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">
+              ¿Marcar como resuelto este incidente?
             </p>
             <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.titulo}</p>
             <p className="text-xs text-slate-500">

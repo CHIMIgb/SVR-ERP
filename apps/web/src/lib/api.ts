@@ -669,6 +669,9 @@ export const incidentesApi = {
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/incidentes/${id}`),
 
+  resolver: (id: string) =>
+    apiClient.patch<IncidenteDTO>(`/incidentes/${id}/resolver`, {}),
+
   stats: () =>
     apiClient.get<IncidenteStats>('/incidentes/stats'),
 

@@ -104,6 +104,21 @@ export class IncidentesController {
   }
 
   /**
+   * PATCH /api/incidentes/:id/resolver
+   * Marcar un incidente como RESUELTO.
+   * Permiso: operaciones.incidentes.editar
+   */
+  @RequirePermission('operaciones', 'incidentes', 'editar')
+  @Patch(':id/resolver')
+  async resolver(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.incidentesService.resolver(id, user.id);
+  }
+
+  /**
    * DELETE /api/incidentes/:id
    * Eliminar (soft delete) un incidente.
    * Permiso: operaciones.incidentes.eliminar

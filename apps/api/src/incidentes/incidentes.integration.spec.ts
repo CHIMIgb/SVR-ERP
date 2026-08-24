@@ -178,4 +178,36 @@ describe('Incidentes Audit (Real DB)', () => {
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
     });
   });
+
+  describe('INCIDENTE_RESUELTO', () => {
+    it('debe resolver incidente y registrar INCIDENTE_RESUELTO en registro_auditoria', async () => {
+      const dto = createDto();
+      const incidente = await service.create(dto, ACTOR_USER_ID);
+      createdIncidenteIds.push(incidente.id);
+
+      const resuelto = await service.resolver(incidente.id, ACTOR_USER_ID);
+      expect(resuelto.estado).toBe('Resuelto');
+
+      const audits = await findAudits(AuditAction.INCIDENTE_RESUELTO, incidente.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+
+      const previousValue = audits[0].previous_value as Record<string, unknown> | null;
+      expect(previousValue).not.toBeNull();
+      expect(previousValue?.estado).not.toBe('Resuelto');
+
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue?.estado).toBe('Resuelto');
+    });
+
+    it('debe rechazar resolver un incidente ya resuelto', async () => {
+      const dto = createDto();
+      const incidente = await service.create(dto, ACTOR_USER_ID);
+      createdIncidenteIds.push(incidente.id);
+
+      await service.resolver(incidente.id, ACTOR_USER_ID);
+      await expect(service.resolver(incidente.id, ACTOR_USER_ID)).rejects.toThrow('ya está resuelto');
+    });
+  });
 });

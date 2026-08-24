@@ -265,6 +265,48 @@ export class IncidentesService {
   }
 
   // ────────────────────────────────────────────
+  //  RESOLVER
+  // ────────────────────────────────────────────
+  async resolver(id: string, userId: string) {
+    const existente = await this.prisma.incidentes.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      throw new NotFoundException(`Incidente con id "${id}" no encontrado`);
+    }
+
+    if (existente.estado === EstadoIncidente.RESUELTO) {
+      throw new BadRequestException('El incidente ya está resuelto');
+    }
+
+    const incidente = await this.prisma.incidentes.update({
+      where: { id },
+      data: {
+        estado: EstadoIncidente.RESUELTO,
+        actualizado_por: userId,
+      },
+      include: INCIDENTE_INCLUDE,
+    });
+
+    const serialized = this.serialize(incidente);
+
+    await this.auditService.log({
+      action: AuditAction.INCIDENTE_RESUELTO,
+      entityType: 'incidentes',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: this.serialize(existente),
+      newValue: serialized,
+    });
+
+    return serialized;
+  }
+
+  // ────────────────────────────────────────────
   //  ESTADÍSTICAS
   // ────────────────────────────────────────────
   async findStats() {

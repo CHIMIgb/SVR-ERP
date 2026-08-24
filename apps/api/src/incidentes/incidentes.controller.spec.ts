@@ -31,6 +31,7 @@ describe('IncidentesController', () => {
     create: jest.fn().mockResolvedValue(mockIncidente),
     update: jest.fn().mockResolvedValue(mockIncidente),
     remove: jest.fn().mockResolvedValue({ message: 'Incidente eliminado exitosamente' }),
+    resolver: jest.fn().mockResolvedValue(mockIncidente),
     findStats: jest.fn().mockResolvedValue({ total: 1, abiertos: 1, criticos: 0 }),
     findCatalogos: jest.fn().mockResolvedValue({
       maquinas: [{ id: 'mq1', nombre: 'Excavadora CAT 320' }],
@@ -108,6 +109,15 @@ describe('IncidentesController', () => {
       const result = await controller.remove(mockIncidente.id, req as never);
       expect(result.message).toContain('eliminado');
       expect(service.remove).toHaveBeenCalledWith(mockIncidente.id, 'user-1');
+    });
+  });
+
+  describe('resolver', () => {
+    it('should resolve an incidente passing userId', async () => {
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.resolver(mockIncidente.id, req as never);
+      expect(result).toBeDefined();
+      expect(service.resolver).toHaveBeenCalledWith(mockIncidente.id, 'user-1');
     });
   });
 

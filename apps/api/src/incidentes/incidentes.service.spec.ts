@@ -52,7 +52,7 @@ describe('IncidentesService', () => {
         findFirst: jest.fn().mockResolvedValue(mockIncidente),
         count: jest.fn().mockResolvedValue(1),
         create: jest.fn().mockResolvedValue(mockIncidente),
-        update: jest.fn().mockResolvedValue(mockIncidente),
+        update: jest.fn().mockResolvedValue({ ...mockIncidente, estado: EstadoIncidente.RESUELTO }),
       },
       maquinas: {
         findFirst: jest.fn().mockResolvedValue(mockMaquina),
@@ -239,6 +239,32 @@ describe('IncidentesService', () => {
     it('should throw NotFoundException if incidente not found', async () => {
       prisma.incidentes.findFirst.mockResolvedValue(null);
       await expect(service.remove('non-existent', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('resolver', () => {
+    it('should mark incidente as RESUELTO and log INCIDENTE_RESUELTO', async () => {
+      const result = await service.resolver(mockIncidente.id, 'user-1');
+      expect(prisma.incidentes.update).toHaveBeenCalled();
+      expect(result.estado).toBe('Resuelto');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.INCIDENTE_RESUELTO,
+          entityType: 'incidentes',
+          actorUserId: 'user-1',
+          result: AuditResult.SUCCESS,
+        }),
+      );
+    });
+
+    it('should throw NotFoundException if incidente not found', async () => {
+      prisma.incidentes.findFirst.mockResolvedValue(null);
+      await expect(service.resolver('non-existent', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException if incidente already RESUELTO', async () => {
+      prisma.incidentes.findFirst.mockResolvedValue({ ...mockIncidente, estado: EstadoIncidente.RESUELTO });
+      await expect(service.resolver(mockIncidente.id, 'user-1')).rejects.toThrow(BadRequestException);
     });
   });
 
