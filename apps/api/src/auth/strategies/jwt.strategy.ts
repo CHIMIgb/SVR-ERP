@@ -12,6 +12,8 @@ export interface AuthenticatedUser {
   nombre?: string;
   jti: string;
   sessionId?: string;
+  /** "Issued at" del token (epoch segundos) — para trazabilidad en auditoría. */
+  iat?: number;
 }
 
 @Injectable()
@@ -65,6 +67,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       nombre: nombre || undefined,
       jti: payload.jti,
       sessionId: payload.sessionId,
+      iat: payload.iat,
     };
   }
 }

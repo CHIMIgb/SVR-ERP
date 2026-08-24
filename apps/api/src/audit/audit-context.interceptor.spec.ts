@@ -7,7 +7,7 @@ describe('AuditContextInterceptor', () => {
   let auditContext: AuditContextService;
 
   const mockRequest = (
-    user?: { id?: string; email?: string; nombre?: string; sessionId?: string; jti?: string },
+    user?: { id?: string; email?: string; nombre?: string; sessionId?: string; jti?: string; iat?: number },
     ip?: string,
     userAgent?: string,
     method = 'GET',
@@ -42,7 +42,7 @@ describe('AuditContextInterceptor', () => {
 
   it('should populate ipAddress, userAgent, sessionId, endpoint, method and JWT info from request', (done) => {
     const req = mockRequest(
-      { id: 'user-1', email: 'admin@svr.com', nombre: 'Carlos SVR', sessionId: 'session-1', jti: 'jti-1' },
+      { id: 'user-1', email: 'admin@svr.com', nombre: 'Carlos SVR', sessionId: 'session-1', jti: 'jti-1', iat: 1756000000 },
       '192.168.1.1',
       'Mozilla/5.0',
       'POST',
@@ -63,6 +63,7 @@ describe('AuditContextInterceptor', () => {
           jwtEmail: 'admin@svr.com',
           jwtNombre: 'Carlos SVR',
           jti: 'jti-1',
+          jwtIat: 1756000000,
         });
         return { subscribe: () => done() } as never;
       },

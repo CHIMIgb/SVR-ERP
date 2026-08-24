@@ -69,6 +69,7 @@ const store: AuditRequestContext = {
   jwtEmail: user?.email,
   jwtNombre: user?.nombre,   // viene del JwtStrategy (persona vinculada al user)
   jti: user?.jti,
+  jwtIat: user?.iat,         // "issued at" del token (epoch segundos)
 };
 ```
 
@@ -112,7 +113,8 @@ Todo registro incluye SIEMPRE un objeto `metadata` con, al mínimo:
     "userId": "550e8400-...",
     "email": "admin@svr-constructora.com",
     "nombre": "Carlos García López",
-    "jti": "id-del-token"
+    "jti": "id-del-token",
+    "iat": 1756000000
   }
 }
 ```

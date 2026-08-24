@@ -103,6 +103,7 @@ export class AuditService {
       if (ctx.jwtEmail) jwt.email = ctx.jwtEmail;
       if (ctx.jwtNombre) jwt.nombre = ctx.jwtNombre;
       if (ctx.jti) jwt.jti = ctx.jti;
+      if (ctx.jwtIat) jwt.iat = ctx.jwtIat;
       if (Object.keys(jwt).length > 0) auto.jwt = jwt;
     }
 

@@ -21,6 +21,8 @@ export interface AuditRequestContext {
   jwtEmail?: string;
   jwtNombre?: string;
   jti?: string;
+  /** "Issued at" del token (epoch segundos). */
+  jwtIat?: number;
 }
 
 @Injectable()

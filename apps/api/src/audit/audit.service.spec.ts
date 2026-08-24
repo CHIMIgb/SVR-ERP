@@ -137,6 +137,7 @@ describe('AuditService', () => {
           jwtEmail: 'admin@svr.com',
           jwtNombre: 'Carlos SVR',
           jti: 'jti-abc',
+          jwtIat: 1756000000,
         },
         async () => {
           await service.log(baseDto);
@@ -154,6 +155,7 @@ describe('AuditService', () => {
                 email: 'admin@svr.com',
                 nombre: 'Carlos SVR',
                 jti: 'jti-abc',
+                iat: 1756000000,
               },
             }),
           }),

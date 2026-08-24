@@ -153,6 +153,14 @@ describe('JwtStrategy', () => {
 
       expect(result.nombre).toBe('Carlos García López');
     });
+
+    it('debe propagar el iat del token para la metadata de auditoría', async () => {
+      const payloadConIat = { ...validPayload, iat: 1756000000 };
+
+      const result = await strategy.validate(payloadConIat);
+
+      expect(result.iat).toBe(1756000000);
+    });
   });
 
   // ── SECUENCIA DE VERIFICACIÓN ──

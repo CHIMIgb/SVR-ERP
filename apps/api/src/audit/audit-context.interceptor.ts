@@ -18,7 +18,7 @@ export class AuditContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest();
     const user = req.user as
-      | { id?: string; email?: string; nombre?: string; sessionId?: string; jti?: string }
+      | { id?: string; email?: string; nombre?: string; sessionId?: string; jti?: string; iat?: number }
       | undefined;
 
     const store: AuditRequestContext = {
@@ -31,6 +31,7 @@ export class AuditContextInterceptor implements NestInterceptor {
       jwtEmail: user?.email,
       jwtNombre: user?.nombre,
       jti: user?.jti,
+      jwtIat: user?.iat,
     };
 
     return new Observable((subscriber) => {
