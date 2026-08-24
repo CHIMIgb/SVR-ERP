@@ -172,4 +172,47 @@ describe('Proyectos Audit (Real DB)', () => {
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
     });
   });
+
+  describe('PROYECTO_FINANZAS_ACTUALIZADO', () => {
+    it('debe actualizar finanzas y registrar valores previo/nuevo en registro_auditoria', async () => {
+      const dto = createDto({ ingresoCobrado: 100000, gastado: 50000 });
+      const proyecto = await service.create(dto, ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      await service.actualizarFinanzas(
+        proyecto.id,
+        { ingresoCobrado: 250000, gastado: 180000 },
+        ACTOR_USER_ID,
+      );
+
+      // Persistencia real
+      const row = await prisma.proyectos.findUnique({ where: { id: proyecto.id } });
+      expect(Number(row?.ingreso_cobrado)).toBe(250000);
+      expect(Number(row?.gastado)).toBe(180000);
+
+      // Auditoría con transición de valores
+      const audits = await findAudits(AuditAction.PROYECTO_FINANZAS_ACTUALIZADO, proyecto.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+
+      const previousValue = audits[0].previous_value as Record<string, unknown> | null;
+      expect(previousValue?.ingresoCobrado).toBe(100000);
+      expect(previousValue?.gastado).toBe(50000);
+
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue?.ingresoCobrado).toBe(250000);
+      expect(newValue?.gastado).toBe(180000);
+    });
+
+    it('debe rechazar actualización sin ningún campo financiero', async () => {
+      const dto = createDto();
+      const proyecto = await service.create(dto, ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      await expect(
+        service.actualizarFinanzas(proyecto.id, {}, ACTOR_USER_ID),
+      ).rejects.toThrow('al menos un campo');
+    });
+  });
 });

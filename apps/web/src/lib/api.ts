@@ -733,6 +733,11 @@ export interface ProyectoCreateInput {
   gastado?: number;
 }
 
+export interface ProyectoFinanzasInput {
+  ingresoCobrado?: number;
+  gastado?: number;
+}
+
 export const proyectosApi = {
   listar: (params?: {
     search?: string;
@@ -761,6 +766,9 @@ export const proyectosApi = {
 
   actualizar: (id: string, data: Partial<ProyectoCreateInput>) =>
     apiClient.patch<ProyectoDTO>(`/proyectos/${id}`, data),
+
+  actualizarFinanzas: (id: string, data: ProyectoFinanzasInput) =>
+    apiClient.patch<ProyectoDTO>(`/proyectos/${id}/finanzas`, data),
 
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/proyectos/${id}`),

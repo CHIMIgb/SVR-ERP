@@ -31,6 +31,7 @@ describe('ProyectosController', () => {
     findOne: jest.fn().mockResolvedValue(mockProyecto),
     create: jest.fn().mockResolvedValue(mockProyecto),
     update: jest.fn().mockResolvedValue(mockProyecto),
+    actualizarFinanzas: jest.fn().mockResolvedValue(mockProyecto),
     remove: jest.fn().mockResolvedValue({ message: 'Proyecto eliminado exitosamente' }),
     findStats: jest.fn().mockResolvedValue({
       total: 1,
@@ -123,6 +124,16 @@ describe('ProyectosController', () => {
         { nombre: 'Valle Sur Fase II' },
         'user-1',
       );
+    });
+  });
+
+  describe('actualizarFinanzas', () => {
+    it('should update finanzas passing dto and userId', async () => {
+      const req = { user: { id: 'user-1' } };
+      const dto = { ingresoCobrado: 1100000, gastado: 980000 };
+      const result = await controller.actualizarFinanzas(mockProyecto.id, dto, req as never);
+      expect(result).toBeDefined();
+      expect(service.actualizarFinanzas).toHaveBeenCalledWith(mockProyecto.id, dto, 'user-1');
     });
   });
 

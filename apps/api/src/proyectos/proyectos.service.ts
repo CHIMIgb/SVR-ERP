@@ -15,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { UpdateProyectoDto } from './dto/update-proyecto.dto';
 import { QueryProyectosDto } from './dto/query-proyectos.dto';
+import { FinanzasProyectoDto } from './dto/finanzas-proyecto.dto';
 
 const PROYECTO_INCLUDE = {
   clientes: { select: { id: true, nombre: true } },
@@ -199,6 +200,57 @@ export class ProyectosService {
       actorRole: 'autenticado',
       previousValue: this.serialize(existente as never),
       newValue: serialized,
+    });
+
+    return serialized;
+  }
+
+  // ────────────────────────────────────────────
+  //  ACTUALIZAR FINANZAS (ingreso cobrado / gasto acumulado)
+  // ────────────────────────────────────────────
+  async actualizarFinanzas(id: string, dto: FinanzasProyectoDto, userId: string) {
+    if (dto.ingresoCobrado === undefined && dto.gastado === undefined) {
+      throw new BadRequestException(
+        'Debe enviar al menos un campo: ingresoCobrado o gastado',
+      );
+    }
+
+    const existente = await this.prisma.proyectos.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      throw new NotFoundException(`Proyecto con id "${id}" no encontrado`);
+    }
+
+    const proyecto = await this.prisma.proyectos.update({
+      where: { id },
+      data: {
+        ...(dto.ingresoCobrado !== undefined && { ingreso_cobrado: dto.ingresoCobrado }),
+        ...(dto.gastado !== undefined && { gastado: dto.gastado }),
+        actualizado_por: userId,
+      },
+      include: PROYECTO_INCLUDE,
+    });
+
+    const serialized = this.serialize(proyecto);
+
+    await this.auditService.log({
+      action: AuditAction.PROYECTO_FINANZAS_ACTUALIZADO,
+      entityType: 'proyectos',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: {
+        ingresoCobrado: Number(existente.ingreso_cobrado),
+        gastado: Number(existente.gastado),
+      },
+      newValue: {
+        ingresoCobrado: serialized.ingresoCobrado,
+        gastado: serialized.gastado,
+      },
     });
 
     return serialized;

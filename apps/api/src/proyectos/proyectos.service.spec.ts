@@ -219,6 +219,46 @@ describe('ProyectosService', () => {
     });
   });
 
+  describe('actualizarFinanzas', () => {
+    it('should update finanzas and log PROYECTO_FINANZAS_ACTUALIZADO', async () => {
+      const result = await service.actualizarFinanzas(
+        mockProyecto.id,
+        { ingresoCobrado: 1100000, gastado: 980000 },
+        'user-1',
+      );
+      expect(prisma.proyectos.update).toHaveBeenCalled();
+      expect(result).toBeDefined();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PROYECTO_FINANZAS_ACTUALIZADO,
+          entityType: 'proyectos',
+          actorUserId: 'user-1',
+          result: AuditResult.SUCCESS,
+          previousValue: { ingresoCobrado: 1020000, gastado: 950000 },
+          newValue: { ingresoCobrado: 1020000, gastado: 950000 },
+        }),
+      );
+    });
+
+    it('should allow updating only one field', async () => {
+      await service.actualizarFinanzas(mockProyecto.id, { gastado: 999999 }, 'user-1');
+      expect(prisma.proyectos.update).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when both fields are missing', async () => {
+      await expect(
+        service.actualizarFinanzas(mockProyecto.id, {}, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException if proyecto not found', async () => {
+      prisma.proyectos.findFirst.mockResolvedValue(null);
+      await expect(
+        service.actualizarFinanzas('non-existent', { gastado: 1 }, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('findStats', () => {
     it('should return totals and presupuesto agregado', async () => {
       prisma.proyectos.count

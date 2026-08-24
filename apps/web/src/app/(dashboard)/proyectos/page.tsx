@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, HardHat, CheckCircle2, FolderKanban,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Wallet,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -49,6 +49,9 @@ const emptyForm = {
   fechaFin: '',
   estado: 'EN_PROCESO' as NonNullable<ProyectoCreateInput['estado']>,
   progreso: '0',
+};
+
+const emptyFinanzasForm = {
   ingresoCobrado: '',
   gastado: '',
 };
@@ -91,9 +94,11 @@ export default function ProyectosPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [finanzasOpen, setFinanzasOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ProyectoDTO | null>(null);
   const [viewItem, setViewItem] = useState<ProyectoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [finanzasForm, setFinanzasForm] = useState(emptyFinanzasForm);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Cargar catálogos (una sola vez) ──
@@ -222,10 +227,17 @@ export default function ProyectosPage() {
       fechaFin: item.fechaFin,
       estado: estadoToValue(item.estado),
       progreso: String(item.progreso),
+    });
+    setEditOpen(true);
+  }, []);
+
+  const openFinanzas = useCallback((item: ProyectoDTO) => {
+    setSelectedItem(item);
+    setFinanzasForm({
       ingresoCobrado: String(item.ingresoCobrado),
       gastado: String(item.gastado),
     });
-    setEditOpen(true);
+    setFinanzasOpen(true);
   }, []);
 
   const openDelete = useCallback((item: ProyectoDTO) => {
@@ -288,6 +300,24 @@ export default function ProyectosPage() {
     return isNaN(n) ? undefined : n;
   };
 
+  const validateFinanzas = useCallback(() => {
+    if (finanzasForm.ingresoCobrado === '' && finanzasForm.gastado === '') {
+      showToast('Captura al menos un valor: ingreso cobrado o gasto acumulado.', 'error');
+      return false;
+    }
+    for (const [campo, label] of [
+      ['ingresoCobrado', 'Ingreso cobrado'],
+      ['gastado', 'Gasto acumulado'],
+    ] as const) {
+      const v = finanzasForm[campo];
+      if (v !== '' && (isNaN(parseFloat(v)) || parseFloat(v) < 0)) {
+        showToast(`${label} debe ser un número mayor o igual a cero.`, 'error');
+        return false;
+      }
+    }
+    return true;
+  }, [finanzasForm, showToast]);
+
   const handleCreate = useCallback(async () => {
     if (!validateForm()) return;
     setSubmitting(true);
@@ -313,11 +343,7 @@ export default function ProyectosPage() {
     if (!selectedItem || !validateForm()) return;
     setSubmitting(true);
     try {
-      const res = await proyectosApi.actualizar(selectedItem.id, {
-        ...buildPayload(),
-        ingresoCobrado: parseOptionalMoney(form.ingresoCobrado),
-        gastado: parseOptionalMoney(form.gastado),
-      });
+      const res = await proyectosApi.actualizar(selectedItem.id, buildPayload());
       if (res.success) {
         showToast(`Proyecto "${form.nombre}" actualizado exitosamente.`, 'success');
         setEditOpen(false);
@@ -334,6 +360,30 @@ export default function ProyectosPage() {
       setSubmitting(false);
     }
   }, [selectedItem, validateForm, buildPayload, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+
+  const handleFinanzas = useCallback(async () => {
+    if (!selectedItem || !validateFinanzas()) return;
+    setSubmitting(true);
+    try {
+      const res = await proyectosApi.actualizarFinanzas(selectedItem.id, {
+        ingresoCobrado: parseOptionalMoney(finanzasForm.ingresoCobrado),
+        gastado: parseOptionalMoney(finanzasForm.gastado),
+      });
+      if (res.success) {
+        showToast(`Finanzas de "${selectedItem.nombre}" actualizadas exitosamente.`, 'success');
+        setFinanzasOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar finanzas.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar finanzas.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, validateFinanzas, finanzasForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
@@ -433,6 +483,16 @@ export default function ProyectosPage() {
               onClick={(e) => { e.stopPropagation(); openView(item); }}
             >
               Ver
+            </Button>
+          )}
+          {puedeEditar && (
+            <Button
+              variant="success"
+              size="sm"
+              icon={<Wallet className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openFinanzas(item); }}
+            >
+              Finanzas
             </Button>
           )}
           {puedeEditar && (
@@ -768,28 +828,6 @@ export default function ProyectosPage() {
               onChange={(e) => setForm({ ...form, fechaFin: e.target.value })}
             />
           </ModalField>
-
-          <ModalField label="Ingreso cobrado (MXN)" hint="Monto facturado/cobrado al cliente.">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className={modalInputClass}
-              value={form.ingresoCobrado}
-              onChange={(e) => setForm({ ...form, ingresoCobrado: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Gasto acumulado (MXN)" hint="Costo real acumulado del proyecto.">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className={modalInputClass}
-              value={form.gastado}
-              onChange={(e) => setForm({ ...form, gastado: e.target.value })}
-            />
-          </ModalField>
         </div>
       </FormModal>
 
@@ -815,6 +853,63 @@ export default function ProyectosPage() {
             <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.nombre}</p>
             <p className="text-xs text-slate-500">
               {selectedItem.cliente} · {formatCurrency(selectedItem.presupuesto)}
+            </p>
+          </div>
+        )}
+      </FormModal>
+
+      <FormModal
+        open={finanzasOpen}
+        onClose={() => setFinanzasOpen(false)}
+        onCancel={() => setFinanzasOpen(false)}
+        title="Actualizar Finanzas"
+        subtitle={selectedItem ? `Registro económico de: ${selectedItem.nombre}` : undefined}
+        submitLabel="Guardar Finanzas"
+        cancelLabel="Cancelar"
+        onSubmit={handleFinanzas}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="space-y-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 grid grid-cols-2 gap-3 text-center">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presupuesto</p>
+                <p className="font-black text-slate-900 text-sm">{formatCurrency(selectedItem.presupuesto)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Utilidad actual</p>
+                <p className={`font-black text-sm ${(selectedItem.ingresoCobrado - selectedItem.gastado) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {formatCurrency(selectedItem.ingresoCobrado - selectedItem.gastado)}
+                </p>
+              </div>
+            </div>
+
+            <ModalField label="Ingreso cobrado (MXN)" hint="Monto facturado y cobrado al cliente hasta la fecha.">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className={modalInputClass}
+                placeholder="Ej: 350000"
+                value={finanzasForm.ingresoCobrado}
+                onChange={(e) => setFinanzasForm({ ...finanzasForm, ingresoCobrado: e.target.value })}
+              />
+            </ModalField>
+
+            <ModalField label="Gasto acumulado (MXN)" hint="Costo real acumulado de ejecutar la obra hasta la fecha.">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className={modalInputClass}
+                placeholder="Ej: 280000"
+                value={finanzasForm.gastado}
+                onChange={(e) => setFinanzasForm({ ...finanzasForm, gastado: e.target.value })}
+              />
+            </ModalField>
+
+            <p className="text-[11px] text-slate-400 font-medium text-center">
+              Cada cambio queda registrado en la bitácora de auditoría con el valor anterior y nuevo.
             </p>
           </div>
         )}

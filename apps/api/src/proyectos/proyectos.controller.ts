@@ -18,6 +18,7 @@ import { ProyectosService } from './proyectos.service';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { UpdateProyectoDto } from './dto/update-proyecto.dto';
 import { QueryProyectosDto } from './dto/query-proyectos.dto';
+import { FinanzasProyectoDto } from './dto/finanzas-proyecto.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -101,6 +102,22 @@ export class ProyectosController {
   ) {
     const user = req.user as { id: string };
     return this.proyectosService.update(id, dto, user.id);
+  }
+
+  /**
+   * PATCH /api/proyectos/:id/finanzas
+   * Actualiza únicamente ingreso cobrado y gasto acumulado del proyecto.
+   * Permiso: operaciones.proyectos.editar
+   */
+  @RequirePermission('operaciones', 'proyectos', 'editar')
+  @Patch(':id/finanzas')
+  async actualizarFinanzas(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FinanzasProyectoDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.proyectosService.actualizarFinanzas(id, dto, user.id);
   }
 
   /**
