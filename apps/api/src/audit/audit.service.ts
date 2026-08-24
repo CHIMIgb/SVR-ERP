@@ -59,8 +59,8 @@ export class AuditService {
           ip_address: dto.ipAddress ?? ctx?.ipAddress ?? 'unknown',
           user_agent: dto.userAgent ?? ctx?.userAgent ?? 'unknown',
           session_id: dto.sessionId ?? ctx?.sessionId ?? null,
-          request_id: randomUUID(),
-          correlation_id: randomUUID(),
+          request_id: dto.requestId ?? ctx?.requestId ?? randomUUID(),
+          correlation_id: dto.correlationId ?? ctx?.correlationId ?? randomUUID(),
           error_code: dto.errorCode ?? null,
           previous_value: (previousValue as Prisma.InputJsonValue) ?? undefined,
           new_value: (newValue as Prisma.InputJsonValue) ?? undefined,
@@ -83,7 +83,8 @@ export class AuditService {
   /**
    * Construye la metadata mínima obligatoria de cada registro:
    *   - endpoint y método HTTP (del contexto del request)
-   *   - información del JWT validado (userId, email, nombre, jti)
+   *   - información del JWT validado (userId, email, nombre, jti, iat)
+   *   - trazabilidad: statusCode, elapsedMs, query de GETs, roles reales, origen
    * El DTO puede agregar o sobrescribir claves, pero NUNCA eliminar
    * las mínimas. Si no hay request HTTP (job del sistema), se marca
    * la fuente para que el registro nunca quede sin metadata.
@@ -97,6 +98,12 @@ export class AuditService {
     if (ctx) {
       if (ctx.endpoint) auto.endpoint = ctx.endpoint;
       if (ctx.method) auto.method = ctx.method;
+
+      if (ctx.statusCode !== undefined) auto.statusCode = ctx.statusCode;
+      if (ctx.startedAt) auto.elapsedMs = Date.now() - ctx.startedAt;
+      if (ctx.query) auto.query = ctx.query;
+      if (ctx.roles && ctx.roles.length > 0) auto.roles = ctx.roles;
+      if (ctx.origen) auto.origen = ctx.origen;
 
       const jwt: Record<string, unknown> = {};
       if (ctx.jwtUserId) jwt.userId = ctx.jwtUserId;

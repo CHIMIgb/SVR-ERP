@@ -191,6 +191,62 @@ describe('AuditService', () => {
       const call = mockPrisma.registro_auditoria.create.mock.calls[0][0];
       expect(call.data.metadata).toEqual({ source: 'SYSTEM' });
     });
+
+    it('should register extended metadata: statusCode, elapsedMs, query, roles, origen', async () => {
+      await auditContext.run(
+        {
+          endpoint: '/api/incidentes',
+          method: 'GET',
+          statusCode: 200,
+          startedAt: Date.now() - 150,
+          query: { estado: 'ABIERTO' },
+          roles: ['Administrador'],
+          origen: { plataforma: 'web', appVersion: undefined },
+        },
+        async () => {
+          await service.log(baseDto);
+        },
+      );
+
+      const call = mockPrisma.registro_auditoria.create.mock.calls[0][0];
+      expect(call.data.metadata).toMatchObject({
+        endpoint: '/api/incidentes',
+        method: 'GET',
+        statusCode: 200,
+        query: { estado: 'ABIERTO' },
+        roles: ['Administrador'],
+        origen: { plataforma: 'web' },
+      });
+      expect(call.data.metadata.elapsedMs).toBeGreaterThanOrEqual(100);
+    });
+
+    it('should share request_id and correlation_id from the request context (no random per log)', async () => {
+      await auditContext.run(
+        { requestId: 'req-123', correlationId: 'corr-456' },
+        async () => {
+          await service.log(baseDto);
+          await service.log(baseDto);
+        },
+      );
+
+      const [first, second] = mockPrisma.registro_auditoria.create.mock.calls;
+      expect(first[0].data.request_id).toBe('req-123');
+      expect(second[0].data.request_id).toBe('req-123');
+      expect(first[0].data.correlation_id).toBe('corr-456');
+      expect(second[0].data.correlation_id).toBe('corr-456');
+    });
+
+    it('should default actor_user_id to the JWT userId from context when DTO omits it', async () => {
+      await auditContext.run({ jwtUserId: 'jwt-user-9' }, async () => {
+        await service.log({ ...baseDto, actorUserId: undefined });
+      });
+
+      expect(mockPrisma.registro_auditoria.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ actor_user_id: 'jwt-user-9' }),
+        }),
+      );
+    });
   });
 
   it('should never propagate audit failures to caller', async () => {

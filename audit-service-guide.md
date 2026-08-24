@@ -109,6 +109,11 @@ Todo registro incluye SIEMPRE un objeto `metadata` con, al mínimo:
 {
   "endpoint": "/api/proyectos?page=2",
   "method": "POST",
+  "statusCode": 201,
+  "elapsedMs": 142,
+  "query": { "estado": "ABIERTO", "page": "2" },
+  "roles": ["Administrador"],
+  "origen": { "plataforma": "web", "appVersion": null },
   "jwt": {
     "userId": "550e8400-...",
     "email": "admin@svr-constructora.com",
@@ -122,11 +127,19 @@ Todo registro incluye SIEMPRE un objeto `metadata` con, al mínimo:
 Reglas:
 
 1. `endpoint` y `method` provienen del request capturado por el interceptor global — presentes en toda operación HTTP.
-2. `jwt` se llena con la información del token validado por `JwtAuthGuard`. El nombre completo viene de la persona vinculada al usuario (`JwtStrategy`). En endpoints públicos (login) el bloque puede venir parcial o ausente.
-3. `dto.metadata` puede **agregar** claves (ej. `{ motivo }`) pero nunca eliminar las mínimas.
-4. Si no hay contexto HTTP (job del sistema, cron), la metadata queda `{ "source": "SYSTEM" }` — un registro nunca queda sin metadata.
+2. `statusCode` es el status del response al momento de registrar (200/201 en flujos exitosos). `elapsedMs` = ms transcurridos desde el inicio del request hasta el registro del evento.
+3. `query` solo se captura en **GETs**: copia JSON-safe de los params, redactando campos sensibles (`AUDIT_SENSITIVE_FIELDS`) y marcando objetos anidados como `[objeto]`.
+4. `roles` son los roles reales del usuario, resueltos por `PermissionsGuard` (sin queries extra — los expone en `request.auditRoles`). Presentes también en respuestas DENIED.
+5. `origen`: header `X-App-Platform` / `X-App-Version` si el frontend los manda; fallback automático detecta Capacitor/Cordova en el user-agent → `"movil"`, otro UA → `"web"`.
+6. `jwt` se llena con la información del token validado. El nombre completo viene de la persona vinculada al usuario (`JwtStrategy`). En endpoints públicos (login) puede venir parcial o ausente.
+7. `dto.metadata` puede **agregar** claves pero nunca eliminar las mínimas.
+8. Si no hay contexto HTTP (job del sistema, cron), la metadata queda `{ "source": "SYSTEM" }`.
 
-Para que el JWT incluya el nombre, `JwtStrategy.validate()` lo resuelve desde la persona vinculada al usuario y lo expone en `req.user.nombre`.
+#### Trazabilidad: request_id / correlation_id reales
+
+- `request_id`: compartido por **todos los logs de un mismo request HTTP**. Se toma de `X-Request-Id` o se genera uno por request.
+- `correlation_id`: se hereda de `X-Correlation-Id` (para encadenar requests relacionados, ej. refresh→login) o cae al `request_id`.
+- Overrides manuales disponibles vía `dto.requestId` / `dto.correlationId`.
 
 ### 3.4 `AuditModule`
 

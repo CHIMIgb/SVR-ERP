@@ -23,6 +23,20 @@ export interface AuditRequestContext {
   jti?: string;
   /** "Issued at" del token (epoch segundos). */
   jwtIat?: number;
+  /** ID del request HTTP — compartido por todos los logs de un mismo request. */
+  requestId?: string;
+  /** ID de correlación entre requests relacionados (hereda X-Correlation-Id o = requestId). */
+  correlationId?: string;
+  /** Status code del response al momento de registrar el evento. */
+  statusCode?: number;
+  /** Inicio del request (epoch ms) — permite calcular elapsedMs al registrar. */
+  startedAt?: number;
+  /** Query params de requests GET (sanitizados). */
+  query?: Record<string, unknown>;
+  /** Roles reales del usuario, resueltos por PermissionsGuard. */
+  roles?: string[];
+  /** Origen de la app (web / móvil Capacitor) y su versión. */
+  origen?: { plataforma?: string; appVersion?: string };
 }
 
 @Injectable()

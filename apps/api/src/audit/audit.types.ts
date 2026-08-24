@@ -58,6 +58,12 @@ export interface AuditLogDto {
 
   ipAddress?: string;
   userAgent?: string;
+
+  /** Override del ID de request (normalmente lo provee el interceptor). */
+  requestId?: string;
+
+  /** Override del ID de correlación (ej. enlazar refresh con login original). */
+  correlationId?: string;
   sessionId?: string;
 }
 
