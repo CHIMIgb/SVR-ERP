@@ -1152,10 +1152,12 @@ model proyectos {
   id                                     String                   @id @db.Uuid
   codigo                                 String?                  @unique
   nombre                                 String
-  cliente_id                             String                   @db.Uuid
+  cliente_id                              String                   @db.Uuid
   presupuesto                            Decimal                  @db.Decimal(14, 2)
   progreso                               Decimal                  @default(0) @db.Decimal(5, 2)
   estado                                 EstadoProyecto           @default(EN_PROCESO)
+  ingreso_cobrado                        Decimal                  @default(0) @db.Decimal(14, 2)
+  gastado                                Decimal                  @default(0) @db.Decimal(14, 2)
   fecha_inicio                           DateTime                 @db.Date
   fecha_fin                              DateTime                 @db.Date
   activo                                 Boolean                  @default(true)
@@ -1836,6 +1838,9 @@ enum AuditAction {
   INCIDENTE_ELIMINADO
   INCIDENTE_RESUELTO
   INCIDENTE_REPORTADO
+  PROYECTO_CREADO
+  PROYECTO_ACTUALIZADO
+  PROYECTO_ELIMINADO
   ERROR_SISTEMA
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, HardHat, CheckCircle2, FolderKanban,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
@@ -18,18 +18,24 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import ProjectDetailsModal from '@/components/projects/ProjectDetailsModal';
 import { formatDate } from '@/lib/formatters';
-import { proyectos as proyectosMock, type Proyecto } from '@/lib/data';
+import {
+  proyectosApi,
+  type ProyectoDTO,
+  type ProyectoStats,
+  type ProyectoCatalogos,
+  type ProyectoCreateInput,
+} from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
 
-const ESTADOS: { value: Proyecto['estado']; apiValue: string; label: string }[] = [
-  { value: 'En Proceso', apiValue: 'EN_PROCESO', label: 'En Proceso' },
-  { value: 'Finalizado', apiValue: 'FINALIZADO', label: 'Finalizado' },
-  { value: 'Pausado', apiValue: 'PAUSADO', label: 'Pausado' },
+const ESTADOS: { value: NonNullable<ProyectoCreateInput['estado']>; label: string }[] = [
+  { value: 'EN_PROCESO', label: 'En Proceso' },
+  { value: 'FINALIZADO', label: 'Finalizado' },
+  { value: 'PAUSADO', label: 'Pausado' },
 ];
 
-const estadoVariant: Record<Proyecto['estado'], 'primary' | 'success' | 'warning'> = {
+const estadoVariant: Record<ProyectoDTO['estado'], 'primary' | 'success' | 'warning'> = {
   'En Proceso': 'primary',
   'Finalizado': 'success',
   'Pausado': 'warning',
@@ -37,15 +43,23 @@ const estadoVariant: Record<Proyecto['estado'], 'primary' | 'success' | 'warning
 
 const emptyForm = {
   nombre: '',
-  cliente: '',
+  clienteId: '',
   presupuesto: '',
   fechaInicio: new Date().toISOString().split('T')[0],
   fechaFin: '',
+  estado: 'EN_PROCESO' as NonNullable<ProyectoCreateInput['estado']>,
   progreso: '0',
+  ingresoCobrado: '',
+  gastado: '',
 };
 
-function estadoFromValue(value: string): Proyecto['estado'] {
-  return ESTADOS.find((e) => e.apiValue === value)?.value ?? 'En Proceso';
+function estadoToValue(label: ProyectoDTO['estado']): NonNullable<ProyectoCreateInput['estado']> {
+  const map: Record<ProyectoDTO['estado'], NonNullable<ProyectoCreateInput['estado']>> = {
+    'En Proceso': 'EN_PROCESO',
+    'Finalizado': 'FINALIZADO',
+    'Pausado': 'PAUSADO',
+  };
+  return map[label];
 }
 
 export default function ProyectosPage() {
@@ -59,9 +73,14 @@ export default function ProyectosPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
-  // ── Estado de datos (local hasta integrar API /proyectos) ──
-  const [registros, setRegistros] = useState<Proyecto[]>(proyectosMock);
-  const [page, setPage] = useState(1);
+  // ── Estado de datos ──
+  const [registros, setRegistros] = useState<ProyectoDTO[]>([]);
+  const [stats, setStats] = useState<ProyectoStats>({ total: 0, enProceso: 0, finalizados: 0, presupuestoTotal: 0 });
+  const [catalogos, setCatalogos] = useState<ProyectoCatalogos>({ clientes: [] });
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
@@ -72,62 +91,71 @@ export default function ProyectosPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<Proyecto | null>(null);
-  const [viewItem, setViewItem] = useState<Proyecto | null>(null);
+  const [selectedItem, setSelectedItem] = useState<ProyectoDTO | null>(null);
+  const [viewItem, setViewItem] = useState<ProyectoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Catálogo de clientes (distinto de la data local) ──
-  const clientes = useMemo(
-    () => Array.from(new Set(registros.map((p) => p.cliente))).sort(),
-    [registros],
-  );
-
-  // ── Filtrado ──
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return registros.filter((p) => {
-      if (q && !p.nombre.toLowerCase().includes(q) && !p.cliente.toLowerCase().includes(q)) {
-        return false;
+  // ── Cargar catálogos (una sola vez) ──
+  useEffect(() => {
+    proyectosApi.catalogos().then((res) => {
+      if (res.success && res.data) {
+        setCatalogos(res.data);
       }
-      if (filterValues.estado && p.estado !== estadoFromValue(filterValues.estado)) {
-        return false;
-      }
-      if (filterValues.cliente && p.cliente !== filterValues.cliente) {
-        return false;
-      }
-      return true;
     });
-  }, [registros, search, filterValues]);
-
-  // ── Paginación client-side ──
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = useMemo(
-    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [filtered, safePage],
-  );
-
-  const handlePageChange = useCallback((newPage: number) => {
-    setPage(newPage);
   }, []);
 
-  // ── Stats ──
-  const stats = useMemo(() => ({
-    total: registros.length,
-    enProceso: registros.filter((p) => p.estado === 'En Proceso').length,
-    finalizados: registros.filter((p) => p.estado === 'Finalizado').length,
-    presupuestoTotal: registros.reduce((sum, p) => sum + p.presupuesto, 0),
-  }), [registros]);
+  // ── Cargar datos ──
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    if (!hasLoaded.current) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    try {
+      const res = await proyectosApi.listar({
+        search: searchVal || undefined,
+        estado: (filters?.estado as NonNullable<ProyectoCreateInput['estado']>) || undefined,
+        clienteId: filters?.clienteId || undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      if (res.success && res.data) {
+        setRegistros(res.data.items);
+        setPagination(res.data.pagination);
+      } else {
+        showToast('Error al cargar proyectos.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      hasLoaded.current = true;
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [showToast]);
+
+  const fetchStats = useCallback(async () => {
+    const res = await proyectosApi.stats();
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
   if (filterValues.estado) {
-    const label = ESTADOS.find((e) => e.apiValue === filterValues.estado)?.label ?? filterValues.estado;
+    const label = ESTADOS.find((e) => e.value === filterValues.estado)?.label ?? filterValues.estado;
     activeFilters.push({ key: 'estado', label: 'Estado', value: label });
   }
-  if (filterValues.cliente) {
-    activeFilters.push({ key: 'cliente', label: 'Cliente', value: filterValues.cliente });
+  if (filterValues.clienteId) {
+    const cliente = catalogos.clientes.find((c) => c.id === filterValues.clienteId);
+    activeFilters.push({ key: 'clienteId', label: 'Cliente', value: cliente?.nombre ?? filterValues.clienteId });
   }
 
   // ── Filtros para SearchBar ──
@@ -136,45 +164,47 @@ export default function ProyectosPage() {
       key: 'estado',
       label: 'Estado',
       type: 'select',
-      options: ESTADOS.map((e) => ({ value: e.apiValue, label: e.label })),
+      options: ESTADOS.map((e) => ({ value: e.value, label: e.label })),
       placeholder: 'Todos',
     },
     {
-      key: 'cliente',
+      key: 'clienteId',
       label: 'Cliente',
       type: 'select',
-      options: clientes.map((c) => ({ value: c, label: c })),
+      options: catalogos.clientes.map((c) => ({ value: c.id, label: c.nombre })),
       placeholder: 'Todos',
     },
   ];
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
-    setPage(1);
   }, []);
 
   const handleSearch = useCallback(() => {
-    setPage(1);
-  }, []);
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
-    setFilterValues((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
-  }, []);
+    const next = { ...filterValues, [key]: value };
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleRemoveFilter = useCallback((key: string) => {
-    setFilterValues((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setPage(1);
-  }, []);
+    const next = { ...filterValues };
+    delete next[key];
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
-    setPage(1);
-  }, []);
+    fetchData(1, search, {});
+  }, [fetchData, search]);
+
+  const handlePageChange = useCallback((page: number) => {
+    fetchData(page, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
@@ -182,25 +212,28 @@ export default function ProyectosPage() {
     setCreateOpen(true);
   }, []);
 
-  const openEdit = useCallback((item: Proyecto) => {
+  const openEdit = useCallback((item: ProyectoDTO) => {
     setSelectedItem(item);
     setForm({
       nombre: item.nombre,
-      cliente: item.cliente,
+      clienteId: item.clienteId,
       presupuesto: String(item.presupuesto),
       fechaInicio: item.fechaInicio,
       fechaFin: item.fechaFin,
+      estado: estadoToValue(item.estado),
       progreso: String(item.progreso),
+      ingresoCobrado: String(item.ingresoCobrado),
+      gastado: String(item.gastado),
     });
     setEditOpen(true);
   }, []);
 
-  const openDelete = useCallback((item: Proyecto) => {
+  const openDelete = useCallback((item: ProyectoDTO) => {
     setSelectedItem(item);
     setDeleteOpen(true);
   }, []);
 
-  const openView = useCallback((item: Proyecto) => {
+  const openView = useCallback((item: ProyectoDTO) => {
     setViewItem(item);
   }, []);
 
@@ -210,7 +243,7 @@ export default function ProyectosPage() {
       showToast('El nombre del proyecto es obligatorio.', 'error');
       return false;
     }
-    if (!form.cliente) {
+    if (!form.clienteId) {
       showToast('Selecciona un cliente.', 'error');
       return false;
     }
@@ -235,83 +268,96 @@ export default function ProyectosPage() {
     return true;
   }, [form, showToast]);
 
-  // ── CRUD local ──
+  // ── CRUD via API ──
+  const buildPayload = useCallback(
+    () => ({
+      nombre: form.nombre.trim(),
+      clienteId: form.clienteId,
+      presupuesto: parseFloat(form.presupuesto),
+      fechaInicio: form.fechaInicio,
+      fechaFin: form.fechaFin,
+      estado: form.estado,
+      progreso: parseFloat(form.progreso),
+    }),
+    [form],
+  );
+
+  const parseOptionalMoney = (value: string): number | undefined => {
+    if (value === '') return undefined;
+    const n = parseFloat(value);
+    return isNaN(n) ? undefined : n;
+  };
+
   const handleCreate = useCallback(async () => {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      const nuevo: Proyecto = {
-        id: crypto.randomUUID(),
-        nombre: form.nombre.trim(),
-        cliente: form.cliente,
-        presupuesto: parseFloat(form.presupuesto),
-        gastado: 0,
-        progreso: parseFloat(form.progreso),
-        estado: 'En Proceso',
-        ubicacion: 'Por definir',
-        fechaInicio: form.fechaInicio,
-        fechaFin: form.fechaFin,
-        ingresoCobrado: 0,
-        gastoNomina: 0,
-        gastoCombustible: 0,
-        gastoMantenimiento: 0,
-        gastoMateriales: 0,
-        utilidadReal: 0,
-        margenUtilidadPorcentaje: 0,
-        historicoProgreso: [],
-      };
-      setRegistros((prev) => [nuevo, ...prev]);
-      showToast(`Proyecto "${nuevo.nombre}" creado exitosamente.`, 'success');
-      setCreateOpen(false);
-      setForm(emptyForm);
+      const res = await proyectosApi.crear(buildPayload());
+      if (res.success) {
+        showToast(`Proyecto "${form.nombre}" creado exitosamente.`, 'success');
+        setCreateOpen(false);
+        setForm(emptyForm);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al crear el proyecto.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al crear el proyecto.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [validateForm, form, showToast]);
+  }, [validateForm, buildPayload, form.nombre, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem || !validateForm()) return;
     setSubmitting(true);
     try {
-      setRegistros((prev) =>
-        prev.map((p) =>
-          p.id === selectedItem.id
-            ? {
-                ...p,
-                nombre: form.nombre.trim(),
-                cliente: form.cliente,
-                presupuesto: parseFloat(form.presupuesto),
-                progreso: parseFloat(form.progreso),
-                fechaInicio: form.fechaInicio,
-                fechaFin: form.fechaFin,
-              }
-            : p,
-        ),
-      );
-      showToast(`Proyecto "${form.nombre}" actualizado exitosamente.`, 'success');
-      setEditOpen(false);
-      setSelectedItem(null);
-      setForm(emptyForm);
+      const res = await proyectosApi.actualizar(selectedItem.id, {
+        ...buildPayload(),
+        ingresoCobrado: parseOptionalMoney(form.ingresoCobrado),
+        gastado: parseOptionalMoney(form.gastado),
+      });
+      if (res.success) {
+        showToast(`Proyecto "${form.nombre}" actualizado exitosamente.`, 'success');
+        setEditOpen(false);
+        setSelectedItem(null);
+        setForm(emptyForm);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar el proyecto.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar el proyecto.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, validateForm, form, showToast]);
+  }, [selectedItem, validateForm, buildPayload, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      setRegistros((prev) => prev.filter((p) => p.id !== selectedItem.id));
-      showToast(`Proyecto "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
-      setDeleteOpen(false);
-      setSelectedItem(null);
+      const res = await proyectosApi.eliminar(selectedItem.id);
+      if (res.success) {
+        showToast(`Proyecto "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
+        setDeleteOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar el proyecto.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al eliminar el proyecto.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, showToast]);
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Barra de progreso por fila ──
-  const renderProgreso = (item: Proyecto) => {
+  const renderProgreso = (item: ProyectoDTO) => {
     const barColor =
       item.progreso >= 100 ? 'bg-green-500'
       : item.estado === 'Pausado' ? 'bg-amber-500'
@@ -328,7 +374,7 @@ export default function ProyectosPage() {
   };
 
   // ── Columnas de DataTable ──
-  const columns: Column<Proyecto>[] = [
+  const columns: Column<ProyectoDTO>[] = [
     {
       key: 'nombre',
       header: 'Proyecto / Cliente',
@@ -529,17 +575,25 @@ export default function ProyectosPage() {
       )}
 
       <div className="space-y-3">
-        <DataTable
-          columns={columns}
-          data={paginated}
-          keyExtractor={(item) => item.id}
-          emptyText="No se encontraron proyectos que coincidan con la búsqueda."
-          maxBodyHeight="520px"
-        />
+        <div className="relative">
+          {refreshing && !initialLoading && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <DataTable
+            columns={columns}
+            data={registros}
+            loading={initialLoading}
+            keyExtractor={(item) => item.id}
+            emptyText="No se encontraron proyectos que coincidan con la búsqueda."
+            maxBodyHeight="520px"
+          />
+        </div>
         <Pagination
-          currentPage={safePage}
-          totalPages={totalPages}
-          totalRecords={filtered.length}
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
           pageSize={PAGE_SIZE}
           onPageChange={handlePageChange}
         />
@@ -574,12 +628,12 @@ export default function ProyectosPage() {
           <ModalField label="Cliente" required className="sm:col-span-2">
             <select
               className={modalSelectClass}
-              value={form.cliente}
-              onChange={(e) => setForm({ ...form, cliente: e.target.value })}
+              value={form.clienteId}
+              onChange={(e) => setForm({ ...form, clienteId: e.target.value })}
             >
               <option value="">Seleccionar cliente...</option>
-              {clientes.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              {catalogos.clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -651,12 +705,12 @@ export default function ProyectosPage() {
           <ModalField label="Cliente" required className="sm:col-span-2">
             <select
               className={modalSelectClass}
-              value={form.cliente}
-              onChange={(e) => setForm({ ...form, cliente: e.target.value })}
+              value={form.clienteId}
+              onChange={(e) => setForm({ ...form, clienteId: e.target.value })}
             >
               <option value="">Seleccionar cliente...</option>
-              {clientes.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              {catalogos.clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -670,6 +724,20 @@ export default function ProyectosPage() {
               value={form.presupuesto}
               onChange={(e) => setForm({ ...form, presupuesto: e.target.value })}
             />
+          </ModalField>
+
+          <ModalField label="Estado">
+            <select
+              className={modalSelectClass}
+              value={form.estado}
+              onChange={(e) =>
+                setForm({ ...form, estado: e.target.value as NonNullable<ProyectoCreateInput['estado']> })
+              }
+            >
+              {ESTADOS.map((e) => (
+                <option key={e.value} value={e.value}>{e.label}</option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Progreso (%)" hint="Avance físico de la obra.">
@@ -698,6 +766,28 @@ export default function ProyectosPage() {
               className={modalInputClass}
               value={form.fechaFin}
               onChange={(e) => setForm({ ...form, fechaFin: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Ingreso cobrado (MXN)" hint="Monto facturado/cobrado al cliente.">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={modalInputClass}
+              value={form.ingresoCobrado}
+              onChange={(e) => setForm({ ...form, ingresoCobrado: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Gasto acumulado (MXN)" hint="Costo real acumulado del proyecto.">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={modalInputClass}
+              value={form.gastado}
+              onChange={(e) => setForm({ ...form, gastado: e.target.value })}
             />
           </ModalField>
         </div>
@@ -735,7 +825,29 @@ export default function ProyectosPage() {
         <ProjectDetailsModal
           isOpen={!!viewItem}
           onClose={() => setViewItem(null)}
-          proyecto={viewItem}
+          proyecto={{
+            id: viewItem.id,
+            nombre: viewItem.nombre,
+            cliente: viewItem.cliente,
+            presupuesto: viewItem.presupuesto,
+            gastado: viewItem.gastado,
+            progreso: viewItem.progreso,
+            estado: viewItem.estado,
+            ubicacion: '',
+            fechaInicio: viewItem.fechaInicio,
+            fechaFin: viewItem.fechaFin,
+            historicoProgreso: [],
+            ingresoCobrado: viewItem.ingresoCobrado,
+            gastoNomina: 0,
+            gastoCombustible: 0,
+            gastoMantenimiento: 0,
+            gastoMateriales: 0,
+            utilidadReal: viewItem.ingresoCobrado - viewItem.gastado,
+            margenUtilidadPorcentaje:
+              viewItem.ingresoCobrado > 0
+                ? Number((((viewItem.ingresoCobrado - viewItem.gastado) / viewItem.ingresoCobrado) * 100).toFixed(1))
+                : 0,
+          }}
         />
       )}
     </div>

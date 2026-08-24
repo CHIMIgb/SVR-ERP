@@ -687,3 +687,87 @@ export const incidentesApi = {
   catalogos: () =>
     apiClient.get<IncidenteCatalogos>('/incidentes/catalogos'),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Proyectos API
+// ────────────────────────────────────────────────────────────
+
+export interface ProyectoDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  clienteId: string;
+  cliente: string;
+  presupuesto: number;
+  progreso: number;
+  estado: 'En Proceso' | 'Finalizado' | 'Pausado';
+  fechaInicio: string;
+  fechaFin: string;
+  ingresoCobrado: number;
+  gastado: number;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface ProyectoStats {
+  total: number;
+  enProceso: number;
+  finalizados: number;
+  presupuestoTotal: number;
+}
+
+export interface ProyectoCatalogos {
+  clientes: CatalogoItem[];
+}
+
+export interface ProyectoCreateInput {
+  nombre: string;
+  clienteId: string;
+  presupuesto: number;
+  fechaInicio: string;
+  fechaFin: string;
+  estado?: 'EN_PROCESO' | 'FINALIZADO' | 'PAUSADO';
+  progreso?: number;
+  ingresoCobrado?: number;
+  gastado?: number;
+}
+
+export const proyectosApi = {
+  listar: (params?: {
+    search?: string;
+    estado?: 'EN_PROCESO' | 'FINALIZADO' | 'PAUSADO';
+    clienteId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ProyectoDTO>>(
+      `/proyectos${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  obtener: (id: string) =>
+    apiClient.get<ProyectoDTO>(`/proyectos/${id}`),
+
+  crear: (data: ProyectoCreateInput) =>
+    apiClient.post<ProyectoDTO>('/proyectos', data),
+
+  actualizar: (id: string, data: Partial<ProyectoCreateInput>) =>
+    apiClient.patch<ProyectoDTO>(`/proyectos/${id}`, data),
+
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/proyectos/${id}`),
+
+  stats: () =>
+    apiClient.get<ProyectoStats>('/proyectos/stats'),
+
+  catalogos: () =>
+    apiClient.get<ProyectoCatalogos>('/proyectos/catalogos'),
+};

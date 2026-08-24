@@ -149,31 +149,31 @@ export default function ProjectDetailsModal({
                 Rentabilidad y Costo Real
               </h3>
               <Badge
-                variant={(proyecto.margenUtilidadPorcentaje ?? 15) >= 20 ? 'success' : (proyecto.margenUtilidadPorcentaje ?? 15) > 0 ? 'warning' : 'error'}
+                variant={(proyecto.margenUtilidadPorcentaje ?? 0) >= 20 ? 'success' : (proyecto.margenUtilidadPorcentaje ?? 0) > 0 ? 'warning' : 'error'}
                 size="sm"
               >
-                Margen: +{proyecto.margenUtilidadPorcentaje ?? 15}%
+                Margen: +{proyecto.margenUtilidadPorcentaje ?? 0}%
               </Badge>
             </div>
 
             <div className="space-y-2.5">
               <FinRow icon={<Banknote className="w-4 h-4" />} color="primary" label="Presupuesto Contratado" value={formatCurrency(proyecto.presupuesto)} />
-              <FinRow icon={<TrendingUp className="w-4 h-4" />} color="success" label="Ingreso Facturado/Cobrado" value={formatCurrency(proyecto.ingresoCobrado ?? proyecto.presupuesto * 0.8)} />
+              <FinRow icon={<TrendingUp className="w-4 h-4" />} color="success" label="Ingreso Facturado/Cobrado" value={formatCurrency(proyecto.ingresoCobrado ?? 0)} />
 
               <Separator className="my-3" />
 
-              <FinRow icon={<Users className="w-4 h-4" />} color="info" label="Nómina y Horas Extras" value={formatCurrency(proyecto.gastoNomina ?? 380000)} />
-              <FinRow icon={<Fuel className="w-4 h-4" />} color="warning" label="Diésel de Maquinaria" value={formatCurrency(proyecto.gastoCombustible ?? 245000)} />
-              <FinRow icon={<Wrench className="w-4 h-4" />} color="error" label="Refacciones y Mantenimiento" value={formatCurrency(proyecto.gastoMantenimiento ?? 110000)} />
-              <FinRow icon={<Package className="w-4 h-4" />} color="neutral" label="Materiales y Criba" value={formatCurrency(proyecto.gastoMateriales ?? 215000)} />
+              <FinRow icon={<Users className="w-4 h-4" />} color="info" label="Nómina y Horas Extras" value={formatCurrency(proyecto.gastoNomina ?? 0)} />
+              <FinRow icon={<Fuel className="w-4 h-4" />} color="warning" label="Diésel de Maquinaria" value={formatCurrency(proyecto.gastoCombustible ?? 0)} />
+              <FinRow icon={<Wrench className="w-4 h-4" />} color="error" label="Refacciones y Mantenimiento" value={formatCurrency(proyecto.gastoMantenimiento ?? 0)} />
+              <FinRow icon={<Package className="w-4 h-4" />} color="neutral" label="Materiales y Criba" value={formatCurrency(proyecto.gastoMateriales ?? 0)} />
             </div>
 
             <Separator />
 
             <div className="flex items-center justify-between">
               <span className="text-xs font-black uppercase tracking-widest text-slate-500">Utilidad Neta Real</span>
-              <span className={`text-xl font-black ${(proyecto.utilidadReal ?? 70000) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {formatCurrency(proyecto.utilidadReal ?? 70000)}
+              <span className={`text-xl font-black ${(proyecto.utilidadReal ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {formatCurrency(proyecto.utilidadReal ?? 0)}
               </span>
             </div>
           </Card>
