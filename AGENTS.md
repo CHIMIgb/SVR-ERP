@@ -232,6 +232,33 @@ Sistema de control de acceso completo. **Las permisos controlan acceso a módulo
 | comercial | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
 | sistema | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |
 
+### Estándar Obligatorio de Endpoints y Vistas CRUD
+
+**1. Todo endpoint del API debe cumplir los 4 requisitos de seguridad/auditoría**
+(documentación completa y patrón de código en `audit-service-guide.md`, sección 0):
+
+1. Token JWT válido (`JwtAuthGuard`)
+2. Verificación de blacklist del token (automática vía `JwtStrategy`)
+3. Auditoría de operaciones exitosas (`AuditService.log` con `SUCCESS`)
+4. Auditoría de fallos de negocio en mutaciones (`result: FAIL` + `error_code`
+   antes de lanzar la excepción — patrón `fallir()`)
+
+Un PR con endpoints que incumpla cualquiera de los 4 recibe **Request Changes**.
+Referencia viva completa: `apps/api/src/criba/`.
+
+**2. Toda vista nueva con CRUD toma `/inventario` como plantilla base** y la adapta
+al dominio — nunca se construye una vista CRUD desde cero:
+
+- `PageHeader` + botón crear (`variant="primary"`)
+- `StatsCard`s según las métricas del dominio
+- `SearchBar` + botón Filtros + chips activos + panel de filtros
+- `DataTable` con columnas del dominio + acciones Editar/Eliminar por RBAC
+- `Pagination` (server-side cuando hay API; client-side en fase 1 mock)
+- `FormModal` para crear/editar/eliminar con validaciones
+- Permisos RBAC vía `useAuth().user.vistas` (`puedeCrear/puedeEditar/puedeEliminar`)
+
+Referencias vivas: `/inventario` (con API), `/criba` y `/proyectos`.
+
 ## Testing — Mandatory Rule
 
 **EVERY NEW FUNCTION OR MODULE IMPLEMENTED MUST INCLUDE UNIT TESTS.**
