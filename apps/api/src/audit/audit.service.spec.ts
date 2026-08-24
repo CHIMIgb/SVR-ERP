@@ -124,6 +124,73 @@ describe('AuditService', () => {
     );
   });
 
+  describe('metadata automática', () => {
+    it('should always register metadata with endpoint, method and JWT info from context', async () => {
+      await auditContext.run(
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'Agent',
+          sessionId: 'session-als',
+          endpoint: '/api/proyectos?page=2',
+          method: 'POST',
+          jwtUserId: 'user-1',
+          jwtEmail: 'admin@svr.com',
+          jwtNombre: 'Carlos SVR',
+          jti: 'jti-abc',
+        },
+        async () => {
+          await service.log(baseDto);
+        },
+      );
+
+      expect(mockPrisma.registro_auditoria.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            metadata: expect.objectContaining({
+              endpoint: '/api/proyectos?page=2',
+              method: 'POST',
+              jwt: {
+                userId: 'user-1',
+                email: 'admin@svr.com',
+                nombre: 'Carlos SVR',
+                jti: 'jti-abc',
+              },
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('should let DTO metadata add keys without removing the minimum ones', async () => {
+      await auditContext.run(
+        {
+          endpoint: '/api/incidentes',
+          method: 'PATCH',
+          jwtUserId: 'user-1',
+          jwtEmail: 'a@b.com',
+        },
+        async () => {
+          await service.log({ ...baseDto, metadata: { motivo: 'prueba' } });
+        },
+      );
+
+      const call = mockPrisma.registro_auditoria.create.mock.calls[0][0];
+      expect(call.data.metadata).toMatchObject({
+        endpoint: '/api/incidentes',
+        method: 'PATCH',
+        motivo: 'prueba',
+        jwt: { userId: 'user-1' },
+      });
+    });
+
+    it('should fall back to { source: SYSTEM } when there is no HTTP context (never empty metadata)', async () => {
+      await service.log(baseDto);
+
+      const call = mockPrisma.registro_auditoria.create.mock.calls[0][0];
+      expect(call.data.metadata).toEqual({ source: 'SYSTEM' });
+    });
+  });
+
   it('should never propagate audit failures to caller', async () => {
     mockPrisma.registro_auditoria.create.mockRejectedValue(new Error('DB down'));
 

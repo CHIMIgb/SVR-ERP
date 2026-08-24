@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditContextService } from './audit-context.service';
+import { AuditContextService, AuditRequestContext } from './audit-context.service';
 import { AuditLogDto, AuditLogFailureDto } from './audit.types';
 import { ACTION_SEVERITY_MAP, AUDIT_SENSITIVE_FIELDS } from './audit.constants';
 
@@ -40,12 +40,13 @@ export class AuditService {
       const severity = dto.severity ?? ACTION_SEVERITY_MAP[dto.action] ?? 'INFO';
       const previousValue = dto.previousValue ? this.sanitize(dto.previousValue) : undefined;
       const newValue = dto.newValue ? this.sanitize(dto.newValue) : undefined;
+      const metadata = this.buildMetadata(dto, ctx);
 
       await this.prisma.registro_auditoria.create({
         data: {
           event_id: randomUUID(),
           timestamp: new Date(),
-          actor_user_id: dto.actorUserId ?? null,
+          actor_user_id: dto.actorUserId ?? ctx?.jwtUserId ?? null,
           actor_role: dto.actorRole ?? 'SYSTEM',
           actor_type: dto.actorType ?? 'SYSTEM',
           action: dto.action,
@@ -61,7 +62,7 @@ export class AuditService {
           error_code: dto.errorCode ?? null,
           previous_value: (previousValue as Prisma.InputJsonValue) ?? undefined,
           new_value: (newValue as Prisma.InputJsonValue) ?? undefined,
-          metadata: (dto.metadata as Prisma.InputJsonValue) ?? undefined,
+          metadata: (metadata as Prisma.InputJsonValue) ?? undefined,
         },
       });
 
@@ -75,6 +76,37 @@ export class AuditService {
         error instanceof Error ? error.stack : undefined,
       );
     }
+  }
+
+  /**
+   * Construye la metadata mínima obligatoria de cada registro:
+   *   - endpoint y método HTTP (del contexto del request)
+   *   - información del JWT validado (userId, email, nombre, jti)
+   * El DTO puede agregar o sobrescribir claves, pero NUNCA eliminar
+   * las mínimas. Si no hay request HTTP (job del sistema), se marca
+   * la fuente para que el registro nunca quede sin metadata.
+   */
+  private buildMetadata(
+    dto: AuditLogDto,
+    ctx?: AuditRequestContext,
+  ): Record<string, unknown> {
+    const auto: Record<string, unknown> = {};
+
+    if (ctx) {
+      if (ctx.endpoint) auto.endpoint = ctx.endpoint;
+      if (ctx.method) auto.method = ctx.method;
+
+      const jwt: Record<string, unknown> = {};
+      if (ctx.jwtUserId) jwt.userId = ctx.jwtUserId;
+      if (ctx.jwtEmail) jwt.email = ctx.jwtEmail;
+      if (ctx.jwtNombre) jwt.nombre = ctx.jwtNombre;
+      if (ctx.jti) jwt.jti = ctx.jti;
+      if (Object.keys(jwt).length > 0) auto.jwt = jwt;
+    }
+
+    const merged: Record<string, unknown> = { ...auto, ...(dto.metadata ?? {}) };
+
+    return Object.keys(merged).length > 0 ? merged : { source: 'SYSTEM' };
   }
 
   /**

@@ -12,6 +12,15 @@ export interface AuditRequestContext {
   ipAddress?: string;
   userAgent?: string;
   sessionId?: string;
+  /** Ruta del endpoint accedido (req.originalUrl ?? req.url). */
+  endpoint?: string;
+  /** Método HTTP del request (GET, POST, PATCH...). */
+  method?: string;
+  /** Información del JWT validado por JwtAuthGuard. */
+  jwtUserId?: string;
+  jwtEmail?: string;
+  jwtNombre?: string;
+  jti?: string;
 }
 
 @Injectable()

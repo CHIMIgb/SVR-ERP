@@ -63,6 +63,12 @@ const store: AuditRequestContext = {
   ipAddress: req.ip ?? req.socket?.remoteAddress ?? undefined,
   userAgent: req.headers['user-agent'] ?? undefined,
   sessionId: user?.sessionId ?? undefined,
+  endpoint: req.originalUrl ?? req.url,
+  method: req.method,
+  jwtUserId: user?.id,
+  jwtEmail: user?.email,
+  jwtNombre: user?.nombre,   // viene del JwtStrategy (persona vinculada al user)
+  jti: user?.jti,
 };
 ```
 
@@ -90,8 +96,35 @@ Campos que `AuditService.log()` completa automáticamente desde el contexto:
 | `ip_address`   | `dto.ipAddress` > `ctx.ipAddress` > `'unknown'`            |
 | `user_agent`   | `dto.userAgent` > `ctx.userAgent` > `'unknown'`            |
 | `session_id`   | `dto.sessionId` > `ctx.sessionId` > `null`                 |
+| `metadata`     | **Mínimo obligatorio** (ver abajo) + `dto.metadata`        |
 
 Los valores explícitos del DTO siempre tienen prioridad (útil para login/logout u operaciones sin JWT).
+
+#### Metadata mínima obligatoria
+
+Todo registro incluye SIEMPRE un objeto `metadata` con, al mínimo:
+
+```json
+{
+  "endpoint": "/api/proyectos?page=2",
+  "method": "POST",
+  "jwt": {
+    "userId": "550e8400-...",
+    "email": "admin@svr-constructora.com",
+    "nombre": "Carlos García López",
+    "jti": "id-del-token"
+  }
+}
+```
+
+Reglas:
+
+1. `endpoint` y `method` provienen del request capturado por el interceptor global — presentes en toda operación HTTP.
+2. `jwt` se llena con la información del token validado por `JwtAuthGuard`. El nombre completo viene de la persona vinculada al usuario (`JwtStrategy`). En endpoints públicos (login) el bloque puede venir parcial o ausente.
+3. `dto.metadata` puede **agregar** claves (ej. `{ motivo }`) pero nunca eliminar las mínimas.
+4. Si no hay contexto HTTP (job del sistema, cron), la metadata queda `{ "source": "SYSTEM" }` — un registro nunca queda sin metadata.
+
+Para que el JWT incluya el nombre, `JwtStrategy.validate()` lo resuelve desde la persona vinculada al usuario y lo expone en `req.user.nombre`.
 
 ### 3.4 `AuditModule`
 
