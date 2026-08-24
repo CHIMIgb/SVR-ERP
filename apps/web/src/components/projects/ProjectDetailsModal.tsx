@@ -2,8 +2,8 @@
 
 import React from 'react';
 import {
-  X, Calendar, Building2, Truck,
-  BarChart2, CheckCircle2, AlertCircle, Clock
+  Calendar, Truck,
+  BarChart2, CheckCircle2, AlertCircle, Clock, Users
 } from 'lucide-react';
 import {
   Proyecto,
@@ -11,8 +11,14 @@ import {
   maquinaria as allMaquinaria,
   despachosFlota
 } from '@/lib/data';
-import { Portal } from '@/components/ui/Portal';
-import { Overlay } from '@/components/ui/Overlay';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { Modal, ModalHeader, ModalBody } from '@/components/ui/Modal';
+import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import { Avatar } from '@/components/ui/Avatar';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Separator } from '@/components/ui/Separator';
+import { formatDate } from '@/lib/formatters';
 
 interface ProjectDetailsModalProps {
   isOpen: boolean;
@@ -20,27 +26,26 @@ interface ProjectDetailsModalProps {
   proyecto: Proyecto;
 }
 
+const estadoBadgeVariant = {
+  'En Proceso': 'primary',
+  'Finalizado': 'success',
+  'Pausado': 'neutral',
+} as const;
+
 export default function ProjectDetailsModal({
   isOpen,
   onClose,
   proyecto
 }: ProjectDetailsModalProps) {
-  if (!isOpen) return null;
-
-  const formatter = new Intl.NumberFormat('es-MX', {
-    style: 'currency',
-    currency: 'MXN',
-    maximumFractionDigits: 0
-  });
 
   // Filter Workers assigned to this project
-  const trabajadoresAsignados = allTrabajadores.filter(t => 
+  const trabajadoresAsignados = allTrabajadores.filter(t =>
     t.proyectos.some(p => proyecto.nombre.toLowerCase().includes(p.toLowerCase()))
   );
 
   // Filter Machinery assigned via dispatch
   const despachosActivos = despachosFlota.filter(d => d.proyectoId === proyecto.id);
-  const maquinariaAsignada = allMaquinaria.filter(m => 
+  const maquinariaAsignada = allMaquinaria.filter(m =>
     despachosActivos.some(d => d.maquinaId === m.id)
   );
 
@@ -77,50 +82,30 @@ export default function ProjectDetailsModal({
   const spi = planificadoProgreso > 0 ? proyecto.progreso / planificadoProgreso : 1;
 
   return (
-    <Portal>
-      <Overlay onClick={onClose} blur className="z-[9998] p-4">
-        <div
-          className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-8 animate-[fadeScaleIn_0.2s_ease-out] flex flex-col gap-6"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-        >
+    <Modal open={isOpen} onClose={onClose} size="full" contentClassName="sm:max-w-4xl">
+      <ModalHeader
+        title={proyecto.nombre}
+        subtitle={`${proyecto.cliente} · ${formatDate(proyecto.fechaInicio)} al ${formatDate(proyecto.fechaFin)}`}
+        onClose={onClose}
+      />
 
-        {/* Header */}
-        <div className="flex justify-between items-start border-b border-slate-100 pb-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded shadow-sm ${
-                proyecto.estado === 'Finalizado' ? 'bg-green-500 text-white' :
-                proyecto.estado === 'En Proceso' ? 'bg-primary text-white' : 'bg-slate-400 text-white'
-              }`}>
-                {proyecto.estado}
-              </span>
-              <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" /> {proyecto.fechaInicio} al {proyecto.fechaFin}
-              </span>
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 mt-2">{proyecto.nombre}</h2>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1 flex items-center gap-1.5">
-              <Building2 className="w-4 h-4 text-slate-400" /> {proyecto.cliente}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <ModalBody>
+        {/* Estado */}
+        <div className="flex items-center gap-2 mb-5">
+          <Badge variant={estadoBadgeVariant[proyecto.estado]} size="md">{proyecto.estado}</Badge>
+          <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" /> Vigencia del proyecto
+          </span>
         </div>
 
         {/* Content Body Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Column 1 & 2: S-Curve Graph & Financial Health */}
           <div className="lg:col-span-2 space-y-6">
-            
+
             {/* S-Curve Card */}
-            <div className="card p-6 flex flex-col">
+            <Card className="flex flex-col">
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider">Curva S: Progreso de Obra</h3>
@@ -143,19 +128,19 @@ export default function ProjectDetailsModal({
                     {/* Grid lines */}
                     {[0, 25, 50, 75, 100].map((val) => (
                       <g key={val}>
-                        <line 
-                          x1={padX} 
-                          y1={getY(val)} 
-                          x2={svgWidth - padX} 
-                          y2={getY(val)} 
-                          stroke="#e2e8f0" 
-                          strokeWidth="1" 
+                        <line
+                          x1={padX}
+                          y1={getY(val)}
+                          x2={svgWidth - padX}
+                          y2={getY(val)}
+                          stroke="#e2e8f0"
+                          strokeWidth="1"
                           strokeDasharray="4 4"
                         />
-                        <text 
-                          x={padX - 8} 
-                          y={getY(val) + 4} 
-                          textAnchor="end" 
+                        <text
+                          x={padX - 8}
+                          y={getY(val) + 4}
+                          textAnchor="end"
                           className="text-[9px] font-bold fill-slate-400"
                         >
                           {val}%
@@ -164,23 +149,23 @@ export default function ProjectDetailsModal({
                     ))}
 
                     {/* Planned line */}
-                    <path 
-                      d={planPath} 
-                      fill="none" 
-                      stroke="#f97316" 
-                      strokeWidth="3" 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
+                    <path
+                      d={planPath}
+                      fill="none"
+                      stroke="#f97316"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       className="drop-shadow-[0_2px_4px_rgba(249,115,22,0.2)]"
                     />
 
                     {/* Real line */}
-                    <path 
-                      d={realPath} 
-                      fill="none" 
-                      stroke="#0f172a" 
-                      strokeWidth="3" 
-                      strokeLinecap="round" 
+                    <path
+                      d={realPath}
+                      fill="none"
+                      stroke="#0f172a"
+                      strokeWidth="3"
+                      strokeLinecap="round"
                       strokeLinejoin="round"
                       className="drop-shadow-[0_2px_4px_rgba(15,23,42,0.2)]"
                     />
@@ -192,12 +177,12 @@ export default function ProjectDetailsModal({
                       const pyReal = getY(h.real);
 
                       return (
-                        <g key={i}>
+                        <g key={`${h.fecha}-${i}`}>
                           {/* Label */}
-                          <text 
-                            x={px} 
-                            y={svgHeight - 10} 
-                            textAnchor="middle" 
+                          <text
+                            x={px}
+                            y={svgHeight - 10}
+                            textAnchor="middle"
                             className="text-[10px] font-black fill-slate-400 uppercase tracking-widest"
                           >
                             {h.fecha}
@@ -235,172 +220,180 @@ export default function ProjectDetailsModal({
                     })}
                   </svg>
                 ) : (
-                  <div className="text-center text-slate-400 py-12">
-                    Sin registros históricos para este proyecto.
-                  </div>
+                  <EmptyState
+                    title="Sin registros históricos"
+                    subtitle="Este proyecto aún no tiene hitos de progreso registrados."
+                    className="py-8"
+                  />
                 )}
               </div>
-            </div>
+            </Card>
 
             {/* Financial Health Indices */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="card p-5 flex items-start gap-4">
-                <div className={`p-3 rounded-xl text-white ${cpi >= 1 ? 'bg-green-500' : 'bg-red-500'}`}>
+              <Card padding="sm" className="flex items-start gap-4">
+                <div className={`p-3 rounded-xl text-white shrink-0 ${cpi >= 1 ? 'bg-green-500' : 'bg-red-500'}`}>
                   <BarChart2 className="w-5 h-5" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Desempeño Costo (CPI)</span>
-                    {cpi >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                    {cpi >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
                   </div>
                   <h4 className="text-xl font-black text-slate-900">{cpi.toFixed(2)}</h4>
                   <p className="text-[10px] font-medium text-slate-500">
                     {cpi >= 1 ? 'Bajo el presupuesto asignado.' : 'Gastando más de lo planificado.'}
                   </p>
                 </div>
-              </div>
+              </Card>
 
-              <div className="card p-5 flex items-start gap-4">
-                <div className={`p-3 rounded-xl text-white ${spi >= 1 ? 'bg-green-500' : 'bg-amber-500'}`}>
+              <Card padding="sm" className="flex items-start gap-4">
+                <div className={`p-3 rounded-xl text-white shrink-0 ${spi >= 1 ? 'bg-green-500' : 'bg-amber-500'}`}>
                   <Clock className="w-5 h-5" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Desempeño Tiempo (SPI)</span>
-                    {spi >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <AlertCircle className="w-3.5 h-3.5 text-amber-500" />}
+                    {spi >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                   </div>
                   <h4 className="text-xl font-black text-slate-900">{spi.toFixed(2)}</h4>
                   <p className="text-[10px] font-medium text-slate-500">
                     {spi >= 1 ? 'Al corriente u obra adelantada.' : 'Presenta un desfase de tiempo.'}
                   </p>
                 </div>
-              </div>
+              </Card>
             </div>
 
           </div>
 
           {/* Column 3: Resource Assignments */}
           <div className="space-y-6">
-            
+
             {/* Financial Summary & Real Profitability */}
-            <div className="card p-6 bg-slate-900 text-white space-y-4">
-              <div className="flex justify-between items-center border-b border-white/10 pb-2">
+            <Card className="bg-slate-900 border-slate-900 text-white space-y-4">
+              <div className="flex justify-between items-center pb-2">
                 <h3 className="font-black text-white/70 text-xs uppercase tracking-widest">
                   Rentabilidad y Costo Real
                 </h3>
-                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  (proyecto.margenUtilidadPorcentaje ?? 15) >= 20 ? 'bg-emerald-500 text-white' :
-                  (proyecto.margenUtilidadPorcentaje ?? 15) > 0 ? 'bg-amber-500 text-white' : 'bg-red-500 text-white'
-                }`}>
+                <Badge
+                  variant={(proyecto.margenUtilidadPorcentaje ?? 15) >= 20 ? 'success' : (proyecto.margenUtilidadPorcentaje ?? 15) > 0 ? 'warning' : 'error'}
+                  size="sm"
+                >
                   Margen: +{proyecto.margenUtilidadPorcentaje ?? 15}%
-                </span>
+                </Badge>
               </div>
 
               <div className="space-y-2.5 text-xs">
                 <div className="flex justify-between">
                   <span className="font-bold text-white/60">Presupuesto Contratado:</span>
-                  <span className="font-black text-white">{formatter.format(proyecto.presupuesto)}</span>
+                  <span className="font-black text-white">{formatCurrency(proyecto.presupuesto)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-bold text-emerald-400">Ingreso Facturado/Cobrado:</span>
-                  <span className="font-black text-emerald-400">{formatter.format(proyecto.ingresoCobrado ?? proyecto.presupuesto * 0.8)}</span>
+                  <span className="font-black text-emerald-400">{formatCurrency(proyecto.ingresoCobrado ?? proyecto.presupuesto * 0.8)}</span>
                 </div>
 
-                <div className="pt-2 border-t border-white/10 space-y-1.5 text-[11px]">
+                <Separator className="bg-white/10 my-2" />
+
+                <div className="space-y-1.5 text-[11px]">
                   <div className="flex justify-between text-white/70">
                     <span>👷 Nómina y Horas Extras:</span>
-                    <span className="font-bold text-white">{formatter.format(proyecto.gastoNomina ?? 380000)}</span>
+                    <span className="font-bold text-white">{formatCurrency(proyecto.gastoNomina ?? 380000)}</span>
                   </div>
                   <div className="flex justify-between text-white/70">
                     <span>⛽ Diésel de Maquinaria:</span>
-                    <span className="font-bold text-white">{formatter.format(proyecto.gastoCombustible ?? 245000)}</span>
+                    <span className="font-bold text-white">{formatCurrency(proyecto.gastoCombustible ?? 245000)}</span>
                   </div>
                   <div className="flex justify-between text-white/70">
                     <span>🔧 Refacciones y Mantenimiento:</span>
-                    <span className="font-bold text-white">{formatter.format(proyecto.gastoMantenimiento ?? 110000)}</span>
+                    <span className="font-bold text-white">{formatCurrency(proyecto.gastoMantenimiento ?? 110000)}</span>
                   </div>
                   <div className="flex justify-between text-white/70">
                     <span>🧱 Materiales y Criba:</span>
-                    <span className="font-bold text-white">{formatter.format(proyecto.gastoMateriales ?? 215000)}</span>
+                    <span className="font-bold text-white">{formatCurrency(proyecto.gastoMateriales ?? 215000)}</span>
                   </div>
                 </div>
 
-                <div className="h-px bg-white/10 my-2" />
-                <div className="flex justify-between items-baseline">
+                <div className="flex justify-between items-baseline pt-1">
                   <span className="text-[10px] font-black uppercase text-white/70">Utilidad Neta Real:</span>
                   <span className={`text-lg font-black ${(proyecto.utilidadReal ?? 70000) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatter.format(proyecto.utilidadReal ?? 70000)}
+                    {formatCurrency(proyecto.utilidadReal ?? 70000)}
                   </span>
                 </div>
               </div>
-            </div>
+            </Card>
 
             {/* Workers Assigned */}
-            <div className="card p-5 space-y-4">
-              <h3 className="font-black text-slate-900 text-xs uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center justify-between">
-                <span>Personal en Obra</span>
-                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                  {trabajadoresAsignados.length}
-                </span>
-              </h3>
-              <div className="space-y-3 max-h-[140px] overflow-y-auto">
+            <Card padding="sm" className="space-y-4">
+              <div className="flex items-center justify-between pb-2">
+                <h3 className="font-black text-slate-900 text-xs uppercase tracking-widest">Personal en Obra</h3>
+                <Badge variant="neutral" size="sm">{trabajadoresAsignados.length}</Badge>
+              </div>
+              <div className="space-y-3 max-h-[140px] overflow-y-auto scrollbar-none">
                 {trabajadoresAsignados.map(t => (
                   <div key={t.id} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-primary/10 text-primary font-bold rounded-lg flex items-center justify-center text-[10px]">
-                        {t.avatar}
-                      </div>
-                      <div>
-                        <p className="font-black text-slate-900">{t.nombre}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{t.puesto}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar name={t.nombre} size="sm" color="primary" />
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-900 truncate">{t.nombre}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">{t.puesto}</p>
                       </div>
                     </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" />
                   </div>
                 ))}
                 {trabajadoresAsignados.length === 0 && (
-                  <p className="text-xs text-slate-400 text-center py-2">Sin personal registrado.</p>
+                  <EmptyState
+                    icon={<Users size={28} />}
+                    title="Sin personal registrado"
+                    subtitle="No hay trabajadores asignados a este proyecto."
+                    className="py-4"
+                  />
                 )}
               </div>
-            </div>
+            </Card>
 
             {/* Machinery Assigned */}
-            <div className="card p-5 space-y-4">
-              <h3 className="font-black text-slate-900 text-xs uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center justify-between">
-                <span>Flota Asignada</span>
-                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                  {maquinariaAsignada.length}
-                </span>
-              </h3>
-              <div className="space-y-3 max-h-[140px] overflow-y-auto">
+            <Card padding="sm" className="space-y-4">
+              <div className="flex items-center justify-between pb-2">
+                <h3 className="font-black text-slate-900 text-xs uppercase tracking-widest">Flota Asignada</h3>
+                <Badge variant="neutral" size="sm">{maquinariaAsignada.length}</Badge>
+              </div>
+              <div className="space-y-3 max-h-[140px] overflow-y-auto scrollbar-none">
                 {maquinariaAsignada.map(m => (
                   <div key={m.id} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <div className="w-7 h-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
                         <Truck className="w-4 h-4" />
                       </div>
-                      <div>
-                        <p className="font-black text-slate-900">{m.id}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{m.nombre}</p>
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-900 truncate">{m.id}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">{m.nombre}</p>
                       </div>
                     </div>
-                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
-                      m.estado === 'Encendida' || m.estado === 'Movimiento' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                    }`}>{m.estado}</span>
+                    <Badge
+                      variant={m.estado === 'Encendida' || m.estado === 'Movimiento' ? 'success' : 'neutral'}
+                      size="sm"
+                    >
+                      {m.estado}
+                    </Badge>
                   </div>
                 ))}
                 {maquinariaAsignada.length === 0 && (
-                  <p className="text-xs text-slate-400 text-center py-2">Sin maquinaria asignada.</p>
+                  <EmptyState
+                    icon={<Truck size={28} />}
+                    title="Sin maquinaria asignada"
+                    subtitle="No hay despachos activos hacia este proyecto."
+                    className="py-4"
+                  />
                 )}
               </div>
-            </div>
+            </Card>
 
           </div>
 
         </div>
-
-        </div>
-      </Overlay>
-    </Portal>
+      </ModalBody>
+    </Modal>
   );
 }
