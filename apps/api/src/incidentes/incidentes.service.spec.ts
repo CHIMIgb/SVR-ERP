@@ -292,6 +292,16 @@ describe('IncidentesService', () => {
         service.reportar('non-existent', reportarDto, 'user-1'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should throw BadRequestException if incidente already reported', async () => {
+      prisma.incidentes.findFirst.mockResolvedValue({
+        ...mockIncidente,
+        reporte_descripcion: 'Reporte previo',
+      });
+      await expect(
+        service.reportar(mockIncidente.id, reportarDto, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('findStats', () => {

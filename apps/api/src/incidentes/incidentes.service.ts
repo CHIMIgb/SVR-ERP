@@ -319,6 +319,10 @@ export class IncidentesService {
       throw new NotFoundException(`Incidente con id "${id}" no encontrado`);
     }
 
+    if (existente.reporte_descripcion) {
+      throw new BadRequestException('El incidente ya fue reportado');
+    }
+
     const incidente = await this.prisma.incidentes.update({
       where: { id },
       data: {

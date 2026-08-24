@@ -244,5 +244,20 @@ describe('Incidentes Audit (Real DB)', () => {
         service.reportar(randomUUID(), { descripcion: 'test' }, ACTOR_USER_ID),
       ).rejects.toThrow('no encontrado');
     });
+
+    it('debe rechazar reportar un incidente ya reportado', async () => {
+      const dto = createDto();
+      const incidente = await service.create(dto, ACTOR_USER_ID);
+      createdIncidenteIds.push(incidente.id);
+
+      await service.reportar(incidente.id, { descripcion: 'Primer reporte' }, ACTOR_USER_ID);
+      await expect(
+        service.reportar(incidente.id, { descripcion: 'Segundo reporte' }, ACTOR_USER_ID),
+      ).rejects.toThrow('ya fue reportado');
+
+      // El primer reporte permanece intacto
+      const row = await prisma.incidentes.findUnique({ where: { id: incidente.id } });
+      expect(row?.reporte_descripcion).toBe('Primer reporte');
+    });
   });
 });

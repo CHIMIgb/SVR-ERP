@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
@@ -497,25 +498,31 @@ export default function IncidentesPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
-          {puedeEditar && item.estado !== 'Resuelto' && (
-            <Button
-              variant="success"
-              size="sm"
-              icon={<Check className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); openResolve(item); }}
-            >
-              Resolver
-            </Button>
+          {puedeEditar && (
+            <Tooltip content={item.estado === 'Resuelto' ? 'El incidente ya está resuelto' : ''}>
+              <Button
+                variant="success"
+                size="sm"
+                icon={<Check className="w-3.5 h-3.5" />}
+                disabled={item.estado === 'Resuelto'}
+                onClick={(e) => { e.stopPropagation(); openResolve(item); }}
+              >
+                Resolver
+              </Button>
+            </Tooltip>
           )}
           {puedeEditar && (
-            <Button
-              variant="info"
-              size="sm"
-              icon={<Flag className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); openReport(item); }}
-            >
-              Reportar
-            </Button>
+            <Tooltip content={item.reporteDescripcion ? 'Este incidente ya fue reportado' : ''}>
+              <Button
+                variant="info"
+                size="sm"
+                icon={<Flag className="w-3.5 h-3.5" />}
+                disabled={!!item.reporteDescripcion}
+                onClick={(e) => { e.stopPropagation(); openReport(item); }}
+              >
+                Reportar
+              </Button>
+            </Tooltip>
           )}
           {puedeEditar && (
             <Button
