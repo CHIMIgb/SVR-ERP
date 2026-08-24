@@ -238,11 +238,14 @@ export class CribaService {
   }
 
   // ────────────────────────────────────────────
-  //  ESTADÍSTICAS (alimentan las 7 tarjetas)
+  //  ESTADÍSTICAS (alimentan las tarjetas)
   // ────────────────────────────────────────────
   /**
    * Eficiencia = material_al_banco ÷ material_producido × 100
-   * (% del material cribado que llegó al banco; la diferencia es merma).
+   *   (% del material cribado que llegó al banco).
+   * Merma = material_producido − material_al_banco
+   *   (material descartado; en % es 100 − eficiencia).
+   * Ambas son derivadas — no se almacenan en BD.
    */
   async findStats() {
     const porTipo = await this.prisma.registros_criba.groupBy({
@@ -266,21 +269,28 @@ export class CribaService {
       totalAlBanco += alBanco;
       totalHoras += Number(row._sum.horas_trabajadas ?? 0);
 
+      const ef = producido > 0 ? Math.round((alBanco / producido) * 100) : 0;
       return {
         tipo: row.tipo_material,
         producido,
         alBanco,
-        ef: producido > 0 ? Math.round((alBanco / producido) * 100) : 0,
+        merma: producido - alBanco,
+        ef,
       };
     });
 
     porMaterial.sort((a, b) => a.tipo.localeCompare(b.tipo));
 
+    const eficiencia =
+      totalProducido > 0 ? Math.round((totalAlBanco / totalProducido) * 100) : 0;
+
     return {
       totalProducido,
       totalAlBanco,
       totalHoras,
-      eficiencia: totalProducido > 0 ? Math.round((totalAlBanco / totalProducido) * 100) : 0,
+      eficiencia,
+      merma: totalProducido - totalAlBanco,
+      mermaPorcentaje: 100 - eficiencia,
       porMaterial,
     };
   }

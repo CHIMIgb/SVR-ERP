@@ -134,6 +134,7 @@ describe('Criba Audit (Real DB)', () => {
       expect(fila?.producido).toBe(500);   // 400 + 100 (excluye eliminado)
       expect(fila?.alBanco).toBe(460);     // 380 + 80
       expect(fila?.ef).toBe(92);           // round(460/500*100)
+      expect(fila?.merma).toBe(40);        // 500 − 460
     });
   });
 

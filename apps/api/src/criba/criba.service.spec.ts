@@ -232,18 +232,22 @@ describe('CribaService', () => {
   });
 
   describe('findStats', () => {
-    it('should compute totals, global eficiencia and per-material stats', async () => {
+    it('should compute totals, global eficiencia, merma and per-material stats', async () => {
       const result = await service.findStats();
 
       expect(result.totalProducido).toBe(1000); // 600 + 400
       expect(result.totalAlBanco).toBe(870);     // 570 + 300
       expect(result.totalHoras).toBe(24);        // 16 + 8
       expect(result.eficiencia).toBe(87);        // round(870/1000*100)
+      expect(result.merma).toBe(130);            // 1000 − 870
+      expect(result.mermaPorcentaje).toBe(13);   // 100 − 87
 
       const fina = result.porMaterial.find((m) => m.tipo === 'Criba fina');
       const arena = result.porMaterial.find((m) => m.tipo === 'Arena lavada');
-      expect(fina?.ef).toBe(95); // round(570/600*100)
-      expect(arena?.ef).toBe(75); // round(300/400*100)
+      expect(fina?.ef).toBe(95);    // round(570/600*100)
+      expect(fina?.merma).toBe(30); // 600 − 570
+      expect(arena?.ef).toBe(75);   // round(300/400*100)
+      expect(arena?.merma).toBe(100); // 400 − 300
     });
 
     it('should return zeros when there are no registros', async () => {
@@ -254,6 +258,8 @@ describe('CribaService', () => {
         totalAlBanco: 0,
         totalHoras: 0,
         eficiencia: 0,
+        merma: 0,
+        mermaPorcentaje: 100,
         porMaterial: [],
       });
     });
