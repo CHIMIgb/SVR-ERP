@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   Plus, HardHat, CheckCircle2, FolderKanban,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -16,6 +16,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import ProjectDetailsModal from '@/components/projects/ProjectDetailsModal';
 import { formatDate } from '@/lib/formatters';
 import { proyectos as proyectosMock, type Proyecto } from '@/lib/data';
 
@@ -53,6 +54,7 @@ export default function ProyectosPage() {
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find((v) => v.ruta === '/proyectos');
+  const puedeVer = vista?.puedeVer ?? false;
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
@@ -71,6 +73,7 @@ export default function ProyectosPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Proyecto | null>(null);
+  const [viewItem, setViewItem] = useState<Proyecto | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
@@ -195,6 +198,10 @@ export default function ProyectosPage() {
   const openDelete = useCallback((item: Proyecto) => {
     setSelectedItem(item);
     setDeleteOpen(true);
+  }, []);
+
+  const openView = useCallback((item: Proyecto) => {
+    setViewItem(item);
   }, []);
 
   // ── Validación ──
@@ -372,6 +379,16 @@ export default function ProyectosPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
+          {puedeVer && (
+            <Button
+              variant="info"
+              size="sm"
+              icon={<Eye className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openView(item); }}
+            >
+              Ver
+            </Button>
+          )}
           {puedeEditar && (
             <Button
               variant="warning"
@@ -712,6 +729,15 @@ export default function ProyectosPage() {
           </div>
         )}
       </FormModal>
+
+      {/* Modal de detalle (curva S, CPI/SPI, rentabilidad, personal y flota) */}
+      {viewItem && (
+        <ProjectDetailsModal
+          isOpen={!!viewItem}
+          onClose={() => setViewItem(null)}
+          proyecto={viewItem}
+        />
+      )}
     </div>
   );
 }
