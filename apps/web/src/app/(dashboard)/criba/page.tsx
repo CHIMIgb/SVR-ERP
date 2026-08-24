@@ -3,11 +3,11 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   Plus, Package, ArrowUpRight, Clock, Gauge,
-  Grip, LayoutGrid, Droplets,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
+import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
@@ -58,6 +58,19 @@ function colorEficiencia(ef: number): 'success' | 'warning' | 'error' {
   return 'error';
 }
 
+const materialDot: Record<string, string> = {
+  'Criba fina': 'bg-amber-500',
+  'Criba gruesa': 'bg-orange-500',
+  'Arena lavada': 'bg-teal-500',
+};
+
+function turnoToValue(label: RegistroCribaDTO['turno']): NonNullable<CribaCreateInput['turno']> {
+  const map: Record<RegistroCribaDTO['turno'], NonNullable<CribaCreateInput['turno']>> = {
+    Matutino: 'MATUTINO',
+    Vespertino: 'VESPERTINO',
+  };
+  return map[label];
+}
 export default function CribaPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -464,23 +477,59 @@ export default function CribaPage() {
         />
       </div>
 
-      {/* Resumen por material — fila 2 */}
+      {/* Resumen por material — fila 2 (con merma en m³ y %) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {stats.porMaterial.map((m) => (
-          <StatsCard
-            key={m.tipo}
-            icon={
-              m.tipo === 'Criba fina' ? <Grip size={22} />
-              : m.tipo === 'Criba gruesa' ? <LayoutGrid size={22} />
-              : <Droplets size={22} />
-            }
-            value={`${m.alBanco} m³`}
-            label={m.tipo}
-            color={materialVariant[m.tipo] ?? 'neutral'}
-            trend="neutral"
-            trendValue={`Efic. ${m.ef}%`}
-          />
-        ))}
+        {[...MATERIALES].map((tipo) => {
+          const m = stats.porMaterial.find((p) => p.tipo === tipo);
+          const producido = m?.producido ?? 0;
+          const alBanco = m?.alBanco ?? 0;
+          const merma = m?.merma ?? 0;
+          const ef = m?.ef ?? 0;
+          const mermaPct = producido > 0 ? Math.round((merma / producido) * 100) : 0;
+          return (
+            <Card key={tipo} padding="sm" className="space-y-3">
+              {/* Encabezado: material + eficiencia */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${materialDot[tipo]}`} />
+                  <span className="font-black text-slate-800 text-sm truncate">{tipo}</span>
+                </div>
+                <Badge variant={colorEficiencia(ef)} size="sm">Efic. {ef}%</Badge>
+              </div>
+
+              {/* Tres métricas del material */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Producido</p>
+                  <p className="text-base font-black text-slate-900">{producido}</p>
+                  <p className="text-[9px] text-slate-400 font-bold">m³</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Al banco</p>
+                  <p className="text-base font-black text-green-700">{alBanco}</p>
+                  <p className="text-[9px] text-slate-400 font-bold">m³</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Merma</p>
+                  <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-slate-900'}`}>
+                    {merma}
+                  </p>
+                  <p className="text-[9px] text-slate-400 font-bold">m³</p>
+                </div>
+              </div>
+
+              {/* Merma explícita en m³ y % */}
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  Merma del material
+                </span>
+                <span className={`text-xs font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-slate-700'}`}>
+                  {merma} m³ · {mermaPct}%
+                </span>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
