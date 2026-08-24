@@ -152,15 +152,32 @@ describe('CribaService', () => {
       );
     });
 
-    it('should throw BadRequestException when alBanco > producido', async () => {
+    it('should throw BadRequestException when alBanco > producido AND audit the failure', async () => {
       await expect(
         service.create({ ...createDto, materialAlBanco: 300 }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: AuditResult.FAIL,
+          severity: 'WARNING',
+          errorCode: 'AL_BANCO_MAYOR_A_PRODUCIDO',
+        }),
+      );
     });
 
-    it('should throw BadRequestException if trabajador not found', async () => {
+    it('should throw BadRequestException if trabajador not found AND audit the failure', async () => {
       prisma.trabajadores.findFirst.mockResolvedValue(null);
       await expect(service.create(createDto, 'user-1')).rejects.toThrow(BadRequestException);
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'TRABAJADOR_NO_ENCONTRADO',
+        }),
+      );
     });
 
     it('should allow creating without operadorId', async () => {
@@ -198,11 +215,19 @@ describe('CribaService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw NotFoundException if registro not found', async () => {
+    it('should throw NotFoundException if registro not found AND audit the failure', async () => {
       prisma.registros_criba.findFirst.mockResolvedValue(null);
       await expect(
         service.update('non-existent', { materialAlBanco: 100 }, 'user-1'),
       ).rejects.toThrow(NotFoundException);
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+          result: AuditResult.FAIL,
+          errorCode: 'REGISTRO_NO_ENCONTRADO',
+        }),
+      );
     });
   });
 

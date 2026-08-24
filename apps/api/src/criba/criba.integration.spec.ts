@@ -24,6 +24,7 @@ describe('Criba Audit (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let service: CribaService;
+  let auditContext: AuditContextService;
 
   const createdRegistroIds: string[] = [];
 
@@ -37,6 +38,7 @@ describe('Criba Audit (Real DB)', () => {
 
     prisma = module.get(PrismaService);
     service = module.get(CribaService);
+    auditContext = module.get(AuditContextService);
     // Sin FK a trabajadores en estos tests (operador_id nullable) — la validación
     // del operador se cubre en unitarios.
   });
@@ -96,10 +98,38 @@ describe('Criba Audit (Real DB)', () => {
       expect(metadata?.source).toBe('SYSTEM'); // sin HTTP context en test directo
     });
 
-    it('debe rechazar crear con al banco mayor a producido', async () => {
-      await expect(
-        service.create(createDto({ materialAlBanco: 600 }), ACTOR_USER_ID),
-      ).rejects.toThrow('no puede ser mayor');
+    it('debe rechazar crear con al banco mayor a producido Y auditar el fallo', async () => {
+      // Simula el contexto que el interceptor crearía en un request real:
+      // el actor cae del JWT aunque el service no lo pase en el fallo.
+      await auditContext.run(
+        {
+          jwtUserId: ACTOR_USER_ID,
+          endpoint: '/api/criba',
+          method: 'POST',
+        },
+        async () => {
+          await expect(
+            service.create(createDto({ materialAlBanco: 600 }), ACTOR_USER_ID),
+          ).rejects.toThrow('no puede ser mayor');
+        },
+      );
+
+      // El fallo queda persistido en registro_auditoria con result=FAIL
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: 'FAIL',
+          error_code: 'AL_BANCO_MAYOR_A_PRODUCIDO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+
+      // Metadata automática del request simulado
+      const metadata = audits[0].metadata as Record<string, unknown> | null;
+      expect(metadata?.endpoint).toBe('/api/criba');
+      expect(metadata?.method).toBe('POST');
     });
   });
 

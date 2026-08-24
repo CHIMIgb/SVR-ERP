@@ -25,12 +25,39 @@ const TURNO_LABELS: Record<Turno, string> = {
   [Turno.VESPERTINO]: 'Vespertino',
 };
 
+/** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
+const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+
 @Injectable()
 export class CribaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Audita un fallo de negocio y lanza la excepción correspondiente.
+   * El actorUserId cae automáticamente del JWT en el contexto de request;
+   * la metadata mínima (endpoint/método/jwt) la agrega AuditService.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fallir<A extends new (message: string) => any>(
+    action: AuditAction,
+    entityId: string | null,
+    errorCode: string,
+    Excepcion: A,
+    message: string,
+  ): Promise<never> {
+    await this.auditService.log({
+      action,
+      entityType: 'registros_criba',
+      entityId: entityId || ENTITY_PLACEHOLDER,
+      result: AuditResult.FAIL,
+      severity: 'WARNING',
+      errorCode,
+    });
+    throw new Excepcion(message);
+  }
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
@@ -107,11 +134,19 @@ export class CribaService {
   //  CREAR
   // ────────────────────────────────────────────
   async create(dto: CreateRegistroCribaDto, userId: string) {
-    this.validarProduccion(dto.materialProducido, dto.materialAlBanco);
+    await this.validarProduccion(
+      dto.materialProducido,
+      dto.materialAlBanco,
+      AuditAction.REGISTRO_CRIBA_CREADO,
+      null,
+    );
 
     let operadorId: string | null = null;
     if (dto.operadorId) {
-      operadorId = await this.resolverTrabajador(dto.operadorId);
+      operadorId = await this.resolverTrabajador(
+        dto.operadorId,
+        AuditAction.REGISTRO_CRIBA_CREADO,
+      );
     }
 
     const registro = await this.prisma.registros_criba.create({
@@ -157,17 +192,31 @@ export class CribaService {
     });
 
     if (!existente) {
-      throw new NotFoundException(`Registro de criba con id "${id}" no encontrado`);
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'REGISTRO_NO_ENCONTRADO',
+        NotFoundException,
+        `Registro de criba con id "${id}" no encontrado`,
+      );
     }
 
     // Validación con los valores EFECTIVOS (DTO + existentes) tras el merge
     const producidoEfectivo = dto.materialProducido ?? Number(existente.material_producido);
     const alBancoEfectivo = dto.materialAlBanco ?? Number(existente.material_al_banco);
-    this.validarProduccion(producidoEfectivo, alBancoEfectivo);
+    await this.validarProduccion(
+      producidoEfectivo,
+      alBancoEfectivo,
+      AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+      id,
+    );
 
     let operadorId: string | null | undefined;
     if (dto.operadorId !== undefined) {
-      operadorId = dto.operadorId === null ? null : await this.resolverTrabajador(dto.operadorId);
+      operadorId =
+        dto.operadorId === null
+          ? null
+          : await this.resolverTrabajador(dto.operadorId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
     }
 
     const registro = await this.prisma.registros_criba.update({
@@ -215,7 +264,13 @@ export class CribaService {
     });
 
     if (!existente) {
-      throw new NotFoundException(`Registro de criba con id "${id}" no encontrado`);
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ELIMINADO,
+        id,
+        'REGISTRO_NO_ENCONTRADO',
+        NotFoundException,
+        `Registro de criba con id "${id}" no encontrado`,
+      );
     }
 
     await this.prisma.registros_criba.update({
@@ -312,23 +367,42 @@ export class CribaService {
   //  PRIVADOS
   // ────────────────────────────────────────────
 
-  /** Regla de negocio: lo que llega al banco nunca excede lo producido. */
-  private validarProduccion(materialProducido: number, materialAlBanco: number) {
+  /** Regla de negocio: lo que llega al banco nunca excede lo producido. Audita el fallo. */
+  private async validarProduccion(
+    materialProducido: number,
+    materialAlBanco: number,
+    action: AuditAction,
+    entityId: string | null,
+  ) {
     if (materialAlBanco > materialProducido) {
-      throw new BadRequestException(
+      return this.fallir(
+        action,
+        entityId,
+        'AL_BANCO_MAYOR_A_PRODUCIDO',
+        BadRequestException,
         'El material al banco no puede ser mayor al material producido',
       );
     }
   }
 
-  /** Valida que el trabajador exista y devuelve su UUID. */
-  private async resolverTrabajador(operadorId: string): Promise<string> {
+  /** Valida que el trabajador exista y devuelve su UUID. Audita el fallo. */
+  private async resolverTrabajador(
+    operadorId: string,
+    action: AuditAction,
+    entityId?: string,
+  ): Promise<string> {
     const trabajador = await this.prisma.trabajadores.findFirst({
       where: { id: operadorId, activo: true, eliminado_en: null },
       select: { id: true },
     });
     if (!trabajador) {
-      throw new BadRequestException(`Trabajador operador con id "${operadorId}" no encontrado`);
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'TRABAJADOR_NO_ENCONTRADO',
+        BadRequestException,
+        `Trabajador operador con id "${operadorId}" no encontrado`,
+      );
     }
     return trabajador.id;
   }
