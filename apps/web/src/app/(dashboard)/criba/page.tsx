@@ -436,41 +436,43 @@ export default function CribaPage() {
         }
       />
 
-      {/* KPIs globales */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-4">
+      {/* KPIs globales — fila 1 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatsCard
-          icon={<Package className="w-6 h-6" />}
+          icon={<Package size={22} />}
           value={`${stats.totalProducido} m³`}
           label="Total Produ."
           color="info"
         />
         <StatsCard
-          icon={<ArrowUpRight className="w-6 h-6" />}
+          icon={<ArrowUpRight size={22} />}
           value={`${stats.totalAlBanco} m³`}
           label="Al Banco"
           color="success"
         />
         <StatsCard
-          icon={<Clock className="w-6 h-6" />}
+          icon={<Clock size={22} />}
           value={`${stats.totalHoras} h`}
           label="Horas Trab."
           color="info"
         />
         <StatsCard
-          icon={<Gauge className="w-6 h-6" />}
+          icon={<Gauge size={22} />}
           value={`${stats.eficiencia}%`}
           label="Eficiencia"
           color={colorEficiencia(stats.eficiencia)}
         />
+      </div>
 
-        {/* Resumen por material */}
+      {/* Resumen por material — fila 2 */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {stats.porMaterial.map((m) => (
           <StatsCard
             key={m.tipo}
             icon={
-              m.tipo === 'Criba fina' ? <Grip className="w-6 h-6" />
-              : m.tipo === 'Criba gruesa' ? <LayoutGrid className="w-6 h-6" />
-              : <Droplets className="w-6 h-6" />
+              m.tipo === 'Criba fina' ? <Grip size={22} />
+              : m.tipo === 'Criba gruesa' ? <LayoutGrid size={22} />
+              : <Droplets size={22} />
             }
             value={`${m.alBanco} m³`}
             label={m.tipo}
