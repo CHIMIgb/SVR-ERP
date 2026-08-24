@@ -4,7 +4,7 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   Wrench, Fuel, User, ClipboardCheck, Clock, MapPin,
   ShieldAlert, HardHat, Users, AlertTriangle, CheckCircle2,
-  Plus, Pencil, Trash2, Eye, FileSearch, X, AlertCircle,
+  Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Modal, ModalHeader, ModalBody } from '@/components/ui/Modal';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
@@ -131,7 +130,6 @@ export default function ReportesCampoPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [detalleOpen, setDetalleOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReporteCampo | null>(null);
   const emptyForm = {
     tipo: 'Operador' as ReporteCampo['tipo'],
@@ -290,11 +288,6 @@ export default function ReportesCampoPage() {
     setDeleteOpen(true);
   }, []);
 
-  const openDetalle = useCallback((item: ReporteCampo) => {
-    setSelectedItem(item);
-    setDetalleOpen(true);
-  }, []);
-
   // ── Flujo de estados (avanza una etapa) ──
   const handleAvanzar = useCallback(
     (item: ReporteCampo) => {
@@ -424,15 +417,15 @@ export default function ReportesCampoPage() {
             </div>
           </div>
           <Button
-            variant={soloCriticos ? 'danger' : 'outline'}
+            variant="danger"
             size="sm"
             icon={<Eye className="w-3.5 h-3.5" />}
             onClick={() => {
-              setSoloCriticos((v) => !v);
+              setSoloCriticos(true);
               setPage(1);
             }}
           >
-            {soloCriticos ? 'Ver todos' : 'Ver críticos'}
+            Ver incidentes críticos
           </Button>
         </div>
       )}
@@ -479,7 +472,7 @@ export default function ReportesCampoPage() {
         <Button
           variant={showFilters ? 'primary' : 'secondary'}
           size="md"
-          icon={<Plus className="w-4 h-4 rotate-90" />}
+          icon={<SlidersHorizontal className="w-4 h-4" />}
           onClick={() => setShowFilters((prev) => !prev)}
           className="shrink-0 whitespace-nowrap"
         >
@@ -661,48 +654,37 @@ export default function ReportesCampoPage() {
                   <div className="md:w-36 flex md:flex-col justify-end items-stretch md:items-end gap-2 shrink-0">
                     {accion && puedeEditar && (
                       <Button
-                        variant={report.tipo === 'Incidente' ? 'danger' : 'secondary'}
+                        variant="success"
                         size="sm"
+                        icon={<Check className="w-3.5 h-3.5" />}
                         className="w-full"
                         onClick={() => handleAvanzar(report)}
                       >
                         {accion}
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      icon={<FileSearch className="w-3.5 h-3.5" />}
-                      onClick={() => openDetalle(report)}
-                    >
-                      Detalles
-                    </Button>
-                    <div className="flex gap-2 md:justify-end">
-                      {puedeEditar && report.estado === 'Pendiente' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<Pencil className="w-3.5 h-3.5" />}
-                          aria-label={`Editar reporte de ${report.usuario}`}
-                          onClick={() => openEdit(report)}
-                        >
-                          Editar
-                        </Button>
-                      )}
-                      {puedeEliminar && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:bg-red-50"
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                          aria-label={`Eliminar reporte de ${report.usuario}`}
-                          onClick={() => openDelete(report)}
-                        >
-                          Eliminar
-                        </Button>
-                      )}
-                    </div>
+                    {puedeEditar && report.estado === 'Pendiente' && (
+                      <Button
+                        variant="warning"
+                        size="sm"
+                        icon={<Pencil className="w-3.5 h-3.5" />}
+                        className="w-full"
+                        onClick={() => openEdit(report)}
+                      >
+                        Editar
+                      </Button>
+                    )}
+                    {puedeEliminar && (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        icon={<Trash2 className="w-3.5 h-3.5" />}
+                        className="w-full"
+                        onClick={() => openDelete(report)}
+                      >
+                        Eliminar
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -711,15 +693,13 @@ export default function ReportesCampoPage() {
         )}
       </div>
 
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={safePage}
-          totalPages={totalPages}
-          totalRecords={filtered.length}
-          pageSize={PAGE_SIZE}
-          onPageChange={handlePageChange}
-        />
-      )}
+      <Pagination
+        currentPage={safePage}
+        totalPages={totalPages}
+        totalRecords={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={handlePageChange}
+      />
 
       {/* ═══════════════════════════════════════════
           MODALES
@@ -957,88 +937,6 @@ export default function ReportesCampoPage() {
           </div>
         )}
       </FormModal>
-
-      {/* Modal de Detalles */}
-      <Modal
-        open={detalleOpen}
-        onClose={() => setDetalleOpen(false)}
-        size="full"
-      >
-        {selectedItem && (
-          <>
-            <ModalHeader
-              title={`Reporte de ${selectedItem.usuario}`}
-              subtitle={`${selectedItem.tipo} · ${selectedItem.obra}${selectedItem.maquinaId ? ` · Máq: ${selectedItem.maquinaId}` : ''}`}
-              onClose={() => setDetalleOpen(false)}
-            />
-            <ModalBody className="space-y-5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={estadoVariant[selectedItem.estado]} size="md">
-                  {selectedItem.estado}
-                </Badge>
-                {selectedItem.prioridad && (
-                  <Badge variant={prioridadVariant[selectedItem.prioridad]} size="md" dot>
-                    Prioridad {selectedItem.prioridad}
-                  </Badge>
-                )}
-                <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5 ml-auto">
-                  <Clock className="w-3.5 h-3.5" /> {selectedItem.hora} — {selectedItem.fecha}
-                </span>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                  Descripción
-                </p>
-                <div
-                  className={`p-4 rounded-xl border italic text-sm ${
-                    selectedItem.tipo === 'Incidente'
-                      ? 'bg-red-50 border-red-100 text-red-900'
-                      : 'bg-slate-50 border-slate-100 text-slate-600'
-                  }`}
-                >
-                  &ldquo;{selectedItem.descripcion}&rdquo;
-                </div>
-              </div>
-
-              {selectedItem.detalles && (
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    Datos adicionales
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Object.entries(selectedItem.detalles as Record<string, unknown>).map(([k, v]) => (
-                      <div
-                        key={k}
-                        className={`border rounded-lg px-3 py-2 ${
-                          k === 'costo'
-                            ? 'bg-green-50 border-green-100'
-                            : 'bg-orange-50 border-orange-100'
-                        }`}
-                      >
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                          {k.charAt(0).toUpperCase() + k.slice(1)}
-                        </span>
-                        <span
-                          className={`text-sm font-black ${
-                            k === 'costo' ? 'text-green-700' : 'text-orange-700'
-                          }`}
-                        >
-                          {formatDetalle(k, v)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <p className="text-[11px] text-slate-400 font-medium text-center">
-                Los reportes registran su historial completo en la bitácora de auditoría.
-              </p>
-            </ModalBody>
-          </>
-        )}
-      </Modal>
     </div>
   );
 }
