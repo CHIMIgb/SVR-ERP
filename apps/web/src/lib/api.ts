@@ -779,3 +779,101 @@ export const proyectosApi = {
   catalogos: () =>
     apiClient.get<ProyectoCatalogos>('/proyectos/catalogos'),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Reportes de Campo API
+// ────────────────────────────────────────────────────────────
+
+export type TipoReporte = 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
+export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto';
+export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
+
+/** Valores de enum que acepta la API en query/body (mayúsculas). */
+export type TipoReporteApi = 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
+export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO';
+export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+
+export interface ReporteCampoDTO {
+  id: string;
+  codigo: string | null;
+  tipo: TipoReporte;
+  usuario: string;
+  usuarioId: string | null;
+  maquinaId: string | null;
+  maquinaCodigo: string | null;
+  maquinaNombre: string | null;
+  obraId: string | null;
+  obra: string;
+  fecha: string;
+  hora: string;
+  descripcion: string;
+  estado: EstadoReporte;
+  prioridad: PrioridadReporte | null;
+  detalles: Record<string, unknown> | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface ReportesCampoStats {
+  pendientes: number;
+  enRevision: number;
+  atendidos: number;
+  resueltos: number;
+  criticosActivos: number;
+}
+
+export interface ReporteCampoCreateInput {
+  tipo: TipoReporteApi;
+  usuario: string;
+  maquinaId?: string;
+  obraId?: string;
+  obraTexto: string;
+  fecha: string;
+  hora: string;
+  descripcion: string;
+  prioridad?: PrioridadReporteApi;
+}
+
+export const reportesCampoApi = {
+  listar: (params?: {
+    search?: string;
+    estado?: EstadoReporteApi;
+    tipo?: TipoReporteApi;
+    prioridad?: PrioridadReporteApi;
+    criticos?: boolean;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.prioridad) searchParams.set('prioridad', params.prioridad);
+    if (params?.criticos) searchParams.set('criticos', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ReporteCampoDTO>>(
+      `/reportes-campo${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  obtener: (id: string) =>
+    apiClient.get<ReporteCampoDTO>(`/reportes-campo/${id}`),
+
+  crear: (data: ReporteCampoCreateInput) =>
+    apiClient.post<ReporteCampoDTO>('/reportes-campo', data),
+
+  actualizar: (id: string, data: Partial<ReporteCampoCreateInput>) =>
+    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}`, data),
+
+  cambiarEstado: (id: string, estado: EstadoReporteApi) =>
+    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/estado`, { estado }),
+
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/reportes-campo/${id}`),
+
+  stats: () =>
+    apiClient.get<ReportesCampoStats>('/reportes-campo/stats'),
+};

@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   EstadoReporteCampo,
@@ -22,6 +22,11 @@ export class QueryReportesCampoDto {
   @IsOptional()
   @IsEnum(Prioridad)
   prioridad?: Prioridad;
+
+  /** Banner de críticos: INCIDENTE con prioridad Alta/Crítica sin resolver. */
+  @IsOptional()
+  @IsIn(['true'])
+  criticos?: string;
 
   @IsOptional()
   @Type(() => Number)

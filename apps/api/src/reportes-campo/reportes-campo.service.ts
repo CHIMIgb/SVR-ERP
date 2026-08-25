@@ -94,6 +94,13 @@ export class ReportesCampoService {
     if (query.tipo) where.tipo = query.tipo;
     if (query.prioridad) where.prioridad = query.prioridad;
 
+    // Banner de críticos: INCIDENTE con prioridad Alta/Crítica sin resolver
+    if (query.criticos === 'true') {
+      where.tipo = TipoReporteCampo.INCIDENTE;
+      where.prioridad = { in: [Prioridad.ALTA, Prioridad.CRITICA] };
+      where.estado = { not: EstadoReporteCampo.RESUELTO };
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.reportes_campo.findMany({
         where,

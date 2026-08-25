@@ -101,6 +101,14 @@ describe('ReportesCampoService', () => {
       expect(callArgs.where.tipo).toBe(TipoReporteCampo.INCIDENTE);
       expect(callArgs.where.prioridad).toBe(Prioridad.ALTA);
     });
+
+    it('should filter criticos (INCIDENTE Alta/Crítica sin resolver) via flag', async () => {
+      await service.findAll({ criticos: 'true' });
+      const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
+      expect(callArgs.where.tipo).toBe(TipoReporteCampo.INCIDENTE);
+      expect(callArgs.where.prioridad).toEqual({ in: [Prioridad.ALTA, Prioridad.CRITICA] });
+      expect(callArgs.where.estado).toEqual({ not: EstadoReporteCampo.RESUELTO });
+    });
   });
 
   describe('findOne', () => {

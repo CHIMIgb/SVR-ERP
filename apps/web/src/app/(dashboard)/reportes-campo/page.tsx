@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Wrench, Fuel, User, ClipboardCheck, Clock, MapPin,
   ShieldAlert, HardHat, Users, AlertTriangle, CheckCircle2,
@@ -17,29 +17,52 @@ import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextarea
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
-import { reportesCampo as reportesMock, type ReporteCampo } from '@/lib/data';
-import { bitacoraApi, type CatalogoItem } from '@/lib/api';
+import {
+  bitacoraApi,
+  reportesCampoApi,
+  type CatalogoItem,
+  type ReporteCampoDTO,
+  type ReportesCampoStats,
+  type ReporteCampoCreateInput,
+  type TipoReporteApi,
+  type EstadoReporteApi,
+  type PrioridadReporteApi,
+  type TipoReporte,
+  type EstadoReporte,
+  type PrioridadReporte,
+} from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 6;
 
-const TIPOS: ReporteCampo['tipo'][] = [
-  'Incidente', 'Mecanico', 'Pipero', 'Operador', 'Checador', 'Ingeniero', 'Trabajador',
+const TIPOS: { value: TipoReporteApi; label: string }[] = [
+  { value: 'INCIDENTE', label: 'Incidente' },
+  { value: 'MECANICO', label: 'Mecanico' },
+  { value: 'PIPERO', label: 'Pipero' },
+  { value: 'OPERADOR', label: 'Operador' },
+  { value: 'CHECADOR', label: 'Checador' },
+  { value: 'INGENIERO', label: 'Ingeniero' },
+  { value: 'TRABAJADOR', label: 'Trabajador' },
 ];
 
-const ESTADOS_FILTRO: ReporteCampo['estado'][] = [
-  'Pendiente', 'Visto', 'Atendido', 'En Revisión', 'Resuelto',
+const ESTADOS_FILTRO: { value: EstadoReporteApi; label: string }[] = [
+  { value: 'PENDIENTE', label: 'Pendiente' },
+  { value: 'VISTO', label: 'Visto' },
+  { value: 'ATENDIDO', label: 'Atendido' },
+  { value: 'EN_REVISION', label: 'En Revisión' },
+  { value: 'RESUELTO', label: 'Resuelto' },
 ];
 
-const PRIORIDADES: NonNullable<ReporteCampo['prioridad']>[] = [
-  'Baja', 'Media', 'Alta', 'Crítica',
+const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
+  { value: 'BAJA', label: 'Baja' },
+  { value: 'MEDIA', label: 'Media' },
+  { value: 'ALTA', label: 'Alta' },
+  { value: 'CRITICA', label: 'Crítica' },
 ];
-
-const turnoIconMap: Record<string, React.ReactNode> = {};
 
 // ── Helpers de presentación ──
 
-function getTipoIcon(tipo: ReporteCampo['tipo']) {
+function getTipoIcon(tipo: string) {
   switch (tipo) {
     case 'Mecanico':   return <Wrench className="w-5 h-5 text-blue-500" />;
     case 'Pipero':     return <Fuel className="w-5 h-5 text-orange-500" />;
@@ -48,10 +71,11 @@ function getTipoIcon(tipo: ReporteCampo['tipo']) {
     case 'Incidente':  return <ShieldAlert className="w-5 h-5 text-red-500" />;
     case 'Ingeniero':  return <HardHat className="w-5 h-5 text-yellow-500" />;
     case 'Trabajador': return <Users className="w-5 h-5 text-teal-500" />;
+    default:           return <ClipboardCheck className="w-5 h-5 text-slate-400" />;
   }
 }
 
-function getTipoColor(tipo: ReporteCampo['tipo']) {
+function getTipoColor(tipo: string) {
   switch (tipo) {
     case 'Mecanico':   return 'bg-blue-500';
     case 'Pipero':     return 'bg-orange-500';
@@ -60,10 +84,11 @@ function getTipoColor(tipo: ReporteCampo['tipo']) {
     case 'Incidente':  return 'bg-red-500';
     case 'Ingeniero':  return 'bg-yellow-400';
     case 'Trabajador': return 'bg-teal-500';
+    default:           return 'bg-slate-400';
   }
 }
 
-const estadoVariant: Record<ReporteCampo['estado'], 'warning' | 'info' | 'success' | 'primary'> = {
+const estadoVariant: Record<EstadoReporte, 'warning' | 'info' | 'success' | 'primary'> = {
   Pendiente: 'warning',
   Visto: 'info',
   Atendido: 'success',
@@ -71,15 +96,15 @@ const estadoVariant: Record<ReporteCampo['estado'], 'warning' | 'info' | 'succes
   Resuelto: 'success',
 };
 
-const prioridadVariant: Record<NonNullable<ReporteCampo['prioridad']>, 'error' | 'warning' | 'neutral' | 'info'> = {
-  'Crítica': 'error',
+const prioridadVariant: Record<PrioridadReporte, 'error' | 'warning' | 'neutral' | 'info'> = {
+  Crítica: 'error',
   Alta: 'warning',
   Media: 'neutral',
   Baja: 'info',
 };
 
 /** Siguiente etapa del flujo de seguimiento del reporte. */
-function siguienteEstado(estado: ReporteCampo['estado']): ReporteCampo['estado'] | null {
+function siguienteEstado(estado: EstadoReporte): EstadoReporte | null {
   switch (estado) {
     case 'Pendiente':   return 'Visto';
     case 'Visto':       return 'Atendido';
@@ -89,8 +114,16 @@ function siguienteEstado(estado: ReporteCampo['estado']): ReporteCampo['estado']
   }
 }
 
+const ESTADO_API: Record<EstadoReporte, EstadoReporteApi> = {
+  Pendiente: 'PENDIENTE',
+  Visto: 'VISTO',
+  Atendido: 'ATENDIDO',
+  'En Revisión': 'EN_REVISION',
+  Resuelto: 'RESUELTO',
+};
+
 /** Etiqueta del botón principal — conserva los nombres originales de la vista. */
-function etiquetaAccion(report: ReporteCampo): string | null {
+function etiquetaAccion(report: ReporteCampoDTO): string | null {
   const next = siguienteEstado(report.estado);
   if (!next) return null;
   if (report.estado === 'Pendiente') {
@@ -107,6 +140,25 @@ function formatDetalle(key: string, value: unknown): string {
   return String(value);
 }
 
+const STATS_CERO: ReportesCampoStats = {
+  pendientes: 0,
+  enRevision: 0,
+  atendidos: 0,
+  resueltos: 0,
+  criticosActivos: 0,
+};
+
+const emptyForm = {
+  tipo: 'OPERADOR' as TipoReporteApi,
+  usuario: '',
+  obraId: '',
+  maquinaId: '',
+  fecha: new Date().toISOString().split('T')[0],
+  hora: new Date().toTimeString().slice(0, 5),
+  prioridad: '' as '' | PrioridadReporteApi,
+  descripcion: '',
+};
+
 export default function ReportesCampoPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -117,9 +169,17 @@ export default function ReportesCampoPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
-  // ── Estado de datos (local hasta integrar API) ──
-  const [reportes, setReportes] = useState<ReporteCampo[]>(reportesMock);
-  const [page, setPage] = useState(1);
+  // ── Estado de datos ──
+  const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
+  const [stats, setStats] = useState<ReportesCampoStats>(STATS_CERO);
+  const [catalogos, setCatalogos] = useState<{ maquinas: CatalogoItem[]; obras: CatalogoItem[] }>({
+    maquinas: [],
+    obras: [],
+  });
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
@@ -131,23 +191,9 @@ export default function ReportesCampoPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ReporteCampo | null>(null);
-  const emptyForm = {
-    tipo: 'Operador' as ReporteCampo['tipo'],
-    usuario: '',
-    obraId: '',
-    maquinaId: '',
-    fecha: new Date().toISOString().split('T')[0],
-    hora: new Date().toTimeString().slice(0, 5),
-    prioridad: '' as NonNullable<ReporteCampo['prioridad']> | '',
-    descripcion: '',
-  };
+  const [selectedItem, setSelectedItem] = useState<ReporteCampoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
-  const [catalogos, setCatalogos] = useState<{ maquinas: CatalogoItem[]; obras: CatalogoItem[] }>({
-    maquinas: [],
-    obras: [],
-  });
 
   // ── Cargar catálogos de obra y máquina (una sola vez) ──
   useEffect(() => {
@@ -158,116 +204,136 @@ export default function ReportesCampoPage() {
     });
   }, []);
 
-  // ── Incidentes críticos activos (banner preservado) ──
-  const criticosActivos = useMemo(
-    () =>
-      reportes.filter(
-        (r) =>
-          r.tipo === 'Incidente' &&
-          (r.prioridad === 'Crítica' || r.prioridad === 'Alta') &&
-          r.estado !== 'Resuelto',
-      ),
-    [reportes],
-  );
-
-  // ── Filtrado ──
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return reportes.filter((r) => {
-      if (soloCriticos && !criticosActivos.includes(r)) return false;
-      if (filterValues.estado && r.estado !== filterValues.estado) return false;
-      if (filterValues.prioridad && (r.prioridad ?? '') !== filterValues.prioridad) return false;
-      if (filterValues.tipo && r.tipo !== filterValues.tipo) return false;
-      if (
-        q &&
-        !r.usuario.toLowerCase().includes(q) &&
-        !r.descripcion.toLowerCase().includes(q) &&
-        !r.obra.toLowerCase().includes(q)
-      ) {
-        return false;
+  // ── Cargar datos ──
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>, criticos?: boolean) => {
+    if (!hasLoaded.current) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    try {
+      const res = await reportesCampoApi.listar({
+        search: searchVal || undefined,
+        estado: (filters?.estado as EstadoReporteApi) || undefined,
+        tipo: (filters?.tipo as TipoReporteApi) || undefined,
+        prioridad: (filters?.prioridad as PrioridadReporteApi) || undefined,
+        criticos: criticos || undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      if (res.success && res.data) {
+        setReportes(res.data.items);
+        setPagination(res.data.pagination);
+      } else {
+        showToast('Error al cargar reportes de campo.', 'error');
       }
-      return true;
-    });
-  }, [reportes, search, filterValues, soloCriticos, criticosActivos]);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      hasLoaded.current = true;
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [showToast]);
 
-  // ── Paginación client-side ──
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = useMemo(
-    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [filtered, safePage],
-  );
+  const fetchStats = useCallback(async () => {
+    const res = await reportesCampoApi.stats();
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+  }, []);
 
-  const handlePageChange = useCallback((newPage: number) => setPage(newPage), []);
-
-  // ── Stats por estado ──
-  const stats = useMemo(
-    () => ({
-      pendientes: reportes.filter((r) => r.estado === 'Pendiente').length,
-      enRevision: reportes.filter((r) => r.estado === 'En Revisión').length,
-      atendidos: reportes.filter((r) => r.estado === 'Atendido').length,
-      resueltos: reportes.filter((r) => r.estado === 'Resuelto').length,
-    }),
-    [reportes],
-  );
+  useEffect(() => {
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
-  if (filterValues.estado)
-    activeFilters.push({ key: 'estado', label: 'Estado', value: filterValues.estado });
-  if (filterValues.prioridad)
-    activeFilters.push({ key: 'prioridad', label: 'Prioridad', value: filterValues.prioridad });
-  if (filterValues.tipo)
-    activeFilters.push({ key: 'tipo', label: 'Tipo', value: filterValues.tipo });
-  if (soloCriticos)
+  if (filterValues.estado) {
+    const label = ESTADOS_FILTRO.find((e) => e.value === filterValues.estado)?.label ?? filterValues.estado;
+    activeFilters.push({ key: 'estado', label: 'Estado', value: label });
+  }
+  if (filterValues.prioridad) {
+    const label = PRIORIDADES.find((p) => p.value === filterValues.prioridad)?.label ?? filterValues.prioridad;
+    activeFilters.push({ key: 'prioridad', label: 'Prioridad', value: label });
+  }
+  if (filterValues.tipo) {
+    const label = TIPOS.find((t) => t.value === filterValues.tipo)?.label ?? filterValues.tipo;
+    activeFilters.push({ key: 'tipo', label: 'Tipo', value: label });
+  }
+  if (soloCriticos) {
     activeFilters.push({ key: 'criticos', label: 'Vista', value: 'Solo críticos' });
+  }
 
   const filterFields: FilterField[] = [
     {
       key: 'estado',
       label: 'Estado',
       type: 'select',
-      options: ESTADOS_FILTRO.map((e) => ({ value: e, label: e })),
+      options: ESTADOS_FILTRO.map((e) => ({ value: e.value, label: e.label })),
       placeholder: 'Todos',
     },
     {
       key: 'prioridad',
       label: 'Prioridad',
       type: 'select',
-      options: PRIORIDADES.map((p) => ({ value: p, label: p })),
+      options: PRIORIDADES.map((p) => ({ value: p.value, label: p.label })),
       placeholder: 'Todas',
     },
     {
       key: 'tipo',
       label: 'Tipo',
       type: 'select',
-      options: TIPOS.map((t) => ({ value: t, label: t })),
+      options: TIPOS.map((t) => ({ value: t.value, label: t.label })),
       placeholder: 'Todos',
     },
   ];
 
+  const refetch = useCallback(
+    (page?: number) => fetchData(page ?? pagination.page, search, filterValues, soloCriticos),
+    [fetchData, pagination.page, search, filterValues, soloCriticos],
+  );
+
+  const handleSearchChange = useCallback((value: string) => setSearch(value), []);
+
+  const handleSearch = useCallback(() => {
+    fetchData(1, search, filterValues, soloCriticos);
+  }, [fetchData, search, filterValues, soloCriticos]);
+
   const handleFilterChange = useCallback(
     (key: string, value: string) => {
       setFilterValues((prev) => ({ ...prev, [key]: value }));
-      setPage(1);
+      fetchData(1, search, { ...filterValues, [key]: value }, soloCriticos);
     },
-    [],
+    [fetchData, search, filterValues, soloCriticos],
   );
 
-  const handleRemoveFilter = useCallback((key: string) => {
-    setFilterValues((prev) => {
-      const next = { ...prev };
+  const handleRemoveFilter = useCallback(
+    (key: string) => {
+      if (key === 'criticos') {
+        setSoloCriticos(false);
+        fetchData(1, search, filterValues, false);
+        return;
+      }
+      const next = { ...filterValues };
       delete next[key];
-      return next;
-    });
-    setPage(1);
-  }, []);
+      setFilterValues(next);
+      fetchData(1, search, next, soloCriticos);
+    },
+    [fetchData, search, filterValues, soloCriticos],
+  );
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
     setSoloCriticos(false);
-    setPage(1);
-  }, []);
+    fetchData(1, search, {}, false);
+  }, [fetchData, search]);
+
+  const handlePageChange = useCallback(
+    (page: number) => fetchData(page, search, filterValues, soloCriticos),
+    [fetchData, search, filterValues, soloCriticos],
+  );
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
@@ -276,20 +342,20 @@ export default function ReportesCampoPage() {
   }, []);
 
   const openEdit = useCallback(
-    (item: ReporteCampo) => {
+    (item: ReporteCampoDTO) => {
       if (item.estado !== 'Pendiente') {
         showToast('Solo los reportes Pendientes pueden editarse.', 'error');
         return;
       }
       setSelectedItem(item);
       setForm({
-        tipo: item.tipo,
+        tipo: (TIPOS.find((t) => t.label === item.tipo)?.value ?? 'OPERADOR') as TipoReporteApi,
         usuario: item.usuario,
         obraId: item.obraId || '',
         maquinaId: item.maquinaId || '',
         fecha: item.fecha,
         hora: item.hora,
-        prioridad: item.prioridad ?? '',
+        prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
         descripcion: item.descripcion,
       });
       setEditOpen(true);
@@ -297,23 +363,10 @@ export default function ReportesCampoPage() {
     [showToast],
   );
 
-  const openDelete = useCallback((item: ReporteCampo) => {
+  const openDelete = useCallback((item: ReporteCampoDTO) => {
     setSelectedItem(item);
     setDeleteOpen(true);
   }, []);
-
-  // ── Flujo de estados (avanza una etapa) ──
-  const handleAvanzar = useCallback(
-    (item: ReporteCampo) => {
-      const next = siguienteEstado(item.estado);
-      if (!next) return;
-      setReportes((prev) =>
-        prev.map((r) => (r.id === item.id ? { ...r, estado: next } : r)),
-      );
-      showToast(`Reporte marcado como "${next}".`, 'success');
-    },
-    [showToast],
-  );
 
   // ── Validación ──
   const validateForm = useCallback(() => {
@@ -336,23 +389,20 @@ export default function ReportesCampoPage() {
     return true;
   }, [form, showToast]);
 
-  // ── CRUD local ──
+  // ── CRUD via API ──
   /** Deriva obraTexto del catálogo — el backend la persiste junto al FK. */
   const buildPayload = useCallback(
-    () => {
-      const obra = catalogos.obras.find((o) => o.id === form.obraId);
-      return {
-        tipo: form.tipo,
-        usuario: form.usuario.trim(),
-        maquinaId: form.maquinaId || undefined,
-        obraId: form.obraId || undefined,
-        obraTexto: obra?.nombre ?? '',
-        fecha: form.fecha,
-        hora: form.hora,
-        descripcion: form.descripcion.trim(),
-        prioridad: form.prioridad || undefined,
-      };
-    },
+    (): ReporteCampoCreateInput => ({
+      tipo: form.tipo,
+      usuario: form.usuario.trim(),
+      maquinaId: form.maquinaId || undefined,
+      obraId: form.obraId || undefined,
+      obraTexto: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? '',
+      fecha: form.fecha,
+      hora: form.hora,
+      descripcion: form.descripcion.trim(),
+      prioridad: form.prioridad || undefined,
+    }),
     [form, catalogos.obras],
   );
 
@@ -360,72 +410,82 @@ export default function ReportesCampoPage() {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      const nuevo: ReporteCampo = {
-        id: crypto.randomUUID(),
-        tipo: form.tipo,
-        usuario: form.usuario.trim(),
-        maquinaId: form.maquinaId || undefined,
-        obraId: form.obraId,
-        obra: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? '',
-        fecha: form.fecha,
-        hora: form.hora,
-        descripcion: form.descripcion.trim(),
-        estado: 'Pendiente',
-        prioridad: form.prioridad || undefined,
-      };
-      setReportes((prev) => [nuevo, ...prev]);
-      showToast('Reporte registrado exitosamente.', 'success');
-      setCreateOpen(false);
-      setForm(emptyForm);
-      setPage(1);
+      const res = await reportesCampoApi.crear(buildPayload());
+      if (res.success) {
+        showToast('Reporte registrado exitosamente.', 'success');
+        setCreateOpen(false);
+        setForm(emptyForm);
+        refetch(1);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al registrar el reporte.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al registrar el reporte.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [validateForm, form, catalogos.obras, showToast]);
+  }, [validateForm, buildPayload, showToast, refetch, fetchStats]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem || !validateForm()) return;
     setSubmitting(true);
     try {
-      setReportes((prev) =>
-        prev.map((r) =>
-          r.id === selectedItem.id
-            ? {
-                ...r,
-                tipo: form.tipo,
-                usuario: form.usuario.trim(),
-                maquinaId: form.maquinaId || undefined,
-                obraId: form.obraId,
-                obra: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? r.obra,
-                fecha: form.fecha,
-                hora: form.hora,
-                descripcion: form.descripcion.trim(),
-                prioridad: form.prioridad || undefined,
-              }
-            : r,
-        ),
-      );
-      showToast('Reporte actualizado exitosamente.', 'success');
-      setEditOpen(false);
-      setSelectedItem(null);
-      setForm(emptyForm);
+      const res = await reportesCampoApi.actualizar(selectedItem.id, buildPayload());
+      if (res.success) {
+        showToast('Reporte actualizado exitosamente.', 'success');
+        setEditOpen(false);
+        setSelectedItem(null);
+        setForm(emptyForm);
+        refetch();
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar el reporte.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar el reporte.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, validateForm, form, catalogos.obras, showToast]);
+  }, [selectedItem, validateForm, buildPayload, showToast, refetch, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      setReportes((prev) => prev.filter((r) => r.id !== selectedItem.id));
-      showToast('Reporte eliminado exitosamente.', 'success');
-      setDeleteOpen(false);
-      setSelectedItem(null);
+      const res = await reportesCampoApi.eliminar(selectedItem.id);
+      if (res.success) {
+        showToast('Reporte eliminado exitosamente.', 'success');
+        setDeleteOpen(false);
+        setSelectedItem(null);
+        refetch();
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar el reporte.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al eliminar el reporte.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, showToast]);
+  }, [selectedItem, showToast, refetch, fetchStats]);
+
+  // ── Flujo de estados (avanza una etapa via API) ──
+  const handleAvanzar = useCallback(
+    async (item: ReporteCampoDTO) => {
+      const next = siguienteEstado(item.estado);
+      if (!next) return;
+      const res = await reportesCampoApi.cambiarEstado(item.id, ESTADO_API[next]);
+      if (res.success) {
+        showToast(`Reporte marcado como "${next}".`, 'success');
+        refetch();
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al avanzar el reporte.', 'error');
+      }
+    },
+    [showToast, refetch, fetchStats],
+  );
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -442,7 +502,7 @@ export default function ReportesCampoPage() {
       />
 
       {/* Banner de incidentes críticos activos */}
-      {criticosActivos.length > 0 && (
+      {stats.criticosActivos > 0 && (
         <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
@@ -451,7 +511,7 @@ export default function ReportesCampoPage() {
             <div>
               <p className="text-red-900 font-bold text-sm">Incidentes Críticos Activos</p>
               <p className="text-red-700 text-xs font-medium">
-                Hay {criticosActivos.length} incidente{criticosActivos.length > 1 ? 's' : ''} sin resolver.
+                Hay {stats.criticosActivos} incidente{stats.criticosActivos > 1 ? 's' : ''} sin resolver.
               </p>
             </div>
           </div>
@@ -461,7 +521,7 @@ export default function ReportesCampoPage() {
             icon={<Eye className="w-3.5 h-3.5" />}
             onClick={() => {
               setSoloCriticos(true);
-              setPage(1);
+              fetchData(1, search, filterValues, true);
             }}
           >
             Ver incidentes críticos
@@ -500,11 +560,8 @@ export default function ReportesCampoPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <SearchBar
           value={search}
-          onChange={(v) => {
-            setSearch(v);
-            setPage(1);
-          }}
-          onSearch={() => setPage(1)}
+          onChange={handleSearchChange}
+          onSearch={handleSearch}
           placeholder="Buscar por usuario, obra o descripción..."
           className="flex-1"
         />
@@ -534,11 +591,7 @@ export default function ReportesCampoPage() {
               <span className="font-normal text-primary/70">{filter.label}:</span>
               <span>{filter.value}</span>
               <button
-                onClick={() => {
-                  if (filter.key === 'criticos') setSoloCriticos(false);
-                  else handleRemoveFilter(filter.key);
-                  setPage(1);
-                }}
+                onClick={() => handleRemoveFilter(filter.key)}
                 className="ml-0.5 hover:text-primary-dark transition-colors"
                 aria-label={`Eliminar filtro ${filter.label}`}
               >
@@ -584,14 +637,24 @@ export default function ReportesCampoPage() {
       )}
 
       {/* Feed de tarjetas de reporte */}
-      <div className="space-y-4">
-        {paginated.length === 0 ? (
+      <div className="relative space-y-4">
+        {refreshing && !initialLoading && (
+          <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {initialLoading ? (
+          <div className="flex items-center justify-center py-24 bg-white rounded-xl border border-slate-200">
+            <span className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : reportes.length === 0 ? (
           <EmptyState
             title="Sin reportes en esta categoría"
             subtitle="Ajusta los filtros o registra un nuevo reporte de campo."
           />
         ) : (
-          paginated.map((report) => {
+          reportes.map((report) => {
             const accion = etiquetaAccion(report);
             return (
               <div
@@ -628,9 +691,9 @@ export default function ReportesCampoPage() {
                       <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
                         <MapPin className="w-3 h-3" /> {report.obra}
                       </div>
-                      {report.maquinaId && (
+                      {(report.maquinaCodigo || report.maquinaNombre) && (
                         <div className="text-[10px] font-black text-primary uppercase tracking-widest">
-                          Máq: {report.maquinaId}
+                          Máq: {report.maquinaCodigo ?? report.maquinaNombre}
                         </div>
                       )}
                     </div>
@@ -664,7 +727,7 @@ export default function ReportesCampoPage() {
                     {/* Detalles extra (litros/costo del pipero u otros pares) */}
                     {report.detalles && (
                       <div className="mt-4 flex gap-4 flex-wrap">
-                        {Object.entries(report.detalles as Record<string, unknown>).map(([k, v]) => (
+                        {Object.entries(report.detalles).map(([k, v]) => (
                           <div
                             key={k}
                             className={`border rounded-lg px-3 py-1.5 ${
@@ -733,9 +796,9 @@ export default function ReportesCampoPage() {
       </div>
 
       <Pagination
-        currentPage={safePage}
-        totalPages={totalPages}
-        totalRecords={filtered.length}
+        currentPage={pagination.page}
+        totalPages={pagination.totalPages}
+        totalRecords={pagination.total}
         pageSize={PAGE_SIZE}
         onPageChange={handlePageChange}
       />
@@ -760,10 +823,12 @@ export default function ReportesCampoPage() {
             <select
               className={modalSelectClass}
               value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value as ReporteCampo['tipo'] })}
+              onChange={(e) =>
+                setForm({ ...form, tipo: e.target.value as TipoReporteApi })
+              }
             >
               {TIPOS.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
           </ModalField>
@@ -775,13 +840,13 @@ export default function ReportesCampoPage() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  prioridad: e.target.value as NonNullable<ReporteCampo['prioridad']> | '',
+                  prioridad: e.target.value as '' | PrioridadReporteApi,
                 })
               }
             >
               <option value="">Sin prioridad</option>
               {PRIORIDADES.map((p) => (
-                <option key={p} value={p}>{p}</option>
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
           </ModalField>
@@ -873,10 +938,12 @@ export default function ReportesCampoPage() {
             <select
               className={modalSelectClass}
               value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value as ReporteCampo['tipo'] })}
+              onChange={(e) =>
+                setForm({ ...form, tipo: e.target.value as TipoReporteApi })
+              }
             >
               {TIPOS.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
           </ModalField>
@@ -888,13 +955,13 @@ export default function ReportesCampoPage() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  prioridad: e.target.value as NonNullable<ReporteCampo['prioridad']> | '',
+                  prioridad: e.target.value as '' | PrioridadReporteApi,
                 })
               }
             >
               <option value="">Sin prioridad</option>
               {PRIORIDADES.map((p) => (
-                <option key={p} value={p}>{p}</option>
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
           </ModalField>
