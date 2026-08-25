@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Wrench, Fuel, User, ClipboardCheck, Clock, MapPin,
   ShieldAlert, HardHat, Users, AlertTriangle, CheckCircle2,
@@ -18,6 +18,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { reportesCampo as reportesMock, type ReporteCampo } from '@/lib/data';
+import { bitacoraApi, type CatalogoItem } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 6;
@@ -134,7 +135,7 @@ export default function ReportesCampoPage() {
   const emptyForm = {
     tipo: 'Operador' as ReporteCampo['tipo'],
     usuario: '',
-    obra: '',
+    obraId: '',
     maquinaId: '',
     fecha: new Date().toISOString().split('T')[0],
     hora: new Date().toTimeString().slice(0, 5),
@@ -143,6 +144,19 @@ export default function ReportesCampoPage() {
   };
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  const [catalogos, setCatalogos] = useState<{ maquinas: CatalogoItem[]; obras: CatalogoItem[] }>({
+    maquinas: [],
+    obras: [],
+  });
+
+  // ── Cargar catálogos de obra y máquina (una sola vez) ──
+  useEffect(() => {
+    bitacoraApi.catalogos().then((res) => {
+      if (res.success && res.data) {
+        setCatalogos(res.data);
+      }
+    });
+  }, []);
 
   // ── Incidentes críticos activos (banner preservado) ──
   const criticosActivos = useMemo(
@@ -271,8 +285,8 @@ export default function ReportesCampoPage() {
       setForm({
         tipo: item.tipo,
         usuario: item.usuario,
-        obra: item.obra,
-        maquinaId: item.maquinaId ?? '',
+        obraId: item.obraId || '',
+        maquinaId: item.maquinaId || '',
         fecha: item.fecha,
         hora: item.hora,
         prioridad: item.prioridad ?? '',
@@ -303,8 +317,12 @@ export default function ReportesCampoPage() {
 
   // ── Validación ──
   const validateForm = useCallback(() => {
-    if (!form.tipo || !form.usuario.trim() || !form.obra.trim()) {
-      showToast('Tipo, usuario y obra son obligatorios.', 'error');
+    if (!form.tipo || !form.usuario.trim()) {
+      showToast('Tipo y usuario son obligatorios.', 'error');
+      return false;
+    }
+    if (!form.obraId) {
+      showToast('Selecciona una obra.', 'error');
       return false;
     }
     if (!form.fecha || !form.hora) {
@@ -319,6 +337,25 @@ export default function ReportesCampoPage() {
   }, [form, showToast]);
 
   // ── CRUD local ──
+  /** Deriva obraTexto del catálogo — el backend la persiste junto al FK. */
+  const buildPayload = useCallback(
+    () => {
+      const obra = catalogos.obras.find((o) => o.id === form.obraId);
+      return {
+        tipo: form.tipo,
+        usuario: form.usuario.trim(),
+        maquinaId: form.maquinaId || undefined,
+        obraId: form.obraId || undefined,
+        obraTexto: obra?.nombre ?? '',
+        fecha: form.fecha,
+        hora: form.hora,
+        descripcion: form.descripcion.trim(),
+        prioridad: form.prioridad || undefined,
+      };
+    },
+    [form, catalogos.obras],
+  );
+
   const handleCreate = useCallback(async () => {
     if (!validateForm()) return;
     setSubmitting(true);
@@ -327,8 +364,9 @@ export default function ReportesCampoPage() {
         id: crypto.randomUUID(),
         tipo: form.tipo,
         usuario: form.usuario.trim(),
-        maquinaId: form.maquinaId.trim() || undefined,
-        obra: form.obra.trim(),
+        maquinaId: form.maquinaId || undefined,
+        obraId: form.obraId,
+        obra: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? '',
         fecha: form.fecha,
         hora: form.hora,
         descripcion: form.descripcion.trim(),
@@ -343,7 +381,7 @@ export default function ReportesCampoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [validateForm, form, showToast]);
+  }, [validateForm, form, catalogos.obras, showToast]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem || !validateForm()) return;
@@ -356,8 +394,9 @@ export default function ReportesCampoPage() {
                 ...r,
                 tipo: form.tipo,
                 usuario: form.usuario.trim(),
-                maquinaId: form.maquinaId.trim() || undefined,
-                obra: form.obra.trim(),
+                maquinaId: form.maquinaId || undefined,
+                obraId: form.obraId,
+                obra: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? r.obra,
                 fecha: form.fecha,
                 hora: form.hora,
                 descripcion: form.descripcion.trim(),
@@ -373,7 +412,7 @@ export default function ReportesCampoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, validateForm, form, showToast]);
+  }, [selectedItem, validateForm, form, catalogos.obras, showToast]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
@@ -758,23 +797,29 @@ export default function ReportesCampoPage() {
           </ModalField>
 
           <ModalField label="Obra" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Ej: Valle Sur"
-              value={form.obra}
-              onChange={(e) => setForm({ ...form, obra: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.obraId}
+              onChange={(e) => setForm({ ...form, obraId: e.target.value })}
+            >
+              <option value="">Seleccionar obra...</option>
+              {catalogos.obras.map((o) => (
+                <option key={o.id} value={o.id}>{o.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
-          <ModalField label="Máquina (opcional)" hint="Código legible, ej: M004">
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="M004"
+          <ModalField label="Máquina (opcional)" hint="Código legible de la flota.">
+            <select
+              className={modalSelectClass}
               value={form.maquinaId}
               onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-            />
+            >
+              <option value="">Sin máquina asociada</option>
+              {catalogos.maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
           <div className="grid grid-cols-2 gap-3">
@@ -864,21 +909,29 @@ export default function ReportesCampoPage() {
           </ModalField>
 
           <ModalField label="Obra" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              value={form.obra}
-              onChange={(e) => setForm({ ...form, obra: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.obraId}
+              onChange={(e) => setForm({ ...form, obraId: e.target.value })}
+            >
+              <option value="">Seleccionar obra...</option>
+              {catalogos.obras.map((o) => (
+                <option key={o.id} value={o.id}>{o.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
-          <ModalField label="Máquina (opcional)">
-            <input
-              type="text"
-              className={modalInputClass}
+          <ModalField label="Máquina (opcional)" hint="Código legible de la flota.">
+            <select
+              className={modalSelectClass}
               value={form.maquinaId}
               onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-            />
+            >
+              <option value="">Sin máquina asociada</option>
+              {catalogos.maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
           <div className="grid grid-cols-2 gap-3">

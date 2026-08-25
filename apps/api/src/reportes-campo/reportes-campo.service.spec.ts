@@ -108,7 +108,8 @@ describe('ReportesCampoService', () => {
       const result = await service.findOne(mockReporte.id);
       expect(result.tipo).toBe('Pipero');
       expect(result.estado).toBe('Visto');
-      expect(result.maquinaId).toBe('M004');
+      expect(result.maquinaCodigo).toBe('M004');           // código para mostrar
+      expect(result.maquinaId).toBe(mockReporte.maquina_id); // UUID para editar
       expect(result.hora).toBe('14:15');
     });
 
