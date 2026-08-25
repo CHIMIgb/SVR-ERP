@@ -851,7 +851,7 @@ export default function ReportesCampoPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Reporta (usuario)" required>
+          <ModalField label="Reporta (usuario)" required className="sm:col-span-2">
             <input
               type="text"
               className={modalInputClass}
@@ -965,7 +965,7 @@ export default function ReportesCampoPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Reporta (usuario)" required>
+          <ModalField label="Reporta (usuario)" required className="sm:col-span-2">
             <input
               type="text"
               className={modalInputClass}
