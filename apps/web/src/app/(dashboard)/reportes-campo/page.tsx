@@ -887,24 +887,23 @@ export default function ReportesCampoPage() {
             </select>
           </ModalField>
 
-          <div className="grid grid-cols-2 gap-3">
-            <ModalField label="Fecha" required>
-              <input
-                type="date"
-                className={modalInputClass}
-                value={form.fecha}
-                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-              />
-            </ModalField>
-            <ModalField label="Hora" required>
-              <input
-                type="time"
-                className={modalInputClass}
-                value={form.hora}
-                onChange={(e) => setForm({ ...form, hora: e.target.value })}
-              />
-            </ModalField>
-          </div>
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={form.fecha}
+              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Hora" required>
+            <input
+              type="time"
+              className={modalInputClass}
+              value={form.hora}
+              onChange={(e) => setForm({ ...form, hora: e.target.value })}
+            />
+          </ModalField>
 
           <ModalField label="Descripción" required className="sm:col-span-2">
             <textarea
@@ -1001,24 +1000,23 @@ export default function ReportesCampoPage() {
             </select>
           </ModalField>
 
-          <div className="grid grid-cols-2 gap-3">
-            <ModalField label="Fecha" required>
-              <input
-                type="date"
-                className={modalInputClass}
-                value={form.fecha}
-                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-              />
-            </ModalField>
-            <ModalField label="Hora" required>
-              <input
-                type="time"
-                className={modalInputClass}
-                value={form.hora}
-                onChange={(e) => setForm({ ...form, hora: e.target.value })}
-              />
-            </ModalField>
-          </div>
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={form.fecha}
+              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Hora" required>
+            <input
+              type="time"
+              className={modalInputClass}
+              value={form.hora}
+              onChange={(e) => setForm({ ...form, hora: e.target.value })}
+            />
+          </ModalField>
 
           <ModalField label="Descripción" required className="sm:col-span-2">
             <textarea
