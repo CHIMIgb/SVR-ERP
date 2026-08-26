@@ -470,3 +470,124 @@ export const bitacoraApi = {
   catalogos: () =>
     apiClient.get<BitacoraCatalogos>('/bitacora/catalogos'),
 };
+
+export interface MantenimientoDTO {
+  id: string;
+  maquinaId: string;
+  tipo: 'Correctivo' | 'Preventivo';
+  descripcion: string;
+  fecha: string;
+  horasServicio: number;
+  costo: number;
+  proximoServicioHoras: number;
+}
+
+export interface MantenimientoStats {
+  serviciosProximos: number;
+  promedioHorasServicio: number;
+  equiposEnOptimoEstado: number;
+  totalMaquinas: number;
+}
+
+export interface MantenimientoCreateInput {
+  maquinaId: string;
+  tipo: 'Correctivo' | 'Preventivo';
+  descripcion: string;
+  fecha: string;
+  horasServicio: number;
+  costo: number;
+  proximoServicioHoras: number;
+}
+
+export const mantenimientoApi = {
+  /** Listar registros de mantenimiento con búsqueda, filtros y paginación */
+  listar: (params?: { search?: string; tipo?: string; maquinaId?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<MantenimientoDTO>>(`/mantenimiento${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Obtener un registro por ID */
+  obtener: (id: string) => apiClient.get<MantenimientoDTO>(`/mantenimiento/${id}`),
+
+  /** Crear un registro de mantenimiento */
+  crear: (data: MantenimientoCreateInput) => apiClient.post<MantenimientoDTO>('/mantenimiento', data),
+
+  /** Actualizar un registro de mantenimiento */
+  actualizar: (id: string, data: Partial<MantenimientoCreateInput>) =>
+    apiClient.patch<MantenimientoDTO>(`/mantenimiento/${id}`, data),
+
+  /** Eliminar un registro (soft delete) */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/mantenimiento/${id}`),
+
+  /** Estadísticas para las tarjetas */
+  stats: () => apiClient.get<MantenimientoStats>('/mantenimiento/stats'),
+};
+
+export interface CargaCombustibleDTO {
+  id: string;
+  maquinaId: string;
+  fecha: string;
+  litros: number;
+  costo: number;
+  operador: string;
+  lugar: string;
+  horometroActual: number;
+  horasTrabajadasPeriodo: number;
+  consumoEsperadoLtsHora: number;
+  rendimientoLtsHora: number;
+  alertaOrdena: boolean;
+  desviacionPorcentaje: number;
+}
+
+export interface CombustibleStats {
+  totalLitros: number;
+  totalCosto: number;
+  rendimientoPromedio: number;
+  totalAlertasOrdena: number;
+}
+
+export interface CombustibleCreateInput {
+  maquinaId: string;
+  litros: number;
+  horasTrabajadasPeriodo: number;
+  lugar: string;
+  costo?: number;
+  operador?: string;
+  fecha?: string;
+}
+
+export const combustibleApi = {
+  /** Listar cargas de combustible con búsqueda, filtros y paginación */
+  listar: (params?: { search?: string; maquinaId?: string; soloAlertas?: boolean; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.soloAlertas) searchParams.set('soloAlertas', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CargaCombustibleDTO>>(`/combustible${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Obtener una carga por ID */
+  obtener: (id: string) => apiClient.get<CargaCombustibleDTO>(`/combustible/${id}`),
+
+  /** Registrar una carga de combustible */
+  crear: (data: CombustibleCreateInput) => apiClient.post<CargaCombustibleDTO>('/combustible', data),
+
+  /** Actualizar una carga de combustible */
+  actualizar: (id: string, data: Partial<CombustibleCreateInput>) =>
+    apiClient.patch<CargaCombustibleDTO>(`/combustible/${id}`, data),
+
+  /** Eliminar una carga (soft delete) */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/combustible/${id}`),
+
+  /** Estadísticas para las tarjetas */
+  stats: () => apiClient.get<CombustibleStats>('/combustible/stats'),
+};

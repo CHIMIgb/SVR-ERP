@@ -490,6 +490,35 @@ export const formatCurrency = (value: number): string =>
 
 ---
 
+## 21. Estructura de Módulos del Backend: Sin Subcarpeta `modules/`
+
+**Fecha:** Agosto 2026
+**Estado:** Activo (pendiente de unificar módulos existentes)
+
+**Decisión:** Los módulos de NestJS viven directo en `apps/api/src/<dominio>/`
+(ej. `src/criba/`, `src/incidentes/`, `src/inventario/`), sin la subcarpeta
+`src/modules/` que se usó al principio para Flota/Horómetro/Mantenimiento/Combustible.
+
+**Por qué:**
+- Es el patrón que terminó adoptando la mayoría de los módulos (Inventario,
+  Bitácora, Criba, Incidentes, Reportes de Campo, Proyectos)
+- Una carpeta `modules/` extra no aporta nada cuando cada dominio ya es su
+  propio módulo de Nest — es un nivel de anidación sin valor
+- Reduce el path de import (`../../audit/audit.module` en vez de
+  `../../../audit/audit.module`)
+
+**Estado de migración:** Los módulos de Maquinaria (`maquinas`, `horometro`,
+`despachos`, `checklists`, `catalogos`, `mantenimiento`, `combustible`) siguen
+en `src/modules/` porque ya estaban mergeados a `main` cuando se acordó este
+estándar. Moverlos ahora es un refactor puramente cosmético (mover archivos,
+sin cambios de lógica) que no se hizo en este PR para no mezclarlo con los
+cambios de auditoría/CRUD — queda como tarea de limpieza aparte.
+
+**Trade-off:** Inconsistencia temporal entre módulos viejos y nuevos hasta que
+se haga la migración de carpetas.
+
+---
+
 ## Referencia Rápida
 
 | Decisión | Estado | Archivo Clave |
@@ -514,3 +543,4 @@ export const formatCurrency = (value: number): string =>
 | Lucide React | Activo | `apps/web/src/components/` |
 | formatCurrency | Activo | `packages/shared/src/utils/currency.ts` |
 | Engram | Rechazado | N/A |
+| Módulos backend sin `modules/` | Activo (migración pendiente) | `apps/api/src/<dominio>/` |
