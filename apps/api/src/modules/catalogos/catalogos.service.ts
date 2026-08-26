@@ -14,6 +14,14 @@ export interface ProyectoLite {
   ubicacion: string;
 }
 
+export interface ObraLite {
+  id: string;
+  nombre: string;
+  lat?: number;
+  lng?: number;
+  radioPermitidoMetros?: number;
+}
+
 @Injectable()
 export class CatalogosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -29,6 +37,22 @@ export class CatalogosService {
       id: p.codigo ?? p.id,
       nombre: p.nombre,
       ubicacion: p.obras[0]?.ubicacion ?? '',
+    }));
+  }
+
+  /** Obras activas para selects (ej. marcaje GPS de Asistencia). */
+  async obras(): Promise<ObraLite[]> {
+    const obras = await this.prisma.obras.findMany({
+      where: { eliminado_en: null, activo: true, estado: { not: 'FINALIZADA' } },
+      orderBy: { nombre: 'asc' },
+    });
+
+    return obras.map((o) => ({
+      id: o.id,
+      nombre: o.nombre,
+      lat: o.lat != null ? Number(o.lat) : undefined,
+      lng: o.lng != null ? Number(o.lng) : undefined,
+      radioPermitidoMetros: o.radio_permitido_metros != null ? Number(o.radio_permitido_metros) : undefined,
     }));
   }
 

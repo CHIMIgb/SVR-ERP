@@ -18,6 +18,7 @@ import { IncidentesModule } from './incidentes/incidentes.module';
 import { ProyectosModule } from './proyectos/proyectos.module';
 import { TrabajadoresModule } from './trabajadores/trabajadores.module';
 import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
+import { AsistenciaModule } from './asistencia/asistencia.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -60,6 +61,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     ProyectosModule,
     TrabajadoresModule,
     BitacorasRentaModule,
+    AsistenciaModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController

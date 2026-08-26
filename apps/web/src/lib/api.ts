@@ -1048,3 +1048,190 @@ export const bitacorasRentaApi = {
 
   eliminar: (id: string) => apiClient.delete<{ message: string }>(`/bitacoras-renta/${id}`),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Asistencia API
+// ────────────────────────────────────────────────────────────
+
+export interface HorasExtraAsistenciaDTO {
+  id: string;
+  inicio: string;
+  fin?: string;
+  horasCalculadas: number;
+  tarifaPorHora: number;
+  montoTotal: number;
+  estado: 'En Curso' | 'Aprobado' | 'Pendiente' | 'Rechazado';
+  motivo?: string;
+  coordenadasInicio?: { lat: number; lng: number };
+  coordenadasFin?: { lat: number; lng: number };
+}
+
+export interface RegistroAsistenciaDTO {
+  id: string;
+  trabajadorId: string;
+  fecha: string;
+  horaEntrada?: string;
+  horaSalida?: string;
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada';
+  ubicacion: string;
+  coordenadas: { lat: number; lng: number };
+  salidaCoordenadas?: { lat: number; lng: number };
+  salidaUbicacion?: string;
+  obraAsignada: string;
+  obraCoordenadas: { lat: number; lng: number };
+  distanciaMetros: number;
+  radioPermitidoMetros: number;
+  enSitio: boolean;
+  precisionGpsMetros: number;
+  dispositivo: string;
+  horaMarcajeExacta?: string;
+  horaSalidaExacta?: string;
+  horasTrabajadasOrdinarias?: number;
+  salidaAnticipada?: boolean;
+  motivoSalidaAnticipada?: string;
+  horasExtra?: HorasExtraAsistenciaDTO;
+  bateria?: number;
+  notas?: string;
+}
+
+export interface DiaAsistenciaSemanaDTO {
+  dia: 'Lun' | 'Mar' | 'Mie' | 'Jue' | 'Vie' | 'Sab';
+  fecha: string;
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso';
+  horaEntrada?: string;
+  horaSalida?: string;
+  horasTrabajadas: number;
+  horasExtra?: number;
+  enSitioGps: boolean;
+  motivo?: string;
+}
+
+export interface AsistenciaSemanalDTO {
+  trabajadorId: string;
+  semana: string;
+  dias: DiaAsistenciaSemanaDTO[];
+  totalDiasAsistidos: number;
+  totalFaltas: number;
+  totalRetardos: number;
+  totalHorasOrdinarias: number;
+  totalHorasExtra: number;
+}
+
+export interface MarcarEntradaInput {
+  trabajadorId: string;
+  obraId: string;
+  obraLat: number;
+  obraLng: number;
+  radioPermitidoMetros?: number;
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  bateria?: number;
+  ubicacion?: string;
+  notas?: string;
+}
+
+export interface MarcarSalidaInput {
+  trabajadorId: string;
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  ubicacion?: string;
+  salidaAnticipada?: boolean;
+  motivoSalidaAnticipada?: string;
+  horasTrabajadasOrdinarias?: number;
+}
+
+export interface MarcarCuadrillaInput {
+  obraId: string;
+  obraLat: number;
+  obraLng: number;
+  radioPermitidoMetros?: number;
+  trabajadorIds: string[];
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  ubicacion?: string;
+}
+
+export interface RegistrarHorasExtraInput {
+  inicio: string;
+  fin?: string;
+  horasCalculadas: number;
+  tarifaPorHora?: number;
+  motivo?: string;
+  latInicio?: number;
+  lngInicio?: number;
+  latFin?: number;
+  lngFin?: number;
+}
+
+export interface ObraLite {
+  id: string;
+  nombre: string;
+  lat?: number;
+  lng?: number;
+  radioPermitidoMetros?: number;
+}
+
+export const asistenciaApi = {
+  listar: (params?: {
+    fecha?: string;
+    trabajadorId?: string;
+    obraId?: string;
+    estado?: string;
+    enSitio?: boolean;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    if (params?.trabajadorId) searchParams.set('trabajadorId', params.trabajadorId);
+    if (params?.obraId) searchParams.set('obraId', params.obraId);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.enSitio !== undefined) searchParams.set('enSitio', String(params.enSitio));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<RegistroAsistenciaDTO>>(`/asistencia${qs ? `?${qs}` : ''}`);
+  },
+
+  semanal: (params?: { fecha?: string; trabajadorId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    if (params?.trabajadorId) searchParams.set('trabajadorId', params.trabajadorId);
+    const qs = searchParams.toString();
+    return apiClient.get<AsistenciaSemanalDTO[]>(`/asistencia/semanal${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<RegistroAsistenciaDTO>(`/asistencia/${id}`),
+
+  marcarEntrada: (data: MarcarEntradaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/entrada', data),
+
+  marcarSalida: (data: MarcarSalidaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/salida', data),
+
+  marcarCuadrilla: (data: MarcarCuadrillaInput) =>
+    apiClient.post<{ creados: RegistroAsistenciaDTO[]; omitidos: string[] }>('/asistencia/cuadrilla', data),
+
+  registrarFalta: (data: { trabajadorId: string; fecha?: string; notas?: string }) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/faltas', data),
+
+  actualizarEstado: (id: string, estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/${id}/estado`, { estado }),
+
+  registrarHorasExtra: (id: string, data: RegistrarHorasExtraInput) =>
+    apiClient.post<RegistroAsistenciaDTO>(`/asistencia/${id}/horas-extra`, data),
+
+  aprobarHorasExtra: (horasExtraId: string) =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/horas-extra/${horasExtraId}/aprobar`, {}),
+
+  rechazarHorasExtra: (horasExtraId: string) =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/horas-extra/${horasExtraId}/rechazar`, {}),
+
+  obras: () => apiClient.get<ObraLite[]>('/catalogos/obras'),
+};
