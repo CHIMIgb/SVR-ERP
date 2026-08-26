@@ -14,4 +14,10 @@ export class CatalogosController {
   async proyectos() {
     return this.catalogosService.proyectos();
   }
+
+  @RequirePermission('rrhh', 'asistencia', 'ver')
+  @Get('obras')
+  async obras() {
+    return this.catalogosService.obras();
+  }
 }

@@ -1,67 +1,166 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Clock, MapPin, UserCheck, UserX, Search, Filter, 
-  Calendar, ShieldCheck, ShieldAlert, Smartphone, 
-  Navigation, ExternalLink, Plus, Compass, CheckCircle2,
-  AlertTriangle, Flame, DollarSign, ArrowRight, UserMinus,
-  Check, X, FileText, ChevronRight, CalendarDays, Camera,
-  Users, Download, Printer, Zap, Building2, Truck, Wrench
+import {
+  Clock, MapPin, UserX, Search,
+  ShieldCheck, ShieldAlert, Smartphone,
+  Navigation, Compass,
+  AlertTriangle, Flame, ArrowRight, UserMinus,
+  Check, CalendarDays,
+  Users, Zap, Loader2, AlertCircle, LocateFixed
 } from 'lucide-react';
-import { 
-  registrosAsistencia as initialRegistros, 
-  asistenciaSemanalData as initialSemanal,
-  trabajadores, 
-  RegistroAsistencia, 
-  proyectos,
-  HorasExtraDetalle,
-  AsistenciaSemanalTrabajador,
-  DiaAsistenciaSemana,
-  CategoriaPuesto
-} from '@/lib/data';
+import {
+  asistenciaApi,
+  trabajadoresApi,
+  type RegistroAsistenciaDTO,
+  type AsistenciaSemanalDTO,
+  type TrabajadorDTO,
+  type ObraLite,
+} from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
+import { useAuth } from '@/hooks/useAuth';
 import AsistenciaGpsModal from '@/components/workers/AsistenciaGpsModal';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 
+/** Punto de referencia usado solo cuando una obra aún no tiene coordenadas configuradas. */
+const FALLBACK_COORD = { lat: 19.3421, lng: -99.1843 };
+
+const CATEGORIA_PILLS = [
+  { id: 'Todos', label: 'Todos los Puestos' },
+  { id: 'Operador', label: '🚜 Operadores' },
+  { id: 'Chofer', label: '🚚 Choferes' },
+  { id: 'Mecanico', label: '🔧 Mecánicos' },
+  { id: 'Ingeniero', label: '📐 Ingenieros' },
+  { id: 'Administrativo', label: '💼 Administración' },
+] as const;
+
 export default function AsistenciaPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
   const router = useRouter();
 
-  const [registros, setRegistros] = useState<RegistroAsistencia[]>(initialRegistros);
-  const [semanalData, setSemanalData] = useState<AsistenciaSemanalTrabajador[]>(initialSemanal);
+  const vista = user?.vistas?.find((v) => v.ruta === '/asistencia');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
+
+  const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
+  const [obras, setObras] = useState<ObraLite[]>([]);
+  const [registros, setRegistros] = useState<RegistroAsistenciaDTO[]>([]);
+  const [semanalData, setSemanalData] = useState<AsistenciaSemanalDTO[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const hasLoaded = useRef(false);
+
   const [search, setSearch] = useState('');
   const [mainView, setMainView] = useState<'asistencia' | 'calendario_semanal' | 'horas_extra' | 'faltas'>('asistencia');
-  const [selectedRole, setSelectedRole] = useState<'Todos' | CategoriaPuesto>('Todos');
+  const [selectedRole, setSelectedRole] = useState<string>('Todos');
   const [filterGeocerca, setFilterGeocerca] = useState<'Todos' | 'EnSitio' | 'FueraSitio' | 'Puntual' | 'Retardo' | 'SalidaAnticipada'>('Todos');
-  
-  // GPS Inspection Modal
-  const [selectedRegistro, setSelectedRegistro] = useState<RegistroAsistencia | null>(null);
-  
-  // Mobile Clock-in Simulation Modal
-  const [clockInModalOpen, setClockInModalOpen] = useState(false);
-  const [clockInType, setClockInType] = useState<'entrada' | 'salida' | 'horas_extra_inicio' | 'horas_extra_fin'>('entrada');
-  const [clockInWorkerId, setClockInWorkerId] = useState(trabajadores[0]?.id ?? '');
-  const [clockInObra, setClockInObra] = useState('Fraccionamiento Valle Sur');
-  const [clockInSimMode, setClockInSimMode] = useState<'en_sitio' | 'fuera_sitio'>('en_sitio');
-  
-  // Batch Cuadrilla Modal
-  const [cuadrillaModalOpen, setCuadrillaModalOpen] = useState(false);
-  const [cuadrillaObra, setCuadrillaObra] = useState('Fraccionamiento Valle Sur');
-  const [selectedCuadrillaWorkers, setSelectedCuadrillaWorkers] = useState<string[]>(['T001', 'T002', 'T004']);
 
-  // Early Departure inputs
+  // Modal de inspección GPS
+  const [selectedRegistro, setSelectedRegistro] = useState<RegistroAsistenciaDTO | null>(null);
+
+  // Modal de marcaje móvil (entrada / salida / horas extra)
+  const [clockInModalOpen, setClockInModalOpen] = useState(false);
+  const [clockInType, setClockInType] = useState<'entrada' | 'salida' | 'horas_extra'>('entrada');
+  const [clockInWorkerId, setClockInWorkerId] = useState('');
+  const [clockInObraId, setClockInObraId] = useState('');
+
+  // Modal de pase de lista por cuadrilla
+  const [cuadrillaModalOpen, setCuadrillaModalOpen] = useState(false);
+  const [cuadrillaObraId, setCuadrillaObraId] = useState('');
+  const [selectedCuadrillaWorkers, setSelectedCuadrillaWorkers] = useState<string[]>([]);
+
+  // Salida anticipada
   const [isEarlyDeparture, setIsEarlyDeparture] = useState(false);
-  const [earlyDepartureReason, setEarlyDepartureReason] = useState('Cita médica programada en clínica IMSS');
+  const [earlyDepartureReason, setEarlyDepartureReason] = useState('');
   const [earlyDepartureHours, setEarlyDepartureHours] = useState('5.5');
-  
-  // Overtime inputs
+
+  // Horas extra
   const [extraHoursInput, setExtraHoursInput] = useState('3.0');
-  const [extraMotivo, setExtraMotivo] = useState('Colado continuo de losa');
-  const [isLocating, setIsLocating] = useState(false);
+  const [extraMotivo, setExtraMotivo] = useState('');
+
+  // Ubicación GPS real del dispositivo (con respaldo manual)
+  const [ubicacionGps, setUbicacionGps] = useState<{ lat: number; lng: number; precisionGpsMetros: number } | null>(null);
+  const [ubicacionEstado, setUbicacionEstado] = useState<'idle' | 'obteniendo' | 'ok' | 'error'>('idle');
+  const [usarCoordenadasManuales, setUsarCoordenadasManuales] = useState(false);
+  const [manualLat, setManualLat] = useState('');
+  const [manualLng, setManualLng] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchTrabajadores = useCallback(async () => {
+    const res = await trabajadoresApi.listar({ limit: 100 });
+    if (res.success) setTrabajadores(res.data.items);
+  }, []);
+
+  const fetchObras = useCallback(async () => {
+    const res = await asistenciaApi.obras();
+    if (res.success) {
+      setObras(res.data);
+      setClockInObraId((prev) => prev || res.data[0]?.id || '');
+      setCuadrillaObraId((prev) => prev || res.data[0]?.id || '');
+    }
+  }, []);
+
+  const fetchRegistros = useCallback(async () => {
+    const res = await asistenciaApi.listar({ limit: 200 });
+    if (res.success) {
+      setRegistros(res.data.items);
+      setErrorCarga(null);
+    } else {
+      setErrorCarga(res.error.message);
+    }
+  }, []);
+
+  const fetchSemanal = useCallback(async () => {
+    const res = await asistenciaApi.semanal();
+    if (res.success) setSemanalData(res.data);
+  }, []);
+
+  const refetchAll = useCallback(async () => {
+    await Promise.all([fetchRegistros(), fetchSemanal()]);
+  }, [fetchRegistros, fetchSemanal]);
+
+  useEffect(() => {
+    (async () => {
+      await Promise.all([fetchTrabajadores(), fetchObras(), fetchRegistros(), fetchSemanal()]);
+      hasLoaded.current = true;
+      setInitialLoading(false);
+    })();
+  }, [fetchTrabajadores, fetchObras, fetchRegistros, fetchSemanal]);
+
+  useEffect(() => {
+    if (trabajadores.length > 0 && !clockInWorkerId) setClockInWorkerId(trabajadores[0].id);
+  }, [trabajadores, clockInWorkerId]);
+
+  const solicitarUbicacion = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setUbicacionEstado('error');
+      return;
+    }
+    setUbicacionEstado('obteniendo');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUbicacionGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, precisionGpsMetros: Math.round(pos.coords.accuracy) });
+        setUbicacionEstado('ok');
+      },
+      () => setUbicacionEstado('error'),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (clockInModalOpen || cuadrillaModalOpen) {
+      setUsarCoordenadasManuales(false);
+      solicitarUbicacion();
+    } else {
+      setUbicacionEstado('idle');
+      setUbicacionGps(null);
+    }
+  }, [clockInModalOpen, cuadrillaModalOpen, solicitarUbicacion]);
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -75,33 +174,25 @@ export default function AsistenciaPage() {
     }
   };
 
-  // Identificar trabajadores que aún no han marcado hoy (No Presentados)
-  const registeredWorkerIds = new Set(registros.map(r => r.trabajadorId));
-  const missingWorkers = trabajadores.filter(t => t.estado === 'Activo' && !registeredWorkerIds.has(t.id));
+  const registeredWorkerIds = new Set(registros.map((r) => r.trabajadorId));
+  const missingWorkers = trabajadores.filter((t) => t.estado === 'Activo' && !registeredWorkerIds.has(t.id));
 
-  // KPIs dinámicos
-  const enSitioCount = registros.filter(r => r.enSitio).length;
-  const fueraSitioCount = registros.filter(r => !r.enSitio).length;
-  const puntualesCount = registros.filter(r => r.estado === 'Puntual').length;
-  const retardosCount = registros.filter(r => r.estado === 'Retardo').length;
-  const salidasAnticipadasCount = registros.filter(r => r.salidaAnticipada || r.estado === 'Salida Anticipada').length;
-  
-  // Total horas extra acumuladas
+  const enSitioCount = registros.filter((r) => r.enSitio).length;
+  const fueraSitioCount = registros.filter((r) => !r.enSitio).length;
+  const salidasAnticipadasCount = registros.filter((r) => r.salidaAnticipada || r.estado === 'Salida Anticipada').length;
   const totalHorasExtras = registros.reduce((sum, r) => sum + (r.horasExtra?.horasCalculadas ?? 0), 0);
   const totalMontoHorasExtras = registros.reduce((sum, r) => sum + (r.horasExtra?.montoTotal ?? 0), 0);
 
   const filteredRegistros = registros.filter((reg) => {
-    const trabajador = trabajadores.find(t => t.id === reg.trabajadorId);
-    const matchSearch = 
+    const trabajador = trabajadores.find((t) => t.id === reg.trabajadorId);
+    const matchSearch =
       trabajador?.nombre.toLowerCase().includes(search.toLowerCase()) ||
       trabajador?.puesto.toLowerCase().includes(search.toLowerCase()) ||
       reg.obraAsignada.toLowerCase().includes(search.toLowerCase()) ||
       reg.ubicacion.toLowerCase().includes(search.toLowerCase());
 
     if (!matchSearch) return false;
-
     if (selectedRole !== 'Todos' && trabajador?.categoriaPuesto !== selectedRole) return false;
-
     if (filterGeocerca === 'EnSitio') return reg.enSitio;
     if (filterGeocerca === 'FueraSitio') return !reg.enSitio;
     if (filterGeocerca === 'Puntual') return reg.estado === 'Puntual';
@@ -110,241 +201,188 @@ export default function AsistenciaPage() {
     return true;
   });
 
-  const handleActualizarEstado = (registroId: string, nuevoEstado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') => {
-    setRegistros(prev => prev.map(r => r.id === registroId ? { ...r, estado: nuevoEstado } : r));
+  const obraSeleccionadaEntrada = obras.find((o) => o.id === clockInObraId);
+  const obraSeleccionadaCuadrilla = obras.find((o) => o.id === cuadrillaObraId);
+
+  const resolverCoordenadasDispositivo = (): { lat: number; lng: number; precisionGpsMetros: number } | null => {
+    if (usarCoordenadasManuales) {
+      const lat = parseFloat(manualLat);
+      const lng = parseFloat(manualLng);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+      return { lat, lng, precisionGpsMetros: 0 };
+    }
+    return ubicacionGps;
   };
 
-  const handleAprobarHorasExtra = (registroId: string) => {
-    setRegistros(prev => prev.map(r => {
-      if (r.id === registroId && r.horasExtra) {
-        return {
-          ...r,
-          horasExtra: {
-            ...r.horasExtra,
-            estado: 'Aprobado'
-          }
-        };
-      }
-      return r;
-    }));
+  const handleActualizarEstado = async (registroId: string, nuevoEstado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') => {
+    const res = await asistenciaApi.actualizarEstado(registroId, nuevoEstado);
+    if (!res.success) throw new Error(res.error.message);
+    setSelectedRegistro(res.data);
+    await refetchAll();
   };
 
-  const handleRegistrarFalta = (workerId: string) => {
-    const worker = trabajadores.find(t => t.id === workerId);
-    const now = new Date();
-    const nuevoRegistro: RegistroAsistencia = {
-      id: `A${String(registros.length + 1).padStart(3, '0')}`,
-      trabajadorId: workerId,
-      fecha: now.toISOString().split('T')[0],
-      estado: 'Falta',
-      ubicacion: 'Sin marcaje registrado',
-      coordenadas: { lat: 19.3421, lng: -99.1843 },
-      obraAsignada: 'Por definir',
-      obraCoordenadas: { lat: 19.3421, lng: -99.1843 },
-      distanciaMetros: 0,
-      radioPermitidoMetros: 2000,
-      enSitio: false,
-      precisionGpsMetros: 0,
-      dispositivo: 'No reportado',
-      notas: 'Inasistencia confirmada por el supervisor.'
-    };
-    setRegistros(prev => [nuevoRegistro, ...prev]);
+  const handleAprobarHorasExtra = async (horasExtraId: string) => {
+    const res = await asistenciaApi.aprobarHorasExtra(horasExtraId);
+    if (!res.success) throw new Error(res.error.message);
+    setSelectedRegistro((prev) => (prev && prev.id === res.data.id ? res.data : prev));
+    await refetchAll();
+  };
+
+  const handleRegistrarFalta = async (workerId: string) => {
+    const worker = trabajadores.find((t) => t.id === workerId);
+    const res = await asistenciaApi.registrarFalta({ trabajadorId: workerId });
+    if (!res.success) {
+      showToast(res.error.message, 'error');
+      return;
+    }
     showToast(`❌ Falta registrada para ${worker?.nombre}. Se descontará en nómina.`, 'error');
+    await refetchAll();
   };
 
-  // Pase de Lista Masivo por Cuadrilla
-  const handleCuadrillaSubmit = () => {
-    const now = new Date();
-    const horaFormato = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const horaExacta = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-
-    const nuevos: RegistroAsistencia[] = selectedCuadrillaWorkers.map((wid, idx) => ({
-      id: `A${String(registros.length + 1 + idx).padStart(3, '0')}`,
-      trabajadorId: wid,
-      fecha: now.toISOString().split('T')[0],
-      horaEntrada: horaFormato,
-      horaMarcajeExacta: horaExacta,
-      horasTrabajadasOrdinarias: 8.0,
-      estado: 'Puntual',
-      ubicacion: `${cuadrillaObra} (Pase de lista por Cabo)`,
-      coordenadas: { lat: 19.3423, lng: -99.1841 },
-      obraAsignada: cuadrillaObra,
-      obraCoordenadas: { lat: 19.3421, lng: -99.1843 },
-      distanciaMetros: 35,
-      radioPermitidoMetros: 2000,
-      enSitio: true,
-      precisionGpsMetros: 5,
-      dispositivo: 'Dispositivo Residente / Cabo SVR',
-      bateria: 88,
-      notas: 'Pase de lista por lote de cuadrilla validado en sitio.'
-    }));
-
-    setRegistros(prev => [...nuevos, ...prev]);
-    setCuadrillaModalOpen(false);
-    showToast(`✅ Pase de lista completado: ${nuevos.length} trabajadores registrados en ${cuadrillaObra}.`, 'success');
+  const handleCuadrillaSubmit = async () => {
+    const coords = resolverCoordenadasDispositivo();
+    if (!coords) {
+      showToast('No se pudo obtener la ubicación GPS. Actívala o ingresa coordenadas manualmente.', 'error');
+      return;
+    }
+    if (selectedCuadrillaWorkers.length === 0) {
+      showToast('Selecciona al menos un trabajador.', 'error');
+      return;
+    }
+    const obra = obraSeleccionadaCuadrilla;
+    setSubmitting(true);
+    try {
+      const res = await asistenciaApi.marcarCuadrilla({
+        obraId: cuadrillaObraId,
+        obraLat: obra?.lat ?? FALLBACK_COORD.lat,
+        obraLng: obra?.lng ?? FALLBACK_COORD.lng,
+        radioPermitidoMetros: obra?.radioPermitidoMetros ?? 2000,
+        trabajadorIds: selectedCuadrillaWorkers,
+        lat: coords.lat,
+        lng: coords.lng,
+        precisionGpsMetros: coords.precisionGpsMetros,
+        dispositivo: 'Dispositivo Residente / Cabo SVR',
+      });
+      if (!res.success) throw new Error(res.error.message);
+      setCuadrillaModalOpen(false);
+      showToast(
+        `✅ Pase de lista completado: ${res.data.creados.length} trabajadores registrados${
+          res.data.omitidos.length ? ` (${res.data.omitidos.length} ya tenían marcaje hoy)` : ''
+        }.`,
+        'success',
+      );
+      await refetchAll();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo completar el pase de lista.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Envío de marcaje móvil (Entrada, Salida, Horas Extra, Salida Anticipada)
-  const handleClockInSubmit = () => {
-    setIsLocating(true);
-
-    setTimeout(() => {
-      setIsLocating(false);
-      const worker = trabajadores.find(t => t.id === clockInWorkerId);
-      const now = new Date();
-      const horaFormato = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
-      const horaExacta = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-
-      const dist = clockInSimMode === 'en_sitio' ? 45 : 4210;
-      const enSitio = clockInSimMode === 'en_sitio';
-      const coords = enSitio ? { lat: 19.3423, lng: -99.1841 } : { lat: 19.3780, lng: -99.1720 };
-
-      const existing = registros.find(r => r.trabajadorId === clockInWorkerId);
-
-      if (clockInType === 'salida') {
-        const hrsWorked = isEarlyDeparture ? (parseFloat(earlyDepartureHours) || 5.5) : 8.5;
-        const estadoFinal = isEarlyDeparture ? 'Salida Anticipada' : (existing?.estado ?? 'Puntual');
-
-        if (existing) {
-          setRegistros(prev => prev.map(r => r.id === existing.id ? {
-            ...r,
-            horaSalida: horaFormato,
-            horaSalidaExacta: horaExacta,
-            salidaCoordenadas: coords,
-            salidaUbicacion: `${clockInObra} (Salida registrada)`,
-            horasTrabajadasOrdinarias: hrsWorked,
-            salidaAnticipada: isEarlyDeparture,
-            motivoSalidaAnticipada: isEarlyDeparture ? earlyDepartureReason : undefined,
-            estado: estadoFinal
-          } : r));
-        } else {
-          const nuevo: RegistroAsistencia = {
-            id: `A${String(registros.length + 1).padStart(3, '0')}`,
-            trabajadorId: clockInWorkerId,
-            fecha: now.toISOString().split('T')[0],
-            horaEntrada: '07:00 AM',
-            horaSalida: horaFormato,
-            horaSalidaExacta: horaExacta,
-            horasTrabajadasOrdinarias: hrsWorked,
-            salidaAnticipada: isEarlyDeparture,
-            motivoSalidaAnticipada: isEarlyDeparture ? earlyDepartureReason : undefined,
-            estado: estadoFinal,
-            ubicacion: `${clockInObra} (Acceso)`,
-            coordenadas: coords,
-            obraAsignada: clockInObra,
-            obraCoordenadas: { lat: 19.3421, lng: -99.1843 },
-            distanciaMetros: dist,
-            radioPermitidoMetros: 2000,
-            enSitio: enSitio,
-            precisionGpsMetros: 6,
-            dispositivo: 'Dispositivo Móvil · GPS Activo'
-          };
-          setRegistros(prev => [nuevo, ...prev]);
-        }
-
+  const handleClockInSubmit = async () => {
+    const coords = resolverCoordenadasDispositivo();
+    if (!coords) {
+      showToast('No se pudo obtener la ubicación GPS. Actívala o ingresa coordenadas manualmente.', 'error');
+      return;
+    }
+    const worker = trabajadores.find((t) => t.id === clockInWorkerId);
+    setSubmitting(true);
+    try {
+      if (clockInType === 'entrada') {
+        const obra = obraSeleccionadaEntrada;
+        const res = await asistenciaApi.marcarEntrada({
+          trabajadorId: clockInWorkerId,
+          obraId: clockInObraId,
+          obraLat: obra?.lat ?? FALLBACK_COORD.lat,
+          obraLng: obra?.lng ?? FALLBACK_COORD.lng,
+          radioPermitidoMetros: obra?.radioPermitidoMetros ?? 2000,
+          lat: coords.lat,
+          lng: coords.lng,
+          precisionGpsMetros: coords.precisionGpsMetros,
+          dispositivo: 'Dispositivo Móvil · GPS Activo',
+        });
+        if (!res.success) throw new Error(res.error.message);
+        showToast(
+          res.data.enSitio
+            ? `📍 Entrada de ${worker?.nombre} registrada (en sitio).`
+            : `⚠️ ALERTA: ${worker?.nombre} marcó fuera del radio permitido de la obra.`,
+          res.data.enSitio ? 'success' : 'error',
+        );
+      } else if (clockInType === 'salida') {
+        const horas = isEarlyDeparture ? parseFloat(earlyDepartureHours) : undefined;
+        const res = await asistenciaApi.marcarSalida({
+          trabajadorId: clockInWorkerId,
+          lat: coords.lat,
+          lng: coords.lng,
+          precisionGpsMetros: coords.precisionGpsMetros,
+          dispositivo: 'Dispositivo Móvil · GPS Activo',
+          salidaAnticipada: isEarlyDeparture,
+          motivoSalidaAnticipada: isEarlyDeparture ? earlyDepartureReason : undefined,
+          horasTrabajadasOrdinarias: horas != null && !Number.isNaN(horas) ? horas : undefined,
+        });
+        if (!res.success) throw new Error(res.error.message);
         if (isEarlyDeparture) {
-          showToast(`⚠️ Salida anticipada de ${worker?.nombre} registrada a las ${horaFormato} (${hrsWorked}h).`, 'warning');
+          showToast(`⚠️ Salida anticipada de ${worker?.nombre} registrada.`, 'warning');
           addNotification({
             titulo: `⚠️ Salida Anticipada: ${worker?.nombre}`,
-            mensaje: `Se retiró a las ${horaFormato} (${hrsWorked}h laboradas). Motivo: ${earlyDepartureReason}.`,
-            tipo: 'alerta'
+            mensaje: `Se retiró antes del término de turno. Motivo: ${earlyDepartureReason}.`,
+            tipo: 'alerta',
           });
         } else {
-          showToast(`🏁 Salida de ${worker?.nombre} registrada a las ${horaFormato}.`, 'info');
+          showToast(`🏁 Salida de ${worker?.nombre} registrada.`, 'info');
         }
-
-        setClockInModalOpen(false);
-        return;
-      }
-
-      if (clockInType === 'horas_extra_inicio' || clockInType === 'horas_extra_fin') {
-        const hExtras = parseFloat(extraHoursInput) || 3.0;
-        const tarifa = worker?.tarifaHoraExtra ?? 80;
-        const monto = hExtras * tarifa;
-
-        const horasDetalle: HorasExtraDetalle = {
-          inicio: "05:00 PM",
-          fin: horaFormato,
-          horasCalculadas: hExtras,
-          tarifaPorHora: tarifa,
-          montoTotal: monto,
-          estado: 'Aprobado',
-          motivo: extraMotivo,
-          coordenadasInicio: coords,
-          coordenadasFin: coords
-        };
-
-        if (existing) {
-          setRegistros(prev => prev.map(r => r.id === existing.id ? { ...r, horasExtra: horasDetalle } : r));
-        } else {
-          const nuevo: RegistroAsistencia = {
-            id: `A${String(registros.length + 1).padStart(3, '0')}`,
-            trabajadorId: clockInWorkerId,
-            fecha: now.toISOString().split('T')[0],
-            horaEntrada: '07:00 AM',
-            horaSalida: '05:00 PM',
-            horasTrabajadasOrdinarias: 8,
-            estado: 'Puntual',
-            ubicacion: `${clockInObra} (Zona de colado)`,
-            coordenadas: coords,
-            obraAsignada: clockInObra,
-            obraCoordenadas: { lat: 19.3421, lng: -99.1843 },
-            distanciaMetros: dist,
-            radioPermitidoMetros: 2000,
-            enSitio: enSitio,
-            precisionGpsMetros: 6,
-            dispositivo: 'Móvil SVR · GPS Activo',
-            horasExtra: horasDetalle,
-            notas: 'Turno extraordinario validado en obra.'
-          };
-          setRegistros(prev => [nuevo, ...prev]);
-        }
-
-        showToast(`🔥 ${hExtras} horas extra ($${monto}) registradas para ${worker?.nombre}.`, 'success');
-        setClockInModalOpen(false);
-        return;
-      }
-
-      // Entrada ordinaria
-      const nuevoRegistro: RegistroAsistencia = {
-        id: `A${String(registros.length + 1).padStart(3, '0')}`,
-        trabajadorId: clockInWorkerId,
-        fecha: now.toISOString().split('T')[0],
-        horaEntrada: horaFormato,
-        horaMarcajeExacta: horaExacta,
-        horasTrabajadasOrdinarias: 8.0,
-        estado: enSitio ? 'Puntual' : 'Retardo',
-        ubicacion: `${clockInObra} (Acceso principal)`,
-        coordenadas: coords,
-        obraAsignada: clockInObra,
-        obraCoordenadas: { lat: 19.3421, lng: -99.1843 },
-        distanciaMetros: dist,
-        radioPermitidoMetros: 2000,
-        enSitio: enSitio,
-        precisionGpsMetros: 6,
-        dispositivo: 'Dispositivo Móvil · GPS Activo',
-        bateria: 90,
-        notas: enSitio ? 'Marcaje validado dentro de la geocerca de 2km.' : 'ALERTA: Fuera de perímetro (> 2km).'
-      };
-
-      setRegistros(prev => [nuevoRegistro, ...prev]);
-      setClockInModalOpen(false);
-
-      if (enSitio) {
-        showToast(`📍 Entrada de ${worker?.nombre} registrada (En sitio a ${dist}m).`, 'success');
       } else {
-        showToast(`⚠️ ALERTA: ${worker?.nombre} marcó a ${(dist/1000).toFixed(1)}km fuera de la obra.`, 'error');
+        const existente = registros.find((r) => r.trabajadorId === clockInWorkerId);
+        if (!existente) {
+          showToast('Este trabajador debe marcar entrada antes de registrar horas extra.', 'error');
+          setSubmitting(false);
+          return;
+        }
+        const horas = parseFloat(extraHoursInput) || 0;
+        const ahora = new Date();
+        const fin = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
+        const inicioDate = new Date(ahora.getTime() - horas * 3600000);
+        const inicio = `${String(inicioDate.getHours()).padStart(2, '0')}:${String(inicioDate.getMinutes()).padStart(2, '0')}`;
+        const res = await asistenciaApi.registrarHorasExtra(existente.id, {
+          inicio,
+          fin,
+          horasCalculadas: horas,
+          motivo: extraMotivo || undefined,
+          latInicio: coords.lat,
+          lngInicio: coords.lng,
+          latFin: coords.lat,
+          lngFin: coords.lng,
+        });
+        if (!res.success) throw new Error(res.error.message);
+        showToast(`🔥 ${horas}h extra registradas para ${worker?.nombre}, pendientes de autorización.`, 'success');
       }
-    }, 500);
+      setClockInModalOpen(false);
+      await refetchAll();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo completar el marcaje.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const trabajadorSeleccionado = trabajadores.find((t) => t.id === selectedRegistro?.trabajadorId);
+
+  if (errorCarga && !hasLoaded.current) {
+    return (
+      <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
+        <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
+        <p className="text-sm font-bold text-red-700">{errorCarga}</p>
+        <button onClick={fetchRegistros} className="btn-primary text-xs">Reintentar</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      
-      {/* ── 1. HEADER EJECUTIVO ULTRA-MODERNO ── */}
+
+      {/* ── 1. HEADER EJECUTIVO ── */}
       <div className="relative bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 rounded-3xl p-6 md:p-8 text-white shadow-2xl overflow-hidden border border-slate-800">
-        
-        {/* Glow Effects */}
+
         <div className="absolute top-0 right-1/4 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -353,7 +391,7 @@ export default function AsistenciaPage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest border border-emerald-500/30">
                 <Compass className="w-3.5 h-3.5 text-emerald-400 animate-spin" style={{ animationDuration: '6s' }} />
-                Geocercas de 2 km Activas
+                Geocerca GPS Activa
               </span>
               <span className="text-xs text-slate-400 font-bold">
                 {enSitioCount} de {trabajadores.length} Empleados en Sitio
@@ -368,45 +406,48 @@ export default function AsistenciaPage() {
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={() => {
-                setClockInType('entrada');
-                setIsEarlyDeparture(false);
-                setClockInModalOpen(true);
-              }}
-              className="btn-primary flex items-center gap-2 text-xs font-black uppercase tracking-wider shadow-lg shadow-primary/20"
-            >
-              <Smartphone className="w-4 h-4" /> Marcar Entrada / Salida GPS
-            </button>
+          {puedeCrear && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => {
+                  setClockInType('entrada');
+                  setIsEarlyDeparture(false);
+                  setClockInModalOpen(true);
+                }}
+                className="btn-primary flex items-center gap-2 text-xs font-black uppercase tracking-wider shadow-lg shadow-primary/20"
+              >
+                <Smartphone className="w-4 h-4" /> Marcar Entrada / Salida GPS
+              </button>
 
-            <button
-              onClick={() => setCuadrillaModalOpen(true)}
-              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all border border-white/10 backdrop-blur-md"
-            >
-              <Users className="w-4 h-4 text-emerald-400" /> Pase de Lista por Cuadrilla
-            </button>
+              <button
+                onClick={() => setCuadrillaModalOpen(true)}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all border border-white/10 backdrop-blur-md"
+              >
+                <Users className="w-4 h-4 text-emerald-400" /> Pase de Lista por Cuadrilla
+              </button>
 
-            <button
-              onClick={() => router.push('/nomina')}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md shadow-emerald-600/20"
-            >
-              <Zap className="w-4 h-4" /> Sincronizar con Nómina
-            </button>
-          </div>
+              <button
+                onClick={() => router.push('/nomina')}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md shadow-emerald-600/20"
+              >
+                <Zap className="w-4 h-4" /> Sincronizar con Nómina
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      {initialLoading ? (
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : (
+      <>
       {/* ── 2. METRIC PILLARS (KPIS) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        
-        {/* En Sitio (Radio 2km OK) */}
-        <div 
-          onClick={() => {
-            setMainView('asistencia');
-            setFilterGeocerca('EnSitio');
-          }}
+
+        <div
+          onClick={() => { setMainView('asistencia'); setFilterGeocerca('EnSitio'); }}
           className={`card py-4 cursor-pointer transition-all border ${
             mainView === 'asistencia' && filterGeocerca === 'EnSitio' ? 'border-green-400 bg-green-50/40 shadow-md' : 'hover:border-slate-300'
           }`}
@@ -416,18 +457,14 @@ export default function AsistenciaPage() {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">En Sitio (Radio 2km)</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">En Sitio</p>
               <h4 className="text-xl font-black text-slate-900">{enSitioCount} <span className="text-xs text-slate-400 font-medium">empleados</span></h4>
             </div>
           </div>
         </div>
 
-        {/* Fuera de Obra (> 2km) */}
-        <div 
-          onClick={() => {
-            setMainView('asistencia');
-            setFilterGeocerca('FueraSitio');
-          }}
+        <div
+          onClick={() => { setMainView('asistencia'); setFilterGeocerca('FueraSitio'); }}
           className={`card py-4 cursor-pointer transition-all border ${
             mainView === 'asistencia' && filterGeocerca === 'FueraSitio' ? 'border-red-400 bg-red-50/40 shadow-md' : 'hover:border-slate-300'
           }`}
@@ -439,7 +476,7 @@ export default function AsistenciaPage() {
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fuera de Obra (&gt;2km)</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fuera de Obra</p>
               <h4 className={`text-xl font-black ${fueraSitioCount > 0 ? 'text-red-600' : 'text-slate-900'}`}>
                 {fueraSitioCount} <span className="text-xs text-slate-400 font-medium">alertas</span>
               </h4>
@@ -447,12 +484,8 @@ export default function AsistenciaPage() {
           </div>
         </div>
 
-        {/* Salidas Anticipadas */}
-        <div 
-          onClick={() => {
-            setMainView('asistencia');
-            setFilterGeocerca('SalidaAnticipada');
-          }}
+        <div
+          onClick={() => { setMainView('asistencia'); setFilterGeocerca('SalidaAnticipada'); }}
           className={`card py-4 cursor-pointer transition-all border ${
             mainView === 'asistencia' && filterGeocerca === 'SalidaAnticipada' ? 'border-amber-400 bg-amber-50/40 shadow-md' : 'hover:border-slate-300'
           }`}
@@ -470,8 +503,7 @@ export default function AsistenciaPage() {
           </div>
         </div>
 
-        {/* No Presentados / Faltas */}
-        <div 
+        <div
           onClick={() => setMainView('faltas')}
           className={`card py-4 cursor-pointer transition-all border ${
             mainView === 'faltas' ? 'border-red-400 bg-red-50/40 shadow-md' : 'hover:border-slate-300'
@@ -488,8 +520,7 @@ export default function AsistenciaPage() {
           </div>
         </div>
 
-        {/* Horas Extras Totales */}
-        <div 
+        <div
           onClick={() => setMainView('horas_extra')}
           className={`card py-4 cursor-pointer transition-all border bg-gradient-to-br from-amber-50 to-orange-50 ${
             mainView === 'horas_extra' ? 'border-orange-400 shadow-md' : 'border-orange-200/70 hover:border-orange-300'
@@ -501,7 +532,7 @@ export default function AsistenciaPage() {
             </div>
             <div>
               <p className="text-[9px] font-black text-orange-700 uppercase tracking-widest">Horas Extra Hoy</p>
-              <h4 className="text-xl font-black text-slate-900">{totalHorasExtras}h <span className="text-xs font-bold text-orange-600">(${totalMontoHorasExtras})</span></h4>
+              <h4 className="text-xl font-black text-slate-900">{totalHorasExtras}h <span className="text-xs font-bold text-orange-600">(${totalMontoHorasExtras.toFixed(0)})</span></h4>
             </div>
           </div>
         </div>
@@ -513,9 +544,7 @@ export default function AsistenciaPage() {
         <button
           onClick={() => setMainView('asistencia')}
           className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-            mainView === 'asistencia'
-              ? 'bg-slate-900 text-white shadow-md'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            mainView === 'asistencia' ? 'bg-slate-900 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
           <Clock className="w-4 h-4" /> Jornada Diaria ({registros.length})
@@ -524,9 +553,7 @@ export default function AsistenciaPage() {
         <button
           onClick={() => setMainView('calendario_semanal')}
           className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-            mainView === 'calendario_semanal'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            mainView === 'calendario_semanal' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
           <CalendarDays className="w-4 h-4 text-blue-500" /> Calendario Semanal (Lun - Sáb)
@@ -535,9 +562,7 @@ export default function AsistenciaPage() {
         <button
           onClick={() => setMainView('horas_extra')}
           className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-            mainView === 'horas_extra'
-              ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            mainView === 'horas_extra' ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
           <Flame className="w-4 h-4 text-orange-500" /> Horas Extras ({totalHorasExtras}h)
@@ -546,9 +571,7 @@ export default function AsistenciaPage() {
         <button
           onClick={() => setMainView('faltas')}
           className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-            mainView === 'faltas'
-              ? 'bg-red-600 text-white shadow-md shadow-red-600/20'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            mainView === 'faltas' ? 'bg-red-600 text-white shadow-md shadow-red-600/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
           <UserMinus className="w-4 h-4 text-red-500" /> No Presentados ({missingWorkers.length})
@@ -558,24 +581,14 @@ export default function AsistenciaPage() {
       {/* ── VISTA 1: TABLA PRINCIPAL DE ASISTENCIA ── */}
       {mainView === 'asistencia' && (
         <div className="space-y-4">
-          
-          {/* Role Category Selector */}
+
           <div className="flex flex-wrap items-center gap-2">
-            {[
-              { id: 'Todos', label: 'Todos los Puestos' },
-              { id: 'Operador', label: '🚜 Operadores' },
-              { id: 'Chofer', label: '🚚 Choferes' },
-              { id: 'Mecanico', label: '🔧 Mecánicos' },
-              { id: 'Ingeniero', label: '📐 Ingenieros' },
-              { id: 'Administrativo', label: '💼 Administración' },
-            ].map(r => (
+            {CATEGORIA_PILLS.map((r) => (
               <button
                 key={r.id}
-                onClick={() => setSelectedRole(r.id as any)}
+                onClick={() => setSelectedRole(r.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                  selectedRole === r.id
-                    ? 'bg-primary text-white shadow-md shadow-primary/20'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  selectedRole === r.id ? 'bg-primary text-white shadow-md shadow-primary/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {r.label}
@@ -587,7 +600,7 @@ export default function AsistenciaPage() {
             <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                  Bitácora de Entrada, Salida y Geocerca (2km)
+                  Bitácora de Entrada, Salida y Geocerca
                   <span className="text-xs font-black bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">
                     {filteredRegistros.length} registros
                   </span>
@@ -600,12 +613,12 @@ export default function AsistenciaPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text" 
-                    value={search} 
-                    onChange={(e) => setSearch(e.target.value)} 
-                    placeholder="Buscar empleado u obra..." 
-                    className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-primary/50 w-60 bg-slate-50 focus:bg-white" 
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar empleado u obra..."
+                    className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-primary/50 w-60 bg-slate-50 focus:bg-white"
                   />
                 </div>
 
@@ -615,10 +628,10 @@ export default function AsistenciaPage() {
                     { id: 'EnSitio', label: '🟢 En Sitio' },
                     { id: 'FueraSitio', label: '🔴 Fuera' },
                     { id: 'SalidaAnticipada', label: '⚠️ Anticipada' },
-                  ].map(f => (
+                  ].map((f) => (
                     <button
                       key={f.id}
-                      onClick={() => setFilterGeocerca(f.id as any)}
+                      onClick={() => setFilterGeocerca(f.id as typeof filterGeocerca)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
                         filterGeocerca === f.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                       }`}
@@ -638,60 +651,57 @@ export default function AsistenciaPage() {
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entrada &amp; Salida</th>
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Obra Asignada</th>
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Horas Extras</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Geocerca (Radio 2km)</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Geocerca</th>
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Mapa GPS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredRegistros.map((reg) => {
-                    const trabajador = trabajadores.find(t => t.id === reg.trabajadorId);
-                    const distTxt = reg.distanciaMetros >= 1000 
-                      ? `${(reg.distanciaMetros / 1000).toFixed(2)} km` 
-                      : `${reg.distanciaMetros}m`;
+                  {filteredRegistros.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold text-sm">
+                        Sin registros de asistencia para los filtros seleccionados.
+                      </td>
+                    </tr>
+                  ) : filteredRegistros.map((reg) => {
+                    const trabajador = trabajadores.find((t) => t.id === reg.trabajadorId);
+                    const distTxt = reg.distanciaMetros >= 1000 ? `${(reg.distanciaMetros / 1000).toFixed(2)} km` : `${reg.distanciaMetros}m`;
 
                     return (
-                      <tr 
-                        key={reg.id} 
+                      <tr
+                        key={reg.id}
                         className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
                         onClick={() => setSelectedRegistro(reg)}
                       >
-                        {/* Worker & Role */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 bg-secondary text-white rounded-xl flex items-center justify-center text-xs font-black shadow-sm">
                               {trabajador?.avatar ?? 'OP'}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-900 text-sm leading-tight">{trabajador?.nombre}</div>
-                              <div className="text-[10px] font-semibold text-primary mt-0.5 flex items-center gap-1">
-                                <span>{trabajador?.puesto}</span>
-                              </div>
+                              <div className="font-bold text-slate-900 text-sm leading-tight">{trabajador?.nombre ?? 'Trabajador'}</div>
+                              <div className="text-[10px] font-semibold text-primary mt-0.5">{trabajador?.puesto}</div>
                             </div>
                           </div>
                         </td>
 
-                        {/* Entry and Exit Schedule */}
                         <td className="px-6 py-4">
                           <div className="space-y-1 text-xs">
                             <div className="flex items-center gap-1.5 font-bold text-slate-900">
                               <span className="text-[9px] font-black uppercase text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-green-200">Entrada</span>
                               <span>{reg.horaEntrada ?? '—'}</span>
-                              <span className="text-[9px] text-slate-400 font-mono">({reg.horaMarcajeExacta})</span>
+                              {reg.horaMarcajeExacta && <span className="text-[9px] text-slate-400 font-mono">({reg.horaMarcajeExacta})</span>}
                             </div>
                             <div className="flex items-center gap-1.5 font-medium text-slate-600">
                               <span className="text-[9px] font-black uppercase text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Salida</span>
                               <span>{reg.horaSalida ?? <span className="text-blue-600 font-bold text-[11px]">En jornada activa</span>}</span>
                               {reg.salidaAnticipada && (
-                                <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                  Anticipada
-                                </span>
+                                <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">Anticipada</span>
                               )}
                             </div>
                           </div>
                         </td>
 
-                        {/* Assigned Project */}
                         <td className="px-6 py-4">
                           <div className="font-bold text-slate-800 text-xs">{reg.obraAsignada}</div>
                           <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5 truncate max-w-[180px]" title={reg.ubicacion}>
@@ -700,20 +710,18 @@ export default function AsistenciaPage() {
                           </div>
                         </td>
 
-                        {/* Overtime indicator */}
                         <td className="px-6 py-4">
                           {reg.horasExtra ? (
                             <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-xs font-black">
                               <Flame className="w-3.5 h-3.5 text-orange-600" />
                               <span>+{reg.horasExtra.horasCalculadas}h</span>
-                              <span className="text-[10px] text-orange-600 font-bold">(${reg.horasExtra.montoTotal})</span>
+                              <span className="text-[10px] text-orange-600 font-bold">(${reg.horasExtra.montoTotal.toFixed(0)})</span>
                             </div>
                           ) : (
                             <span className="text-slate-300 text-xs font-bold">—</span>
                           )}
                         </td>
 
-                        {/* Geofence Status Badge */}
                         <td className="px-6 py-4">
                           {reg.enSitio ? (
                             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-green-50 border border-green-200 text-green-800 text-xs font-bold">
@@ -730,20 +738,15 @@ export default function AsistenciaPage() {
                           )}
                         </td>
 
-                        {/* Punctuality Status */}
                         <td className="px-6 py-4">
                           <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md ${getStatusStyle(reg.estado)}`}>
                             {reg.estado}
                           </span>
                         </td>
 
-                        {/* Map Action */}
                         <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedRegistro(reg);
-                            }} 
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedRegistro(reg); }}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-white font-black text-xs uppercase tracking-wider transition-all shadow-sm"
                           >
                             <Navigation className="w-3.5 h-3.5" />
@@ -763,20 +766,18 @@ export default function AsistenciaPage() {
       {/* ── VISTA 2: CALENDARIO SEMANAL (LUNES A SÁBADO) ── */}
       {mainView === 'calendario_semanal' && (
         <div className="space-y-4">
-          
-          {/* Week Header with Legend */}
+
           <div className="card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
                 <CalendarDays className="w-5 h-5 text-blue-600" />
-                <h3 className="font-black text-slate-900 text-lg">Semana 17: 21 Abr – 26 Abr 2025</h3>
+                <h3 className="font-black text-slate-900 text-lg">Semana: {semanalData[0]?.semana ?? '—'}</h3>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
                 Resumen de puntualidad, faltas, retardos, salidas anticipadas y horas extras de lunes a sábado.
               </p>
             </div>
 
-            {/* Status Legend */}
             <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold">
               <span className="inline-flex items-center gap-1 bg-green-50 text-green-800 border border-green-200 px-2 py-1 rounded-md">
                 <span className="w-2 h-2 rounded-full bg-green-500"></span> Puntual
@@ -790,35 +791,35 @@ export default function AsistenciaPage() {
               <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 px-2 py-1 rounded-md">
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span> Salida Anticipada
               </span>
+              <span className="inline-flex items-center gap-1 bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded-md">
+                <span className="w-2 h-2 rounded-full bg-slate-400"></span> Descanso
+              </span>
               <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-800 border border-orange-200 px-2 py-1 rounded-md">
                 <Flame className="w-3 h-3 text-orange-600" /> + Horas Extra
               </span>
             </div>
           </div>
 
-          {/* Weekly Matrix Table */}
           <div className="card p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-900 text-white text-xs">
                     <th className="px-6 py-4 font-black uppercase tracking-wider w-64">Trabajador</th>
-                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Lun 21</th>
-                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Mar 22</th>
-                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Mié 23</th>
-                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Jue 24</th>
-                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Vie 25</th>
-                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Sáb 26</th>
+                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Lun</th>
+                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Mar</th>
+                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Mié</th>
+                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Jue</th>
+                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Vie</th>
+                    <th className="px-4 py-4 font-black uppercase tracking-wider text-center">Sáb</th>
                     <th className="px-6 py-4 font-black uppercase tracking-wider text-right">Totales Semana</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {semanalData.map(item => {
-                    const trabajador = trabajadores.find(t => t.id === item.trabajadorId);
+                  {semanalData.map((item) => {
+                    const trabajador = trabajadores.find((t) => t.id === item.trabajadorId);
                     return (
                       <tr key={item.trabajadorId} className="hover:bg-slate-50/80 transition-colors">
-                        
-                        {/* Worker */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-secondary text-white rounded-xl flex items-center justify-center font-black text-xs">
@@ -831,12 +832,12 @@ export default function AsistenciaPage() {
                           </div>
                         </td>
 
-                        {/* Days (Lun - Sáb) */}
-                        {item.dias.map(d => {
+                        {item.dias.map((d) => {
                           const isPuntual = d.estado === 'Puntual';
                           const isRetardo = d.estado === 'Retardo';
-                          const isFalta = d.estado === 'Falta';
                           const isAnticipada = d.estado === 'Salida Anticipada';
+                          const isDescanso = d.estado === 'Descanso';
+                          const isJustificado = d.estado === 'Justificado';
 
                           return (
                             <td key={d.dia} className="px-3 py-3 text-center">
@@ -844,17 +845,15 @@ export default function AsistenciaPage() {
                                 isPuntual ? 'bg-green-50/70 border-green-200 text-green-900' :
                                 isRetardo ? 'bg-yellow-50/70 border-yellow-200 text-yellow-900' :
                                 isAnticipada ? 'bg-amber-50 border-amber-300 text-amber-900' :
+                                isJustificado ? 'bg-blue-50 border-blue-200 text-blue-900' :
+                                isDescanso ? 'bg-slate-50 border-slate-200 text-slate-500' :
                                 'bg-red-50 border-red-200 text-red-900'
                               }`}>
                                 <span className="text-[10px] font-black uppercase tracking-wider leading-none">
-                                  {isPuntual ? '✓ Puntual' : isRetardo ? '⏰ Retardo' : isAnticipada ? '⚠️ Anticipada' : '✗ Falta'}
+                                  {isPuntual ? '✓ Puntual' : isRetardo ? '⏰ Retardo' : isAnticipada ? '⚠️ Anticipada' : isJustificado ? '📋 Justif.' : isDescanso ? '· Descanso' : '✗ Falta'}
                                 </span>
-                                
-                                {d.horaEntrada && (
-                                  <span className="text-[9px] font-mono text-slate-600">
-                                    {d.horaEntrada}
-                                  </span>
-                                )}
+
+                                {d.horaEntrada && <span className="text-[9px] font-mono text-slate-600">{d.horaEntrada}</span>}
 
                                 {d.horasExtra ? (
                                   <span className="text-[8px] font-black uppercase bg-orange-500 text-white px-1.5 py-0.5 rounded-full mt-0.5">
@@ -866,25 +865,17 @@ export default function AsistenciaPage() {
                           );
                         })}
 
-                        {/* Weekly Totals */}
                         <td className="px-6 py-4 text-right">
                           <div className="space-y-0.5">
                             <p className="text-xs font-black text-slate-900">
                               {item.totalDiasAsistidos}/6 días <span className="text-slate-400 font-normal">({item.totalHorasOrdinarias}h)</span>
                             </p>
-                            {item.totalHorasExtra > 0 ? (
-                              <p className="text-[11px] font-black text-orange-600">
-                                +{item.totalHorasExtra}h extras
-                              </p>
-                            ) : null}
+                            {item.totalHorasExtra > 0 ? <p className="text-[11px] font-black text-orange-600">+{item.totalHorasExtra}h extras</p> : null}
                             {item.totalFaltas > 0 ? (
-                              <p className="text-[10px] font-black text-red-600">
-                                {item.totalFaltas} falta{item.totalFaltas > 1 ? 's' : ''}
-                              </p>
+                              <p className="text-[10px] font-black text-red-600">{item.totalFaltas} falta{item.totalFaltas > 1 ? 's' : ''}</p>
                             ) : null}
                           </div>
                         </td>
-
                       </tr>
                     );
                   })}
@@ -903,12 +894,8 @@ export default function AsistenciaPage() {
               <span className="text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">
                 Gestión de Tiempo Extraordinario
               </span>
-              <h3 className="text-2xl font-black mt-2">
-                {totalHorasExtras} Horas Extras Acumuladas
-              </h3>
-              <p className="text-xs text-slate-400 mt-1 font-medium">
-                Cálculo automático vinculado a la nómina semanal de la constructora.
-              </p>
+              <h3 className="text-2xl font-black mt-2">{totalHorasExtras} Horas Extras Acumuladas</h3>
+              <p className="text-xs text-slate-400 mt-1 font-medium">Cálculo automático vinculado a la nómina semanal de la constructora.</p>
             </div>
             <div className="bg-white/10 p-4 rounded-2xl border border-white/10 text-right">
               <p className="text-[10px] font-black uppercase text-white/60">Importe a Pagar</p>
@@ -935,8 +922,14 @@ export default function AsistenciaPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {registros.filter(r => r.horasExtra).map(r => {
-                    const trabajador = trabajadores.find(t => t.id === r.trabajadorId);
+                  {registros.filter((r) => r.horasExtra).length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-bold text-sm">
+                        Sin horas extra registradas hoy.
+                      </td>
+                    </tr>
+                  ) : registros.filter((r) => r.horasExtra).map((r) => {
+                    const trabajador = trabajadores.find((t) => t.id === r.trabajadorId);
                     const he = r.horasExtra!;
                     return (
                       <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
@@ -954,40 +947,38 @@ export default function AsistenciaPage() {
                         <td className="px-6 py-4 text-xs font-bold text-slate-700">
                           {he.inicio} <ArrowRight className="inline w-3 h-3 text-slate-400 mx-1" /> {he.fin ?? 'En curso'}
                         </td>
-                        <td className="px-6 py-4 font-black text-slate-900 text-sm">
-                          {he.horasCalculadas} hrs
-                        </td>
-                        <td className="px-6 py-4 text-xs font-bold text-slate-600">
-                          ${he.tarifaPorHora}/hr
-                        </td>
-                        <td className="px-6 py-4 font-black text-green-700 text-sm">
-                          ${he.montoTotal.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 text-xs font-medium text-slate-600 max-w-[200px] truncate">
-                          {he.motivo ?? 'Trabajo extraordinario'}
-                        </td>
+                        <td className="px-6 py-4 font-black text-slate-900 text-sm">{he.horasCalculadas} hrs</td>
+                        <td className="px-6 py-4 text-xs font-bold text-slate-600">${he.tarifaPorHora}/hr</td>
+                        <td className="px-6 py-4 font-black text-green-700 text-sm">${he.montoTotal.toFixed(2)}</td>
+                        <td className="px-6 py-4 text-xs font-medium text-slate-600 max-w-[200px] truncate">{he.motivo ?? 'Trabajo extraordinario'}</td>
                         <td className="px-6 py-4">
                           <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${
-                            he.estado === 'Aprobado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                            he.estado === 'Aprobado' ? 'bg-green-100 text-green-800' : he.estado === 'Rechazado' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'
                           }`}>
                             {he.estado}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          {he.estado !== 'Aprobado' ? (
+                          {he.estado !== 'Aprobado' && he.estado !== 'Rechazado' && puedeEditar ? (
                             <button
-                              onClick={() => {
-                                handleAprobarHorasExtra(r.id);
-                                showToast(`✅ Horas extra de ${trabajador?.nombre} autorizadas.`, 'success');
+                              onClick={async () => {
+                                try {
+                                  await handleAprobarHorasExtra(he.id);
+                                  showToast(`✅ Horas extra de ${trabajador?.nombre} autorizadas.`, 'success');
+                                } catch (e) {
+                                  showToast(e instanceof Error ? e.message : 'No se pudo autorizar.', 'error');
+                                }
                               }}
                               className="px-3 py-1 bg-green-600 text-white rounded-lg text-xs font-black uppercase tracking-wider hover:bg-green-700 transition-colors"
                             >
                               Autorizar
                             </button>
-                          ) : (
+                          ) : he.estado === 'Aprobado' ? (
                             <span className="text-[11px] font-bold text-green-700 flex items-center justify-end gap-1">
                               <Check className="w-3.5 h-3.5" /> En Nómina
                             </span>
+                          ) : (
+                            <span className="text-[11px] font-bold text-slate-400">—</span>
                           )}
                         </td>
                       </tr>
@@ -1037,7 +1028,7 @@ export default function AsistenciaPage() {
                       </td>
                     </tr>
                   ) : (
-                    missingWorkers.map(t => (
+                    missingWorkers.map((t) => (
                       <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -1051,20 +1042,20 @@ export default function AsistenciaPage() {
                         <td className="px-6 py-4 text-xs font-mono text-slate-600">{t.telefono}</td>
                         <td className="px-6 py-4">
                           <div className="flex gap-1 flex-wrap">
-                            {t.proyectos.map(p => (
-                              <span key={p} className="text-[9px] font-black uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                                {p}
-                              </span>
+                            {t.proyectos.map((p) => (
+                              <span key={p} className="text-[9px] font-black uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{p}</span>
                             ))}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right space-x-2">
-                          <button
-                            onClick={() => handleRegistrarFalta(t.id)}
-                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-wider transition-colors"
-                          >
-                            Registrar Falta
-                          </button>
+                          {puedeCrear && (
+                            <button
+                              onClick={() => handleRegistrarFalta(t.id)}
+                              className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-wider transition-colors"
+                            >
+                              Registrar Falta
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1075,6 +1066,8 @@ export default function AsistenciaPage() {
           </div>
         </div>
       )}
+      </>
+      )}
 
       {/* GPS Validation & Map Inspection Modal */}
       {selectedRegistro && (
@@ -1082,8 +1075,9 @@ export default function AsistenciaPage() {
           isOpen={!!selectedRegistro}
           onClose={() => setSelectedRegistro(null)}
           registro={selectedRegistro}
-          onActualizarEstado={handleActualizarEstado}
-          onAprobarHorasExtra={handleAprobarHorasExtra}
+          trabajador={trabajadorSeleccionado ? { nombre: trabajadorSeleccionado.nombre, puesto: trabajadorSeleccionado.puesto, avatar: trabajadorSeleccionado.avatar } : undefined}
+          onActualizarEstado={puedeEditar ? handleActualizarEstado : undefined}
+          onAprobarHorasExtra={puedeEditar ? handleAprobarHorasExtra : undefined}
         />
       )}
 
@@ -1093,180 +1087,128 @@ export default function AsistenciaPage() {
           isOpen={clockInModalOpen}
           onClose={() => setClockInModalOpen(false)}
           onConfirm={handleClockInSubmit}
-          title={
-            clockInType === 'entrada' ? 'Marcar Entrada GPS' :
-            clockInType === 'salida' ? 'Marcar Salida GPS' : 'Registrar Horas Extraordinarias'
-          }
-          confirmLabel={isLocating ? 'Obteniendo GPS...' : 'Enviar Registro'}
+          title={clockInType === 'entrada' ? 'Marcar Entrada GPS' : clockInType === 'salida' ? 'Marcar Salida GPS' : 'Registrar Horas Extraordinarias'}
+          confirmLabel={submitting ? 'Enviando...' : 'Enviar Registro'}
         >
           <div className="space-y-4">
-            
+
             <ModalField label="Tipo de Marcaje Móvil">
               <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setClockInType('entrada')}
-                  className={`py-2 px-2 rounded-xl text-xs font-black uppercase transition-all ${
-                    clockInType === 'entrada' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
+                <button type="button" onClick={() => setClockInType('entrada')} className={`py-2 px-2 rounded-xl text-xs font-black uppercase transition-all ${clockInType === 'entrada' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
                   Entrada
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setClockInType('salida')}
-                  className={`py-2 px-2 rounded-xl text-xs font-black uppercase transition-all ${
-                    clockInType === 'salida' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
+                <button type="button" onClick={() => setClockInType('salida')} className={`py-2 px-2 rounded-xl text-xs font-black uppercase transition-all ${clockInType === 'salida' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
                   Salida
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setClockInType('horas_extra_inicio')}
-                  className={`py-2 px-2 rounded-xl text-xs font-black uppercase transition-all ${
-                    clockInType === 'horas_extra_inicio' ? 'bg-orange-600 text-white shadow-sm' : 'bg-orange-50 text-orange-700'
-                  }`}
-                >
+                <button type="button" onClick={() => setClockInType('horas_extra')} className={`py-2 px-2 rounded-xl text-xs font-black uppercase transition-all ${clockInType === 'horas_extra' ? 'bg-orange-600 text-white shadow-sm' : 'bg-orange-50 text-orange-700'}`}>
                   Horas Extra
                 </button>
               </div>
             </ModalField>
 
             <ModalField label="Seleccionar Trabajador">
-              <select
-                value={clockInWorkerId}
-                onChange={e => setClockInWorkerId(e.target.value)}
-                className={selectClass}
-              >
-                {trabajadores.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre} — {t.puesto} ({t.categoriaPuesto})
-                  </option>
+              <select value={clockInWorkerId} onChange={(e) => setClockInWorkerId(e.target.value)} className={selectClass}>
+                {trabajadores.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre} — {t.puesto} ({t.categoriaPuesto})</option>
                 ))}
               </select>
             </ModalField>
 
-            <ModalField label="Obra Asignada (Radio 2 km)">
-              <select
-                value={clockInObra}
-                onChange={e => setClockInObra(e.target.value)}
-                className={selectClass}
-              >
-                {proyectos.map(p => (
-                  <option key={p.id} value={p.nombre}>{p.nombre} ({p.ubicacion})</option>
-                ))}
-                <option value="Oficina Central SVR">Oficina Central SVR</option>
-              </select>
+            {clockInType === 'entrada' && (
+              <ModalField label="Obra Asignada">
+                <select value={clockInObraId} onChange={(e) => setClockInObraId(e.target.value)} className={selectClass}>
+                  {obras.map((o) => (
+                    <option key={o.id} value={o.id}>{o.nombre}</option>
+                  ))}
+                </select>
+                {obraSeleccionadaEntrada && obraSeleccionadaEntrada.lat == null && (
+                  <p className="text-[10px] text-amber-600 font-semibold mt-1">
+                    Esta obra aún no tiene coordenadas configuradas; se usará una ubicación de referencia.
+                  </p>
+                )}
+              </ModalField>
+            )}
+
+            {/* Ubicación GPS */}
+            <ModalField label="Ubicación del Dispositivo">
+              <div className="p-3 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
+                {!usarCoordenadasManuales ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-bold">
+                      {ubicacionEstado === 'obteniendo' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+                      {ubicacionEstado === 'ok' && <LocateFixed className="w-4 h-4 text-green-600" />}
+                      {ubicacionEstado === 'error' && <AlertTriangle className="w-4 h-4 text-red-500" />}
+                      <span className={ubicacionEstado === 'ok' ? 'text-green-700' : ubicacionEstado === 'error' ? 'text-red-600' : 'text-slate-600'}>
+                        {ubicacionEstado === 'obteniendo' && 'Obteniendo ubicación GPS...'}
+                        {ubicacionEstado === 'ok' && ubicacionGps && `GPS: ${ubicacionGps.lat.toFixed(5)}, ${ubicacionGps.lng.toFixed(5)} (±${ubicacionGps.precisionGpsMetros}m)`}
+                        {ubicacionEstado === 'error' && 'No se pudo obtener el GPS del dispositivo.'}
+                        {ubicacionEstado === 'idle' && 'Ubicación no solicitada.'}
+                      </span>
+                    </div>
+                    <button type="button" onClick={solicitarUbicacion} className="text-[10px] font-black uppercase text-primary hover:underline">
+                      Reintentar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" step="0.0001" placeholder="Latitud" value={manualLat} onChange={(e) => setManualLat(e.target.value)} className={inputClass} />
+                    <input type="number" step="0.0001" placeholder="Longitud" value={manualLng} onChange={(e) => setManualLng(e.target.value)} className={inputClass} />
+                  </div>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer pt-1">
+                  <input type="checkbox" checked={usarCoordenadasManuales} onChange={(e) => setUsarCoordenadasManuales(e.target.checked)} className="w-3.5 h-3.5 text-primary rounded" />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Ingresar coordenadas manualmente (uso administrativo)</span>
+                </label>
+                {usarCoordenadasManuales && clockInType === 'entrada' && obraSeleccionadaEntrada?.lat != null && (
+                  <button
+                    type="button"
+                    onClick={() => { setManualLat(String(obraSeleccionadaEntrada.lat)); setManualLng(String(obraSeleccionadaEntrada.lng)); }}
+                    className="text-[10px] font-black text-primary hover:underline"
+                  >
+                    Usar coordenadas de la obra
+                  </button>
+                )}
+              </div>
             </ModalField>
 
-            {/* Salida Anticipada Options */}
             {clockInType === 'salida' && (
               <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 space-y-3">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isEarlyDeparture}
-                    onChange={e => setIsEarlyDeparture(e.target.checked)}
-                    className="w-4 h-4 text-amber-600 rounded"
-                  />
-                  <span className="text-xs font-black text-amber-950 uppercase tracking-wide">
-                    ¿Es Salida Anticipada (Antes del término de turno)?
-                  </span>
+                  <input type="checkbox" checked={isEarlyDeparture} onChange={(e) => setIsEarlyDeparture(e.target.checked)} className="w-4 h-4 text-amber-600 rounded" />
+                  <span className="text-xs font-black text-amber-950 uppercase tracking-wide">¿Es Salida Anticipada (Antes del término de turno)?</span>
                 </label>
 
                 {isEarlyDeparture && (
                   <div className="space-y-2 pt-1 border-t border-amber-200">
                     <ModalField label="Horas Efectivas Laboradas">
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={earlyDepartureHours}
-                        onChange={e => setEarlyDepartureHours(e.target.value)}
-                        placeholder="Ej: 5.5"
-                        className={inputClass}
-                      />
+                      <input type="number" step="0.5" value={earlyDepartureHours} onChange={(e) => setEarlyDepartureHours(e.target.value)} placeholder="Ej: 5.5" className={inputClass} />
                     </ModalField>
                     <ModalField label="Motivo de la Salida Anticipada">
-                      <input
-                        type="text"
-                        value={earlyDepartureReason}
-                        onChange={e => setEarlyDepartureReason(e.target.value)}
-                        placeholder="Ej: Permiso médico IMSS / Emergencia familiar"
-                        className={inputClass}
-                      />
+                      <input type="text" value={earlyDepartureReason} onChange={(e) => setEarlyDepartureReason(e.target.value)} placeholder="Ej: Permiso médico IMSS / Emergencia familiar" className={inputClass} />
                     </ModalField>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Horas Extra Options */}
-            {clockInType === 'horas_extra_inicio' && (
+            {clockInType === 'horas_extra' && (
               <>
                 <div className="grid grid-cols-2 gap-2">
                   <ModalField label="Horas Extraordinarias">
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={extraHoursInput}
-                      onChange={e => setExtraHoursInput(e.target.value)}
-                      placeholder="Ej: 3.5"
-                      className={inputClass}
-                    />
+                    <input type="number" step="0.5" value={extraHoursInput} onChange={(e) => setExtraHoursInput(e.target.value)} placeholder="Ej: 3.5" className={inputClass} />
                   </ModalField>
                   <ModalField label="Monto Estimado">
                     <div className="h-[46px] px-4 flex items-center bg-orange-50 border border-orange-200 rounded-xl text-orange-950 font-black text-sm">
-                      ${((parseFloat(extraHoursInput) || 0) * (trabajadores.find(t => t.id === clockInWorkerId)?.tarifaHoraExtra ?? 80)).toFixed(2)}
+                      ${((parseFloat(extraHoursInput) || 0) * (trabajadores.find((t) => t.id === clockInWorkerId)?.tarifaHoraExtra ?? 80)).toFixed(2)}
                     </div>
                   </ModalField>
                 </div>
 
                 <ModalField label="Motivo de Turno Extraordinario">
-                  <input
-                    type="text"
-                    value={extraMotivo}
-                    onChange={e => setExtraMotivo(e.target.value)}
-                    placeholder="Ej: Colado nocturno de cimentación"
-                    className={inputClass}
-                  />
+                  <input type="text" value={extraMotivo} onChange={(e) => setExtraMotivo(e.target.value)} placeholder="Ej: Colado nocturno de cimentación" className={inputClass} />
                 </ModalField>
               </>
             )}
-
-            <ModalField label="Simulación de Geocerca Satelital">
-              <div className="grid grid-cols-2 gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setClockInSimMode('en_sitio')}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    clockInSimMode === 'en_sitio' 
-                      ? 'border-green-500 bg-green-50/80 text-green-900 font-bold shadow-sm' 
-                      : 'border-slate-200 bg-white text-slate-600'
-                  }`}
-                >
-                  <p className="text-xs font-black flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-green-600" /> En Obra (45m)
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-1">Dentro del radio de 2 km</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setClockInSimMode('fuera_sitio')}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    clockInSimMode === 'fuera_sitio' 
-                      ? 'border-red-500 bg-red-50/80 text-red-900 font-bold shadow-sm' 
-                      : 'border-slate-200 bg-white text-slate-600'
-                  }`}
-                >
-                  <p className="text-xs font-black flex items-center gap-1.5 text-red-600">
-                    <ShieldAlert className="w-4 h-4 text-red-600" /> Fuera (&gt;2km)
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-1">Marcaje a 4.2 km de distancia</p>
-                </button>
-              </div>
-            </ModalField>
 
           </div>
         </Modal>
@@ -1279,24 +1221,50 @@ export default function AsistenciaPage() {
           onClose={() => setCuadrillaModalOpen(false)}
           onConfirm={handleCuadrillaSubmit}
           title="Pase de Lista Masivo por Cuadrilla"
-          confirmLabel="Marcar Cuadrilla en Sitio"
+          confirmLabel={submitting ? 'Enviando...' : 'Marcar Cuadrilla en Sitio'}
         >
           <div className="space-y-4">
             <ModalField label="Obra / Frente de Trabajo">
-              <select
-                value={cuadrillaObra}
-                onChange={e => setCuadrillaObra(e.target.value)}
-                className={selectClass}
-              >
-                {proyectos.map(p => (
-                  <option key={p.id} value={p.nombre}>{p.nombre}</option>
+              <select value={cuadrillaObraId} onChange={(e) => setCuadrillaObraId(e.target.value)} className={selectClass}>
+                {obras.map((o) => (
+                  <option key={o.id} value={o.id}>{o.nombre}</option>
                 ))}
               </select>
             </ModalField>
 
+            <ModalField label="Ubicación del Dispositivo (Residente/Cabo)">
+              <div className="p-3 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
+                {!usarCoordenadasManuales ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-bold">
+                      {ubicacionEstado === 'obteniendo' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+                      {ubicacionEstado === 'ok' && <LocateFixed className="w-4 h-4 text-green-600" />}
+                      {ubicacionEstado === 'error' && <AlertTriangle className="w-4 h-4 text-red-500" />}
+                      <span className={ubicacionEstado === 'ok' ? 'text-green-700' : ubicacionEstado === 'error' ? 'text-red-600' : 'text-slate-600'}>
+                        {ubicacionEstado === 'obteniendo' && 'Obteniendo ubicación GPS...'}
+                        {ubicacionEstado === 'ok' && ubicacionGps && `GPS: ${ubicacionGps.lat.toFixed(5)}, ${ubicacionGps.lng.toFixed(5)}`}
+                        {ubicacionEstado === 'error' && 'No se pudo obtener el GPS del dispositivo.'}
+                        {ubicacionEstado === 'idle' && 'Ubicación no solicitada.'}
+                      </span>
+                    </div>
+                    <button type="button" onClick={solicitarUbicacion} className="text-[10px] font-black uppercase text-primary hover:underline">Reintentar</button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" step="0.0001" placeholder="Latitud" value={manualLat} onChange={(e) => setManualLat(e.target.value)} className={inputClass} />
+                    <input type="number" step="0.0001" placeholder="Longitud" value={manualLng} onChange={(e) => setManualLng(e.target.value)} className={inputClass} />
+                  </div>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer pt-1">
+                  <input type="checkbox" checked={usarCoordenadasManuales} onChange={(e) => setUsarCoordenadasManuales(e.target.checked)} className="w-3.5 h-3.5 text-primary rounded" />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Ingresar coordenadas manualmente</span>
+                </label>
+              </div>
+            </ModalField>
+
             <ModalField label="Seleccionar Trabajadores en Frente">
               <div className="space-y-2 max-h-56 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
-                {trabajadores.map(t => {
+                {trabajadores.map((t) => {
                   const isChecked = selectedCuadrillaWorkers.includes(t.id);
                   return (
                     <label key={t.id} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 hover:border-primary/50 cursor-pointer">
@@ -1304,12 +1272,9 @@ export default function AsistenciaPage() {
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              setSelectedCuadrillaWorkers(prev => [...prev, t.id]);
-                            } else {
-                              setSelectedCuadrillaWorkers(prev => prev.filter(id => id !== t.id));
-                            }
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedCuadrillaWorkers((prev) => [...prev, t.id]);
+                            else setSelectedCuadrillaWorkers((prev) => prev.filter((id) => id !== t.id));
                           }}
                           className="w-4 h-4 text-primary rounded"
                         />
@@ -1318,9 +1283,7 @@ export default function AsistenciaPage() {
                           <p className="text-[10px] text-slate-500 font-medium">{t.puesto}</p>
                         </div>
                       </div>
-                      <span className="text-[9px] font-black uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                        {t.categoriaPuesto}
-                      </span>
+                      <span className="text-[9px] font-black uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{t.categoriaPuesto}</span>
                     </label>
                   );
                 })}
