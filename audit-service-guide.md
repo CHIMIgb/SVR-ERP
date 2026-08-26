@@ -2,6 +2,57 @@
 
 Guía de la implementación actual del sistema de auditoría en `apps/api/src/audit/`.
 
+## 0. Requisitos Obligatorios por Endpoint
+
+**TODO endpoint del API debe cumplir los 4 requisitos siguientes.** Un PR que agregue
+endpoints sin estos 4 puntos debe recibir **Request Changes** en su review.
+
+| # | Requisito | Cómo se cumple |
+|---|-----------|----------------|
+| 1 | **Token JWT válido** | `@UseGuards(JwtAuthGuard)` — valida firma, expiración, usuario activo y no eliminado |
+| 2 | **Verificación de blacklist** | Automática: `JwtStrategy` consulta `token_blacklist` por `jti` en cada request (token revocado por logout = `401`) |
+| 3 | **Auditoría de operaciones exitosas** | El service llama `AuditService.log({ ..., result: AuditResult.SUCCESS })` con `previousValue`/`newValue` cuando aplique |
+| 4 | **Auditoría de fallos de negocio** | Antes de lanzar `BadRequestException`/`NotFoundException` en mutaciones, registrar con `result: FAIL`, severidad `WARNING` y un `error_code` clasificable (ver patrón abajo) |
+
+Referencia viva de los 4 puntos implementados juntos: `apps/api/src/criba/` (service,
+controller, specs unitarios y de integración).
+
+### Patrón para el requisito 4 — auditoría de fallos
+
+Helper privado en el service; audita y lanza. El `actorUserId` NO se pasa manualmente:
+cae automáticamente del JWT en el contexto (`ctx.jwtUserId`) gracias al interceptor global.
+
+```ts
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+private async fallir<A extends new (message: string) => any>(
+  action: AuditAction,
+  entityId: string | null,        // null cuando aún no hay entidad (create fallido)
+  errorCode: string,              // ej. 'AL_BANCO_MAYOR_A_PRODUCIDO'
+  Excepcion: A,                   // BadRequestException / NotFoundException
+  message: string,
+): Promise<never> {
+  await this.auditService.log({
+    action,
+    entityType: 'registros_criba',
+    entityId: entityId || '00000000-0000-0000-0000-000000000000',
+    result: AuditResult.FAIL,
+    severity: 'WARNING',          // validaciones de negocio = WARNING, no CRITICAL
+    errorCode,
+  });
+  throw new Excepcion(message);
+}
+```
+
+Alcance acordado: se auditan los fallos de **mutaciones** (create/update/remove).
+Un GET con ID inexistente no genera ruido de auditoría.
+
+Cada fallo auditable debe tener su test:
+- Unitario: asertar que `auditService.log` fue llamado con `result: FAIL` + `errorCode`.
+- Integración: verificar la fila persistida en `registro_auditoria`
+  (simular el contexto HTTP con `auditContext.run()` si el test llama directo al service).
+
+---
+
 ## 1. Propósito
 
 El módulo de auditoría registra eventos relevantes en la tabla `registro_auditoria`. Su objetivo es que **ningún service ni controller tenga que pasar manualmente** datos HTTP como `ip_address`, `user_agent` o `session_id`; esos campos se capturan automáticamente desde el request mediante `AsyncLocalStorage`.
@@ -63,6 +114,13 @@ const store: AuditRequestContext = {
   ipAddress: req.ip ?? req.socket?.remoteAddress ?? undefined,
   userAgent: req.headers['user-agent'] ?? undefined,
   sessionId: user?.sessionId ?? undefined,
+  endpoint: req.originalUrl ?? req.url,
+  method: req.method,
+  jwtUserId: user?.id,
+  jwtEmail: user?.email,
+  jwtNombre: user?.nombre,   // viene del JwtStrategy (persona vinculada al user)
+  jti: user?.jti,
+  jwtIat: user?.iat,         // "issued at" del token (epoch segundos)
 };
 ```
 
@@ -90,8 +148,49 @@ Campos que `AuditService.log()` completa automáticamente desde el contexto:
 | `ip_address`   | `dto.ipAddress` > `ctx.ipAddress` > `'unknown'`            |
 | `user_agent`   | `dto.userAgent` > `ctx.userAgent` > `'unknown'`            |
 | `session_id`   | `dto.sessionId` > `ctx.sessionId` > `null`                 |
+| `metadata`     | **Mínimo obligatorio** (ver abajo) + `dto.metadata`        |
 
 Los valores explícitos del DTO siempre tienen prioridad (útil para login/logout u operaciones sin JWT).
+
+#### Metadata mínima obligatoria
+
+Todo registro incluye SIEMPRE un objeto `metadata` con, al mínimo:
+
+```json
+{
+  "endpoint": "/api/proyectos?page=2",
+  "method": "POST",
+  "statusCode": 201,
+  "elapsedMs": 142,
+  "query": { "estado": "ABIERTO", "page": "2" },
+  "roles": ["Administrador"],
+  "origen": { "plataforma": "web", "appVersion": null },
+  "jwt": {
+    "userId": "550e8400-...",
+    "email": "admin@svr-constructora.com",
+    "nombre": "Carlos García López",
+    "jti": "id-del-token",
+    "iat": 1756000000
+  }
+}
+```
+
+Reglas:
+
+1. `endpoint` y `method` provienen del request capturado por el interceptor global — presentes en toda operación HTTP.
+2. `statusCode` es el status del response al momento de registrar (200/201 en flujos exitosos). `elapsedMs` = ms transcurridos desde el inicio del request hasta el registro del evento.
+3. `query` solo se captura en **GETs**: copia JSON-safe de los params, redactando campos sensibles (`AUDIT_SENSITIVE_FIELDS`) y marcando objetos anidados como `[objeto]`.
+4. `roles` son los roles reales del usuario, resueltos por `PermissionsGuard` (sin queries extra — los expone en `request.auditRoles`). Presentes también en respuestas DENIED.
+5. `origen`: header `X-App-Platform` / `X-App-Version` si el frontend los manda; fallback automático detecta Capacitor/Cordova en el user-agent → `"movil"`, otro UA → `"web"`.
+6. `jwt` se llena con la información del token validado. El nombre completo viene de la persona vinculada al usuario (`JwtStrategy`). En endpoints públicos (login) puede venir parcial o ausente.
+7. `dto.metadata` puede **agregar** claves pero nunca eliminar las mínimas.
+8. Si no hay contexto HTTP (job del sistema, cron), la metadata queda `{ "source": "SYSTEM" }`.
+
+#### Trazabilidad: request_id / correlation_id reales
+
+- `request_id`: compartido por **todos los logs de un mismo request HTTP**. Se toma de `X-Request-Id` o se genera uno por request.
+- `correlation_id`: se hereda de `X-Correlation-Id` (para encadenar requests relacionados, ej. refresh→login) o cae al `request_id`.
+- Overrides manuales disponibles vía `dto.requestId` / `dto.correlationId`.
 
 ### 3.4 `AuditModule`
 
@@ -187,6 +286,14 @@ await this.auditService.log({
 
 ### 5.3 Registrar fallos
 
+Dos patrones según la naturaleza del fallo:
+
+**a) Validaciones de negocio en mutaciones (CRUD)** — helper `fallir()` con
+`result: FAIL`, severidad `WARNING` y `error_code`. Ver sección 0.
+Referencia viva: `criba.service.ts`.
+
+**b) Fallos críticos / accesos denegados (auth, seguridad)** — shortcut `logFailure`:
+
 ```ts
 await this.auditService.logFailure({
   action: AuditAction.STOCK_INSUFICIENTE,
@@ -200,7 +307,8 @@ await this.auditService.logFailure({
 });
 ```
 
-`logFailure` asigna automáticamente `result: 'FAIL'` y `severity: 'CRITICAL'`.
+`logFailure` asigna automáticamente `result: 'FAIL'` y `severity: 'CRITICAL'`
+(o `'DENIED'` + `'WARNING'` si `denied: true`).
 
 ## 6. Seguridad y Resiliencia
 
@@ -223,7 +331,6 @@ npm run test:integration        # integración
 
 Funcionalidades que pueden agregarse en el futuro según necesidad:
 
-- `request_id` / `correlation_id` por request.
 - Decoradores `@SkipAudit()` y `@Auditable()`.
 - Helpers `logUpdate()`, `logSystem()`, `logBatch()`.
 - Auditoría automática de errores 500 desde `AllExceptionsFilter`.

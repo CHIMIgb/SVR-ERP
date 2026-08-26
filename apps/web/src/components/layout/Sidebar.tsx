@@ -84,7 +84,7 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/combustible": { group: "Maquinaria" },
   "/gps": { group: "Maquinaria", live: true },
   "/operaciones": { group: "Operaciones" },
-  "/reportes-campo": { group: "Operaciones", warn: "1" },
+  "/reportes-campo": { group: "Operaciones" },
   "/criba": { group: "Operaciones" },
   "/inventario": { group: "Operaciones" },
   "/proyectos": { group: "Operaciones" },

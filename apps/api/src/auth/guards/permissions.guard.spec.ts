@@ -191,6 +191,44 @@ describe('PermissionsGuard', () => {
       expect(result).toBe(true);
     });
 
+    it('debe exponer los roles del usuario en request.auditRoles para auditoría', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        users_roles_users_roles_user_idTousers: [
+          {
+            roles: {
+              nombre: 'Administrador',
+              role_permissions: [
+                {
+                  permissions: {
+                    modulo: 'inventario',
+                    recurso: 'inventario',
+                    accion: 'ver',
+                    activo: true,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            roles: { nombre: 'Operador', role_permissions: [] },
+          },
+        ],
+      });
+
+      const request: Record<string, unknown> = { user: { id: 'user-1' } };
+      const handler = jest.fn();
+      Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, permisoRequerido, handler);
+      const ctx = {
+        switchToHttp: () => ({ getRequest: () => request }),
+        getHandler: () => handler,
+      } as unknown as ExecutionContext;
+
+      await guard.canActivate(ctx);
+
+      expect(request['auditRoles']).toEqual(['Administrador', 'Operador']);
+    });
+
     it('debe permitir si el usuario tiene múltiples roles y al menos uno tiene el permiso', async () => {
       prisma.users.findUnique.mockResolvedValue({
         id: 'user-1',

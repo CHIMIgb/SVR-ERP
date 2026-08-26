@@ -10,6 +10,8 @@ import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { MantenimientoModule } from './modules/mantenimiento/mantenimiento.module';
 import { CombustibleModule } from './modules/combustible/combustible.module';
+import { CribaModule } from './criba/criba.module';
+import { ReportesCampoModule } from './reportes-campo/reportes-campo.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
 import { IncidentesModule } from './incidentes/incidentes.module';
@@ -48,6 +50,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     CatalogosModule,
     MantenimientoModule,
     CombustibleModule,
+    CribaModule,
+    ReportesCampoModule,
     InventarioModule,
     BitacoraModule,
     IncidentesModule,
