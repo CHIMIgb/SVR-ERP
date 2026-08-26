@@ -17,7 +17,6 @@ import {
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
 import RecibosNominaModal from '@/components/layout/RecibosNominaModal';
-import LiquidacionModal from '@/components/workers/LiquidacionModal';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 
 export default function NominaPage() {
@@ -32,9 +31,7 @@ export default function NominaPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState<number | null>(null);
   const [recibosModalOpen, setRecibosModalOpen] = useState(false);
-  const [liquidacionModalOpen, setLiquidacionModalOpen] = useState(false);
-  const [selectedWorkerForLiquidacion, setSelectedWorkerForLiquidacion] = useState<Trabajador | null>(null);
-  
+
   // Modal de Ajuste de Nómina / Bono / Descuento
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
   const [selectedWorkerForAdjust, setSelectedWorkerForAdjust] = useState<Trabajador | null>(null);
@@ -228,17 +225,6 @@ export default function NominaPage() {
               className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all border border-white/10 backdrop-blur-md"
             >
               <Printer className="w-4 h-4 text-orange-400" /> Sobres con Firma
-            </button>
-
-            {/* Botón Liquidar / Finiquito */}
-            <button 
-              onClick={() => {
-                setSelectedWorkerForLiquidacion(null);
-                setLiquidacionModalOpen(true);
-              }} 
-              className="px-4 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all border border-red-500/40 backdrop-blur-md"
-            >
-              <Banknote className="w-4 h-4 text-red-400" /> ⚖️ Liquidar / Finiquito
             </button>
 
             {/* Layout SPEI */}
@@ -521,19 +507,6 @@ export default function NominaPage() {
           isOpen={recibosModalOpen}
           onClose={() => setRecibosModalOpen(false)}
           workersList={trabajadoresList}
-        />
-      )}
-
-      {/* ── MODAL LIQUIDACIÓN Y FINIQUITO ── */}
-      {liquidacionModalOpen && (
-        <LiquidacionModal
-          isOpen={liquidacionModalOpen}
-          onClose={() => setLiquidacionModalOpen(false)}
-          trabajador={selectedWorkerForLiquidacion}
-          onConfirmarBaja={(id, tipo, monto) => {
-            setTrabajadoresList(prev => prev.filter(t => t.id !== id));
-            showToast(`⚖️ Liquidación completada. Empleado dado de baja de la nómina activa.`, 'success');
-          }}
         />
       )}
 
