@@ -371,5 +371,18 @@ describe('AsistenciaService', () => {
       expect(result[0].dias).toHaveLength(6);
       expect(result[0].dias.map((d) => d.dia)).toEqual(['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']);
     });
+
+    it('does not mark days before the trabajador hire date as Falta', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26)); // miércoles de esa semana
+      prisma.trabajadores.findMany.mockResolvedValue([
+        { ...mockTrabajador, fecha_contratacion: new Date(Date.UTC(2026, 7, 26)) }, // contratado el mismo miércoles
+      ]);
+      const result = await service.findSemanal({});
+      const [lun, mar, mie] = result[0].dias;
+      expect(lun.estado).toBe('Descanso');
+      expect(mar.estado).toBe('Descanso');
+      expect(mie.estado).toBe('Falta'); // día de contratación en adelante sí cuenta
+      expect(result[0].totalFaltas).toBe(1);
+    });
   });
 });
