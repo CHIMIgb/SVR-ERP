@@ -794,7 +794,8 @@ export class AsistenciaService {
           }
           totalHorasOrdinarias += registro.horas_trabajadas_ordinarias != null ? Number(registro.horas_trabajadas_ordinarias) : 0;
           totalHorasExtra += horasExtra ?? 0;
-        } else if (fechaDia.getTime() > hoy.getTime()) {
+        } else if (fechaDia.getTime() > hoy.getTime() || (trabajador.fecha_contratacion && fechaDia.getTime() < trabajador.fecha_contratacion.getTime())) {
+          // Día futuro, o anterior a la fecha de contratación: no cuenta como falta.
           dias.push({
             dia: DIAS_SEMANA[i],
             fecha: fechaDia.toISOString().split('T')[0],

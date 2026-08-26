@@ -828,3 +828,75 @@ export const asistenciaApi = {
 
   obras: () => apiClient.get<ObraLite[]>('/catalogos/obras'),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Nómina API
+// ────────────────────────────────────────────────────────────
+
+export interface LineaNominaDTO {
+  id: string;
+  concepto: string;
+  tipo: string;
+  monto: number;
+}
+
+export interface NominaRowDTO {
+  id: string;
+  trabajadorId: string;
+  trabajadorNombre: string;
+  puesto: string;
+  categoriaPuesto: string;
+  avatar: string;
+  metodoPago: 'Tarjeta' | 'Efectivo' | 'Mixto';
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  diasTrabajados: number;
+  diasFaltas: number;
+  horasOrdinarias: number;
+  horasExtra: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  totalNeto: number;
+  estado: 'Pendiente' | 'Pagado';
+  percepciones: LineaNominaDTO[];
+  deducciones: LineaNominaDTO[];
+}
+
+export interface PeriodoNominaDTO {
+  id: string;
+  codigo: string;
+  nombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+  estado: string;
+}
+
+export interface RegistrarAjusteInput {
+  tipo: 'Bono' | 'Descuento' | 'Prestamo';
+  monto: number;
+  concepto: string;
+}
+
+export const nominaApi = {
+  actual: (params?: { fecha?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    const qs = searchParams.toString();
+    return apiClient.get<{ periodo: PeriodoNominaDTO; items: NominaRowDTO[] }>(`/nomina/actual${qs ? `?${qs}` : ''}`);
+  },
+
+  sincronizarAsistencia: (periodoId: string) =>
+    apiClient.post<{ items: NominaRowDTO[]; totalHorasExtraSincronizadas: number; totalFaltasAplicadas: number }>(
+      `/nomina/${periodoId}/sincronizar`,
+      {},
+    ),
+
+  registrarAjuste: (nominaId: string, data: RegistrarAjusteInput) =>
+    apiClient.post<NominaRowDTO>(`/nomina/${nominaId}/ajuste`, data),
+
+  actualizarEstado: (nominaId: string, estado: 'Pendiente' | 'Pagado') =>
+    apiClient.patch<NominaRowDTO>(`/nomina/${nominaId}/estado`, { estado }),
+
+  pagarTodos: (periodoId: string) =>
+    apiClient.post<{ items: NominaRowDTO[]; actualizados: number }>(`/nomina/${periodoId}/pagar-todos`, {}),
+};
