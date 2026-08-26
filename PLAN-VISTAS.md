@@ -243,7 +243,7 @@ Para cada vista refactorizada, verificar:
 
 ---
 
-#### 2. Operaciones (70 lineas)
+#### 2. Operaciones (70 lineas) - REALIZADA
 
 **Por que la segunda:**
 - Timeline/lista de operaciones -> patron de Card apiladas
@@ -264,7 +264,7 @@ Para cada vista refactorizada, verificar:
 
 ---
 
-#### 3. Incidentes (78 lineas)
+#### 3. Incidentes (78 lineas) - REALIZADA
 
 **Por que la tercera:**
 - Grid de cards con prioridades coloridas -> patron de Card con Badge
@@ -281,6 +281,18 @@ Para cada vista refactorizada, verificar:
 - Badge con variantes de color para prioridad
 - Card con layout consistente
 - EmptyState para "No hay incidentes reportados"
+
+**Cambios aplicados:**
+- Reemplazado `<h1>` manual por `<PageHeader />`
+- Cards envueltas en componente `<Card />`
+- Badges de prioridad y estado usan `<Badge variant="..." />`
+- Filtros por prioridad y estado con `<Select />`
+- Búsqueda funcional con `<SearchBar />`
+- EmptyState reutilizable cuando no hay resultados
+- CRUD local con modales `<FormModal />` y confirmación de eliminación
+- Permisos RBAC (`puedeCrear`, `puedeEditar`, `puedeEliminar`) ocultan botones según el usuario
+- Fechas formateadas con `formatDate()` de `lib/formatters.ts`
+- Layout responsive y zona segura (`p-6 bg-slate-50`)
 
 ---
 

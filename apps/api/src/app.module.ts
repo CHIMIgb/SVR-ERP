@@ -12,6 +12,8 @@ import { MantenimientoModule } from './modules/mantenimiento/mantenimiento.modul
 import { CombustibleModule } from './modules/combustible/combustible.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
+import { IncidentesModule } from './incidentes/incidentes.module';
+import { ProyectosModule } from './proyectos/proyectos.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -48,6 +50,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     CombustibleModule,
     InventarioModule,
     BitacoraModule,
+    IncidentesModule,
+    ProyectosModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController

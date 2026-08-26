@@ -7,8 +7,8 @@ ALTER TABLE "usuarios_bloqueados"
 
 -- 2. Agregar columna ip_address
 ALTER TABLE "usuarios_bloqueados"
-  ADD COLUMN "ip_address" TEXT;
+  ADD COLUMN IF NOT EXISTS "ip_address" TEXT;
 
 -- 3. Crear índice para búsquedas por IP
-CREATE INDEX "usuarios_bloqueados_ip_address_activo_idx"
+CREATE INDEX IF NOT EXISTS "usuarios_bloqueados_ip_address_activo_idx"
   ON "usuarios_bloqueados"("ip_address", "activo");
