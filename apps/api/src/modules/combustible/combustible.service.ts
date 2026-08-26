@@ -168,7 +168,8 @@ export class CombustibleService {
     // la fuente de verdad — el cliente no decide su propio rendimiento ni
     // si dispara una alerta de ordeña): litros/hora reales vs lo esperado
     // por el catálogo de la máquina.
-    const esperado = maquina.consumo_esperado_lts_hora != null ? Number(maquina.consumo_esperado_lts_hora) : 14.0;
+    const consumoEsperado = Number(maquina.consumo_esperado_lts_hora);
+    const esperado = consumoEsperado > 0 ? consumoEsperado : 14.0;
     const rendimiento = dto.horasTrabajadasPeriodo > 0 ? dto.litros / dto.horasTrabajadasPeriodo : esperado;
     const desviacion = ((rendimiento - esperado) / esperado) * 100;
     const alertaOrdena = desviacion > UMBRAL_ALERTA_PORCENTAJE;
@@ -249,7 +250,8 @@ export class CombustibleService {
     // estos campos derivados directamente.
     const litrosEfectivo = dto.litros ?? Number(existente.litros);
     const horasEfectivo = dto.horasTrabajadasPeriodo ?? Number(existente.horas_trabajadas_periodo);
-    const esperado = Number(existente.consumo_esperado_lts_hora);
+    const consumoEsperado = Number(existente.consumo_esperado_lts_hora);
+    const esperado = consumoEsperado > 0 ? consumoEsperado : 14.0;
     const rendimiento = horasEfectivo > 0 ? litrosEfectivo / horasEfectivo : esperado;
     const desviacion = ((rendimiento - esperado) / esperado) * 100;
     const alertaOrdena = desviacion > UMBRAL_ALERTA_PORCENTAJE;

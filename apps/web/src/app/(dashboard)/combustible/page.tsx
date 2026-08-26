@@ -16,7 +16,7 @@ import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/comp
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import { formatCurrency, formatFechaSolo } from '@/lib/formatters';
 
 const PAGE_SIZE = 10;
 
@@ -184,8 +184,17 @@ export default function CombustiblePage() {
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem) return;
+    if (!form.litros) {
+      showToast('Litros es obligatorio.', 'error');
+      return;
+    }
     setSubmitting(true);
-    const res = await combustibleApi.actualizar(selectedItem.id, buildPayload());
+    // UpdateCargaCombustibleDto no acepta maquinaId (no se permite reasignar
+    // la máquina de una carga ya registrada) — se omite explícitamente para
+    // no chocar con el whitelist del ValidationPipe del backend.
+    const payloadSinMaquina: Partial<CombustibleCreateInput> = { ...buildPayload() };
+    delete payloadSinMaquina.maquinaId;
+    const res = await combustibleApi.actualizar(selectedItem.id, payloadSinMaquina);
     setSubmitting(false);
     if (res.success) {
       showToast('Carga actualizada.', 'success');
@@ -196,7 +205,7 @@ export default function CombustiblePage() {
     } else {
       showToast(res.error.message, 'error');
     }
-  }, [selectedItem, buildPayload, showToast, fetchData, fetchStats, pagination.page, search, soloAlertas]);
+  }, [selectedItem, form.litros, buildPayload, showToast, fetchData, fetchStats, pagination.page, search, soloAlertas]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
@@ -233,7 +242,7 @@ export default function CombustiblePage() {
       header: 'Fecha y Lugar',
       render: (item) => (
         <div>
-          <div className="text-xs font-semibold text-slate-800">{formatDate(item.fecha)}</div>
+          <div className="text-xs font-semibold text-slate-800">{formatFechaSolo(item.fecha)}</div>
           <div className="text-[10px] text-slate-500 font-medium truncate max-w-[160px]">{item.lugar}</div>
         </div>
       ),
@@ -393,7 +402,7 @@ export default function CombustiblePage() {
         onSubmit={handleEdit}
         isSubmitting={submitting}
       >
-        <CombustibleForm form={form} setForm={setForm} maquinaria={maquinaria} rendimientoPreview={rendimientoPreview} />
+        <CombustibleForm form={form} setForm={setForm} maquinaria={maquinaria} rendimientoPreview={rendimientoPreview} maquinaBloqueada />
       </FormModal>
 
       <FormModal
@@ -425,13 +434,15 @@ interface CombustibleFormProps {
   setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
   maquinaria: Maquina[];
   rendimientoPreview: number;
+  /** La máquina de una carga ya registrada no se puede reasignar al editar. */
+  maquinaBloqueada?: boolean;
 }
 
-function CombustibleForm({ form, setForm, maquinaria, rendimientoPreview }: CombustibleFormProps) {
+function CombustibleForm({ form, setForm, maquinaria, rendimientoPreview, maquinaBloqueada }: CombustibleFormProps) {
   return (
     <div className="space-y-3">
-      <ModalField label="Máquina Asignada" required>
-        <select className={modalSelectClass} value={form.maquinaId} onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}>
+      <ModalField label="Máquina Asignada" required hint={maquinaBloqueada ? 'No se puede reasignar una carga ya registrada.' : undefined}>
+        <select disabled={maquinaBloqueada} className={modalSelectClass} value={form.maquinaId} onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}>
           {maquinaria.map((m) => (
             <option key={m.id} value={m.id}>{m.id} — {m.nombre} (Consumo normal: {m.consumoEsperadoLtsHora ?? 14} L/hr)</option>
           ))}

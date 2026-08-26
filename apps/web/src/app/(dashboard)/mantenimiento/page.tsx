@@ -15,7 +15,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import { useNotifications } from '@/components/layout/NotificationContext';
+import { formatCurrency, formatFechaSolo } from '@/lib/formatters';
 
 const PAGE_SIZE = 10;
 
@@ -39,6 +40,7 @@ const emptyForm = {
 export default function MantenimientoPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find((v) => v.ruta === '/mantenimiento');
@@ -180,10 +182,15 @@ export default function MantenimientoPage() {
       setCreateOpen(false);
       fetchData(pagination.page, search, tipoFiltro);
       fetchStats();
+      addNotification({
+        titulo: `🔧 Mantenimiento Registrado: ${res.data.maquinaId}`,
+        mensaje: `${res.data.descripcion} — ${formatCurrency(res.data.costo)}. Próximo servicio a las ${res.data.proximoServicioHoras} hrs.`,
+        tipo: 'info',
+      });
     } else {
       showToast(res.error.message, 'error');
     }
-  }, [validateForm, buildPayload, showToast, fetchData, fetchStats, pagination.page, search, tipoFiltro]);
+  }, [validateForm, buildPayload, showToast, addNotification, fetchData, fetchStats, pagination.page, search, tipoFiltro]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem || !validateForm()) return;
@@ -246,7 +253,7 @@ export default function MantenimientoPage() {
     {
       key: 'fecha',
       header: 'Fecha',
-      render: (item) => <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{formatDate(item.fecha)}</span>,
+      render: (item) => <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{formatFechaSolo(item.fecha)}</span>,
     },
     {
       key: 'horasServicio',

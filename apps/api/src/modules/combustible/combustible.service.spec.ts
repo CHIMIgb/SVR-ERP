@@ -146,6 +146,14 @@ describe('CombustibleService', () => {
       const createData = prisma.cargas_combustible.create.mock.calls[0][0].data;
       expect(createData.costo).toBe(2300);
     });
+
+    it('should not divide by zero when the machine has consumoEsperado = 0', async () => {
+      prisma.maquinas.findFirst.mockResolvedValue({ ...mockMaquina, consumo_esperado_lts_hora: 0 });
+      await service.create(createDto({ litros: 100, horasTrabajadasPeriodo: 10 }), 'user-1');
+      const createData = prisma.cargas_combustible.create.mock.calls[0][0].data;
+      expect(Number.isFinite(createData.desviacion_porcentaje)).toBe(true);
+      expect(createData.consumo_esperado_lts_hora).toBe(14);
+    });
   });
 
   describe('update', () => {
@@ -161,6 +169,13 @@ describe('CombustibleService', () => {
     it('should 404 when the carga does not exist', async () => {
       prisma.cargas_combustible.findFirst.mockResolvedValue(null);
       await expect(service.update('missing', { litros: 1 }, 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should not divide by zero when the stored consumoEsperado is 0', async () => {
+      prisma.cargas_combustible.findFirst.mockResolvedValue({ ...mockCarga, consumo_esperado_lts_hora: 0 });
+      await service.update('carga-uuid-1', { litros: 100 }, 'user-1');
+      const updateData = prisma.cargas_combustible.update.mock.calls[0][0].data;
+      expect(Number.isFinite(updateData.desviacion_porcentaje)).toBe(true);
     });
   });
 
