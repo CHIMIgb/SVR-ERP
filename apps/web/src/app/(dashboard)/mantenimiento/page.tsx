@@ -1,67 +1,102 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Wrench, Timer, AlertCircle, CheckCircle, Search, Filter, History, AlertTriangle, Loader2 } from 'lucide-react';
-import type { RegistroMantenimiento, Maquina } from '@svr-erp/shared';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Timer, CheckCircle, Pencil, Trash2, AlertCircle } from 'lucide-react';
+import type { Maquina } from '@svr-erp/shared';
 import { apiClient } from '@/lib/api';
-import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { mantenimientoApi, type MantenimientoDTO, type MantenimientoStats, type MantenimientoCreateInput } from '@/lib/api';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Pagination } from '@/components/ui/Pagination';
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { useNotifications } from '@/components/layout/NotificationContext';
+import { formatCurrency, formatDate } from '@/lib/formatters';
 
-/** Dentro de este margen de horas antes de la meta, el servicio ya se considera "próximo". */
-const UMBRAL_SERVICIO_PROXIMO_HRS = 50;
+const PAGE_SIZE = 10;
+
+const STATS_CERO: MantenimientoStats = {
+  serviciosProximos: 0,
+  promedioHorasServicio: 0,
+  equiposEnOptimoEstado: 0,
+  totalMaquinas: 0,
+};
+
+const emptyForm = {
+  maquinaId: '',
+  tipo: 'Preventivo' as MantenimientoCreateInput['tipo'],
+  descripcion: '',
+  fecha: new Date().toISOString().split('T')[0],
+  horasServicio: '',
+  costo: '',
+  proximoServicioHoras: '',
+};
 
 export default function MantenimientoPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
-  const { addNotification } = useNotifications();
-  const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
-  const [mantenimiento, setMantenimiento] = useState<RegistroMantenimiento[]>([]);
+  // ── Permisos RBAC ──
+  const vista = user?.vistas?.find((v) => v.ruta === '/mantenimiento');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
+  const puedeEliminar = vista?.puedeEliminar ?? false;
+
+  // ── Estado de datos ──
+  const [registros, setRegistros] = useState<MantenimientoDTO[]>([]);
   const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const [stats, setStats] = useState<MantenimientoStats>(STATS_CERO);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
+  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
+  // ── Búsqueda y filtro ──
   const [search, setSearch] = useState('');
-  const [soloProximos, setSoloProximos] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [tipoFiltro, setTipoFiltro] = useState<'' | 'Correctivo' | 'Preventivo'>('');
 
-  const [form, setForm] = useState({
-    maquinaId: '',
-    tipo: 'Preventivo' as 'Preventivo' | 'Correctivo',
-    descripcion: '',
-    fecha: new Date().toISOString().split('T')[0],
-    horasServicio: '',
-    costo: '',
-    proximoServicioHoras: '',
-  });
+  // ── Modales ──
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<MantenimientoDTO | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
 
-  const cargarDatos = useCallback(async () => {
-    setCargando(true);
-    setErrorCarga(null);
-    const [resMantenimiento, resMaquinas] = await Promise.all([
-      apiClient.get<RegistroMantenimiento[]>('/mantenimiento'),
-      apiClient.get<Maquina[]>('/maquinas'),
-    ]);
+  const fetchData = useCallback(async (page = 1, searchVal?: string, tipo?: string) => {
+    if (!hasLoaded.current) setInitialLoading(true);
+    else setRefreshing(true);
 
-    if (!resMantenimiento.success || !resMaquinas.success) {
-      setErrorCarga(
-        (!resMantenimiento.success && resMantenimiento.error.message) ||
-        (!resMaquinas.success && resMaquinas.error.message) ||
-        'No se pudo cargar la información de mantenimiento.'
-      );
-      setCargando(false);
-      return;
+    const res = await mantenimientoApi.listar({ search: searchVal || undefined, tipo: tipo || undefined, page, limit: PAGE_SIZE });
+    if (res.success) {
+      setRegistros(res.data.items);
+      setPagination(res.data.pagination);
+      setErrorCarga(null);
+    } else {
+      setErrorCarga(res.error.message);
     }
+    hasLoaded.current = true;
+    setInitialLoading(false);
+    setRefreshing(false);
+  }, []);
 
-    setMantenimiento(resMantenimiento.data);
-    setMaquinaria(resMaquinas.data);
-    setCargando(false);
+  const fetchStats = useCallback(async () => {
+    const res = await mantenimientoApi.stats();
+    if (res.success) setStats(res.data);
   }, []);
 
   useEffect(() => {
-    cargarDatos();
-  }, [cargarDatos]);
+    apiClient.get<Maquina[]>('/maquinas').then((res) => {
+      if (res.success) setMaquinaria(res.data);
+    });
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   useEffect(() => {
     if (maquinaria.length > 0 && !form.maquinaId) {
@@ -69,314 +104,354 @@ export default function MantenimientoPage() {
     }
   }, [maquinaria, form.maquinaId]);
 
-  // Último registro de mantenimiento por máquina, para proyectar próximo servicio vs horómetro actual.
-  const ultimoServicioPorMaquina = new Map<string, RegistroMantenimiento>();
-  for (const m of mantenimiento) {
-    const actual = ultimoServicioPorMaquina.get(m.maquinaId);
-    if (!actual || m.fecha > actual.fecha) ultimoServicioPorMaquina.set(m.maquinaId, m);
-  }
+  const handleSearch = useCallback(() => {
+    fetchData(1, search, tipoFiltro);
+  }, [fetchData, search, tipoFiltro]);
 
-  const maquinasProximas = maquinaria.filter((maq) => {
-    const ultimo = ultimoServicioPorMaquina.get(maq.id);
-    if (!ultimo) return false;
-    return maq.horometro >= ultimo.proximoServicioHoras - UMBRAL_SERVICIO_PROXIMO_HRS;
-  });
+  const handleTipoFiltro = useCallback((value: '' | 'Correctivo' | 'Preventivo') => {
+    setTipoFiltro(value);
+    fetchData(1, search, value);
+  }, [fetchData, search]);
 
-  const promedioHorasServicio = mantenimiento.length > 0
-    ? mantenimiento.reduce((acc, m) => acc + m.horasServicio, 0) / mantenimiento.length
-    : 0;
+  const handlePageChange = useCallback((page: number) => {
+    fetchData(page, search, tipoFiltro);
+  }, [fetchData, search, tipoFiltro]);
 
-  const equiposOptimos = Math.max(0, maquinaria.length - maquinasProximas.length);
-
-  const filtered = mantenimiento.filter((m) => {
-    const maq = maquinaria.find((x) => x.id === m.maquinaId);
-    const matchSearch =
-      m.maquinaId.toLowerCase().includes(search.toLowerCase()) ||
-      m.descripcion.toLowerCase().includes(search.toLowerCase()) ||
-      (maq?.nombre.toLowerCase().includes(search.toLowerCase()) ?? false);
-
-    if (!matchSearch) return false;
-    if (soloProximos && !maquinasProximas.some((p) => p.id === m.maquinaId)) return false;
+  // ── Validación + payload ──
+  const validateForm = useCallback(() => {
+    if (!form.maquinaId || !form.descripcion.trim()) {
+      showToast('Máquina y descripción son obligatorias.', 'error');
+      return false;
+    }
+    const horas = parseFloat(form.horasServicio);
+    const proximo = parseFloat(form.proximoServicioHoras);
+    if (isNaN(horas) || horas < 0) {
+      showToast('Las horas de servicio deben ser un número válido.', 'error');
+      return false;
+    }
+    if (isNaN(proximo) || proximo <= horas) {
+      showToast('El próximo servicio debe ser mayor a las horas de servicio.', 'error');
+      return false;
+    }
     return true;
-  });
+  }, [form, showToast]);
 
-  const handleSubmit = async () => {
-    if (!form.maquinaId || !form.descripcion.trim() || !form.horasServicio || !form.proximoServicioHoras) {
-      showToast('Máquina, descripción, horas de servicio y próximo servicio son obligatorios.', 'error');
-      return;
-    }
+  const buildPayload = useCallback((): MantenimientoCreateInput => ({
+    maquinaId: form.maquinaId,
+    tipo: form.tipo,
+    descripcion: form.descripcion.trim(),
+    fecha: form.fecha,
+    horasServicio: parseFloat(form.horasServicio) || 0,
+    costo: parseFloat(form.costo) || 0,
+    proximoServicioHoras: parseFloat(form.proximoServicioHoras) || 0,
+  }), [form]);
 
-    setGuardando(true);
-    const res = await apiClient.post<RegistroMantenimiento>('/mantenimiento', {
-      maquinaId: form.maquinaId,
-      tipo: form.tipo,
-      descripcion: form.descripcion.trim(),
-      fecha: form.fecha,
-      horasServicio: parseFloat(form.horasServicio) || 0,
-      costo: parseFloat(form.costo) || 0,
-      proximoServicioHoras: parseFloat(form.proximoServicioHoras) || 0,
+  const openCreate = useCallback(() => {
+    setForm({ ...emptyForm, maquinaId: maquinaria[0]?.id ?? '' });
+    setCreateOpen(true);
+  }, [maquinaria]);
+
+  const openEdit = useCallback((item: MantenimientoDTO) => {
+    setSelectedItem(item);
+    setForm({
+      maquinaId: item.maquinaId,
+      tipo: item.tipo,
+      descripcion: item.descripcion,
+      fecha: item.fecha,
+      horasServicio: String(item.horasServicio),
+      costo: String(item.costo),
+      proximoServicioHoras: String(item.proximoServicioHoras),
     });
-    setGuardando(false);
+    setEditOpen(true);
+  }, []);
 
-    if (!res.success) {
-      showToast(`Error: ${res.error.message}`, 'error');
-      return;
+  const openDelete = useCallback((item: MantenimientoDTO) => {
+    setSelectedItem(item);
+    setDeleteOpen(true);
+  }, []);
+
+  const handleCreate = useCallback(async () => {
+    if (!validateForm()) return;
+    setSubmitting(true);
+    const res = await mantenimientoApi.crear(buildPayload());
+    setSubmitting(false);
+    if (res.success) {
+      showToast('Servicio de mantenimiento registrado.', 'success');
+      setCreateOpen(false);
+      fetchData(pagination.page, search, tipoFiltro);
+      fetchStats();
+    } else {
+      showToast(res.error.message, 'error');
     }
+  }, [validateForm, buildPayload, showToast, fetchData, fetchStats, pagination.page, search, tipoFiltro]);
 
-    setMantenimiento((prev) => [res.data, ...prev]);
-    setModalOpen(false);
-    setForm((f) => ({ ...f, descripcion: '', horasServicio: '', costo: '', proximoServicioHoras: '' }));
+  const handleEdit = useCallback(async () => {
+    if (!selectedItem || !validateForm()) return;
+    setSubmitting(true);
+    const res = await mantenimientoApi.actualizar(selectedItem.id, buildPayload());
+    setSubmitting(false);
+    if (res.success) {
+      showToast('Registro actualizado.', 'success');
+      setEditOpen(false);
+      setSelectedItem(null);
+      fetchData(pagination.page, search, tipoFiltro);
+      fetchStats();
+    } else {
+      showToast(res.error.message, 'error');
+    }
+  }, [selectedItem, validateForm, buildPayload, showToast, fetchData, fetchStats, pagination.page, search, tipoFiltro]);
 
-    showToast(`✅ Servicio de ${res.data.tipo.toLowerCase()} registrado para ${res.data.maquinaId}.`, 'success');
-    addNotification({
-      titulo: `🔧 Mantenimiento Registrado: ${res.data.maquinaId}`,
-      mensaje: `${res.data.descripcion} — ${formatter.format(res.data.costo)}. Próximo servicio a las ${res.data.proximoServicioHoras} hrs.`,
-      tipo: 'info',
-    });
-  };
+  const handleDelete = useCallback(async () => {
+    if (!selectedItem) return;
+    setSubmitting(true);
+    const res = await mantenimientoApi.eliminar(selectedItem.id);
+    setSubmitting(false);
+    if (res.success) {
+      showToast('Registro eliminado.', 'success');
+      setDeleteOpen(false);
+      setSelectedItem(null);
+      fetchData(pagination.page, search, tipoFiltro);
+      fetchStats();
+    } else {
+      showToast(res.error.message, 'error');
+    }
+  }, [selectedItem, showToast, fetchData, fetchStats, pagination.page, search, tipoFiltro]);
 
-  if (cargando) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
+  const columns: Column<MantenimientoDTO>[] = [
+    {
+      key: 'maquinaId',
+      header: 'Máquina',
+      render: (item) => {
+        const maquina = maquinaria.find((m) => m.id === item.maquinaId);
+        return (
+          <div>
+            <div className="font-black text-slate-900">{item.maquinaId}</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase">{maquina?.nombre}</div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'tipo',
+      header: 'Tipo',
+      render: (item) => (
+        <Badge variant={item.tipo === 'Preventivo' ? 'info' : 'warning'} size="sm" dot>{item.tipo}</Badge>
+      ),
+    },
+    {
+      key: 'descripcion',
+      header: 'Descripción',
+      render: (item) => <span className="text-sm font-semibold text-slate-600 max-w-[220px] truncate block">{item.descripcion}</span>,
+    },
+    {
+      key: 'fecha',
+      header: 'Fecha',
+      render: (item) => <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{formatDate(item.fecha)}</span>,
+    },
+    {
+      key: 'horasServicio',
+      header: 'Horas Servicio',
+      align: 'right',
+      render: (item) => <span className="font-bold text-slate-700">{item.horasServicio} hrs</span>,
+    },
+    {
+      key: 'proximoServicioHoras',
+      header: 'Próximo Servicio',
+      align: 'right',
+      render: (item) => {
+        const maquina = maquinaria.find((m) => m.id === item.maquinaId);
+        const esProximo = maquina ? maquina.horometro >= item.proximoServicioHoras - 50 : false;
+        return (
+          <Badge variant={esProximo ? 'warning' : 'neutral'} size="sm">{item.proximoServicioHoras} hrs</Badge>
+        );
+      },
+    },
+    {
+      key: 'costo',
+      header: 'Costo',
+      align: 'right',
+      render: (item) => <span className="font-black text-slate-900">{formatCurrency(item.costo)}</span>,
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center justify-end gap-1">
+          {puedeEditar && (
+            <Button variant="warning" size="sm" icon={<Pencil className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); openEdit(item); }}>
+              Editar
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button variant="danger" size="sm" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); openDelete(item); }}>
+              Eliminar
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
-  if (errorCarga) {
+  if (errorCarga && !hasLoaded.current) {
     return (
       <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
-        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
+        <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
         <p className="text-sm font-bold text-red-700">{errorCarga}</p>
-        <button onClick={cargarDatos} className="btn-primary text-xs">
-          Reintentar
-        </button>
+        <button onClick={() => fetchData(1)} className="btn-primary text-xs">Reintentar</button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Mantenimiento de Flota</h1>
-          <p className="text-slate-500 font-medium">Programación de servicios preventivos y registro de reparaciones correctivas.</p>
-        </div>
-        <button className="btn-primary flex items-center gap-2 w-fit" onClick={() => setModalOpen(true)}>
-          <Plus className="w-5 h-5" />
-          Programar Servicio
-        </button>
+    <div className="space-y-6">
+      <PageHeader
+        title="Mantenimiento de Flota"
+        subtitle="Programación de servicios preventivos y registro de reparaciones correctivas."
+        action={
+          puedeCrear ? (
+            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+              Programar Servicio
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatsCard icon={<AlertCircle size={22} />} value={stats.serviciosProximos} label="Servicios Próximos" color={stats.serviciosProximos > 0 ? 'warning' : 'success'} />
+        <StatsCard icon={<Timer size={22} />} value={`${stats.promedioHorasServicio} hrs`} label="Prom. Horas/Servicio" color="info" />
+        <StatsCard icon={<CheckCircle size={22} />} value={`${stats.equiposEnOptimoEstado} / ${stats.totalMaquinas}`} label="Equipos en Óptimo Estado" color="success" />
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div
-          onClick={() => setSoloProximos(!soloProximos)}
-          className={`card flex items-center gap-4 py-6 border-l-4 cursor-pointer transition-all ${
-            soloProximos ? 'border-l-orange-500 bg-orange-50/40' : 'border-l-orange-500'
-          }`}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <SearchBar value={search} onChange={setSearch} onSearch={handleSearch} placeholder="Buscar por máquina o descripción..." className="flex-1" />
+        <select
+          value={tipoFiltro}
+          onChange={(e) => handleTipoFiltro(e.target.value as '' | 'Correctivo' | 'Preventivo')}
+          className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
         >
-          <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center">
-            <AlertCircle className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Servicios Próximos</p>
-            <h4 className="text-xl font-black text-slate-900">
-              {maquinasProximas.length} <span className="text-xs text-slate-400 font-medium">máquinas {soloProximos && '(filtrado)'}</span>
-            </h4>
-          </div>
-        </div>
-        <div className="card flex items-center gap-4 py-6 border-l-4 border-l-blue-500">
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-            <Timer className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prom. Horas/Servicio</p>
-            <h4 className="text-xl font-black text-slate-900">{promedioHorasServicio.toFixed(0)} <span className="text-xs text-slate-400 font-medium">hrs</span></h4>
-          </div>
-        </div>
-        <div className="card flex items-center gap-4 py-6 border-l-4 border-l-green-500">
-          <div className="w-12 h-12 bg-green-50 text-green-600 rounded-xl flex items-center justify-center">
-            <CheckCircle className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Equipos en Óptimo Estado</p>
-            <h4 className="text-xl font-black text-slate-900">{equiposOptimos} / {maquinaria.length}</h4>
-          </div>
-        </div>
+          <option value="">Todos los tipos</option>
+          <option value="Preventivo">Preventivo</option>
+          <option value="Correctivo">Correctivo</option>
+        </select>
       </div>
 
-      {/* Maintenance History */}
-      <div className="card p-0 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-             <History className="w-5 h-5 text-slate-400" />
-             Historial de Servicios Realizados
-          </h3>
-          <div className="flex gap-2">
-             <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por máquina o descripción..."
-                  className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none"
-                />
-             </div>
-             <button
-               onClick={() => setSoloProximos(!soloProximos)}
-               className={`p-2 border rounded-lg transition-colors ${
-                 soloProximos ? 'border-orange-300 bg-orange-50 text-orange-600' : 'border-slate-200 hover:bg-slate-50 text-slate-500'
-               }`}
-               title="Filtrar solo máquinas con servicio próximo"
-             >
-                <Filter className="w-4 h-4" />
-             </button>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">ID Máquina</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Tipo / Descripción</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Fecha</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Horas en Servicio</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Próximo Servicio</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Costo Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((m) => {
-                const maquina = maquinaria.find(x => x.id === m.maquinaId);
-                const esProximo = maquinasProximas.some((p) => p.id === m.maquinaId) && ultimoServicioPorMaquina.get(m.maquinaId)?.id === m.id;
-                return (
-                  <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-black text-slate-900">{m.maquinaId}</div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{maquina?.nombre}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                       <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded mb-1 inline-block ${
-                         m.tipo === 'Preventivo' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
-                       }`}>
-                          {m.tipo}
-                       </span>
-                       <div className="text-sm font-semibold text-slate-600">{m.descripcion}</div>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-500">{m.fecha}</td>
-                    <td className="px-6 py-4">
-                       <div className="flex items-center gap-2">
-                          <Timer className="w-4 h-4 text-slate-300" />
-                          <span className="text-sm font-black text-slate-900">{m.horasServicio} hrs</span>
-                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs font-bold px-2 py-1 rounded-lg ${esProximo ? 'bg-orange-100 text-orange-700' : 'text-slate-500'}`}>
-                        {m.proximoServicioHoras} hrs {esProximo && '⚠️'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right text-sm font-black text-slate-900">
-                       {formatter.format(m.costo)}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm font-medium">Sin registros que coincidan con la búsqueda.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal Programar Servicio */}
-      <Modal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onConfirm={handleSubmit}
-        title="Programar Servicio de Mantenimiento"
-        confirmLabel={guardando ? 'Guardando…' : 'Guardar Servicio'}
-      >
-        <ModalField label="Máquina *">
-          <select
-            className={selectClass}
-            value={form.maquinaId}
-            onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-          >
-            {maquinaria.map(m => (
-              <option key={m.id} value={m.id}>{m.id} — {m.nombre} ({m.horometro.toLocaleString()} hrs)</option>
-            ))}
-          </select>
-        </ModalField>
-
-        <ModalField label="Tipo de Servicio *">
-          <select
-            className={selectClass}
-            value={form.tipo}
-            onChange={(e) => setForm({ ...form, tipo: e.target.value as 'Preventivo' | 'Correctivo' })}
-          >
-            <option value="Preventivo">Preventivo</option>
-            <option value="Correctivo">Correctivo</option>
-          </select>
-        </ModalField>
-
-        <ModalField label="Descripción *">
-          <input
-            className={inputClass}
-            placeholder="Ej: Cambio de aceite y filtros de motor"
-            value={form.descripcion}
-            onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+      <div className="space-y-3">
+        <div className="relative">
+          {refreshing && !initialLoading && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
+              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <DataTable
+            columns={columns}
+            data={registros}
+            loading={initialLoading}
+            keyExtractor={(item) => item.id}
+            emptyText="Sin registros de mantenimiento."
+            maxBodyHeight="520px"
           />
-        </ModalField>
-
-        <div className="grid grid-cols-2 gap-3">
-          <ModalField label="Fecha">
-            <input
-              type="date"
-              className={inputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Costo (MXN)">
-            <input
-              type="number"
-              className={inputClass}
-              placeholder="5500"
-              value={form.costo}
-              onChange={(e) => setForm({ ...form, costo: e.target.value })}
-            />
-          </ModalField>
         </div>
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
+          pageSize={PAGE_SIZE}
+          onPageChange={handlePageChange}
+        />
+      </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <ModalField label="Horas de Servicio (horómetro actual) *">
-            <input
-              type="number"
-              step="0.1"
-              className={inputClass}
-              placeholder="1200"
-              value={form.horasServicio}
-              onChange={(e) => setForm({ ...form, horasServicio: e.target.value })}
-            />
-          </ModalField>
+      <FormModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCancel={() => setCreateOpen(false)}
+        title="Programar Servicio de Mantenimiento"
+        submitLabel="Guardar Servicio"
+        onSubmit={handleCreate}
+        isSubmitting={submitting}
+      >
+        <MantenimientoForm form={form} setForm={setForm} maquinaria={maquinaria} />
+      </FormModal>
 
-          <ModalField label="Próximo Servicio (hrs) *">
-            <input
-              type="number"
-              step="0.1"
-              className={inputClass}
-              placeholder="1450"
-              value={form.proximoServicioHoras}
-              onChange={(e) => setForm({ ...form, proximoServicioHoras: e.target.value })}
-            />
-          </ModalField>
-        </div>
-      </Modal>
+      <FormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onCancel={() => setEditOpen(false)}
+        title="Editar Servicio de Mantenimiento"
+        submitLabel="Guardar Cambios"
+        onSubmit={handleEdit}
+        isSubmitting={submitting}
+      >
+        <MantenimientoForm form={form} setForm={setForm} maquinaria={maquinaria} />
+      </FormModal>
+
+      <FormModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onCancel={() => setDeleteOpen(false)}
+        title="Eliminar Registro"
+        subtitle="Esta acción no se puede deshacer."
+        submitLabel="Sí, Eliminar"
+        onSubmit={handleDelete}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar este registro?</p>
+            <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.maquinaId} · {selectedItem.descripcion}</p>
+          </div>
+        )}
+      </FormModal>
+    </div>
+  );
+}
+
+interface MantenimientoFormProps {
+  form: typeof emptyForm;
+  setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
+  maquinaria: Maquina[];
+}
+
+function MantenimientoForm({ form, setForm, maquinaria }: MantenimientoFormProps) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <ModalField label="Máquina" required className="sm:col-span-2">
+        <select className={modalSelectClass} value={form.maquinaId} onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}>
+          {maquinaria.map((m) => (
+            <option key={m.id} value={m.id}>{m.id} — {m.nombre} ({m.horometro.toLocaleString()} hrs)</option>
+          ))}
+        </select>
+      </ModalField>
+
+      <ModalField label="Tipo de Servicio" required>
+        <select className={modalSelectClass} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as MantenimientoCreateInput['tipo'] })}>
+          <option value="Preventivo">Preventivo</option>
+          <option value="Correctivo">Correctivo</option>
+        </select>
+      </ModalField>
+
+      <ModalField label="Fecha" required>
+        <input type="date" className={modalInputClass} value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+      </ModalField>
+
+      <ModalField label="Descripción" required className="sm:col-span-2">
+        <input className={modalInputClass} placeholder="Ej: Cambio de aceite y filtros de motor" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      </ModalField>
+
+      <ModalField label="Horas de Servicio (horómetro actual)" required>
+        <input type="number" step="0.1" className={modalInputClass} placeholder="1200" value={form.horasServicio} onChange={(e) => setForm({ ...form, horasServicio: e.target.value })} />
+      </ModalField>
+
+      <ModalField label="Próximo Servicio (hrs)" required hint="Debe ser mayor a las horas de servicio.">
+        <input type="number" step="0.1" className={modalInputClass} placeholder="1450" value={form.proximoServicioHoras} onChange={(e) => setForm({ ...form, proximoServicioHoras: e.target.value })} />
+      </ModalField>
+
+      <ModalField label="Costo (MXN)" className="sm:col-span-2">
+        <input type="number" className={modalInputClass} placeholder="5500" value={form.costo} onChange={(e) => setForm({ ...form, costo: e.target.value })} />
+      </ModalField>
     </div>
   );
 }

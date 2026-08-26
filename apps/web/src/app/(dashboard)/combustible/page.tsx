@@ -1,66 +1,101 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Plus, Fuel, DollarSign, Search,
-  AlertTriangle, ShieldAlert, ShieldCheck, Activity, Loader2,
-} from 'lucide-react';
-import type { CargaCombustible, Maquina } from '@svr-erp/shared';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Fuel, DollarSign, Activity, ShieldAlert, ShieldCheck, Pencil, Trash2, AlertCircle } from 'lucide-react';
+import type { Maquina } from '@svr-erp/shared';
 import { apiClient } from '@/lib/api';
-import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { combustibleApi, type CargaCombustibleDTO, type CombustibleStats, type CombustibleCreateInput } from '@/lib/api';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Pagination } from '@/components/ui/Pagination';
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
+import { formatCurrency, formatDate } from '@/lib/formatters';
+
+const PAGE_SIZE = 10;
+
+const STATS_CERO: CombustibleStats = {
+  totalLitros: 0,
+  totalCosto: 0,
+  rendimientoPromedio: 0,
+  totalAlertasOrdena: 0,
+};
+
+const emptyForm = {
+  maquinaId: '',
+  litros: '120',
+  // Costo se deja en blanco a propósito: si no se captura, el servidor lo
+  // calcula (litros * precio de referencia) — no duplicamos ese precio aquí.
+  costo: '',
+  lugar: 'Autoconsumo en Obra',
+  operador: '',
+  horasTrabajadas: '8.0',
+};
 
 export default function CombustiblePage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
-  const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
-  const [cargas, setCargas] = useState<CargaCombustible[]>([]);
+  const vista = user?.vistas?.find((v) => v.ruta === '/combustible');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
+  const puedeEliminar = vista?.puedeEliminar ?? false;
+
+  const [cargas, setCargas] = useState<CargaCombustibleDTO[]>([]);
   const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const [stats, setStats] = useState<CombustibleStats>(STATS_CERO);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
+  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   const [search, setSearch] = useState('');
-  const [filterAlertsOnly, setFilterAlertsOnly] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [soloAlertas, setSoloAlertas] = useState(false);
 
-  const [form, setForm] = useState({
-    maquinaId: '',
-    litros: '120',
-    costo: '2760',
-    lugar: 'Autoconsumo en Obra',
-    operador: '',
-    horasTrabajadas: '8.0'
-  });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<CargaCombustibleDTO | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
 
-  const cargarDatos = useCallback(async () => {
-    setCargando(true);
-    setErrorCarga(null);
-    const [resCargas, resMaquinas] = await Promise.all([
-      apiClient.get<CargaCombustible[]>('/combustible'),
-      apiClient.get<Maquina[]>('/maquinas'),
-    ]);
+  const fetchData = useCallback(async (page = 1, searchVal?: string, alertas?: boolean) => {
+    if (!hasLoaded.current) setInitialLoading(true);
+    else setRefreshing(true);
 
-    if (!resCargas.success || !resMaquinas.success) {
-      setErrorCarga(
-        (!resCargas.success && resCargas.error.message) ||
-        (!resMaquinas.success && resMaquinas.error.message) ||
-        'No se pudo cargar la información de combustible.'
-      );
-      setCargando(false);
-      return;
+    const res = await combustibleApi.listar({ search: searchVal || undefined, soloAlertas: alertas, page, limit: PAGE_SIZE });
+    if (res.success) {
+      setCargas(res.data.items);
+      setPagination(res.data.pagination);
+      setErrorCarga(null);
+    } else {
+      setErrorCarga(res.error.message);
     }
+    hasLoaded.current = true;
+    setInitialLoading(false);
+    setRefreshing(false);
+  }, []);
 
-    setCargas(resCargas.data);
-    setMaquinaria(resMaquinas.data);
-    setCargando(false);
+  const fetchStats = useCallback(async () => {
+    const res = await combustibleApi.stats();
+    if (res.success) setStats(res.data);
   }, []);
 
   useEffect(() => {
-    cargarDatos();
-  }, [cargarDatos]);
+    apiClient.get<Maquina[]>('/maquinas').then((res) => {
+      if (res.success) setMaquinaria(res.data);
+    });
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   useEffect(() => {
     if (maquinaria.length > 0 && !form.maquinaId) {
@@ -68,367 +103,373 @@ export default function CombustiblePage() {
     }
   }, [maquinaria, form.maquinaId]);
 
-  const totalLitros = cargas.reduce((acc, curr) => acc + curr.litros, 0);
-  const totalCosto = cargas.reduce((acc, curr) => acc + curr.costo, 0);
-  const totalAlertasOrdena = cargas.filter(c => c.alertaOrdena).length;
-  const rendimientoPromedio = cargas.length > 0
-    ? cargas.reduce((acc, c) => acc + c.rendimientoLtsHora, 0) / cargas.length
-    : 0;
+  const handleSearch = useCallback(() => fetchData(1, search, soloAlertas), [fetchData, search, soloAlertas]);
 
-  const filtered = cargas.filter((c) => {
-    const maq = maquinaria.find(m => m.id === c.maquinaId);
-    const matchSearch =
-      c.maquinaId.toLowerCase().includes(search.toLowerCase()) ||
-      c.operador.toLowerCase().includes(search.toLowerCase()) ||
-      (maq?.nombre.toLowerCase().includes(search.toLowerCase()) ?? false);
+  const toggleSoloAlertas = useCallback(() => {
+    const next = !soloAlertas;
+    setSoloAlertas(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, soloAlertas]);
 
-    if (!matchSearch) return false;
-    if (filterAlertsOnly && !c.alertaOrdena) return false;
-    return true;
-  });
+  const handlePageChange = useCallback((page: number) => fetchData(page, search, soloAlertas), [fetchData, search, soloAlertas]);
 
   // Previsualización en cliente — únicamente para orientar al usuario mientras
   // llena el formulario. El servidor recalcula todo (rendimiento, desviación,
   // alerta de ordeña) y es la única fuente de verdad de lo que se guarda.
-  const maquinaSeleccionada = maquinaria.find(m => m.id === form.maquinaId);
+  const maquinaSeleccionada = maquinaria.find((m) => m.id === form.maquinaId);
   const esperadoPreview = maquinaSeleccionada?.consumoEsperadoLtsHora ?? 14.0;
   const rendimientoPreview = (parseFloat(form.horasTrabajadas) || 0) > 0
     ? (parseFloat(form.litros) || 0) / (parseFloat(form.horasTrabajadas) || 1)
     : esperadoPreview;
 
-  const handleSubmit = async () => {
+  const buildPayload = useCallback((): CombustibleCreateInput => ({
+    maquinaId: form.maquinaId,
+    litros: parseFloat(form.litros) || 0,
+    costo: form.costo ? parseFloat(form.costo) : undefined,
+    lugar: form.lugar || 'Autoconsumo Obra',
+    operador: form.operador || undefined,
+    horasTrabajadasPeriodo: parseFloat(form.horasTrabajadas) || 0,
+  }), [form]);
+
+  const openCreate = useCallback(() => {
+    setForm({ ...emptyForm, maquinaId: maquinaria[0]?.id ?? '' });
+    setCreateOpen(true);
+  }, [maquinaria]);
+
+  const openEdit = useCallback((item: CargaCombustibleDTO) => {
+    setSelectedItem(item);
+    setForm({
+      maquinaId: item.maquinaId,
+      litros: String(item.litros),
+      costo: String(item.costo),
+      lugar: item.lugar,
+      operador: item.operador,
+      horasTrabajadas: String(item.horasTrabajadasPeriodo),
+    });
+    setEditOpen(true);
+  }, []);
+
+  const openDelete = useCallback((item: CargaCombustibleDTO) => {
+    setSelectedItem(item);
+    setDeleteOpen(true);
+  }, []);
+
+  const handleCreate = useCallback(async () => {
     if (!form.maquinaId || !form.litros) {
       showToast('Máquina y litros son obligatorios.', 'error');
       return;
     }
-
-    setGuardando(true);
-    const res = await apiClient.post<CargaCombustible>('/combustible', {
-      maquinaId: form.maquinaId,
-      litros: parseFloat(form.litros) || 0,
-      costo: form.costo ? parseFloat(form.costo) : undefined,
-      lugar: form.lugar || 'Autoconsumo Obra',
-      operador: form.operador || undefined,
-      horasTrabajadasPeriodo: parseFloat(form.horasTrabajadas) || 0,
-    });
-    setGuardando(false);
-
-    if (!res.success) {
-      showToast(`Error: ${res.error.message}`, 'error');
-      return;
-    }
-
-    const nueva = res.data;
-    setCargas((prev) => [nueva, ...prev]);
-    setModalOpen(false);
-
-    if (nueva.alertaOrdena) {
-      showToast(`🚨 ALERTA: Rendimiento anormal de ${nueva.rendimientoLtsHora} L/hr (+${nueva.desviacionPorcentaje}%) en ${nueva.maquinaId}.`, 'error');
-      addNotification({
-        titulo: `🚨 Alerta de Ordeña/Sobreconsumo: ${nueva.maquinaId}`,
-        mensaje: `Registró ${nueva.rendimientoLtsHora} L/hr (+${nueva.desviacionPorcentaje}% vs esperado de ${nueva.consumoEsperadoLtsHora} L/hr). Operador: ${nueva.operador}.`,
-        tipo: 'alerta'
-      });
+    setSubmitting(true);
+    const res = await combustibleApi.crear(buildPayload());
+    setSubmitting(false);
+    if (res.success) {
+      const nueva = res.data;
+      setCreateOpen(false);
+      fetchData(pagination.page, search, soloAlertas);
+      fetchStats();
+      if (nueva.alertaOrdena) {
+        showToast(`🚨 ALERTA: Rendimiento anormal de ${nueva.rendimientoLtsHora} L/hr (+${nueva.desviacionPorcentaje}%).`, 'error');
+        addNotification({
+          titulo: `🚨 Alerta de Ordeña/Sobreconsumo: ${nueva.maquinaId}`,
+          mensaje: `Registró ${nueva.rendimientoLtsHora} L/hr (+${nueva.desviacionPorcentaje}% vs esperado de ${nueva.consumoEsperadoLtsHora} L/hr). Operador: ${nueva.operador}.`,
+          tipo: 'alerta',
+        });
+      } else {
+        showToast(`✅ Carga de ${nueva.litros}L registrada. Rendimiento óptimo (${nueva.rendimientoLtsHora} L/hr).`, 'success');
+      }
     } else {
-      showToast(`✅ Carga de ${nueva.litros}L registrada. Rendimiento óptimo (${nueva.rendimientoLtsHora} L/hr).`, 'success');
+      showToast(res.error.message, 'error');
     }
-  };
+  }, [form, buildPayload, showToast, addNotification, fetchData, fetchStats, pagination.page, search, soloAlertas]);
 
-  if (cargando) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
+  const handleEdit = useCallback(async () => {
+    if (!selectedItem) return;
+    setSubmitting(true);
+    const res = await combustibleApi.actualizar(selectedItem.id, buildPayload());
+    setSubmitting(false);
+    if (res.success) {
+      showToast('Carga actualizada.', 'success');
+      setEditOpen(false);
+      setSelectedItem(null);
+      fetchData(pagination.page, search, soloAlertas);
+      fetchStats();
+    } else {
+      showToast(res.error.message, 'error');
+    }
+  }, [selectedItem, buildPayload, showToast, fetchData, fetchStats, pagination.page, search, soloAlertas]);
 
-  if (errorCarga) {
+  const handleDelete = useCallback(async () => {
+    if (!selectedItem) return;
+    setSubmitting(true);
+    const res = await combustibleApi.eliminar(selectedItem.id);
+    setSubmitting(false);
+    if (res.success) {
+      showToast('Carga eliminada.', 'success');
+      setDeleteOpen(false);
+      setSelectedItem(null);
+      fetchData(pagination.page, search, soloAlertas);
+      fetchStats();
+    } else {
+      showToast(res.error.message, 'error');
+    }
+  }, [selectedItem, showToast, fetchData, fetchStats, pagination.page, search, soloAlertas]);
+
+  const columns: Column<CargaCombustibleDTO>[] = [
+    {
+      key: 'maquinaId',
+      header: 'Máquina',
+      render: (item) => {
+        const maquina = maquinaria.find((m) => m.id === item.maquinaId);
+        return (
+          <div>
+            <div className="font-black text-slate-900 text-sm">{item.maquinaId} — {maquina?.nombre}</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase">Operador: {item.operador}</div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'fecha',
+      header: 'Fecha y Lugar',
+      render: (item) => (
+        <div>
+          <div className="text-xs font-semibold text-slate-800">{formatDate(item.fecha)}</div>
+          <div className="text-[10px] text-slate-500 font-medium truncate max-w-[160px]">{item.lugar}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'litros',
+      header: 'Litros y Costo',
+      align: 'right',
+      render: (item) => (
+        <div>
+          <div className="text-sm font-black text-slate-900">{item.litros} L</div>
+          <div className="text-xs font-bold text-primary">{formatCurrency(item.costo)}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'horasTrabajadasPeriodo',
+      header: 'Horas Periodo',
+      align: 'center',
+      render: (item) => <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">{item.horasTrabajadasPeriodo} hrs</span>,
+    },
+    {
+      key: 'rendimientoLtsHora',
+      header: 'Rendimiento',
+      render: (item) => (
+        <div>
+          <span className={`text-sm font-black ${item.alertaOrdena ? 'text-red-600' : 'text-slate-900'}`}>{item.rendimientoLtsHora} L/hr</span>
+          <div className="text-[10px] text-slate-400 font-medium">Esperado: {item.consumoEsperadoLtsHora} L/hr</div>
+        </div>
+      ),
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (item) => (
+        item.alertaOrdena ? (
+          <Badge variant="error" size="sm">🚨 Ordeña (+{item.desviacionPorcentaje}%)</Badge>
+        ) : (
+          <Badge variant="success" size="sm">Normal</Badge>
+        )
+      ),
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center justify-end gap-1">
+          {puedeEditar && (
+            <Button variant="warning" size="sm" icon={<Pencil className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); openEdit(item); }}>
+              Editar
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button variant="danger" size="sm" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); openDelete(item); }}>
+              Eliminar
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  if (errorCarga && !hasLoaded.current) {
     return (
       <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
-        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
+        <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
         <p className="text-sm font-bold text-red-700">{errorCarga}</p>
-        <button onClick={cargarDatos} className="btn-primary text-xs">
-          Reintentar
-        </button>
+        <button onClick={() => fetchData(1)} className="btn-primary text-xs">Reintentar</button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <PageHeader
+        title="Control de Combustible y Rendimiento"
+        subtitle="Telemetría de consumo en Litros/Hora, detección de fugas, ordeña y costos operativos."
+        action={
+          puedeCrear ? (
+            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+              Registrar Carga Diésel
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">Control de Combustible y Rendimiento</h1>
-            {totalAlertasOrdena > 0 && (
-              <span className="flex items-center gap-1 bg-red-100 text-red-700 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-red-200 animate-pulse">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> {totalAlertasOrdena} Alerta(s) de Ordeña
-              </span>
-            )}
-          </div>
-          <p className="text-slate-500 font-medium">Telemetría de consumo en Litros/Hora, detección de fugas, ordeña y costos operativos.</p>
-        </div>
-
-        <div className="flex gap-2">
-          <button className="btn-primary flex items-center gap-2 text-xs font-black uppercase tracking-wider" onClick={() => setModalOpen(true)}>
-            <Plus className="w-4 h-4" /> Registrar Carga Diésel
-          </button>
-        </div>
-      </div>
-
-      {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard icon={<Fuel size={22} />} value={`${stats.totalLitros.toLocaleString()} L`} label="Litros Totales" color="primary" />
+        <StatsCard icon={<DollarSign size={22} />} value={formatCurrency(stats.totalCosto)} label="Gasto Total Diésel" color="success" />
+        <StatsCard icon={<Activity size={22} />} value={`${stats.rendimientoPromedio} L/hr`} label="Rendimiento Promedio" color="info" />
+        <StatsCard
+          icon={<ShieldAlert size={22} />}
+          value={stats.totalAlertasOrdena}
+          label="Alertas de Ordeña"
+          color={stats.totalAlertasOrdena > 0 ? 'error' : 'neutral'}
+          onClick={toggleSoloAlertas}
+        />
+      </div>
 
-        <div className="card flex items-center gap-4 py-5">
-          <div className="w-12 h-12 bg-orange-50 text-primary rounded-2xl flex items-center justify-center border border-orange-200/60">
-            <Fuel className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Litros Totales</p>
-            <h4 className="text-xl font-black text-slate-900">{totalLitros.toLocaleString()} L</h4>
-          </div>
-        </div>
-
-        <div className="card flex items-center gap-4 py-5">
-          <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center border border-green-200/60">
-            <DollarSign className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gasto Total Diésel</p>
-            <h4 className="text-xl font-black text-slate-900">{formatter.format(totalCosto)}</h4>
-          </div>
-        </div>
-
-        <div className="card flex items-center gap-4 py-5">
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center border border-blue-200/60">
-            <Activity className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rendimiento Promedio</p>
-            <h4 className="text-xl font-black text-slate-900">{rendimientoPromedio.toFixed(1)} L/hr</h4>
-          </div>
-        </div>
-
-        <div
-          onClick={() => setFilterAlertsOnly(!filterAlertsOnly)}
-          className={`card flex items-center gap-4 py-5 cursor-pointer transition-all border ${
-            totalAlertasOrdena > 0
-              ? filterAlertsOnly ? 'border-red-500 bg-red-50 shadow-md' : 'border-red-200 bg-red-50/40 hover:border-red-300'
-              : 'border-slate-200'
-          }`}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <SearchBar value={search} onChange={setSearch} onSearch={handleSearch} placeholder="Buscar máquina, operador o lugar..." className="flex-1" />
+        <Button
+          variant={soloAlertas ? 'danger' : 'secondary'}
+          size="md"
+          icon={<ShieldAlert className="w-4 h-4" />}
+          onClick={toggleSoloAlertas}
+          className="shrink-0 whitespace-nowrap"
         >
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
-            totalAlertasOrdena > 0 ? 'bg-red-500 text-white shadow-md shadow-red-500/20' : 'bg-slate-100 text-slate-400'
-          }`}>
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-red-700 uppercase tracking-widest">Alertas de Ordeña</p>
-            <h4 className={`text-xl font-black ${totalAlertasOrdena > 0 ? 'text-red-600' : 'text-slate-900'}`}>
-              {totalAlertasOrdena} {filterAlertsOnly && '(Filtrado)'}
-            </h4>
-          </div>
-        </div>
-
+          {soloAlertas ? 'Ver Todas' : 'Solo Alertas'}
+        </Button>
       </div>
 
-      {/* Recent Loads Table */}
-      <div className="card p-0 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3 className="font-bold text-slate-900 text-lg">Historial de Cargas y Telemetría Litros/Hora</h3>
-            <p className="text-xs text-slate-400 font-medium">Cruza horas trabajadas de horómetro vs litros cargados para detectar anomalías.</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar máquina u operador..."
-                className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-primary/50 w-60 bg-slate-50 focus:bg-white"
-              />
+      <div className="space-y-3">
+        <div className="relative">
+          {refreshing && !initialLoading && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
+              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
-
-            <button
-              onClick={() => setFilterAlertsOnly(!filterAlertsOnly)}
-              className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
-                filterAlertsOnly ? 'bg-red-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              {filterAlertsOnly ? 'Ver Todas' : 'Solo Alertas'}
-            </button>
-          </div>
+          )}
+          <DataTable
+            columns={columns}
+            data={cargas}
+            loading={initialLoading}
+            keyExtractor={(item) => item.id}
+            emptyText="Sin cargas de combustible registradas."
+            maxBodyHeight="520px"
+          />
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Máquina</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Fecha &amp; Lugar</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Litros &amp; Costo</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Horas Periodo</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Rendimiento (L/hr)</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado Telemetría</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((carga) => {
-                const maquina = maquinaria.find(m => m.id === carga.maquinaId);
-                return (
-                  <tr key={carga.id} className={`hover:bg-slate-50/50 transition-colors ${carga.alertaOrdena ? 'bg-red-50/30' : ''}`}>
-
-                    {/* Machine */}
-                    <td className="px-6 py-4">
-                      <div className="font-black text-slate-900 text-sm">{carga.maquinaId} — {maquina?.nombre}</div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">Operador: {carga.operador}</div>
-                    </td>
-
-                    {/* Date & Location */}
-                    <td className="px-6 py-4">
-                      <div className="text-xs font-semibold text-slate-800">{carga.fecha}</div>
-                      <div className="text-[10px] text-slate-500 font-medium truncate max-w-[180px]">{carga.lugar}</div>
-                    </td>
-
-                    {/* Liters and Cost */}
-                    <td className="px-6 py-4 text-right">
-                      <div className="text-sm font-black text-slate-900">{carga.litros} L</div>
-                      <div className="text-xs font-bold text-primary">{formatter.format(carga.costo)}</div>
-                    </td>
-
-                    {/* Hours worked */}
-                    <td className="px-6 py-4 text-center">
-                      <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        {carga.horasTrabajadasPeriodo} hrs
-                      </span>
-                    </td>
-
-                    {/* Telemetry Rendimiento L/hr */}
-                    <td className="px-6 py-4">
-                      <div>
-                        <span className={`text-sm font-black ${carga.alertaOrdena ? 'text-red-600' : 'text-slate-900'}`}>
-                          {carga.rendimientoLtsHora} L/hr
-                        </span>
-                        <div className="text-[10px] text-slate-400 font-medium">
-                          Esperado: {carga.consumoEsperadoLtsHora} L/hr
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Status badge */}
-                    <td className="px-6 py-4">
-                      {carga.alertaOrdena ? (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-red-100 text-red-800 border border-red-200 text-xs font-black animate-pulse">
-                          <ShieldAlert className="w-4 h-4 text-red-600" />
-                          <span>🚨 Posible Ordeña (+{carga.desviacionPorcentaje}%)</span>
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-green-50 text-green-800 border border-green-200 text-xs font-bold">
-                          <ShieldCheck className="w-4 h-4 text-green-600" />
-                          <span>Rendimiento Normal</span>
-                        </div>
-                      )}
-                    </td>
-
-                  </tr>
-                );
-              })}
-
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm font-medium">Sin registros que coincidan con la búsqueda.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
+          pageSize={PAGE_SIZE}
+          onPageChange={handlePageChange}
+        />
       </div>
 
-      {/* Modal Registrar Carga con Telemetría */}
-      <Modal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onConfirm={handleSubmit}
+      <FormModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCancel={() => setCreateOpen(false)}
         title="Registrar Carga de Diésel con Telemetría"
-        confirmLabel={guardando ? 'Guardando…' : 'Validar y Guardar Carga'}
+        submitLabel="Validar y Guardar Carga"
+        onSubmit={handleCreate}
+        isSubmitting={submitting}
       >
-        <ModalField label="Máquina Asignada *">
-          <select
-            className={selectClass}
-            value={form.maquinaId}
-            onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-          >
-            {maquinaria.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.id} — {m.nombre} (Consumo normal: {m.consumoEsperadoLtsHora ?? 14} L/hr)
-              </option>
-            ))}
-          </select>
-        </ModalField>
+        <CombustibleForm form={form} setForm={setForm} maquinaria={maquinaria} rendimientoPreview={rendimientoPreview} />
+      </FormModal>
 
-        <div className="grid grid-cols-2 gap-3">
-          <ModalField label="Litros Cargados *">
-            <input
-              type="number"
-              className={inputClass}
-              placeholder="120"
-              value={form.litros}
-              onChange={(e) => setForm({ ...form, litros: e.target.value, costo: String((parseFloat(e.target.value) || 0) * 23) })}
-            />
-          </ModalField>
+      <FormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onCancel={() => setEditOpen(false)}
+        title="Editar Carga de Combustible"
+        submitLabel="Guardar Cambios"
+        onSubmit={handleEdit}
+        isSubmitting={submitting}
+      >
+        <CombustibleForm form={form} setForm={setForm} maquinaria={maquinaria} rendimientoPreview={rendimientoPreview} />
+      </FormModal>
 
-          <ModalField label="Horas Operadas en Periodo">
-            <input
-              type="number"
-              step="0.5"
-              className={inputClass}
-              placeholder="8.0"
-              value={form.horasTrabajadas}
-              onChange={(e) => setForm({ ...form, horasTrabajadas: e.target.value })}
-            />
-          </ModalField>
-        </div>
+      <FormModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onCancel={() => setDeleteOpen(false)}
+        title="Eliminar Carga"
+        subtitle="Esta acción no se puede deshacer."
+        submitLabel="Sí, Eliminar"
+        onSubmit={handleDelete}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <ShieldCheck className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar esta carga?</p>
+            <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.maquinaId} · {selectedItem.litros} L</p>
+          </div>
+        )}
+      </FormModal>
+    </div>
+  );
+}
 
-        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs">
-          <span className="font-bold text-slate-500">Rendimiento Estimado:</span>
-          <span className="font-black text-slate-900 text-sm">
-            {rendimientoPreview.toFixed(2)} L/hr
-          </span>
-        </div>
+interface CombustibleFormProps {
+  form: typeof emptyForm;
+  setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
+  maquinaria: Maquina[];
+  rendimientoPreview: number;
+}
 
-        <ModalField label="Costo Total Diésel (MXN)">
+function CombustibleForm({ form, setForm, maquinaria, rendimientoPreview }: CombustibleFormProps) {
+  return (
+    <div className="space-y-3">
+      <ModalField label="Máquina Asignada" required>
+        <select className={modalSelectClass} value={form.maquinaId} onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}>
+          {maquinaria.map((m) => (
+            <option key={m.id} value={m.id}>{m.id} — {m.nombre} (Consumo normal: {m.consumoEsperadoLtsHora ?? 14} L/hr)</option>
+          ))}
+        </select>
+      </ModalField>
+
+      <div className="grid grid-cols-2 gap-3">
+        <ModalField label="Litros Cargados" required>
           <input
             type="number"
-            className={inputClass}
-            placeholder="2760"
-            value={form.costo}
-            onChange={(e) => setForm({ ...form, costo: e.target.value })}
+            className={modalInputClass}
+            placeholder="120"
+            value={form.litros}
+            onChange={(e) => setForm({ ...form, litros: e.target.value })}
           />
         </ModalField>
 
-        <ModalField label="Punto de Carga / Gasolinera">
-          <input
-            className={inputClass}
-            placeholder="Autoconsumo en Obra Valle Sur"
-            value={form.lugar}
-            onChange={(e) => setForm({ ...form, lugar: e.target.value })}
-          />
+        <ModalField label="Horas Operadas en Periodo">
+          <input type="number" step="0.5" className={modalInputClass} placeholder="8.0" value={form.horasTrabajadas} onChange={(e) => setForm({ ...form, horasTrabajadas: e.target.value })} />
         </ModalField>
+      </div>
 
-        <ModalField label="Operador que Recibió">
-          <input
-            className={inputClass}
-            placeholder="Juan Pérez"
-            value={form.operador}
-            onChange={(e) => setForm({ ...form, operador: e.target.value })}
-          />
-        </ModalField>
-      </Modal>
+      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs">
+        <span className="font-bold text-slate-500">Rendimiento Estimado:</span>
+        <span className="font-black text-slate-900 text-sm">{rendimientoPreview.toFixed(2)} L/hr</span>
+      </div>
 
+      <ModalField label="Costo Total Diésel (MXN)" hint="Déjalo en blanco para que se calcule automáticamente.">
+        <input type="number" className={modalInputClass} placeholder="Se calcula automáticamente" value={form.costo} onChange={(e) => setForm({ ...form, costo: e.target.value })} />
+      </ModalField>
+
+      <ModalField label="Punto de Carga / Gasolinera">
+        <input className={modalInputClass} placeholder="Autoconsumo en Obra Valle Sur" value={form.lugar} onChange={(e) => setForm({ ...form, lugar: e.target.value })} />
+      </ModalField>
+
+      <ModalField label="Operador que Recibió">
+        <input className={modalInputClass} placeholder="Juan Pérez" value={form.operador} onChange={(e) => setForm({ ...form, operador: e.target.value })} />
+      </ModalField>
     </div>
   );
 }
