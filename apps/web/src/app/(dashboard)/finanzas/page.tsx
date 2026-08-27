@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Wallet, ArrowUpCircle, ArrowDownCircle,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { formatFechaSolo } from '@/lib/formatters';
@@ -311,6 +311,7 @@ export default function FinanzasPage() {
     {
       key: 'descripcion',
       header: 'Descripción / Categoría',
+      className: 'whitespace-pre-line min-w-[220px] max-w-[360px]',
       render: (item) => (
         <div>
           <div className="font-black text-slate-900">{item.descripcion}</div>
@@ -374,11 +375,16 @@ export default function FinanzasPage() {
         title="Control Financiero"
         subtitle="Flujo de caja, ingresos por obras y gastos operativos."
         action={
-          puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
-              Nueva Transacción
+          <div className="flex items-center gap-2">
+            <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={() => {}}>
+              Exportar
             </Button>
-          ) : undefined
+            {puedeCrear && (
+              <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+                Nueva Transacción
+              </Button>
+            )}
+          </div>
         }
       />
 
