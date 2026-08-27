@@ -20,6 +20,7 @@ import { TrabajadoresModule } from './trabajadores/trabajadores.module';
 import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
 import { AsistenciaModule } from './asistencia/asistencia.module';
 import { NominaModule } from './nomina/nomina.module';
+import { FinanzasModule } from './finanzas/finanzas.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -64,6 +65,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     BitacorasRentaModule,
     AsistenciaModule,
     NominaModule,
+    FinanzasModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController
