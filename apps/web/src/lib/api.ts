@@ -1412,6 +1412,42 @@ export const asistenciaApi = {
     if (params?.obraId) searchParams.set('obraId', params.obraId);
     if (params?.estado) searchParams.set('estado', params.estado);
     if (params?.enSitio !== undefined) searchParams.set('enSitio', String(params.enSitio));
+// ────────────────────────────────────────────────────────────
+//  Clientes API
+// ────────────────────────────────────────────────────────────
+
+export interface ClienteDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  empresa: string;
+  correo: string;
+  telefono: string;
+  rfc: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface ClientesStats {
+  totalClientes: number;
+  clientesActivos: number;
+  empresas: number;
+}
+
+export interface ClienteCreateInput {
+  nombre: string;
+  empresa: string;
+  correo: string;
+  telefono: string;
+  rfc?: string;
+  activo?: boolean;
+}
+
+export const clientesApi = {
+  /** Listar clientes con búsqueda y paginación */
+  listar: (params?: { search?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set('search', params.search);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
@@ -1524,4 +1560,26 @@ export const nominaApi = {
 
   pagarTodos: (periodoId: string) =>
     apiClient.post<{ items: NominaRowDTO[]; actualizados: number }>(`/nomina/${periodoId}/pagar-todos`, {}),
+    return apiClient.get<PaginatedResponse<ClienteDTO>>(
+      `/clientes${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un cliente por ID */
+  obtener: (id: string) => apiClient.get<ClienteDTO>(`/clientes/${id}`),
+
+  /** Crear un cliente */
+  crear: (data: ClienteCreateInput) =>
+    apiClient.post<ClienteDTO>('/clientes', data),
+
+  /** Actualizar un cliente */
+  actualizar: (id: string, data: Partial<ClienteCreateInput>) =>
+    apiClient.patch<ClienteDTO>(`/clientes/${id}`, data),
+
+  /** Eliminar un cliente (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/clientes/${id}`),
+
+  /** Estadísticas del cliente para las tarjetas */
+  stats: () => apiClient.get<ClientesStats>('/clientes/stats'),
 };

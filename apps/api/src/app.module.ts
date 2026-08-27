@@ -11,6 +11,7 @@ import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { MantenimientoModule } from './modules/mantenimiento/mantenimiento.module';
 import { CombustibleModule } from './modules/combustible/combustible.module';
 import { CribaModule } from './criba/criba.module';
+import { ClientesModule } from './clientes/clientes.module';
 import { ReportesCampoModule } from './reportes-campo/reportes-campo.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
@@ -56,6 +57,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     MantenimientoModule,
     CombustibleModule,
     CribaModule,
+    ClientesModule,
     ReportesCampoModule,
     InventarioModule,
     BitacoraModule,
