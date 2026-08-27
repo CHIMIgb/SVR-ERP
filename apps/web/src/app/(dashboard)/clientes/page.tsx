@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Building2, Mail, Phone, History, FilePlus2, Pencil,
   Trash2, SlidersHorizontal, AlertCircle, Users, FolderKanban, Eye,
-  FileText, Loader2,
+  FileText, Loader2, Clock, CheckCircle2, XCircle, CalendarDays,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -16,10 +16,12 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { formatCurrency } from '@/lib/formatters';
 import {
   clientesApi,
   type ClienteDTO,
   type ClientesStats,
+  type CotizacionDTO,
 } from '@/lib/api';
 
 // ── Constantes ──
@@ -32,6 +34,13 @@ const emptyForm = {
   correo: '',
   telefono: '',
   rfc: '',
+};
+
+const emptyCotizacionForm = {
+  descripcion: '',
+  monto: '',
+  fecha: new Date().toISOString().split('T')[0],
+  estado: 'PENDIENTE',
 };
 
 export default function ClientesPage() {
@@ -61,6 +70,16 @@ export default function ClientesPage() {
   const [selected, setSelected] = useState<ClienteDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+
+  // ── Estado de cotizaciones ──
+  const [historialOpen, setHistorialOpen] = useState(false);
+  const [historialCliente, setHistorialCliente] = useState<ClienteDTO | null>(null);
+  const [cotizaciones, setCotizaciones] = useState<CotizacionDTO[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [cotizacionOpen, setCotizacionOpen] = useState(false);
+  const [cotizacionCliente, setCotizacionCliente] = useState<ClienteDTO | null>(null);
+  const [cotizacionForm, setCotizacionForm] = useState(emptyCotizacionForm);
+  const [cotizacionSubmitting, setCotizacionSubmitting] = useState(false);
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/clientes');
@@ -100,6 +119,22 @@ export default function ClientesPage() {
     const res = await clientesApi.stats();
     if (res.success && res.data) {
       setStats(res.data);
+    }
+  }, []);
+
+  const fetchCotizaciones = useCallback(async (clienteId: string) => {
+    setHistorialLoading(true);
+    try {
+      const res = await clientesApi.cotizaciones(clienteId);
+      if (res.success && res.data) {
+        setCotizaciones(res.data.items);
+      } else {
+        setCotizaciones([]);
+      }
+    } catch {
+      setCotizaciones([]);
+    } finally {
+      setHistorialLoading(false);
     }
   }, []);
 
@@ -147,7 +182,9 @@ export default function ClientesPage() {
   const openView = useCallback((item: ClienteDTO) => {
     setSelected(item);
     setViewOpen(true);
-  }, []);
+    setCotizaciones([]);
+    fetchCotizaciones(item.id);
+  }, [fetchCotizaciones]);
 
   // ── CRUD handlers (API) ──
   const validateForm = () => {
@@ -233,13 +270,57 @@ export default function ClientesPage() {
     }
   }, [selected, showToast, fetchData, pagination.page, search, fetchStats]);
 
-  // ── Handlers de acciones por fila (pendientes de su módulo backend) ──
-  const handleHistorial = (item: ClienteDTO) => {
-    showToast(`Historial de ${item.empresa} — disponibles próximamente.`, 'info');
-  };
+  // ── Handlers de acciones por fila (cotizaciones) ──
+  const handleHistorial = useCallback((item: ClienteDTO) => {
+    setHistorialCliente(item);
+    setHistorialOpen(true);
+    setCotizaciones([]);
+    fetchCotizaciones(item.id);
+  }, [fetchCotizaciones]);
 
-  const handleNuevaCotizacion = (item: ClienteDTO) => {
-    showToast(`Nueva cotización para ${item.empresa} — próximamente.`, 'info');
+  const handleNuevaCotizacion = useCallback((item: ClienteDTO) => {
+    setCotizacionCliente(item);
+    setCotizacionForm(emptyCotizacionForm);
+    setCotizacionOpen(true);
+  }, []);
+
+  const handleCrearCotizacion = useCallback(async () => {
+    if (!cotizacionCliente) return;
+    const monto = Number(cotizacionForm.monto);
+    if (!cotizacionForm.descripcion.trim() || !Number.isFinite(monto) || monto <= 0) {
+      showToast('Descripción y monto mayor a 0 son obligatorios.', 'error');
+      return;
+    }
+    setCotizacionSubmitting(true);
+    try {
+      const res = await clientesApi.crearCotizacion(cotizacionCliente.id, {
+        descripcion: cotizacionForm.descripcion.trim(),
+        monto,
+        fecha: cotizacionForm.fecha,
+        estado: cotizacionForm.estado as 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA',
+      });
+      if (res.success) {
+        showToast('Cotización creada exitosamente.', 'success');
+        setCotizacionOpen(false);
+        setCotizacionCliente(null);
+        if (historialOpen && historialCliente?.id === cotizacionCliente.id) {
+          fetchCotizaciones(cotizacionCliente.id);
+        }
+      } else {
+        showToast(res.error?.message || 'Error al crear la cotización.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al crear la cotización.', 'error');
+    } finally {
+      setCotizacionSubmitting(false);
+    }
+  }, [cotizacionCliente, cotizacionForm, showToast, fetchCotizaciones, historialOpen, historialCliente]);
+
+  // ── Utilidad de badge de estado de cotización ──
+  const estadoBadge = (estado: CotizacionDTO['estado']) => {
+    if (estado === 'Aceptada') return <Badge variant="success" size="sm"><CheckCircle2 className="w-3 h-3" />Aceptada</Badge>;
+    if (estado === 'Rechazada') return <Badge variant="error" size="sm"><XCircle className="w-3 h-3" />Rechazada</Badge>;
+    return <Badge variant="warning" size="sm"><Clock className="w-3 h-3" />Pendiente</Badge>;
   };
 
   // ── Columnas de DataTable ──
@@ -558,15 +639,41 @@ export default function ClientesPage() {
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-primary" />
                 <h4 className="font-black text-slate-900 text-sm">Cotizaciones</h4>
-                <Badge variant="info" size="sm">0</Badge>
+                <Badge variant="info" size="sm">{cotizaciones.length}</Badge>
               </div>
 
-              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
-                <FileText className="w-6 h-6 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-slate-500">
-                  {selected.empresa} aún no tiene cotizaciones registradas.
-                </p>
-              </div>
+              {historialLoading ? (
+                <div className="flex items-center justify-center py-6 text-slate-400">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+              ) : cotizaciones.length === 0 ? (
+                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
+                  <FileText className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-500">
+                    {selected.empresa} aún no tiene cotizaciones registradas.
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                  {cotizaciones.map((cq) => (
+                    <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50/50">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-primary">{cq.codigo}</span>
+                          {estadoBadge(cq.estado)}
+                        </div>
+                        <p className="text-sm font-semibold text-slate-700 truncate mt-0.5">{cq.descripcion}</p>
+                        <p className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                          <CalendarDays className="w-3 h-3" /> {cq.fecha}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-slate-900">{formatCurrency(cq.monto)}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         )}
@@ -577,6 +684,119 @@ export default function ClientesPage() {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* ═══ Historial de cotizaciones ═══ */}
+      <Modal
+        open={historialOpen}
+        onClose={() => setHistorialOpen(false)}
+      >
+        <ModalHeader
+          title="Historial de Cotizaciones"
+          subtitle={historialCliente ? historialCliente.empresa : undefined}
+          onClose={() => setHistorialOpen(false)}
+        />
+        <ModalBody>
+          {historialLoading ? (
+            <div className="flex items-center justify-center py-10 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : cotizaciones.length === 0 ? (
+            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-8 text-center">
+              <FileText className="w-7 h-7 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-500">
+                Este cliente aún no tiene cotizaciones registradas.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
+                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</th>
+                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
+                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
+                    <th className="pb-2 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cotizaciones.map((cq) => (
+                    <tr key={cq.id}>
+                      <td className="py-3 pr-3 text-xs font-black text-primary whitespace-nowrap">{cq.codigo || '—'}</td>
+                      <td className="py-3 pr-3 text-sm font-semibold text-slate-700 min-w-0">{cq.descripcion}</td>
+                      <td className="py-3 pr-3 text-sm font-medium text-slate-500 whitespace-nowrap">{cq.fecha}</td>
+                      <td className="py-3 pr-3 whitespace-nowrap">{estadoBadge(cq.estado)}</td>
+                      <td className="py-3 text-right font-black text-slate-900 whitespace-nowrap">{formatCurrency(cq.monto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setHistorialOpen(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* ═══ Nueva Cotización ═══ */}
+      <FormModal
+        open={cotizacionOpen}
+        onClose={() => setCotizacionOpen(false)}
+        onCancel={() => setCotizacionOpen(false)}
+        title="Nueva Cotización"
+        subtitle={cotizacionCliente ? `Cotización para: ${cotizacionCliente.empresa}` : undefined}
+        submitLabel="Crear Cotización"
+        cancelLabel="Cancelar"
+        onSubmit={handleCrearCotizacion}
+        isSubmitting={cotizacionSubmitting}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Descripción" required className="sm:col-span-2">
+            <textarea
+              className={`${modalInputClass} min-h-[80px] resize-y`}
+              placeholder="Ej: Renta de Excavadora 320 por 100 horas"
+              value={cotizacionForm.descripcion}
+              onChange={(e) => setCotizacionForm({ ...cotizacionForm, descripcion: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Monto (MXN)" required>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={modalInputClass}
+              placeholder="Ej: 125000.00"
+              value={cotizacionForm.monto}
+              onChange={(e) => setCotizacionForm({ ...cotizacionForm, monto: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={cotizacionForm.fecha}
+              onChange={(e) => setCotizacionForm({ ...cotizacionForm, fecha: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Estado" className="sm:col-span-2">
+            <select
+              className={modalInputClass}
+              value={cotizacionForm.estado}
+              onChange={(e) => setCotizacionForm({ ...cotizacionForm, estado: e.target.value })}
+            >
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="ACEPTADA">Aceptada</option>
+              <option value="RECHAZADA">Rechazada</option>
+            </select>
+          </ModalField>
+        </div>
+      </FormModal>
 
       <FormModal
         open={editOpen}

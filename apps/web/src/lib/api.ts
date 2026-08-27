@@ -1582,4 +1582,35 @@ export const nominaApi = {
 
   /** Estadísticas del cliente para las tarjetas */
   stats: () => apiClient.get<ClientesStats>('/clientes/stats'),
+
+  /** Historial de cotizaciones de un cliente */
+  cotizaciones: (clienteId: string) =>
+    apiClient.get<{ items: CotizacionDTO[] }>(
+      `/clientes/${clienteId}/cotizaciones`,
+    ),
+
+  /** Crear una cotización para un cliente */
+  crearCotizacion: (clienteId: string, data: CotizacionCreateInput) =>
+    apiClient.post<CotizacionDTO>(`/clientes/${clienteId}/cotizaciones`, data),
 };
+
+/** Formato que devuelve el backend serializado (modelo `cotizaciones`). */
+export interface CotizacionDTO {
+  id: string;
+  codigo: string | null;
+  clienteId: string;
+  descripcion: string;
+  monto: number;
+  fecha: string; // YYYY-MM-DD
+  estado: 'Pendiente' | 'Aceptada' | 'Rechazada';
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface CotizacionCreateInput {
+  descripcion: string;
+  monto: number;
+  fecha: string; // YYYY-MM-DD
+  estado?: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA';
+}
