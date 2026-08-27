@@ -392,6 +392,10 @@ export interface TransaccionDTO {
   codigo: string | null;
   tipo: TipoTransaccionApi;
   categoria: string;
+  /** Categoría personalizada cuando `categoria` es "Otros". */
+  otraCategoria?: string | null;
+  /** Categoría efectiva a mostrar (si "Otros" con texto, muestra el texto). */
+  catEfectiva?: string;
   monto: number;
   fecha: string;
   descripcion: string;
@@ -412,6 +416,8 @@ export interface TransaccionCreateInput {
   monto: number;
   fecha: string;
   descripcion: string;
+  /** Categoría personalizada cuando `categoria` es "Otros". */
+  otraCategoria?: string;
 }
 
 /** Catálogo de categorías financieras disponibles (frontend estático) */

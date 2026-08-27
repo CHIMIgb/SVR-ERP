@@ -19,6 +19,7 @@ describe('FinanzasService', () => {
     monto: 15000,
     fecha: new Date('2026-08-20'),
     descripcion: 'Anticipo de obra',
+    otra_categoria: null,
     activo: true,
     creado_en: new Date(),
     actualizado_en: new Date(),
@@ -106,6 +107,20 @@ describe('FinanzasService', () => {
       expect(result.monto).toBe(15000);
       expect(result.fecha).toBe('2026-08-20');
       expect(result.codigo).toBe('TRA-20260820-ABC123');
+      expect(result.otraCategoria).toBeNull();
+      expect(result.catEfectiva).toBe('Pago de Obra');
+    });
+
+    it('should derive catEfectiva from otraCategoria when categoria is Otros', async () => {
+      prisma.transacciones.findFirst.mockResolvedValue({
+        ...mockTransaccion,
+        categoria: 'Otros',
+        otra_categoria: 'Compra de herrajes',
+      });
+      const result = await service.findOne(mockTransaccion.id);
+      expect(result.categoria).toBe('Otros');
+      expect(result.otraCategoria).toBe('Compra de herrajes');
+      expect(result.catEfectiva).toBe('Compra de herrajes');
     });
 
     it('should throw NotFoundException when not found', async () => {
@@ -135,6 +150,12 @@ describe('FinanzasService', () => {
           result: AuditResult.SUCCESS,
         }),
       );
+    });
+
+    it('should persist otraCategoria and expose it via serialize', async () => {
+      await service.create({ ...createDto, otraCategoria: 'Compra de herrajes' }, 'user-1');
+      const data = prisma.transacciones.create.mock.calls[0][0].data;
+      expect(data.otra_categoria).toBe('Compra de herrajes');
     });
   });
 

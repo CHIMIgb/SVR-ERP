@@ -151,6 +151,7 @@ export class FinanzasService {
         codigo: generarCodigo(),
         tipo: dto.tipo,
         categoria: dto.categoria,
+        ...(dto.otraCategoria !== undefined && { otra_categoria: dto.otraCategoria.trim() }),
         monto: dto.monto,
         fecha: new Date(dto.fecha),
         descripcion: dto.descripcion.trim(),
@@ -203,6 +204,9 @@ export class FinanzasService {
         ...(dto.monto !== undefined && { monto: dto.monto }),
         ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
+        ...(dto.otraCategoria !== undefined && {
+          otra_categoria: dto.otraCategoria.trim() || null,
+        }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -302,11 +306,17 @@ export class FinanzasService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(transaccion: any) {
+    const otraCategoria = transaccion.otra_categoria ?? null;
     return {
       id: transaccion.id,
       codigo: transaccion.codigo,
       tipo: transaccion.tipo,
       categoria: transaccion.categoria,
+      otraCategoria,
+      // Categoría efectiva mostrada en la UI: si eligió "Otros" con texto propio,
+      // se reporta la categoría personalizada en lugar de "Otros".
+      catEfectiva:
+        transaccion.categoria === 'Otros' && otraCategoria ? otraCategoria : transaccion.categoria,
       monto: Number(transaccion.monto),
       fecha:
         transaccion.fecha instanceof Date

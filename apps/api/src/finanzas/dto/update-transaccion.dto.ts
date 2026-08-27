@@ -34,4 +34,10 @@ export class UpdateTransaccionDto {
   @IsString()
   @MaxLength(200)
   descripcion?: string;
+
+  /** Categoría personalizada cuando `categoria` es "Otros". */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  otraCategoria?: string;
 }

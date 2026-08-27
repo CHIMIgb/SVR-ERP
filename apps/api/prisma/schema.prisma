@@ -1554,6 +1554,7 @@ model transacciones {
   codigo                                     String?         @unique
   tipo                                       TipoTransaccion
   categoria                                  String
+  otra_categoria                             String?
   monto                                      Decimal         @db.Decimal(14, 2)
   fecha                                      DateTime        @db.Date
   descripcion                                String

@@ -99,6 +99,18 @@ describe('Finanzas Audit (Real DB)', () => {
       expect(audit.new_value).toBeDefined();
       expect(transaccion.codigo).toMatch(/^TRA-/);
     });
+
+    it('debe persistir otra_categoria cuando categoria es Otros', async () => {
+      const dto = createDto({ categoria: 'Otros', otraCategoria: 'Compra de herrajes' });
+      const transaccion = await service.create(dto, ACTOR_USER_ID);
+      createdTransaccionIds.push(transaccion.id);
+
+      const enDB = await prisma.transacciones.findUnique({ where: { id: transaccion.id } });
+      expect(enDB!.otra_categoria).toBe('Compra de herrajes');
+
+      const audits = await findAudits(AuditAction.TRANSACCION_CREADA, transaccion.id);
+      expect(audits[0].new_value).toMatchObject({ otraCategoria: 'Compra de herrajes' });
+    });
   });
 
   describe('TRANSACCION_ACTUALIZADA', () => {

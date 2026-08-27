@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { formatFechaSolo } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -31,6 +32,7 @@ const PAGE_SIZE = 10;
 const emptyForm = {
   tipo: 'INGRESO' as TipoTransaccionApi,
   categoria: '',
+  otraCategoria: '',
   monto: '',
   fecha: '',
   descripcion: '',
@@ -185,6 +187,7 @@ export default function FinanzasPage() {
     setForm({
       tipo: item.tipo,
       categoria: item.categoria,
+      otraCategoria: item.otraCategoria ?? '',
       monto: String(item.monto),
       fecha: item.fecha.split('T')[0],
       descripcion: item.descripcion,
@@ -200,6 +203,8 @@ export default function FinanzasPage() {
   // ── Validación compartida ──
   const validateForm = useCallback((): string | null => {
     if (!form.categoria) return 'La categoría es obligatoria.';
+    if (form.categoria === 'Otros' && !form.otraCategoria.trim())
+      return 'Escribe el nombre de la categoría personalizada.';
     if (!form.monto || Number(form.monto) <= 0) return 'El monto debe ser mayor a 0.';
     if (!form.descripcion) return 'La descripción es obligatoria.';
     if (!form.fecha) return 'La fecha es obligatoria.';
@@ -221,6 +226,7 @@ export default function FinanzasPage() {
         monto: Number(form.monto),
         fecha: form.fecha,
         descripcion: form.descripcion,
+        otraCategoria: form.categoria === 'Otros' ? form.otraCategoria.trim() : undefined,
       });
       if (res.success) {
         showToast('Transacción creada exitosamente.', 'success');
@@ -252,6 +258,7 @@ export default function FinanzasPage() {
         monto: Number(form.monto),
         fecha: form.fecha,
         descripcion: form.descripcion,
+        otraCategoria: form.categoria === 'Otros' ? form.otraCategoria.trim() : undefined,
       });
       if (res.success) {
         showToast('Transacción actualizada exitosamente.', 'success');
@@ -307,7 +314,7 @@ export default function FinanzasPage() {
       render: (item) => (
         <div>
           <div className="font-black text-slate-900">{item.descripcion}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.categoria}</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.catEfectiva ?? item.categoria}</div>
         </div>
       ),
     },
@@ -381,8 +388,6 @@ export default function FinanzasPage() {
           value={formatCurrency(stats.balance)}
           label="Balance Total"
           color={stats.balance >= 0 ? 'success' : 'error'}
-          trend={stats.balance >= 0 ? 'up' : 'down'}
-          className="bg-slate-900 text-white [&_span]:text-white"
         />
         <StatsCard
           icon={<ArrowUpCircle className="w-6 h-6" />}
@@ -549,6 +554,15 @@ export default function FinanzasPage() {
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+            {form.categoria === 'Otros' && (
+              <input
+                type="text"
+                className={cn(modalInputClass, 'mt-3')}
+                placeholder="Escribe la categoría personalizada"
+                value={form.otraCategoria}
+                onChange={(e) => setForm({ ...form, otraCategoria: e.target.value })}
+              />
+            )}
           </ModalField>
 
           <ModalField label="Monto (MXN)" required>
@@ -618,6 +632,15 @@ export default function FinanzasPage() {
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+            {form.categoria === 'Otros' && (
+              <input
+                type="text"
+                className={cn(modalInputClass, 'mt-3')}
+                placeholder="Escribe la categoría personalizada"
+                value={form.otraCategoria}
+                onChange={(e) => setForm({ ...form, otraCategoria: e.target.value })}
+              />
+            )}
           </ModalField>
 
           <ModalField label="Monto (MXN)" required>
