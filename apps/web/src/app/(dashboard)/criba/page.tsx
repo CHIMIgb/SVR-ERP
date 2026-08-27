@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Plus, Package, ArrowUpRight, Clock, Gauge,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -16,18 +16,26 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatDate } from '@/lib/formatters';
-import { registrosCriba as registrosMock, type RegistroCriba } from '@/lib/data';
+import { formatFechaSolo } from '@/lib/formatters';
+import {
+  cribaApi,
+  type RegistroCribaDTO,
+  type CribaCreateInput,
+  type CribaStats,
+  type CribaCatalogos,
+  type TurnoCribaApi,
+} from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
 
-const TURNOS: { value: RegistroCriba['turno']; label: string }[] = [
-  { value: 'Matutino', label: 'Matutino' },
-  { value: 'Vespertino', label: 'Vespertino' },
-];
-
 const MATERIALES = ['Criba fina', 'Criba gruesa', 'Arena lavada'] as const;
+
+// Turno: el formulario/filtro usa el enum de la API; la UI muestra la etiqueta.
+const TURNOS: { value: TurnoCribaApi; label: 'Matutino' | 'Vespertino' }[] = [
+  { value: 'MATUTINO', label: 'Matutino' },
+  { value: 'VESPERTINO', label: 'Vespertino' },
+];
 
 const materialVariant: Record<string, 'warning' | 'primary' | 'info'> = {
   'Criba fina': 'warning',
@@ -35,16 +43,16 @@ const materialVariant: Record<string, 'warning' | 'primary' | 'info'> = {
   'Arena lavada': 'info',
 };
 
-const turnoVariant: Record<RegistroCriba['turno'], 'warning' | 'info'> = {
+const turnoVariant: Record<RegistroCribaDTO['turno'], 'warning' | 'info'> = {
   Matutino: 'warning',
   Vespertino: 'info',
 };
 
 const emptyForm = {
   fecha: new Date().toISOString().split('T')[0],
-  turno: 'Matutino' as RegistroCriba['turno'],
-  operador: '',
-  tipoMaterial: 'Criba fina',
+  turno: 'MATUTINO' as TurnoCribaApi,
+  operadorId: '',
+  tipoMaterial: 'Criba fina' as string,
   materialProducido: '',
   horasTrabajadas: '',
   materialAlBanco: '',
@@ -64,13 +72,6 @@ const materialDot: Record<string, string> = {
   'Arena lavada': 'bg-teal-500',
 };
 
-function turnoToValue(label: RegistroCribaDTO['turno']): NonNullable<CribaCreateInput['turno']> {
-  const map: Record<RegistroCribaDTO['turno'], NonNullable<CribaCreateInput['turno']>> = {
-    Matutino: 'MATUTINO',
-    Vespertino: 'VESPERTINO',
-  };
-  return map[label];
-}
 export default function CribaPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -81,9 +82,20 @@ export default function CribaPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
-  // ── Estado de datos (local hasta integrar API /criba) ──
-  const [registros, setRegistros] = useState<RegistroCriba[]>(registrosMock);
-  const [page, setPage] = useState(1);
+  // ── Estado de datos ──
+  const [registros, setRegistros] = useState<RegistroCribaDTO[]>([]);
+  const [catalogos, setCatalogos] = useState<CribaCatalogos>({ trabajadores: [] });
+  const [stats, setStats] = useState({
+    totalProducido: 0,
+    totalAlBanco: 0,
+    totalHoras: 0,
+    eficiencia: 0,
+    porMaterial: [] as CribaStats['porMaterial'],
+  });
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
@@ -94,68 +106,69 @@ export default function CribaPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<RegistroCriba | null>(null);
+  const [selectedItem, setSelectedItem] = useState<RegistroCribaDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Filtrado ──
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return registros.filter((r) => {
-      if (
-        q &&
-        !r.operador.toLowerCase().includes(q) &&
-        !r.tipoMaterial.toLowerCase().includes(q) &&
-        !(r.observaciones ?? '').toLowerCase().includes(q)
-      ) {
-        return false;
+  // ── Cargar catálogos (operadores) ──
+  useEffect(() => {
+    cribaApi.catalogos().then((res) => {
+      if (res.success && res.data) {
+        setCatalogos(res.data);
       }
-      if (filterValues.turno && r.turno !== filterValues.turno) return false;
-      if (filterValues.material && r.tipoMaterial !== filterValues.material) return false;
-      return true;
     });
-  }, [registros, search, filterValues]);
-
-  // ── Paginación client-side ──
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = useMemo(
-    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [filtered, safePage],
-  );
-
-  const handlePageChange = useCallback((newPage: number) => {
-    setPage(newPage);
   }, []);
 
-  // ── KPIs globales ──
-  const stats = useMemo(() => {
-    const totalProducido = registros.reduce((s, r) => s + r.materialProducido, 0);
-    const totalAlBanco = registros.reduce((s, r) => s + r.materialAlBanco, 0);
-    const totalHoras = registros.reduce((s, r) => s + r.horasTrabajadas, 0);
-    const eficiencia = totalProducido > 0 ? Math.round((totalAlBanco / totalProducido) * 100) : 0;
+  // ── Cargar datos ──
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    if (!hasLoaded.current) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    try {
+      const res = await cribaApi.listar({
+        search: searchVal || undefined,
+        turno: filters?.turno as TurnoCribaApi | undefined,
+        tipoMaterial: filters?.tipoMaterial || undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      if (res.success && res.data) {
+        setRegistros(res.data.items);
+        setPagination(res.data.pagination);
+      } else {
+        showToast('Error al cargar los registros de criba.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      hasLoaded.current = true;
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [showToast]);
 
-    const porMaterial = MATERIALES.map((tipo) => {
-      const delTipo = registros.filter((r) => r.tipoMaterial === tipo);
-      const producido = delTipo.reduce((s, r) => s + r.materialProducido, 0);
-      const alBanco = delTipo.reduce((s, r) => s + r.materialAlBanco, 0);
-      return {
-        tipo,
-        alBanco,
-        ef: producido > 0 ? Math.round((alBanco / producido) * 100) : 0,
-      };
-    });
+  const fetchStats = useCallback(async () => {
+    const res = await cribaApi.stats();
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+  }, []);
 
-    return { totalProducido, totalAlBanco, totalHoras, eficiencia, porMaterial };
-  }, [registros]);
+  useEffect(() => {
+    fetchData(1);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
   if (filterValues.turno) {
-    activeFilters.push({ key: 'turno', label: 'Turno', value: filterValues.turno });
+    const t = TURNOS.find((x) => x.value === filterValues.turno);
+    activeFilters.push({ key: 'turno', label: 'Turno', value: t?.label ?? filterValues.turno });
   }
-  if (filterValues.material) {
-    activeFilters.push({ key: 'material', label: 'Material', value: filterValues.material });
+  if (filterValues.tipoMaterial) {
+    activeFilters.push({ key: 'tipoMaterial', label: 'Material', value: filterValues.tipoMaterial });
   }
 
   // ── Filtros para SearchBar ──
@@ -168,7 +181,7 @@ export default function CribaPage() {
       placeholder: 'Todos',
     },
     {
-      key: 'material',
+      key: 'tipoMaterial',
       label: 'Material',
       type: 'select',
       options: MATERIALES.map((m) => ({ value: m, label: m })),
@@ -178,31 +191,33 @@ export default function CribaPage() {
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
-    setPage(1);
   }, []);
 
   const handleSearch = useCallback(() => {
-    setPage(1);
-  }, []);
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
-    setFilterValues((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
-  }, []);
-
-  const handleRemoveFilter = useCallback((key: string) => {
-    setFilterValues((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setPage(1);
-  }, []);
+    const next = { ...filterValues, [key]: value };
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
-    setPage(1);
-  }, []);
+    fetchData(1, search, {});
+  }, [fetchData, search]);
+
+  const handleRemoveFilter = useCallback((key: string) => {
+    const next = { ...filterValues };
+    delete next[key];
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
+
+  const handlePageChange = useCallback((page: number) => {
+    fetchData(page, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
@@ -210,12 +225,12 @@ export default function CribaPage() {
     setCreateOpen(true);
   }, []);
 
-  const openEdit = useCallback((item: RegistroCriba) => {
+  const openEdit = useCallback((item: RegistroCribaDTO) => {
     setSelectedItem(item);
     setForm({
-      fecha: item.fecha,
-      turno: item.turno,
-      operador: item.operador,
+      fecha: item.fecha.split('T')[0],
+      turno: item.turno === 'Matutino' ? 'MATUTINO' : 'VESPERTINO',
+      operadorId: item.operadorId ?? '',
       tipoMaterial: item.tipoMaterial,
       materialProducido: String(item.materialProducido),
       horasTrabajadas: String(item.horasTrabajadas),
@@ -225,110 +240,120 @@ export default function CribaPage() {
     setEditOpen(true);
   }, []);
 
-  const openDelete = useCallback((item: RegistroCriba) => {
+  const openDelete = useCallback((item: RegistroCribaDTO) => {
     setSelectedItem(item);
     setDeleteOpen(true);
   }, []);
 
   // ── Validación ──
-  const validateForm = useCallback(() => {
-    if (!form.fecha || !form.operador.trim()) {
-      showToast('La fecha y el operador son obligatorios.', 'error');
-      return false;
-    }
+  const validateForm = useCallback((): string | null => {
+    if (!form.fecha) return 'La fecha es obligatoria.';
+    if (!form.operadorId) return 'Selecciona un operador.';
     const producido = parseFloat(form.materialProducido);
     if (!form.materialProducido || isNaN(producido) || producido <= 0) {
-      showToast('Ingresa un material producido válido mayor a cero.', 'error');
-      return false;
+      return 'Ingresa un material producido válido mayor a cero.';
     }
     const horas = parseFloat(form.horasTrabajadas);
-    if (!form.horasTrabajadas || isNaN(horas) || horas <= 0) {
-      showToast('Ingresa las horas trabajadas del turno.', 'error');
-      return false;
+    if (!form.horasTrabajadas || isNaN(horas) || horas <= 0 || horas > 24) {
+      return 'Ingresa las horas trabajadas del turno (máx. 24).';
     }
     const alBanco = parseFloat(form.materialAlBanco);
     if (isNaN(alBanco) || alBanco < 0 || alBanco > producido) {
-      showToast('El material al banco no puede ser negativo ni mayor a lo producido.', 'error');
-      return false;
+      return 'El material al banco no puede ser negativo ni mayor a lo producido.';
     }
-    return true;
-  }, [form, showToast]);
+    return null;
+  }, [form]);
 
-  // ── CRUD local ──
+  const buildInput = useCallback((): CribaCreateInput => ({
+    fecha: form.fecha,
+    turno: form.turno,
+    operadorId: form.operadorId || undefined,
+    tipoMaterial: form.tipoMaterial,
+    materialProducido: parseFloat(form.materialProducido),
+    horasTrabajadas: parseFloat(form.horasTrabajadas),
+    materialAlBanco: parseFloat(form.materialAlBanco),
+    observaciones: form.observaciones.trim() || undefined,
+  }), [form]);
+
+  // ── CRUD ──
   const handleCreate = useCallback(async () => {
-    if (!validateForm()) return;
+    const invalid = validateForm();
+    if (invalid) {
+      showToast(invalid, 'error');
+      return;
+    }
     setSubmitting(true);
     try {
-      const nuevo: RegistroCriba = {
-        id: crypto.randomUUID(),
-        fecha: form.fecha,
-        turno: form.turno,
-        operador: form.operador.trim(),
-        tipoMaterial: form.tipoMaterial,
-        materialProducido: parseFloat(form.materialProducido),
-        horasTrabajadas: parseFloat(form.horasTrabajadas),
-        materialAlBanco: parseFloat(form.materialAlBanco),
-        observaciones: form.observaciones.trim() || undefined,
-      };
-      setRegistros((prev) => [nuevo, ...prev]);
-      showToast(`Registro de turno ${nuevo.turno.toLowerCase()} creado exitosamente.`, 'success');
-      setCreateOpen(false);
-      setForm(emptyForm);
+      const res = await cribaApi.crear(buildInput());
+      if (res.success) {
+        showToast(`Turno ${form.turno.toLowerCase()} registrado exitosamente.`, 'success');
+        setCreateOpen(false);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al registrar el turno.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al registrar el turno.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [validateForm, form, showToast]);
+  }, [form, validateForm, buildInput, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleEdit = useCallback(async () => {
-    if (!selectedItem || !validateForm()) return;
+    if (!selectedItem) return;
+    const invalid = validateForm();
+    if (invalid) {
+      showToast(invalid, 'error');
+      return;
+    }
     setSubmitting(true);
     try {
-      setRegistros((prev) =>
-        prev.map((r) =>
-          r.id === selectedItem.id
-            ? {
-                ...r,
-                fecha: form.fecha,
-                turno: form.turno,
-                operador: form.operador.trim(),
-                tipoMaterial: form.tipoMaterial,
-                materialProducido: parseFloat(form.materialProducido),
-                horasTrabajadas: parseFloat(form.horasTrabajadas),
-                materialAlBanco: parseFloat(form.materialAlBanco),
-                observaciones: form.observaciones.trim() || undefined,
-              }
-            : r,
-        ),
-      );
-      showToast('Registro actualizado exitosamente.', 'success');
-      setEditOpen(false);
-      setSelectedItem(null);
-      setForm(emptyForm);
+      const res = await cribaApi.actualizar(selectedItem.id, buildInput());
+      if (res.success) {
+        showToast('Registro actualizado exitosamente.', 'success');
+        setEditOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar el registro.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar el registro.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, validateForm, form, showToast]);
+  }, [selectedItem, validateForm, buildInput, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      setRegistros((prev) => prev.filter((r) => r.id !== selectedItem.id));
-      showToast('Registro eliminado exitosamente.', 'success');
-      setDeleteOpen(false);
-      setSelectedItem(null);
+      const res = await cribaApi.eliminar(selectedItem.id);
+      if (res.success) {
+        showToast('Registro eliminado exitosamente.', 'success');
+        setDeleteOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar el registro.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al eliminar el registro.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, showToast]);
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Columnas de DataTable ──
-  const columns: Column<RegistroCriba>[] = [
+  const columns: Column<RegistroCribaDTO>[] = [
     {
       key: 'fecha',
       header: 'Fecha',
       render: (item) => (
-        <span className="whitespace-nowrap font-bold text-slate-600">{formatDate(item.fecha)}</span>
+        <span className="whitespace-nowrap font-bold text-slate-600">{formatFechaSolo(item.fecha)}</span>
       ),
     },
     {
@@ -342,7 +367,7 @@ export default function CribaPage() {
       key: 'operador',
       header: 'Operador',
       render: (item) => (
-        <span className="font-bold text-slate-700">{item.operador}</span>
+        <span className="font-bold text-slate-700">{item.operador || '—'}</span>
       ),
     },
     {
@@ -612,17 +637,25 @@ export default function CribaPage() {
       )}
 
       <div className="space-y-3">
-        <DataTable
-          columns={columns}
-          data={paginated}
-          keyExtractor={(item) => item.id}
-          emptyText="Sin registros para los filtros seleccionados."
-          maxBodyHeight="520px"
-        />
+        <div className="relative">
+          {refreshing && !initialLoading && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
+            </div>
+          )}
+          <DataTable
+            columns={columns}
+            data={registros}
+            loading={initialLoading}
+            keyExtractor={(item) => item.id}
+            emptyText="Sin registros para los filtros seleccionados."
+            maxBodyHeight="520px"
+          />
+        </div>
         <Pagination
-          currentPage={safePage}
-          totalPages={totalPages}
-          totalRecords={filtered.length}
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.total}
           pageSize={PAGE_SIZE}
           onPageChange={handlePageChange}
         />
@@ -657,7 +690,7 @@ export default function CribaPage() {
             <select
               className={modalSelectClass}
               value={form.turno}
-              onChange={(e) => setForm({ ...form, turno: e.target.value as RegistroCriba['turno'] })}
+              onChange={(e) => setForm({ ...form, turno: e.target.value as TurnoCribaApi })}
             >
               {TURNOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -666,13 +699,16 @@ export default function CribaPage() {
           </ModalField>
 
           <ModalField label="Operador" required className="sm:col-span-2">
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Nombre del operador de criba"
-              value={form.operador}
-              onChange={(e) => setForm({ ...form, operador: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.operadorId}
+              onChange={(e) => setForm({ ...form, operadorId: e.target.value })}
+            >
+              <option value="">Seleccionar operador...</option>
+              {catalogos.trabajadores.map((t) => (
+                <option key={t.id} value={t.id}>{t.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Material" required>
@@ -738,7 +774,7 @@ export default function CribaPage() {
         onClose={() => setEditOpen(false)}
         onCancel={() => setEditOpen(false)}
         title="Editar Registro"
-        subtitle={selectedItem ? `${formatDate(selectedItem.fecha)} · ${selectedItem.turno}` : undefined}
+        subtitle={selectedItem ? `${formatFechaSolo(selectedItem.fecha)} · ${selectedItem.turno}` : undefined}
         submitLabel="Guardar Cambios"
         cancelLabel="Cancelar"
         onSubmit={handleEdit}
@@ -758,7 +794,7 @@ export default function CribaPage() {
             <select
               className={modalSelectClass}
               value={form.turno}
-              onChange={(e) => setForm({ ...form, turno: e.target.value as RegistroCriba['turno'] })}
+              onChange={(e) => setForm({ ...form, turno: e.target.value as TurnoCribaApi })}
             >
               {TURNOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -767,12 +803,16 @@ export default function CribaPage() {
           </ModalField>
 
           <ModalField label="Operador" required className="sm:col-span-2">
-            <input
-              type="text"
-              className={modalInputClass}
-              value={form.operador}
-              onChange={(e) => setForm({ ...form, operador: e.target.value })}
-            />
+            <select
+              className={modalSelectClass}
+              value={form.operadorId}
+              onChange={(e) => setForm({ ...form, operadorId: e.target.value })}
+            >
+              <option value="">Seleccionar operador...</option>
+              {catalogos.trabajadores.map((t) => (
+                <option key={t.id} value={t.id}>{t.nombre}</option>
+              ))}
+            </select>
           </ModalField>
 
           <ModalField label="Material" required>
@@ -849,10 +889,10 @@ export default function CribaPage() {
               ¿Estás seguro de eliminar este registro?
             </p>
             <p className="font-black text-slate-900 text-lg mb-2">
-              {formatDate(selectedItem.fecha)} · {selectedItem.turno}
+              {formatFechaSolo(selectedItem.fecha)} · {selectedItem.turno}
             </p>
             <p className="text-xs text-slate-500">
-              {selectedItem.operador} · {selectedItem.tipoMaterial}
+              {selectedItem.operador || 'Sin operador'} · {selectedItem.tipoMaterial}
             </p>
           </div>
         )}

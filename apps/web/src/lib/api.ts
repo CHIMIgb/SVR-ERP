@@ -381,6 +381,203 @@ export const inventarioApi = {
 };
 
 // ────────────────────────────────────────────────────────────
+//  Finanzas API
+// ────────────────────────────────────────────────────────────
+
+export type TipoTransaccionApi = 'INGRESO' | 'EGRESO';
+
+/** Formato que devuelve el backend serializado (modelo `transacciones`) */
+export interface TransaccionDTO {
+  id: string;
+  codigo: string | null;
+  tipo: TipoTransaccionApi;
+  categoria: string;
+  monto: number;
+  fecha: string;
+  descripcion: string;
+  activo: boolean;
+  creadoEn: string;
+}
+
+export interface FinanzasStats {
+  balance: number;
+  totalIngresos: number;
+  totalEgresos: number;
+  cantidad: number;
+}
+
+export interface TransaccionCreateInput {
+  tipo: TipoTransaccionApi;
+  categoria: string;
+  monto: number;
+  fecha: string;
+  descripcion: string;
+}
+
+/** Catálogo de categorías financieras disponibles (frontend estático) */
+export const FinanzasCategorias: { value: string; label: string }[] = [
+  { value: 'Pago de Obra', label: 'Pago de Obra' },
+  { value: 'Anticipo de Cliente', label: 'Anticipo de Cliente' },
+  { value: 'Venta de Material', label: 'Venta de Material' },
+  { value: 'Renta de Maquinaria', label: 'Renta de Maquinaria' },
+  { value: 'Combustible', label: 'Combustible' },
+  { value: 'Nómina', label: 'Nómina' },
+  { value: 'Refacciones', label: 'Refacciones' },
+  { value: 'Mantenimiento', label: 'Mantenimiento' },
+  { value: 'Servicios', label: 'Servicios' },
+  { value: 'Impuestos', label: 'Impuestos' },
+  { value: 'Otros', label: 'Otros' },
+];
+
+export const finanzasApi = {
+  /** Listar transacciones con búsqueda, filtros y paginación */
+  listar: (params?: {
+    search?: string;
+    tipo?: TipoTransaccionApi;
+    categoria?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.categoria) searchParams.set('categoria', params.categoria);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<TransaccionDTO>>(
+      `/finanzas${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener una transacción por ID */
+  obtener: (id: string) =>
+    apiClient.get<TransaccionDTO>(`/finanzas/${id}`),
+
+  /** Crear una transacción */
+  crear: (data: TransaccionCreateInput) =>
+    apiClient.post<TransaccionDTO>('/finanzas', data),
+
+  /** Actualizar una transacción */
+  actualizar: (id: string, data: Partial<TransaccionCreateInput>) =>
+    apiClient.patch<TransaccionDTO>(`/finanzas/${id}`, data),
+
+  /** Eliminar una transacción (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/finanzas/${id}`),
+
+  /** Estadísticas financieras */
+  stats: () =>
+    apiClient.get<FinanzasStats>('/finanzas/stats'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Criba API
+// ────────────────────────────────────────────────────────────
+
+/** Enum de turno que espera el backend (Prisma `Turno`) — para crear/editar/filtrar. */
+export type TurnoCribaApi = 'MATUTINO' | 'VESPERTINO';
+
+/** Formato que devuelve el backend serializado (la UI muestra `turno` como etiqueta). */
+export interface RegistroCribaDTO {
+  id: string;
+  codigo: string | null;
+  fecha: string; // YYYY-MM-DD
+  turno: 'Matutino' | 'Vespertino';
+  operadorId: string | null;
+  operador: string | null;
+  tipoMaterial: string;
+  materialProducido: number;
+  horasTrabajadas: number;
+  materialAlBanco: number;
+  observaciones: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface CribaStats {
+  totalProducido: number;
+  totalAlBanco: number;
+  totalHoras: number;
+  eficiencia: number;
+  merma: number;
+  mermaPorcentaje: number;
+  porMaterial: {
+    tipo: string;
+    producido: number;
+    alBanco: number;
+    merma: number;
+    ef: number;
+  }[];
+}
+
+export interface CribaCatalogos {
+  trabajadores: { id: string; nombre: string }[];
+}
+
+export interface CribaCreateInput {
+  fecha: string;
+  turno: TurnoCribaApi;
+  operadorId?: string;
+  tipoMaterial: string;
+  materialProducido: number;
+  horasTrabajadas: number;
+  materialAlBanco: number;
+  observaciones?: string;
+}
+
+export const cribaApi = {
+  /** Listar registros con búsqueda, filtros y paginación (server-side) */
+  listar: (params?: {
+    search?: string;
+    turno?: TurnoCribaApi;
+    tipoMaterial?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.turno) searchParams.set('turno', params.turno);
+    if (params?.tipoMaterial) searchParams.set('tipoMaterial', params.tipoMaterial);
+    if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
+    if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<RegistroCribaDTO>>(
+      `/criba${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un registro por ID */
+  obtener: (id: string) =>
+    apiClient.get<RegistroCribaDTO>(`/criba/${id}`),
+
+  /** Estadísticas para las tarjetas */
+  stats: () =>
+    apiClient.get<CribaStats>('/criba/stats'),
+
+  /** Catálogo de trabajadores (operadores) para el formulario */
+  catalogos: () =>
+    apiClient.get<CribaCatalogos>('/criba/catalogos'),
+
+  /** Crear un registro de turno */
+  crear: (data: CribaCreateInput) =>
+    apiClient.post<RegistroCribaDTO>('/criba', data),
+
+  /** Actualizar un registro de turno */
+  actualizar: (id: string, data: Partial<CribaCreateInput>) =>
+    apiClient.patch<RegistroCribaDTO>(`/criba/${id}`, data),
+
+  /** Eliminar (soft delete) un registro */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/criba/${id}`),
+};
+
+// ────────────────────────────────────────────────────────────
 //  Bitácora API
 // ────────────────────────────────────────────────────────────
 

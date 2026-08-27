@@ -4,6 +4,31 @@ Orden recomendado para refactorizar cada vista aplicando componentes UI reutiliz
 
 ---
 
+## Estado del Plan
+
+### Modulo Operaciones — COMPLETADO ✅
+
+Las 6 vistas de Operaciones estan refactorizadas y conectadas al backend (full-stack):
+
+| # | Vista | Backend | Frontend | Tests | Auditoria |
+|---|-------|:-------:|:--------:|:-----:|:---------:|
+| 1 | Inventario | ✅ API real | ✅ | ✅ | ✅ |
+| 2 | Operaciones | ✅ | ✅ | ✅ | ✅ |
+| 3 | Incidentes | ✅ CRUD + soft delete | ✅ tabla | ✅ 20 unit + 34 int | ✅ |
+| 4 | Proyectos | ✅ CRUD + Finanzas | ✅ tabla + modal | ✅ | ✅ |
+| 5 | Criba | ✅ CRUD + stats | ✅ 7 StatsCards | ✅ 35 unit + 7 int | ✅ |
+| 6 | Reportes Campo | ✅ CRUD + flujo estados | ✅ cards | ✅ 38 unit + 7 int | ✅ |
+
+Cada endpoint cumple los 4 requisitos (JWT, blacklist, auditoria exito, `fallir()` fallo). Todas las memorias de los 4 requisitos siguen `audit-service-guide.md` seccion 0.
+
+---
+
+### Modulo Comercial — PENDIENTE (siguiente)
+
+Las 6 vistas de Comercial aun estan en fase mock / sin refactorizar. Ver tabla y detalle abajo.
+
+---
+
 ## Criterios de Priorizacion
 
 1. **Impacto de negocio** - Que tan usado es el modulo en una constructora real
@@ -207,12 +232,14 @@ Para cada vista refactorizada, verificar:
 
 | # | Vista | Lineas | Prioridad | Componentes UI a aplicar |
 |---|-------|--------|-----------|--------------------------|
-| 1 | `inventario/page.tsx` | 137 | **Primera** | PageHeader, StatsCard, DataTable, SearchBar, Badge |
-| 2 | `operaciones/page.tsx` | 70 | Segunda | PageHeader, Card, Badge, EmptyState |
-| 3 | `incidentes/page.tsx` | 78 | Tercera | PageHeader, Card, Badge, EmptyState |
-| 4 | `proyectos/page.tsx` | 176 | Cuarta | PageHeader, Card, Badge, Pagination, SearchBar |
-| 5 | `criba/page.tsx` | 271 | Quinta | PageHeader, StatsCard, DataTable, SearchBar, Select, Badge |
-| 6 | `reportes-campo/page.tsx` | 243 | Sexta | PageHeader, Card, SearchBar, Select, DatePicker, Badge |
+| 1 | `inventario/page.tsx` | 137 | **Primera** | ✅ REALIZADA |
+| 2 | `operaciones/page.tsx` | 70 | Segunda | ✅ REALIZADA |
+| 3 | `incidentes/page.tsx` | 78 | Tercera | ✅ REALIZADA |
+| 4 | `proyectos/page.tsx` | 176 | Cuarta | ✅ REALIZADA |
+| 5 | `criba/page.tsx` | 271 | Quinta | ✅ REALIZADA (full-stack) |
+| 6 | `reportes-campo/page.tsx` | 243 | Sexta | ✅ REALIZADA (full-stack) |
+
+**Este modulo esta COMPLETADO.** Las 6 vistas ya estan refactorizadas, conectadas a la API de NestJS, con RBAC y auditoria completa. El detalle por vista historico se conserva abajo por referencia, pero ya no es trabajo pendiente.
 
 ### Detalle por vista
 
@@ -355,6 +382,8 @@ Para cada vista refactorizada, verificar:
 ---
 
 ## Modulo: Comercial
+
+**ESTADO: PENDIENTE — siguiente modulo por refactorizar.** Todas las vistas aun estan con datos mock en `@/lib/data` y patrones manuales (Modal legacy de `@/components/layout`, `btn-primary`/`card` legacy). Ninguna tiene backend propio todavia.
 
 | # | Vista | Lineas | Prioridad | Componentes UI a aplicar |
 |---|-------|--------|-----------|--------------------------|
@@ -509,30 +538,29 @@ Para cada vista refactorizada, verificar:
 
 ## Resumen: Orden de Trabajo
 
+**Modulo Operaciones: COMPLETADO ✅**
+
 ```
-SEMANA 1:
-  [Operaciones] Inventario (137 lineas) -> DataTable + StatsCard + SearchBar
-  [Comercial]   Finanzas (129 lineas)   -> DataTable + StatsCard + SearchBar
+SEMANA 1:  [Operaciones] Inventario + [Comercial] Finanzas
+SEMANA 2:  [Operaciones] Operaciones + [Comercial] Clientes
+SEMANA 3:  [Operaciones] Incidentes + [Comercial] Ventas
+SEMANA 4:  [Operaciones] Proyectos + [Comercial] Proveedores
+SEMANA 5:  [Operaciones] Criba + [Comercial] Cobranza
+SEMANA 6:  [Operaciones] Reportes Campo + [Comercial] Cotizaciones
+```
 
-SEMANA 2:
-  [Operaciones] Operaciones (70 lineas) -> Card timeline + Badge + EmptyState
-  [Comercial]   Clientes (65 lineas)    -> Card grid + FormModal + EmptyState
+Las 6 vistas de Operaciones estan terminadas (full-stack, RBAC, auditoria).
 
-SEMANA 3:
-  [Operaciones] Incidentes (78 lineas)  -> Card grid + Badge de prioridad
-  [Comercial]   Ventas (468 lineas)     -> Refactorizar formularios existentes
+**Queda pendiente el Modulo Comercial** — 6 vistas. Orden recomendado (por impacto y complejidad creciente):
 
-SEMANA 4:
-  [Operaciones] Proyectos (176 lineas)  -> Card + Progress + Pagination
-  [Comercial]   Proveedores (495 lineas) -> Card + Tabs + FormModal
-
-SEMANA 5:
-  [Operaciones] Criba (271 lineas)     -> StatsCard + DataTable + SearchBar
-  [Comercial]   Cobranza (439 lineas)  -> StatsCard + DataTable + FormModal
-
-SEMANA 6:
-  [Operaciones] Reportes Campo (243 lineas) -> Card + SearchBar + DatePicker
-  [Comercial]   Cotizaciones (660 lineas)   -> Dividir en componentes
+```
+COMERCIAL:
+  1. Finanzas (129)     -> StatsCard + DataTable + SearchBar (plantilla = inventario)
+  2. Clientes (65)      -> Card grid + FormModal + EmptyState
+  3. Ventas (468)       -> StatsCard + DataTable + FormModal
+  4. Proveedores (495)  -> Card + Tabs + FormModal
+  5. Cobranza (439)     -> StatsCard + DataTable + FormModal
+  6. Cotizaciones (660) -> Dividir en componentes primero
 ```
 
 ---
