@@ -1,0 +1,50 @@
+'use client';
+
+import { ArrowLeft, Lock } from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { CorteCaja } from '@/components/pos/CorteCaja';
+import { usePOS } from '@/components/pos/POSProvider';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
+
+export default function CorteDelDiaPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { sales, retiros } = usePOS();
+
+  const cashierName = user?.persona && user.persona.nombre
+    ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
+    : 'Cajero';
+
+  const puedeCrear = user?.vistas.find((v) => v.ruta === '/ventas')?.puedeCrear ?? false;
+
+  return (
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Corte del Día"
+        subtitle={`Cierre de caja · Cajero: ${cashierName}`}
+        action={
+          <Button
+            variant="outline"
+            icon={<ArrowLeft className="w-4 h-4" />}
+            onClick={() => router.push('/ventas')}
+          >
+            Volver al Pos
+          </Button>
+        }
+      />
+
+      {!puedeCrear ? (
+        <EmptyState
+          icon={<Lock className="w-10 h-10" />}
+          title="Sin permiso para cerrar caja"
+          subtitle="Tu rol no tiene el permiso de crear ventas (/ventas). Contacta a un administrador."
+        />
+      ) : (
+        <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} />
+      )}
+    </div>
+  );
+}

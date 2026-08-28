@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   ReceiptText,
   ShoppingCart,
   ArrowDownCircle,
   Trash2,
-  CalendarDays,
   Banknote,
+  Lock,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -25,8 +26,8 @@ import { PaymentPanel } from '@/components/pos/PaymentPanel';
 import { QrModal } from '@/components/pos/QrModal';
 import { TicketPreview } from '@/components/pos/TicketPreview';
 import { SalesHistoryModal } from '@/components/pos/SalesHistoryModal';
-import { CorteCaja } from '@/components/pos/CorteCaja';
 import { posClasses } from '@/components/pos/pos.styles';
+import { usePOS, type Retiro } from '@/components/pos/POSProvider';
 
 import {
   BUSINESS_INFO,
@@ -45,19 +46,6 @@ import {
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Retiro {
-  id: string;
-  concepto: string;
-  monto: number;
-  fecha: string;
-  hora: string;
-  autorizadoPor: string;
-}
-
-const retirosIniciales: Retiro[] = [];
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function VentasPage() {
@@ -72,19 +60,18 @@ export default function VentasPage() {
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
     : 'Cajero';
 
-  // Carrito + ventas del día (estado local, fase 1 frontend)
+  // Carrito (local) + ventas/retiros/turno (compartidos con /ventas/corte)
+  const { sales, retiros, setRetiros, addSale } = usePOS();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [sales, setSales] = useState<POSSale[]>([]);
-  const [retiros, setRetiros] = useState<Retiro[]>(retirosIniciales);
 
   // Modales del POS
   const [qrAmount, setQrAmount] = useState<number | null>(null);
   const [lastSale, setLastSale] = useState<POSSale | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
-  // Modal de retiro
   const [modalRetiro, setModalRetiro] = useState(false);
   const [formRetiro, setFormRetiro] = useState({ concepto: '', monto: '', autorizadoPor: '' });
+  const router = useRouter();
 
   const total = useMemo(() => calculateTotal(cart), [cart]);
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
@@ -163,11 +150,10 @@ export default function VentasPage() {
       createdAt: new Date().toISOString(),
     };
 
-    setSales((prev) => [sale, ...prev]);
+    addSale(sale);
     setCart([]);
     setLastSale(sale);
   };
-
   // ── Retiros ───────────────────────────────────────────────────────────────
   const handleRetiro = () => {
     const monto = parseFloat(formRetiro.monto);
@@ -202,13 +188,18 @@ export default function VentasPage() {
         title="Punto de Venta"
         subtitle={`Caja ${POS_REGISTER} · Terminal ${POS_TERMINAL} · Cajero: ${cashierName}`}
         action={
-          <Button
-            variant="secondary"
-            icon={<ReceiptText className="w-4 h-4" />}
-            onClick={() => setShowHistory(true)}
-          >
-            Ventas de hoy ({ventasHoy.length})
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="secondary"
+              icon={<ReceiptText className="w-4 h-4" />}
+              onClick={() => setShowHistory(true)}
+            >
+              Ventas de hoy ({ventasHoy.length})
+            </Button>
+            <Button variant="primary" icon={<Lock className="w-4 h-4" />} onClick={() => router.push('/ventas/corte')}>
+              Corte del Día
+            </Button>
+          </div>
         }
       />
 
@@ -257,7 +248,6 @@ export default function VentasPage() {
             tabs={[
               { key: 'pos', label: 'Punto de Venta', icon: <ShoppingCart className="w-4 h-4" /> },
               { key: 'retiros', label: 'Retiros / Gastos', icon: <ArrowDownCircle className="w-4 h-4" /> },
-              { key: 'corte', label: 'Corte del Día', icon: <CalendarDays className="w-4 h-4" /> },
             ]}
           >
             {/* ─── POS ─────────────────────────────────────────────────── */}
@@ -368,11 +358,6 @@ export default function VentasPage() {
                   </div>
                 )}
               </div>
-            </TabPanel>
-
-            {/* ─── CORTE DEL DÍA ───────────────────────────────────────── */}
-            <TabPanel tabKey="corte">
-              <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} />
             </TabPanel>
           </Tabs>
         </>

@@ -32,6 +32,7 @@ import {
   itemUnitName,
 } from '@/lib/pos';
 import type { POSSale } from '@/lib/pos';
+import { usePOS } from '@/components/pos/POSProvider';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 interface CorteCajaProps {
@@ -77,21 +78,25 @@ function paymentLabel(sale: POSSale): string {
 
 /**
  * Cierre de caja (replica del prototipo mobile): apertura del turno,
- * retiros, arqueo por denominaciones, cierre y ticket imprimible.
+ * arqueo por denominaciones, cierre y ticket imprimible.
  */
 export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
-  // Apertura / cierre del turno (estado local, fase 1 frontend)
-  const [opened, setOpened] = useState(false);
-  const [openingAmount, setOpeningAmount] = useState('');
-  const [closed, setClosed] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [nextTurnCash, setNextTurnCash] = useState('');
+  // Turno de caja compartido (apertura/cierre sobreviven al navegar entre Pos y Corte)
+  const { register, setRegister } = usePOS();
+  const opened = register.opened;
+  const closed = register.closed;
+  const openingAmount = register.openingAmount;
 
-  // Arqueo por denominaciones
+  // Notas y fondo del siguiente turno
+  const [notes, setNotes] = useState(register.notes);
+  const [nextTurnCash, setNextTurnCash] = useState(register.nextTurnCash);
+
+  // Arqueo por denominaciones (solo importa durante este turno)
   const [counts, setCounts] = useState<Record<number, string>>({});
 
-  // Modal de resumen
+  // Modal de resumen + confirmación de diferencia
   const [showSummary, setShowSummary] = useState(false);
+  const [confirmDifference, setConfirmDifference] = useState(false);
 
   // ── Métricas del día ────────────────────────────────────────────────────
   const todaySales = useMemo(() => sales.filter((s) => isToday(s.createdAt)), [sales]);
@@ -131,6 +136,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   const totalRetirements = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
   const expectedCash = initial + metodos.efectivo - totalRetirements;
   const counted = CASH_DENOMINATIONS.reduce((sum, d) => sum + (Number(counts[d]) || 0) * d, 0);
+  const hasDifference = counted !== expectedCash;
   const difference = counted - expectedCash;
 
   // ── Ventana de cierre ────────────────────────────────────────────────────
@@ -147,23 +153,37 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   const handleOpen = () => {
     const amount = Number(openingAmount);
     if (amount <= 0) return;
-    setOpened(true);
+    setRegister((prev) => ({ ...prev, opened: true }));
   };
 
   const handleClose = () => {
     if (!allowed || counted <= 0) return;
-    setClosed(true);
-    setOpened(false);
+    if (hasDifference && !confirmDifference) {
+      setConfirmDifference(true);
+      return;
+    }
+    setRegister((prev) => ({
+      ...prev,
+      closed: true,
+      opened: false,
+      notes,
+      nextTurnCash,
+    }));
     setShowSummary(true);
   };
 
   const handleNextTurn = () => {
-    setOpened(false);
-    setClosed(false);
-    setOpeningAmount('');
+    setRegister({
+      opened: false,
+      openingAmount: '',
+      closed: false,
+      notes: '',
+      nextTurnCash: '',
+    });
     setNotes('');
     setNextTurnCash('');
     setCounts({});
+    setConfirmDifference(false);
   };
 
   const handlePrint = () => {
@@ -243,7 +263,9 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
                 inputMode="decimal"
                 placeholder="0.00"
                 value={openingAmount}
-                onChange={(e) => setOpeningAmount(e.target.value)}
+                onChange={(e) =>
+                  setRegister((prev) => ({ ...prev, openingAmount: e.target.value }))
+                }
               />
               <Button
                 variant="primary"
@@ -289,8 +311,8 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* ── Columna izquierda ── */}
-        <div className="space-y-4">
+        {/* ── Columna izquierda (notas): baja en mobile tras el arqueo ── */}
+        <div className="space-y-4 order-2 lg:order-1">
           {/* Notas */}
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-3')}>Notas del cierre</h3>
@@ -303,8 +325,8 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
           </div>
         </div>
 
-        {/* ── Columna derecha ── */}
-        <div className="space-y-4">
+        {/* ── Columna derecha (arqueo): primero en mobile ── */}
+        <div className="space-y-4 order-1 lg:order-2">
           {/* Horario permitido */}
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Horario permitido</h3>
@@ -433,6 +455,59 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Confirmación de diferencia en el cierre ── */}
+      <Modal open={confirmDifference} onClose={() => setConfirmDifference(false)} size="md">
+        <ModalHeader
+          title="Diferencia en el arqueo"
+          subtitle="El efectivo contado no coincide con el esperado"
+        />
+        <ModalBody>
+          <div className="space-y-3">
+            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
+              <p className="text-sm font-medium text-slate-500">Diferencia</p>
+              <p
+                className={cn(
+                  'text-2xl font-black mt-1',
+                  difference >= 0 ? 'text-green-600' : 'text-red-600',
+                )}
+              >
+                {difference > 0 ? '+' : ''}
+                {formatCurrency(difference)}
+                {difference > 0 ? ' · A favor' : difference < 0 ? ' · En contra' : ''}
+              </p>
+            </div>
+            <p className="text-sm text-slate-600">
+              {difference < 0
+                ? 'Hay un faltante en la caja. Asegúrate de revisar el arqueo y registra una nota antes de cerrar.'
+                : 'Hay un sobrante en la caja. Revisa el arqueo y registra una nota antes de cerrar.'}
+            </p>
+            <label className="block">
+              <span className="text-xs font-bold text-slate-500 mb-1 block">
+                Nota obligatoria
+              </span>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Explica el motivo de la diferencia..."
+                rows={3}
+              />
+            </label>
+          </div>
+        </ModalBody>
+        <ModalFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <Button variant="secondary" onClick={() => setConfirmDifference(false)}>
+            Revisar arqueo
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleClose}
+            disabled={!notes.trim()}
+          >
+            Confirmar y cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {/* ── Modal resumen del cierre ── */}
       <Modal open={showSummary} onClose={() => setShowSummary(false)} size="lg">
