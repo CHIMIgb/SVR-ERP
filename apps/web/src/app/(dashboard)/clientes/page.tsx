@@ -647,11 +647,11 @@ export default function ClientesPage() {
             </div>
 
             {/* Cotizaciones */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-primary" />
                 <h4 className="font-black text-slate-900 text-sm">Cotizaciones</h4>
-                <Badge variant="info" size="sm">{cotizaciones.length}</Badge>
+                <Badge variant="info" size="sm">{historialPagination.total}</Badge>
               </div>
 
               {historialLoading ? (
@@ -666,25 +666,36 @@ export default function ClientesPage() {
                   </p>
                 </div>
               ) : (
-                <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                  {cotizaciones.map((cq) => (
-                    <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50/50">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-black text-primary">{cq.codigo}</span>
-                          {estadoBadge(cq.estado)}
+                <>
+                  <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                    {cotizaciones.map((cq) => (
+                      <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50/50">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-primary">{cq.codigo}</span>
+                            {estadoBadge(cq.estado)}
+                          </div>
+                          <p className="text-sm font-semibold text-slate-700 truncate mt-0.5">{cq.descripcion}</p>
+                          <p className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                            <CalendarDays className="w-3 h-3" /> {cq.fecha}
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-slate-700 truncate mt-0.5">{cq.descripcion}</p>
-                        <p className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
-                          <CalendarDays className="w-3 h-3" /> {cq.fecha}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-black text-slate-900">{formatCurrency(cq.monto)}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                        <div className="text-right shrink-0">
+                          <p className="font-black text-slate-900">{formatCurrency(cq.monto)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {historialPagination.totalPages > 1 && (
+                    <Pagination
+                      currentPage={historialPagination.page}
+                      totalPages={historialPagination.totalPages}
+                      totalRecords={historialPagination.total}
+                      pageSize={historialPagination.limit}
+                      onPageChange={handleHistorialPageChange}
+                    />
+                  )}
+                </>
               )}
             </div>
           </div>
