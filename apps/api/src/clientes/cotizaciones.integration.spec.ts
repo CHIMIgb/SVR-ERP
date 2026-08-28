@@ -11,7 +11,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, EstadoCotizacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
@@ -158,6 +158,83 @@ describe('Cotizaciones Audit (Real DB)', () => {
         expect(item.estado).toBe('Pendiente');
         expect(item.fecha).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       }
+    });
+  });
+
+  describe('LISTADO_GLOBAL', () => {
+    it('debe listar cotizaciones de todos los clientes con datos del cliente', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Global ${TEST_ID}`, monto: 999, fecha: '2026-08-22' },
+        ACTOR_USER_ID,
+      );
+
+      const resultado = await service.findAll({ page: 1, limit: 100 });
+
+      const encontrada = resultado.items.find((i) => i.id === cotizacion.id);
+      expect(encontrada).toBeDefined();
+      expect(encontrada!.clienteId).toBe(cliente.id);
+      expect(encontrada!.clienteNombre).toBe(cliente.nombre);
+      expect(encontrada!.clienteEmpresa).toBe(cliente.empresa);
+    });
+  });
+
+  describe('DETALLE_GLOBAL', () => {
+    it('debe devolver el detalle de una cotización con su cliente', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Detalle ${TEST_ID}`, monto: 500, fecha: '2026-08-22' },
+        ACTOR_USER_ID,
+      );
+
+      const detalle = await service.findOne(cotizacion.id);
+      expect(detalle.id).toBe(cotizacion.id);
+      expect(detalle.clienteEmpresa).toBe(cliente.empresa);
+    });
+  });
+
+  describe('COTIZACION_ACTUALIZADA (cambio de estado)', () => {
+    it('debe cambiar el estado y registrar COTIZACION_ACTUALIZADA con previous/new estado', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Estado ${TEST_ID}`, monto: 750, fecha: '2026-08-22' },
+        ACTOR_USER_ID,
+      );
+
+      const actualizada = await service.cambiarEstado(
+        cotizacion.id,
+        { estado: EstadoCotizacion.ACEPTADA },
+        ACTOR_USER_ID,
+      );
+
+      expect(actualizada.estado).toBe('Aceptada');
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COTIZACION_ACTUALIZADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      const estadoAudit = audits.find(
+        (a) =>
+          (a.new_value as Record<string, unknown> | null)?.estado === 'Aceptada',
+      );
+      expect(estadoAudit).toBeDefined();
+      expect((estadoAudit!.previous_value as Record<string, unknown>).estado).toBe('Pendiente');
+      expect(estadoAudit!.actor_user_id).toBe(ACTOR_USER_ID);
+    });
+  });
+
+  describe('STATS_GLOBAL', () => {
+    it('debe contar cotizaciones por estado', async () => {
+      const stats = await service.findStats();
+      expect(stats).toHaveProperty('total');
+      expect(stats).toHaveProperty('pendientes');
+      expect(stats).toHaveProperty('aceptadas');
+      expect(stats).toHaveProperty('rechazadas');
+      expect(stats).toHaveProperty('montoAceptado');
+      expect(typeof stats.total).toBe('number');
     });
   });
 });

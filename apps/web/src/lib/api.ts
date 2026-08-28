@@ -1611,6 +1611,11 @@ export interface CotizacionDTO {
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  // Campos del cliente (solo presentes en el listado/detalle global)
+  clienteNombre?: string | null;
+  clienteEmpresa?: string | null;
+  clienteTelefono?: string | null;
+  clienteCorreo?: string | null;
 }
 
 export interface CotizacionCreateInput {
@@ -1618,3 +1623,49 @@ export interface CotizacionCreateInput {
   monto: number;
   fecha: string; // YYYY-MM-DD
 }
+
+/** Métricas para las tarjetas de /cotizaciones. */
+export interface CotizacionesStats {
+  total: number;
+  pendientes: number;
+  aceptadas: number;
+  rechazadas: number;
+  montoAceptado: number;
+}
+
+/** Estado que acepta la API en body para cambiar el estado (mayúsculas). */
+export type EstadoCotizacionApi = 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA';
+
+export const cotizacionesApi = {
+  /** Listado global de cotizaciones con búsqueda, filtros y paginación. */
+  listar: (params?: {
+    search?: string;
+    estado?: EstadoCotizacionApi;
+    clienteId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CotizacionDTO>>(
+      `/cotizaciones${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Detalle de una cotización con datos del cliente. */
+  obtener: (id: string) =>
+    apiClient.get<CotizacionDTO>(`/cotizaciones/${id}`),
+
+  /** Estadísticas para las tarjetas. */
+  stats: () =>
+    apiClient.get<CotizacionesStats>('/cotizaciones/stats'),
+
+  /** Cambiar estado (Aceptada / Rechazada). */
+  cambiarEstado: (id: string, estado: EstadoCotizacionApi) =>
+    apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}/estado`, { estado }),
+};
