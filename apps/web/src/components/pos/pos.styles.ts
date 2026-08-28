@@ -6,7 +6,7 @@ export const posClasses = {
   muted: 'text-xs text-slate-500',
 
   // Scanner
-  scannerHint: 'text-[11px] text-slate-400 mt-2',
+  hint: 'text-[11px] text-slate-400 mt-2',
 
   // Fila del carrito
   cartRow: 'flex items-center gap-2 sm:gap-3 py-2.5 border-b border-slate-50 last:border-0',

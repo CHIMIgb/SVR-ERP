@@ -38,18 +38,32 @@ export interface Product {
   category?: string;
   condition: string;
   stock: number;
-  /** Unidad de venta del material (m³, pieza, tonelada, etc.). */
+  /** Unidad de venta por defecto del material (m³, pieza, bulto, etc.). */
   unit: string;
+  /** Medidas en las que se puede vender el material (default = primera). */
+  units?: string[];
   priceMxn: number;
 }
 
 export interface CartItem {
   product: Product;
   quantity: number;
+  /** Unidad de medida elegida por el cajero (default = product.unit). */
+  unit?: string;
   /** Descuento porcentual por producto (0-100) — reservado para overrides futuros. */
   discountPct?: number;
   /** Precio manual sobreescrito por el cajero (autorizado). */
   priceOverride?: number;
+}
+
+/** Identificador único de la línea de carrito (producto + medida elegida). */
+export function cartLineKey(item: CartItem): string {
+  return `${item.product.id}:${item.unit ?? item.product.unit}`;
+}
+
+/** Unidad de medida efectiva de una línea (la elegida o la del producto). */
+export function itemUnitName(item: CartItem): string {
+  return item.unit ?? item.product.unit;
 }
 
 export interface POSSale {
@@ -104,40 +118,23 @@ export const POS_REGISTER = 'CAJA-PV';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const PRODUCTS: Product[] = [
-  { id: 'p1', sku: 'MAT-001', barcode: '750000000101', name: 'Arena de río', category: 'Áridos', condition: 'Nuevo', stock: 120, unit: 'm³', priceMxn: 350 },
-  { id: 'p2', sku: 'MAT-002', barcode: '750000000102', name: 'Grava 3/4"', category: 'Áridos', condition: 'Nuevo', stock: 80, unit: 'm³', priceMxn: 420 },
-  { id: 'p3', sku: 'MAT-003', barcode: '750000000103', name: 'Grava 1/2"', category: 'Áridos', condition: 'Nuevo', stock: 65, unit: 'm³', priceMxn: 430 },
-  { id: 'p4', sku: 'MAT-004', barcode: '750000000104', name: 'Criba fina', category: 'Áridos', condition: 'Nuevo', stock: 40, unit: 'm³', priceMxn: 280 },
-  { id: 'p5', sku: 'MAT-005', barcode: '750000000105', name: 'Criba gruesa', category: 'Áridos', condition: 'Nuevo', stock: 35, unit: 'm³', priceMxn: 290 },
-  { id: 'p6', sku: 'MAT-006', barcode: '750000000106', name: 'Tezontle', category: 'Áridos', condition: 'Nuevo', stock: 50, unit: 'm³', priceMxn: 500 },
-  { id: 'p7', sku: 'MAT-007', barcode: '750000000107', name: 'Tepetate', category: 'Áridos', condition: 'Nuevo', stock: 90, unit: 'm³', priceMxn: 180 },
-  { id: 'p8', sku: 'MAT-008', barcode: '750000000108', name: 'Block 15x20x40', category: 'Materiales', condition: 'Nuevo', stock: 800, unit: 'pieza', priceMxn: 12 },
-  { id: 'p9', sku: 'MAT-009', barcode: '750000000109', name: 'Cemento CPC 40 (50 kg)', category: 'Materiales', condition: 'Nuevo', stock: 150, unit: 'bulto', priceMxn: 185 },
-  { id: 'p10', sku: 'MAT-010', barcode: '750000000110', name: 'Varilla 3/8" (12 m)', category: 'Acero', condition: 'Nuevo', stock: 200, unit: 'pieza', priceMxn: 95 },
-  { id: 'p11', sku: 'MAT-011', barcode: '750000000111', name: 'Malla electrosoldada 6x6', category: 'Acero', condition: 'Nuevo', stock: 45, unit: 'pieza', priceMxn: 650 },
-  { id: 'p12', sku: 'MAT-012', barcode: '750000000112', name: 'Cal hidratada (bolsa)', category: 'Materiales', condition: 'Nuevo', stock: 60, unit: 'bolsa', priceMxn: 55 },
+  { id: 'p1', sku: 'MAT-001', barcode: '750000000101', name: 'Arena de río', category: 'Áridos', condition: 'Nuevo', stock: 120, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 350 },
+  { id: 'p2', sku: 'MAT-002', barcode: '750000000102', name: 'Grava 3/4"', category: 'Áridos', condition: 'Nuevo', stock: 80, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 420 },
+  { id: 'p3', sku: 'MAT-003', barcode: '750000000103', name: 'Grava 1/2"', category: 'Áridos', condition: 'Nuevo', stock: 65, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 430 },
+  { id: 'p4', sku: 'MAT-004', barcode: '750000000104', name: 'Criba fina', category: 'Áridos', condition: 'Nuevo', stock: 40, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 280 },
+  { id: 'p5', sku: 'MAT-005', barcode: '750000000105', name: 'Criba gruesa', category: 'Áridos', condition: 'Nuevo', stock: 35, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 290 },
+  { id: 'p6', sku: 'MAT-006', barcode: '750000000106', name: 'Tezontle', category: 'Áridos', condition: 'Nuevo', stock: 50, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 500 },
+  { id: 'p7', sku: 'MAT-007', barcode: '750000000107', name: 'Tepetate', category: 'Áridos', condition: 'Nuevo', stock: 90, unit: 'm³', units: ['m³', 'tonelada', 'viaje'], priceMxn: 180 },
+  { id: 'p8', sku: 'MAT-008', barcode: '750000000108', name: 'Block 15x20x40', category: 'Materiales', condition: 'Nuevo', stock: 800, unit: 'pieza', units: ['pieza', 'm²'], priceMxn: 12 },
+  { id: 'p9', sku: 'MAT-009', barcode: '750000000109', name: 'Cemento CPC 40 (50 kg)', category: 'Materiales', condition: 'Nuevo', stock: 150, unit: 'bulto', units: ['bulto'], priceMxn: 185 },
+  { id: 'p10', sku: 'MAT-010', barcode: '750000000110', name: 'Varilla 3/8" (12 m)', category: 'Acero', condition: 'Nuevo', stock: 200, unit: 'pieza', units: ['pieza', 'tonelada'], priceMxn: 95 },
+  { id: 'p11', sku: 'MAT-011', barcode: '750000000111', name: 'Malla electrosoldada 6x6', category: 'Acero', condition: 'Nuevo', stock: 45, unit: 'pieza', units: ['pieza', 'm²'], priceMxn: 650 },
+  { id: 'p12', sku: 'MAT-012', barcode: '750000000112', name: 'Cal hidratada (bolsa)', category: 'Materiales', condition: 'Nuevo', stock: 60, unit: 'bolsa', units: ['bolsa'], priceMxn: 55 },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Búsqueda y cálculo del carrito
+// Cálculo del carrito
 // ─────────────────────────────────────────────────────────────────────────────
-
-export function findProductByBarcode(products: Product[], barcode: string): Product | undefined {
-  const trimmed = barcode.trim();
-  if (!trimmed) return undefined;
-  return products.find((p) => p.barcode === trimmed || p.sku.toUpperCase() === trimmed.toUpperCase());
-}
-
-export function findProductsByQuery(products: Product[], query: string): Product[] {
-  const q = query.toLowerCase().trim();
-  if (!q) return [];
-  return products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      p.barcode.includes(q),
-  );
-}
 
 export function itemUnitPrice(item: CartItem): number {
   return item.priceOverride ?? item.product.priceMxn;
@@ -233,13 +230,8 @@ export function isToday(iso: string, now = new Date()): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Escáner simulado y código de barras (Code 39)
+// Código de barras del ticket (Code 39)
 // ─────────────────────────────────────────────────────────────────────────────
-
-export function simulateBarcodeScan(): string {
-  const product = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)];
-  return product.barcode;
-}
 
 const CODE39_PATTERNS: Record<string, string> = {
   '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
@@ -395,7 +387,7 @@ export function printTicket(sale: POSSale, businessInfo: BusinessInfo): void {
         <tr>
           <td style="vertical-align:top; padding:3px 0;">
             <div style="font-weight:bold;">${name}${hasOverride ? ' (PM)' : ''}${item.discountPct ? ` -${item.discountPct}%` : ''}</div>
-            <div style="font-size:10px; color:#6b7280;">SKU: ${item.product.sku} · ${item.product.unit}</div>
+            <div style="font-size:10px; color:#6b7280;">SKU: ${item.product.sku} · ${itemUnitName(item)}</div>
           </td>
           <td style="text-align:center; vertical-align:top; padding:3px 0; width:36px;">x${item.quantity}</td>
           <td style="text-align:right; vertical-align:top; padding:3px 0; width:56px;">$${unit.toFixed(2)}</td>

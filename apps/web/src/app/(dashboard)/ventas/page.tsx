@@ -19,7 +19,7 @@ import Modal, { ModalField, inputClass } from '@/components/layout/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
 
-import { PosScanner } from '@/components/pos/PosScanner';
+import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
 import { PaymentPanel } from '@/components/pos/PaymentPanel';
 import { QrModal } from '@/components/pos/QrModal';
@@ -35,13 +35,13 @@ import {
   buildPaymentDetails,
   calculateTaxBreakdown,
   calculateTotal,
-  findProductByBarcode,
+  cartLineKey,
   generateSaleFolio,
   generateTicketNumber,
   isToday,
   printTicket,
 } from '@/lib/pos';
-import type { CartItem, Payment, PaymentMethod, POSSale } from '@/lib/pos';
+import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,35 +89,32 @@ export default function VentasPage() {
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
   // ── Carrito ──────────────────────────────────────────────────────────────
-  const addToCart = (barcode: string) => {
-    const product = findProductByBarcode(PRODUCTS, barcode);
-    if (!product) {
-      showToast('Producto no encontrado en el catálogo.', 'error');
-      return;
-    }
+  const addProduct = (product: Product, unit: string, quantity: number) => {
+    const qty = Math.floor(Math.max(1, quantity));
     setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id);
+      const lineKey = `${product.id}:${unit}`;
+      const existing = prev.find((i) => cartLineKey(i) === lineKey);
       if (existing) {
-        if (existing.quantity >= product.stock) {
-          showToast(`Stock máximo (${product.stock}) alcanzado.`, 'error');
+        if (existing.quantity + qty > product.stock) {
+          showToast(`Stock máximo (${product.stock} ${unit}).`, 'error');
           return prev;
         }
         return prev.map((i) =>
-          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i,
+          cartLineKey(i) === lineKey ? { ...i, quantity: i.quantity + qty } : i,
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product, unit, quantity: qty }];
     });
   };
 
-  const updateQty = (id: string, delta: number) => {
+  const updateQty = (lineKey: string, delta: number) => {
     setCart((prev) =>
       prev.flatMap((i) => {
-        if (i.product.id !== id) return [i];
+        if (cartLineKey(i) !== lineKey) return [i];
         const qty = i.quantity + delta;
         if (qty <= 0) return [];
         if (qty > i.product.stock) {
-          showToast(`Stock máximo (${i.product.stock}).`, 'error');
+          showToast(`Stock máximo (${i.product.stock} ${i.unit ?? i.product.unit}).`, 'error');
           return [i];
         }
         return [{ ...i, quantity: qty }];
@@ -125,8 +122,8 @@ export default function VentasPage() {
     );
   };
 
-  const removeItem = (id: string) => {
-    setCart((prev) => prev.filter((i) => i.product.id !== id));
+  const removeItem = (lineKey: string) => {
+    setCart((prev) => prev.filter((i) => cartLineKey(i) !== lineKey));
   };
 
   // ── Cobro ─────────────────────────────────────────────────────────────────
@@ -281,9 +278,9 @@ export default function VentasPage() {
             {/* ─── POS ─────────────────────────────────────────────────── */}
             <TabPanel tabKey="pos">
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
-                {/* Izquierda: scanner + carrito */}
+                {/* Izquierda: elegir producto + carrito */}
                 <div className="lg:col-span-3 space-y-4">
-                  <PosScanner products={PRODUCTS} onScan={addToCart} />
+                  <ProductPicker products={PRODUCTS} onAdd={addProduct} />
 
                   <div className={posClasses.card}>
                     <div className="flex items-center justify-between mb-3">
@@ -293,18 +290,18 @@ export default function VentasPage() {
 
                     {cart.length === 0 ? (
                       <p className="text-sm text-slate-400 text-center py-8">
-                        Agrega productos con el scanner o la búsqueda.
+                        Elige el material, la medida y presiona Agregar.
                       </p>
                     ) : (
                       <>
                         <div>
                           {cart.map((item) => (
                             <CartItemRow
-                              key={item.product.id}
+                              key={cartLineKey(item)}
                               item={item}
-                              onIncrement={() => updateQty(item.product.id, 1)}
-                              onDecrement={() => updateQty(item.product.id, -1)}
-                              onRemove={() => removeItem(item.product.id)}
+                              onIncrement={() => updateQty(cartLineKey(item), 1)}
+                              onDecrement={() => updateQty(cartLineKey(item), -1)}
+                              onRemove={() => removeItem(cartLineKey(item))}
                             />
                           ))}
                         </div>

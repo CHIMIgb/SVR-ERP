@@ -3,7 +3,7 @@
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { itemSubtotal, itemUnitPrice } from '@/lib/pos';
+import { itemSubtotal, itemUnitName, itemUnitPrice } from '@/lib/pos';
 import type { CartItem } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -25,7 +25,7 @@ export function CartItemRow({ item, onIncrement, onDecrement, onRemove }: CartIt
       <div className="min-w-0 flex-1">
         <p className="text-xs font-bold text-slate-800 truncate">{item.product.name}</p>
         <p className={posClasses.muted}>
-          {formatCurrency(unitPrice)} c/u · stock {item.product.stock}
+          {formatCurrency(unitPrice)} por {itemUnitName(item)} · stock {item.product.stock}
         </p>
       </div>
 

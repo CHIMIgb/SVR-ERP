@@ -5,7 +5,7 @@ import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Moda
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { barcodeBars, formatTicketDate, itemSubtotal, itemUnitPrice, numberToWords, printTicket } from '@/lib/pos';
+import { barcodeBars, formatTicketDate, itemSubtotal, itemUnitName, itemUnitPrice, numberToWords, printTicket } from '@/lib/pos';
 import type { BusinessInfo, POSSale } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -182,7 +182,7 @@ export function TicketPreview({ sale, businessInfo, onClose }: TicketPreviewProp
                     <span className="w-14 text-right font-bold">{formatCurrency(lineTotal)}</span>
                   </div>
                   <p className={posClasses.muted}>
-                    SKU: {item.product.sku} · {item.product.unit}
+                    SKU: {item.product.sku} · {itemUnitName(item)}
                   </p>
                 </div>
               );
