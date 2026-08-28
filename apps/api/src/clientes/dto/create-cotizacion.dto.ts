@@ -1,13 +1,10 @@
 import {
   IsDateString,
-  IsEnum,
   IsNumber,
-  IsOptional,
   IsString,
   MaxLength,
   Min,
 } from 'class-validator';
-import { EstadoCotizacion } from '@prisma/client';
 
 export class CreateCotizacionDto {
   @IsString()
@@ -20,8 +17,4 @@ export class CreateCotizacionDto {
 
   @IsDateString()
   fecha!: string;
-
-  @IsOptional()
-  @IsEnum(EstadoCotizacion)
-  estado?: EstadoCotizacion;
 }

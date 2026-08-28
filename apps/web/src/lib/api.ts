@@ -1583,13 +1583,18 @@ export const nominaApi = {
   /** Estadísticas del cliente para las tarjetas */
   stats: () => apiClient.get<ClientesStats>('/clientes/stats'),
 
-  /** Historial de cotizaciones de un cliente */
-  cotizaciones: (clienteId: string) =>
-    apiClient.get<{ items: CotizacionDTO[] }>(
-      `/clientes/${clienteId}/cotizaciones`,
-    ),
+  /** Historial de cotizaciones de un cliente (paginado) */
+  cotizaciones: (clienteId: string, params?: { page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CotizacionDTO>>(
+      `/clientes/${clienteId}/cotizaciones${qs ? `?${qs}` : ''}`,
+    );
+  },
 
-  /** Crear una cotización para un cliente */
+  /** Crear una cotización para un cliente (siempre PENDIENTE) */
   crearCotizacion: (clienteId: string, data: CotizacionCreateInput) =>
     apiClient.post<CotizacionDTO>(`/clientes/${clienteId}/cotizaciones`, data),
 };
@@ -1612,5 +1617,4 @@ export interface CotizacionCreateInput {
   descripcion: string;
   monto: number;
   fecha: string; // YYYY-MM-DD
-  estado?: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA';
 }

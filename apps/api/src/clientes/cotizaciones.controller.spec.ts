@@ -21,7 +21,10 @@ describe('CotizacionesController', () => {
   };
 
   const mockService = {
-    findByCliente: jest.fn().mockResolvedValue({ items: [mockCotizacion] }),
+    findByCliente: jest.fn().mockResolvedValue({
+      items: [mockCotizacion],
+      pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+    }),
     create: jest.fn().mockResolvedValue(mockCotizacion),
   };
 
@@ -43,10 +46,11 @@ describe('CotizacionesController', () => {
   });
 
   describe('findByCliente', () => {
-    it('should return cotizaciones del cliente', async () => {
-      const result = await controller.findByCliente(mockClienteId);
+    it('should return cotizaciones del cliente paginadas', async () => {
+      const result = await controller.findByCliente(mockClienteId, { page: 1, limit: 10 });
       expect(result.items).toHaveLength(1);
-      expect(service.findByCliente).toHaveBeenCalledWith(mockClienteId);
+      expect(result.pagination).toBeDefined();
+      expect(service.findByCliente).toHaveBeenCalledWith(mockClienteId, { page: 1, limit: 10 });
     });
   });
 

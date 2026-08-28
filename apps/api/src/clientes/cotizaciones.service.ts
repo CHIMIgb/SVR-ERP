@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
+import { QueryCotizacionesDto } from './dto/query-cotizaciones.dto';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -72,15 +73,33 @@ export class CotizacionesService {
   // ────────────────────────────────────────────
   //  HISTORIAL DE COTIZACIONES DEL CLIENTE
   // ────────────────────────────────────────────
-  async findByCliente(clienteId: string) {
+  async findByCliente(clienteId: string, query: QueryCotizacionesDto = {}) {
     await this.validarCliente(clienteId, AuditAction.COTIZACION_CREADA);
 
-    const items = await this.prisma.cotizaciones.findMany({
-      where: { cliente_id: clienteId, eliminado_en: null },
-      orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
-    });
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
 
-    return { items: items.map((item) => this.serialize(item)) };
+    const where = { cliente_id: clienteId, eliminado_en: null };
+
+    const [items, total] = await Promise.all([
+      this.prisma.cotizaciones.findMany({
+        where,
+        orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.cotizaciones.count({ where }),
+    ]);
+
+    return {
+      items: items.map((item) => this.serialize(item)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   }
 
   // ────────────────────────────────────────────
@@ -98,7 +117,7 @@ export class CotizacionesService {
         descripcion: dto.descripcion.trim(),
         monto: dto.monto,
         fecha: new Date(dto.fecha),
-        estado: dto.estado ?? EstadoCotizacion.PENDIENTE,
+        estado: EstadoCotizacion.PENDIENTE,
         creado_por: userId,
         actualizado_por: userId,
         actualizado_en: new Date(),

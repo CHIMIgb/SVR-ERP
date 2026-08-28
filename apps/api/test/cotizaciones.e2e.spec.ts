@@ -122,9 +122,14 @@ describe('Cotizaciones e2e (HTTP real)', () => {
     fecha: '2026-08-20',
   });
 
+  const historialQuery = () => ({ page: 1, limit: 10 });
+
   describe('sin token', () => {
     it('GET historial → 401', async () => {
-      await request(httpServer).get(`/api/clientes/${clienteId}/cotizaciones`).expect(401);
+      await request(httpServer)
+        .get(`/api/clientes/${clienteId}/cotizaciones`)
+        .query(historialQuery())
+        .expect(401);
     });
 
     it('POST crear → 401', async () => {
@@ -139,6 +144,7 @@ describe('Cotizaciones e2e (HTTP real)', () => {
     it('GET historial → 403', async () => {
       await request(httpServer)
         .get(`/api/clientes/${clienteId}/cotizaciones`)
+        .query(historialQuery())
         .set('Authorization', `Bearer ${tokenUsuarioSinRol}`)
         .expect(403);
     });
@@ -169,16 +175,19 @@ describe('Cotizaciones e2e (HTTP real)', () => {
       expect(res.body.data.fecha).toBeDefined();
     });
 
-    it('GET historial → 200 con la cotización creada', async () => {
+    it('GET historial → 200 con la cotización creada y paginación', async () => {
       const res = await request(httpServer)
         .get(`/api/clientes/${clienteId}/cotizaciones`)
+        .query(historialQuery())
         .set('Authorization', `Bearer ${tokenAdmin}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('success', true);
       expect(res.body.data).toHaveProperty('items');
+      expect(res.body.data).toHaveProperty('pagination');
       expect(Array.isArray(res.body.data.items)).toBe(true);
       expect(res.body.data.items.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data.pagination).toMatchObject({ page: 1, limit: 10 });
     });
   });
 });

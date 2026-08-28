@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   Req,
   HttpCode,
@@ -13,6 +14,7 @@ import {
 import { Request } from 'express';
 import { CotizacionesService } from './cotizaciones.service';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
+import { QueryCotizacionesDto } from './dto/query-cotizaciones.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -29,8 +31,11 @@ export class CotizacionesController {
    */
   @RequirePermission('comercial', 'cotizaciones', 'ver')
   @Get()
-  async findByCliente(@Param('clienteId', ParseUUIDPipe) clienteId: string) {
-    return this.cotizacionesService.findByCliente(clienteId);
+  async findByCliente(
+    @Param('clienteId', ParseUUIDPipe) clienteId: string,
+    @Query() query: QueryCotizacionesDto,
+  ) {
+    return this.cotizacionesService.findByCliente(clienteId, query);
   }
 
   /**

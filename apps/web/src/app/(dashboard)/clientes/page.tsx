@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus, Building2, Mail, Phone, History, FilePlus2, Pencil,
   Trash2, SlidersHorizontal, AlertCircle, Users, FolderKanban, Eye,
-  FileText, Loader2, Clock, CheckCircle2, XCircle, CalendarDays,
+  FileText, Loader2, Clock, CheckCircle2, XCircle, CalendarDays, ExternalLink,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -40,10 +41,10 @@ const emptyCotizacionForm = {
   descripcion: '',
   monto: '',
   fecha: new Date().toISOString().split('T')[0],
-  estado: 'PENDIENTE',
 };
 
 export default function ClientesPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -76,6 +77,7 @@ export default function ClientesPage() {
   const [historialCliente, setHistorialCliente] = useState<ClienteDTO | null>(null);
   const [cotizaciones, setCotizaciones] = useState<CotizacionDTO[]>([]);
   const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialPagination, setHistorialPagination] = useState({ page: 1, limit: 5, total: 0, totalPages: 1 });
   const [cotizacionOpen, setCotizacionOpen] = useState(false);
   const [cotizacionCliente, setCotizacionCliente] = useState<ClienteDTO | null>(null);
   const [cotizacionForm, setCotizacionForm] = useState(emptyCotizacionForm);
@@ -122,17 +124,20 @@ export default function ClientesPage() {
     }
   }, []);
 
-  const fetchCotizaciones = useCallback(async (clienteId: string) => {
+  const fetchCotizaciones = useCallback(async (clienteId: string, page = 1, limit = 5) => {
     setHistorialLoading(true);
     try {
-      const res = await clientesApi.cotizaciones(clienteId);
+      const res = await clientesApi.cotizaciones(clienteId, { page, limit });
       if (res.success && res.data) {
         setCotizaciones(res.data.items);
+        setHistorialPagination(res.data.pagination);
       } else {
         setCotizaciones([]);
+        setHistorialPagination({ page: 1, limit, total: 0, totalPages: 1 });
       }
     } catch {
       setCotizaciones([]);
+      setHistorialPagination({ page: 1, limit, total: 0, totalPages: 1 });
     } finally {
       setHistorialLoading(false);
     }
@@ -183,7 +188,8 @@ export default function ClientesPage() {
     setSelected(item);
     setViewOpen(true);
     setCotizaciones([]);
-    fetchCotizaciones(item.id);
+    setHistorialPagination({ page: 1, limit: 5, total: 0, totalPages: 1 });
+    fetchCotizaciones(item.id, 1, 5);
   }, [fetchCotizaciones]);
 
   // ── CRUD handlers (API) ──
@@ -275,7 +281,8 @@ export default function ClientesPage() {
     setHistorialCliente(item);
     setHistorialOpen(true);
     setCotizaciones([]);
-    fetchCotizaciones(item.id);
+    setHistorialPagination({ page: 1, limit: 5, total: 0, totalPages: 1 });
+    fetchCotizaciones(item.id, 1, 5);
   }, [fetchCotizaciones]);
 
   const handleNuevaCotizacion = useCallback((item: ClienteDTO) => {
@@ -283,6 +290,12 @@ export default function ClientesPage() {
     setCotizacionForm(emptyCotizacionForm);
     setCotizacionOpen(true);
   }, []);
+
+  const handleHistorialPageChange = useCallback((page: number) => {
+    if (historialCliente) {
+      fetchCotizaciones(historialCliente.id, page, historialPagination.limit);
+    }
+  }, [historialCliente, historialPagination.limit, fetchCotizaciones]);
 
   const handleCrearCotizacion = useCallback(async () => {
     if (!cotizacionCliente) return;
@@ -297,14 +310,13 @@ export default function ClientesPage() {
         descripcion: cotizacionForm.descripcion.trim(),
         monto,
         fecha: cotizacionForm.fecha,
-        estado: cotizacionForm.estado as 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA',
       });
       if (res.success) {
         showToast('Cotización creada exitosamente.', 'success');
         setCotizacionOpen(false);
         setCotizacionCliente(null);
         if (historialOpen && historialCliente?.id === cotizacionCliente.id) {
-          fetchCotizaciones(cotizacionCliente.id);
+          fetchCotizaciones(cotizacionCliente.id, historialPagination.page, historialPagination.limit);
         }
       } else {
         showToast(res.error?.message || 'Error al crear la cotización.', 'error');
@@ -708,33 +720,55 @@ export default function ClientesPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
-                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</th>
-                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
-                    <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
-                    <th className="pb-2 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {cotizaciones.map((cq) => (
-                    <tr key={cq.id}>
-                      <td className="py-3 pr-3 text-xs font-black text-primary whitespace-nowrap">{cq.codigo || '—'}</td>
-                      <td className="py-3 pr-3 text-sm font-semibold text-slate-700 min-w-0">{cq.descripcion}</td>
-                      <td className="py-3 pr-3 text-sm font-medium text-slate-500 whitespace-nowrap">{cq.fecha}</td>
-                      <td className="py-3 pr-3 whitespace-nowrap">{estadoBadge(cq.estado)}</td>
-                      <td className="py-3 text-right font-black text-slate-900 whitespace-nowrap">{formatCurrency(cq.monto)}</td>
+            <div className="space-y-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
+                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</th>
+                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
+                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
+                      <th className="pb-2 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {cotizaciones.map((cq) => (
+                      <tr key={cq.id}>
+                        <td className="py-3 pr-3 text-xs font-black text-primary whitespace-nowrap">{cq.codigo || '—'}</td>
+                        <td className="py-3 pr-3 text-sm font-semibold text-slate-700 min-w-0">{cq.descripcion}</td>
+                        <td className="py-3 pr-3 text-sm font-medium text-slate-500 whitespace-nowrap">{cq.fecha}</td>
+                        <td className="py-3 pr-3 whitespace-nowrap">{estadoBadge(cq.estado)}</td>
+                        <td className="py-3 text-right font-black text-slate-900 whitespace-nowrap">{formatCurrency(cq.monto)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {historialPagination.totalPages > 1 && (
+                <Pagination
+                  currentPage={historialPagination.page}
+                  totalPages={historialPagination.totalPages}
+                  totalRecords={historialPagination.total}
+                  pageSize={historialPagination.limit}
+                  onPageChange={handleHistorialPageChange}
+                />
+              )}
             </div>
           )}
         </ModalBody>
         <ModalFooter>
+          <Button
+            variant="outline"
+            icon={<ExternalLink className="w-3.5 h-3.5" />}
+            onClick={() => {
+              if (historialCliente) {
+                router.push(`/cotizaciones?clienteId=${historialCliente.id}`);
+              }
+            }}
+          >
+            Ver todas las cotizaciones
+          </Button>
           <Button variant="primary" onClick={() => setHistorialOpen(false)}>
             Cerrar
           </Button>
@@ -782,18 +816,6 @@ export default function ClientesPage() {
               value={cotizacionForm.fecha}
               onChange={(e) => setCotizacionForm({ ...cotizacionForm, fecha: e.target.value })}
             />
-          </ModalField>
-
-          <ModalField label="Estado" className="sm:col-span-2">
-            <select
-              className={modalInputClass}
-              value={cotizacionForm.estado}
-              onChange={(e) => setCotizacionForm({ ...cotizacionForm, estado: e.target.value })}
-            >
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="ACEPTADA">Aceptada</option>
-              <option value="RECHAZADA">Rechazada</option>
-            </select>
           </ModalField>
         </div>
       </FormModal>

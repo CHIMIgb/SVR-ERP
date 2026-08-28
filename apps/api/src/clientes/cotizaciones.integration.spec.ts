@@ -135,10 +135,16 @@ describe('Cotizaciones Audit (Real DB)', () => {
         ACTOR_USER_ID,
       );
 
-      const historial = await service.findByCliente(cliente.id);
+      const historial = await service.findByCliente(cliente.id, { page: 1, limit: 10 });
 
       expect(historial).toHaveProperty('items');
       expect(historial.items).toHaveLength(2);
+      expect(historial.pagination).toEqual({
+        page: 1,
+        limit: 10,
+        total: 2,
+        totalPages: 1,
+      });
 
       // Orden: más reciente primero
       expect(historial.items[0].id).toBe(reciente.id);
