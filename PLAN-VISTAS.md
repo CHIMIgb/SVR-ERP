@@ -396,7 +396,7 @@ Para cada vista refactorizada, verificar:
 
 ### Detalle por vista
 
-#### 1. Finanzas (129 lineas) - PRIORIDAD ALTA
+#### 1. Finanzas (129 lineas) - PRIORIDAD ALTA - REALIZADA
 
 **Por que empezar aca:**
 - Stats cards + tabla de movimientos -> misma plantilla que Inventario
@@ -422,7 +422,7 @@ Para cada vista refactorizada, verificar:
 
 ---
 
-#### 2. Clientes (65 lineas)
+#### 2. Clientes (65 lineas) - REALIZADA
 
 **Por que la segunda:**
 - Grid de cards simple -> rapido de refactorizar

@@ -754,35 +754,6 @@ export default function CotizacionesPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          {selected && puedeEditar && (
-            <>
-              <Button
-                variant="warning"
-                icon={<Pencil className="w-4 h-4" />}
-                onClick={() => openEditar(selected)}
-              >
-                Editar
-              </Button>
-              <Button
-                variant="success"
-                icon={<CheckCircle2 className="w-4 h-4" />}
-                disabled={selected.estado !== 'Pendiente'}
-                title={selected.estado !== 'Pendiente' ? 'Solo cotizaciones pendientes' : undefined}
-                onClick={() => openEstado(selected, 'ACEPTADA')}
-              >
-                Aceptar
-              </Button>
-              <Button
-                variant="danger"
-                icon={<XCircle className="w-4 h-4" />}
-                disabled={selected.estado !== 'Pendiente'}
-                title={selected.estado !== 'Pendiente' ? 'Solo cotizaciones pendientes' : undefined}
-                onClick={() => openEstado(selected, 'RECHAZADA')}
-              >
-                Rechazar
-              </Button>
-            </>
-          )}
           <Button variant="primary" onClick={() => setDetailOpen(false)}>
             Cerrar
           </Button>
