@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Building2, Mail, Phone, History, FilePlus2, Pencil,
+  Plus, Building2, Mail, Phone, FilePlus2, Pencil,
   Trash2, SlidersHorizontal, AlertCircle, Users, FolderKanban, Eye,
   FileText, Loader2, Clock, CheckCircle2, XCircle, CalendarDays, ExternalLink,
 } from 'lucide-react';
@@ -73,8 +73,6 @@ export default function ClientesPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // ── Estado de cotizaciones ──
-  const [historialOpen, setHistorialOpen] = useState(false);
-  const [historialCliente, setHistorialCliente] = useState<ClienteDTO | null>(null);
   const [cotizaciones, setCotizaciones] = useState<CotizacionDTO[]>([]);
   const [historialLoading, setHistorialLoading] = useState(false);
   const [historialPaging, setHistorialPaging] = useState(false);
@@ -291,14 +289,6 @@ export default function ClientesPage() {
   }, [selected, showToast, fetchData, pagination.page, search, fetchStats]);
 
   // ── Handlers de acciones por fila (cotizaciones) ──
-  const handleHistorial = useCallback((item: ClienteDTO) => {
-    setHistorialCliente(item);
-    setHistorialOpen(true);
-    setCotizaciones([]);
-    setHistorialPagination({ page: 1, limit: 5, total: 0, totalPages: 1 });
-    fetchCotizaciones(item.id, 1, 5, { paging: false });
-  }, [fetchCotizaciones]);
-
   const handleNuevaCotizacion = useCallback((item: ClienteDTO) => {
     setCotizacionCliente(item);
     setCotizacionForm(emptyCotizacionForm);
@@ -306,10 +296,10 @@ export default function ClientesPage() {
   }, []);
 
   const handleHistorialPageChange = useCallback((page: number) => {
-    if (historialCliente) {
-      fetchCotizaciones(historialCliente.id, page, historialPagination.limit, { paging: true });
+    if (selected) {
+      fetchCotizaciones(selected.id, page, historialPagination.limit, { paging: true });
     }
-  }, [historialCliente, historialPagination.limit, fetchCotizaciones]);
+  }, [selected, historialPagination.limit, fetchCotizaciones]);
 
   const handleCrearCotizacion = useCallback(async () => {
     if (!cotizacionCliente) return;
@@ -329,7 +319,7 @@ export default function ClientesPage() {
         showToast('Cotización creada exitosamente.', 'success');
         setCotizacionOpen(false);
         setCotizacionCliente(null);
-        if (historialOpen && historialCliente?.id === cotizacionCliente.id) {
+        if (viewOpen && selected?.id === cotizacionCliente.id) {
           fetchCotizaciones(cotizacionCliente.id, historialPagination.page, historialPagination.limit, { paging: false });
         }
       } else {
@@ -340,7 +330,7 @@ export default function ClientesPage() {
     } finally {
       setCotizacionSubmitting(false);
     }
-  }, [cotizacionCliente, cotizacionForm, showToast, fetchCotizaciones, historialOpen, historialCliente]);
+  }, [cotizacionCliente, cotizacionForm, showToast, fetchCotizaciones, viewOpen, selected]);
 
   // ── Utilidad de badge de estado de cotización ──
   const estadoBadge = (estado: CotizacionDTO['estado']) => {
@@ -413,14 +403,6 @@ export default function ClientesPage() {
             onClick={(e) => { e.stopPropagation(); openView(item); }}
           >
             Ver
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<History className="w-3.5 h-3.5" />}
-            onClick={(e) => { e.stopPropagation(); handleHistorial(item); }}
-          >
-            Historial
           </Button>
           <Button
             variant="info"
@@ -723,90 +705,18 @@ export default function ClientesPage() {
         )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="primary" onClick={() => setViewOpen(false)}>
-            Cerrar
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* ═══ Historial de cotizaciones ═══ */}
-      <Modal
-        open={historialOpen}
-        onClose={() => setHistorialOpen(false)}
-      >
-        <ModalHeader
-          title="Historial de Cotizaciones"
-          subtitle={historialCliente ? historialCliente.empresa : undefined}
-          onClose={() => setHistorialOpen(false)}
-        />
-        <ModalBody>
-          {historialLoading ? (
-            <div className="flex items-center justify-center py-10 text-slate-400">
-              <Loader2 className="w-5 h-5 animate-spin" />
-            </div>
-          ) : cotizaciones.length === 0 ? (
-            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-8 text-center">
-              <FileText className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-500">
-                Este cliente aún no tiene cotizaciones registradas.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="relative overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-slate-100">
-                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
-                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</th>
-                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
-                      <th className="pb-2 pr-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
-                      <th className="pb-2 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {cotizaciones.map((cq) => (
-                      <tr key={cq.id}>
-                        <td className="py-3 pr-3 text-xs font-black text-primary whitespace-nowrap">{cq.codigo || '—'}</td>
-                        <td className="py-3 pr-3 text-sm font-semibold text-slate-700 min-w-0">{cq.descripcion}</td>
-                        <td className="py-3 pr-3 text-sm font-medium text-slate-500 whitespace-nowrap">{cq.fecha}</td>
-                        <td className="py-3 pr-3 whitespace-nowrap">{estadoBadge(cq.estado)}</td>
-                        <td className="py-3 text-right font-black text-slate-900 whitespace-nowrap">{formatCurrency(cq.monto)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {historialPaging && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  </div>
-                )}
-              </div>
-              {historialPagination.totalPages > 1 && (
-                <Pagination
-                  currentPage={historialPagination.page}
-                  totalPages={historialPagination.totalPages}
-                  totalRecords={historialPagination.total}
-                  pageSize={historialPagination.limit}
-                  onPageChange={handleHistorialPageChange}
-                />
-              )}
-            </div>
-          )}
-        </ModalBody>
-        <ModalFooter>
           <Button
             variant="outline"
             icon={<ExternalLink className="w-3.5 h-3.5" />}
             onClick={() => {
-              if (historialCliente) {
-                router.push(`/cotizaciones?clienteId=${historialCliente.id}`);
+              if (selected) {
+                router.push(`/cotizaciones?clienteId=${selected.id}`);
               }
             }}
           >
             Ver todas las cotizaciones
           </Button>
-          <Button variant="primary" onClick={() => setHistorialOpen(false)}>
+          <Button variant="primary" onClick={() => setViewOpen(false)}>
             Cerrar
           </Button>
         </ModalFooter>
