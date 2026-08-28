@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
+import { productUnitPrice } from '@/lib/pos';
 import type { Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -25,6 +26,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
 
   const product = useMemo(() => products.find((p) => p.id === productId) ?? products[0], [products, productId]);
   const units = useMemo(() => product?.units ?? (product ? [product.unit] : []), [product]);
+  const pricePerUnit = product ? productUnitPrice(product, unit) : 0;
 
   const handleProductChange = (id: string) => {
     const next = products.find((p) => p.id === id);
@@ -54,7 +56,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
         <h3 className={posClasses.sectionTitle}>Producto a vender</h3>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Select
           label="Material"
           value={productId}
@@ -68,7 +70,10 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           label="Medida"
           value={unit}
           onChange={(e) => setUnit(e.target.value)}
-          options={units.map((u) => ({ value: u, label: u }))}
+          options={units.map((u) => ({
+            value: u,
+            label: `${u} — ${formatCurrency(productUnitPrice(product, u))}`,
+          }))}
         />
         <Input
           label="Cantidad"
@@ -90,7 +95,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
         </div>
       </div>
       <p className={posClasses.hint}>
-        {product.name} · {formatCurrency(product.priceMxn)} por {unit} · stock {product.stock}
+        {formatCurrency(pricePerUnit)} por {unit} · stock {product.stock}
       </p>
     </div>
   );
