@@ -18,7 +18,7 @@ export default function CorteDelDiaPage() {
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
     : 'Cajero';
 
-  const puedeCrear = user?.vistas.find((v) => v.ruta === '/ventas')?.puedeCrear ?? false;
+  const puedeVer = user?.vistas.find((v) => v.ruta === '/ventas/corte')?.puedeVer ?? false;
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -36,11 +36,11 @@ export default function CorteDelDiaPage() {
         }
       />
 
-      {!puedeCrear ? (
+      {!puedeVer ? (
         <EmptyState
           icon={<Lock className="w-10 h-10" />}
           title="Sin permiso para cerrar caja"
-          subtitle="Tu rol no tiene el permiso de crear ventas (/ventas). Contacta a un administrador."
+          subtitle="Tu rol no tiene acceso a /ventas/corte. Contacta a un administrador."
         />
       ) : (
         <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} />
