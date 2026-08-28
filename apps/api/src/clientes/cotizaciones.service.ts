@@ -334,10 +334,29 @@ export class CotizacionesService {
       );
     }
 
+    const esRechazo = dto.estado === EstadoCotizacion.RECHAZADA;
+    let motivoRechazo: string | null = null;
+    if (esRechazo) {
+      const motivo = dto.motivoRechazo?.trim() ?? '';
+      if (!motivo) {
+        return this.fallir(
+          AuditAction.COTIZACION_ACTUALIZADA,
+          id,
+          'MOTIVO_RECHAZO_REQUERIDO',
+          BadRequestException,
+          'Indica el motivo por el cual se rechaza la cotización',
+          userId,
+        );
+      }
+      motivoRechazo = motivo;
+    }
+
     const cotizacion = await this.prisma.cotizaciones.update({
       where: { id },
       data: {
         estado: dto.estado,
+        // Al aceptar se limpia cualquier motivo previo; al rechazar se persiste.
+        motivo_rechazo: esRechazo ? motivoRechazo : null,
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -353,8 +372,14 @@ export class CotizacionesService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      previousValue: { estado: ESTADO_LABELS[estadoAnterior] },
-      newValue: { estado: ESTADO_LABELS[dto.estado] },
+      previousValue: {
+        estado: ESTADO_LABELS[estadoAnterior],
+        motivoRechazo: existente.motivo_rechazo ?? null,
+      },
+      newValue: {
+        estado: ESTADO_LABELS[dto.estado],
+        motivoRechazo,
+      },
     });
 
     return { ...serialized, estado: ESTADO_LABELS[dto.estado] };
@@ -423,6 +448,7 @@ export class CotizacionesService {
           : String(cotizacion.fecha).split('T')[0],
       estado:
         ESTADO_LABELS[cotizacion.estado as EstadoCotizacion] ?? cotizacion.estado,
+      motivoRechazo: cotizacion.motivo_rechazo ?? null,
       activo: cotizacion.activo,
       creadoEn: cotizacion.creado_en?.toISOString?.() ?? cotizacion.creado_en,
       actualizadoEn:

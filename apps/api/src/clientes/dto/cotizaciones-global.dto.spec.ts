@@ -20,6 +20,24 @@ describe('CambiarEstadoCotizacionDto', () => {
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('should pass when rejecting with a valid motivoRechazo', async () => {
+    const dto = plainToInstance(CambiarEstadoCotizacionDto, {
+      estado: EstadoCotizacion.RECHAZADA,
+      motivoRechazo: 'Precio demasiado alto',
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should fail when motivoRechazo exceeds 500 chars', async () => {
+    const dto = plainToInstance(CambiarEstadoCotizacionDto, {
+      estado: EstadoCotizacion.RECHAZADA,
+      motivoRechazo: 'x'.repeat(501),
+    });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
 });
 
 describe('QueryCotizacionesGlobalDto', () => {

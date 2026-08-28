@@ -1608,6 +1608,7 @@ export interface CotizacionDTO {
   monto: number;
   fecha: string; // YYYY-MM-DD
   estado: 'Pendiente' | 'Aceptada' | 'Rechazada';
+  motivoRechazo?: string | null;
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
@@ -1673,9 +1674,9 @@ export const cotizacionesApi = {
   stats: () =>
     apiClient.get<CotizacionesStats>('/cotizaciones/stats'),
 
-  /** Cambiar estado (Aceptada / Rechazada). */
-  cambiarEstado: (id: string, estado: EstadoCotizacionApi) =>
-    apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}/estado`, { estado }),
+  /** Cambiar estado (Aceptada / Rechazada); motivoRechazo es obligatorio al rechazar. */
+  cambiarEstado: (id: string, data: { estado: EstadoCotizacionApi; motivoRechazo?: string }) =>
+    apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}/estado`, data),
 
   /** Editar campos de la cotización (descripción, monto, fecha, cliente). */
   actualizar: (id: string, data: CotizacionUpdateInput) =>

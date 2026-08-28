@@ -224,6 +224,40 @@ describe('Cotizaciones Audit (Real DB)', () => {
       expect((estadoAudit!.previous_value as Record<string, unknown>).estado).toBe('Pendiente');
       expect(estadoAudit!.actor_user_id).toBe(ACTOR_USER_ID);
     });
+
+    it('debe rechazar con motivo y persistirlo en la BD y en el audit', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Rechazo ${TEST_ID}`, monto: 600, fecha: '2026-08-22' },
+        ACTOR_USER_ID,
+      );
+
+      const actualizada = await service.cambiarEstado(
+        cotizacion.id,
+        { estado: EstadoCotizacion.RECHAZADA, motivoRechazo: 'Presupuesto fuera de rango' },
+        ACTOR_USER_ID,
+      );
+
+      expect(actualizada.estado).toBe('Rechazada');
+      expect(actualizada.motivoRechazo).toBe('Presupuesto fuera de rango');
+
+      // El motivo queda persistido en la fila de la BD.
+      const fila = await prisma.cotizaciones.findUnique({ where: { id: cotizacion.id } });
+      expect(fila?.motivo_rechazo).toBe('Presupuesto fuera de rango');
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COTIZACION_ACTUALIZADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      const rechazoAudit = audits.find(
+        (a) => (a.new_value as Record<string, unknown> | null)?.estado === 'Rechazada',
+      );
+      expect(rechazoAudit).toBeDefined();
+      expect((rechazoAudit!.new_value as Record<string, unknown>).motivoRechazo).toBe(
+        'Presupuesto fuera de rango',
+      );
+    });
   });
 
   describe('COTIZACION_ACTUALIZADA (editar cotización)', () => {

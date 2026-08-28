@@ -95,6 +95,7 @@ export default function CotizacionesPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [estadoOpen, setEstadoOpen] = useState(false);
   const [selectedEstado, setSelectedEstado] = useState<'ACEPTADA' | 'RECHAZADA'>('ACEPTADA');
+  const [motivoRechazo, setMotivoRechazo] = useState('');
   const [selected, setSelected] = useState<CotizacionDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -200,6 +201,7 @@ export default function CotizacionesPage() {
   const openEstado = useCallback((item: CotizacionDTO, next: 'ACEPTADA' | 'RECHAZADA') => {
     setSelected(item);
     setSelectedEstado(next);
+    setMotivoRechazo('');
     setEstadoOpen(true);
   }, []);
 
@@ -260,24 +262,33 @@ export default function CotizacionesPage() {
   // ── Cambiar estado (Aceptar / Rechazar) ──
   const handleCambiarEstado = useCallback(async () => {
     if (!selected) return;
+    const esRechazo = selectedEstado === 'RECHAZADA';
+    const motivo = esRechazo ? motivoRechazo.trim() : '';
+    if (esRechazo && !motivo) {
+      showToast('Indica el motivo por el cual se rechaza la cotización.', 'error');
+      return;
+    }
     setSubmitting(true);
-    const actionLabel = selectedEstado === 'ACEPTADA' ? 'aceptada' : 'rechazada';
+    const actionLabel = esRechazo ? 'rechazada' : 'aceptada';
     try {
-      const res = await cotizacionesApi.cambiarEstado(selected.id, selectedEstado);
+      const res = await cotizacionesApi.cambiarEstado(selected.id, {
+        estado: selectedEstado,
+        ...(motivo ? { motivoRechazo: motivo } : {}),
+      });
       if (res.success) {
         showToast(`Cotización ${selected.codigo ?? ''} ${actionLabel}.`, 'success');
         setEstadoOpen(false);
         setSelected(null);
         refresh();
       } else {
-        showToast(res.error?.message || `Error al ${actionLabel === 'aceptada' ? 'aceptar' : 'rechazar'} la cotización.`, 'error');
+        showToast(res.error?.message || `Error al ${esRechazo ? 'rechazar' : 'aceptar'} la cotización.`, 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el estado.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [selected, selectedEstado, showToast, refresh]);
+  }, [selected, selectedEstado, motivoRechazo, showToast, refresh]);
 
   // ── Editar cotización ──
   const handleEditar = useCallback(async () => {
@@ -368,9 +379,9 @@ export default function CotizacionesPage() {
       render: (item) => {
         const esPendiente = item.estado === 'Pendiente';
         return (
-          <div className="flex items-center justify-end gap-1 flex-wrap">
+          <div className="flex items-center justify-end gap-1">
             <Button
-              variant="outline"
+              variant="info"
               size="sm"
               icon={<Eye className="w-3.5 h-3.5" />}
               onClick={(e) => { e.stopPropagation(); openDetail(item); }}
@@ -380,7 +391,7 @@ export default function CotizacionesPage() {
             {puedeEditar && (
               <>
                 <Button
-                  variant="ghost"
+                  variant="warning"
                   size="sm"
                   icon={<Pencil className="w-3.5 h-3.5" />}
                   onClick={(e) => { e.stopPropagation(); openEditar(item); }}
@@ -710,6 +721,13 @@ export default function CotizacionesPage() {
                 </div>
               </div>
 
+              {selected.estado === 'Rechazada' && selected.motivoRechazo && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Motivo del rechazo</p>
+                  <p className="text-sm font-semibold text-red-600">{selected.motivoRechazo}</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
                 <div className="flex items-start gap-2">
                   <Building2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
@@ -739,7 +757,7 @@ export default function CotizacionesPage() {
           {selected && puedeEditar && (
             <>
               <Button
-                variant="ghost"
+                variant="warning"
                 icon={<Pencil className="w-4 h-4" />}
                 onClick={() => openEditar(selected)}
               >
@@ -783,7 +801,8 @@ export default function CotizacionesPage() {
         />
         <ModalBody>
           {selected && (
-            <div className="flex flex-col items-center text-center py-4">
+            <>
+              <div className="flex flex-col items-center text-center py-4">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${
                 selectedEstado === 'ACEPTADA' ? 'bg-green-100' : 'bg-red-100'
               }`}>
@@ -799,6 +818,20 @@ export default function CotizacionesPage() {
                 {selected.clienteEmpresa || 'Cliente'} — {formatCurrency(selected.monto)}
               </p>
             </div>
+            {selectedEstado === 'RECHAZADA' && (
+              <div className="w-full mt-2 text-left">
+                <ModalField label="Motivo del rechazo" required>
+                  <textarea
+                    className={`${modalInputClass} min-h-[80px] resize-y`}
+                    placeholder="Indica el motivo por el cual se rechaza la cotización"
+                    value={motivoRechazo}
+                    maxLength={500}
+                    onChange={(e) => setMotivoRechazo(e.target.value)}
+                  />
+                </ModalField>
+              </div>
+            )}
+            </>
           )}
         </ModalBody>
         <ModalFooter>

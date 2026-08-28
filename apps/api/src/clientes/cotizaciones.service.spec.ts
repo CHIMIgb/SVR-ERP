@@ -227,8 +227,8 @@ describe('CotizacionesService', () => {
           entityId: mockCotizacion.id,
           result: AuditResult.SUCCESS,
           actorUserId: 'user-1',
-          previousValue: { estado: 'Pendiente' },
-          newValue: { estado: 'Aceptada' },
+          previousValue: { estado: 'Pendiente', motivoRechazo: null },
+          newValue: { estado: 'Aceptada', motivoRechazo: null },
         }),
       );
     });
@@ -259,6 +259,77 @@ describe('CotizacionesService', () => {
         expect.objectContaining({
           result: AuditResult.FAIL,
           errorCode: 'ESTADO_SIN_CAMBIO',
+        }),
+      );
+    });
+
+    it('should require motivoRechazo when rejecting (MOTIVO_RECHAZO_REQUERIDO)', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+      });
+      await expect(
+        service.cambiarEstado(mockCotizacion.id, { estado: EstadoCotizacion.RECHAZADA }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: AuditResult.FAIL,
+          errorCode: 'MOTIVO_RECHAZO_REQUERIDO',
+          actorUserId: 'user-1',
+        }),
+      );
+    });
+
+    it('should persist motivoRechazo when rejecting', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+      });
+      prisma.cotizaciones.update.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.RECHAZADA,
+        motivo_rechazo: 'Precio demasiado alto',
+      });
+
+      const result = await service.cambiarEstado(
+        mockCotizacion.id,
+        { estado: EstadoCotizacion.RECHAZADA, motivoRechazo: 'Precio demasiado alto' },
+        'user-1',
+      );
+
+      expect(result.estado).toBe('Rechazada');
+      expect(prisma.cotizaciones.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            estado: EstadoCotizacion.RECHAZADA,
+            motivo_rechazo: 'Precio demasiado alto',
+          }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: { estado: 'Rechazada', motivoRechazo: 'Precio demasiado alto' },
+        }),
+      );
+    });
+
+    it('should clear motivoRechazo when accepting', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.RECHAZADA,
+        motivo_rechazo: 'Motivo anterior',
+      });
+      prisma.cotizaciones.update.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.ACEPTADA,
+        motivo_rechazo: null,
+      });
+
+      await service.cambiarEstado(mockCotizacion.id, { estado: EstadoCotizacion.ACEPTADA }, 'user-1');
+
+      expect(prisma.cotizaciones.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ estado: EstadoCotizacion.ACEPTADA, motivo_rechazo: null }),
         }),
       );
     });

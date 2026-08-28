@@ -314,6 +314,7 @@ model cotizaciones {
   monto                                     Decimal          @db.Decimal(14, 2)
   fecha                                     DateTime         @db.Date
   estado                                    EstadoCotizacion @default(PENDIENTE)
+  motivo_rechazo                            String?
   activo                                    Boolean          @default(true)
   creado_en                                 DateTime @db.Timestamptz()         @default(now())
   actualizado_en                            DateTime @db.Timestamptz()
