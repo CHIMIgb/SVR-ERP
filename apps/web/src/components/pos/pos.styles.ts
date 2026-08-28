@@ -63,4 +63,19 @@ export const posClasses = {
   historyTicket: 'text-xs font-black text-primary',
   historyMeta: 'text-[11px] text-slate-400',
   historyTotal: 'font-black text-slate-900 text-sm whitespace-nowrap',
+
+  // Cierre de caja / arqueo
+  denomEntry: 'bg-slate-50 border border-slate-200 rounded-lg p-2',
+  denomLabel: 'text-xs font-black text-slate-700 text-center mb-1',
+  denomInput:
+    'w-full text-center text-sm font-bold rounded-md border border-slate-200 bg-white px-2 py-1.5 focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/10',
+  resultRow: 'flex items-center justify-between py-1.5',
+  resultLabel: 'text-sm font-medium text-slate-500',
+  resultValue: 'font-black text-slate-900',
+  alertBox: 'flex items-start gap-2 rounded-xl border p-3',
+  retirementRow: 'flex items-center justify-between gap-3 py-2 border-b border-slate-50 last:border-0',
+  summaryCard:
+    'bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col items-start gap-1',
+  summaryValue: 'font-black text-xl sm:text-2xl text-slate-900',
+  summaryLabel: 'text-[11px] font-bold text-slate-400 uppercase tracking-wide',
 };

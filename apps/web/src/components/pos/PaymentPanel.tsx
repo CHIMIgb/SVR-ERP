@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { applyDiscount, discountAmount, getChange, SPEI_ACCOUNT } from '@/lib/pos';
+import { applyDiscount, CASH_BILLS, CASH_COINS, discountAmount, getChange, SPEI_ACCOUNT } from '@/lib/pos';
 import type { Payment, PaymentMethod } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -41,9 +41,6 @@ const MIXED_SECONDARY_OPTIONS: { label: string; value: PaymentMethod }[] = [
   { label: 'Tarjeta (terminal)', value: 'tarjeta' },
   { label: 'Transferencia / QR', value: 'transferencia' },
 ];
-
-const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
-const CASH_COINS = [10, 5, 2, 1];
 
 /** Descuento máximo que el cajero puede aplicar sin autorización del Administrador. */
 const DISCOUNT_APPROVAL_THRESHOLD = 10;

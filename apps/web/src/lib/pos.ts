@@ -116,6 +116,14 @@ export const POS_TERMINAL = 'TER-01';
 export const POS_REGISTER = 'CAJA-PV';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Denominaciones de efectivo (billetes y monedas MXN)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
+export const CASH_COINS = [10, 5, 2, 1];
+export const CASH_DENOMINATIONS = [...CASH_BILLS, ...CASH_COINS];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Catálogo de productos (mock, fase 1 frontend)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -503,6 +511,169 @@ export function printTicket(sale: POSSale, businessInfo: BusinessInfo): void {
         <div class="footer">Gracias por su compra</div>
         <div class="legal">Política de devoluciones: presente este ticket. Devoluciones dentro de los 30 días naturales en el mismo punto de venta.</div>
         <div class="legal">Régimen General de Personas Morales. Este comprobante no es un comprobante fiscal digital.</div>
+      </body>
+    </html>
+  `;
+
+  const win = window.open('', '_blank', 'width=400,height=1000,resizable=yes,scrollbars=yes');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cierre de caja (ticket imprimible)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CashDenomination {
+  value: number;
+  count: number;
+}
+
+export interface CashRetirement {
+  id: string;
+  date: string;
+  amount: number;
+  reason: string;
+  authorizedBy: string;
+}
+
+export interface ClosureTicketGroup {
+  name: string;
+  count: number;
+  subtotal: number;
+}
+
+export interface ClosureTicketData {
+  businessInfo: BusinessInfo;
+  registerName: string;
+  time: string;
+  cashierName: string;
+  salesCount: number;
+  totalSales: number;
+  groups: ClosureTicketGroup[];
+  retirements: { amount: number; reason: string; authorizedBy: string }[];
+  initial: number;
+  cashSales: number;
+  totalRetirements: number;
+  expectedCash: number;
+  counted: number;
+  difference: number;
+  denominations: CashDenomination[];
+  nextTurnCash: number;
+  notes?: string;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** HTML del ticket de cierre (papel térmico 58mm). */
+export function generateClosureHtml(data: ClosureTicketData): void {
+  const { date } = formatTicketDate(new Date().toISOString());
+  const { businessInfo } = data;
+
+  const initials =
+    businessInfo.name
+      .split(' ')
+      .filter((w) => w.length > 2 && w[0] !== '[')
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'SVR';
+
+  const groupsHtml = data.groups
+    .map(
+      (g) => `
+        <div class="row"><span>${escapeHtml(g.name)} (${g.count})</span><span>$${g.subtotal.toFixed(2)}</span></div>
+      `,
+    )
+    .join('');
+
+  const retirementsHtml = data.retirements.length
+    ? data.retirements
+        .map(
+          (r) => `
+            <div class="row"><span>−${escapeHtml(r.reason)} (${escapeHtml(r.authorizedBy)})</span><span>−$${r.amount.toFixed(2)}</span></div>
+          `,
+        )
+        .join('')
+    : '<div style="font-size:12px;color:#6b7280;">Sin retiros registrados.</div>';
+
+  const denominationsHtml = data.denominations.length
+    ? data.denominations
+        .map(
+          (d) => `
+            <div class="row"><span>${d.count} × $${d.value.toLocaleString('es-MX')}</span><span>$${(d.count * d.value).toFixed(2)}</span></div>
+          `,
+        )
+        .join('')
+    : '<div style="font-size:12px;color:#6b7280;">Sin denominaciones registradas.</div>';
+
+  const diffClass = data.difference < 0 ? 'diff-negative' : 'diff-positive';
+  const diffSign = data.difference > 0 ? '+' : '';
+
+  const html = `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; padding: 8px; color: #111827; background: #fff; margin: 0 auto; max-width: 302px; font-size: 12px; line-height: 1.3; }
+          .center { text-align: center; }
+          .logo { width: 48px; height: 48px; line-height: 48px; border-radius: 50%; background: #111827; color: #fff; font-weight: bold; font-size: 16px; margin: 0 auto 8px; text-align: center; }
+          .business-name { font-size: 14px; font-weight: bold; }
+          .business-line { font-size: 10px; color: #374151; }
+          .divider { border-top: 1px dashed #9ca3af; margin: 8px 0; }
+          .section { font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center; margin-top: 10px; }
+          .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+          .total { font-weight: bold; font-size: 14px; border-top: 1px dashed #9ca3af; padding-top: 4px; margin-top: 4px; }
+          .diff-positive { color: #16a34a; font-weight: bold; }
+          .diff-negative { color: #dc2626; font-weight: bold; }
+          .footer { margin-top: 16px; font-size: 10px; color: #4b5563; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="logo">${initials}</div>
+          <div class="business-name">${escapeHtml(businessInfo.name)}</div>
+          <div class="business-line">R.F.C. ${escapeHtml(businessInfo.rfc)}</div>
+          <div class="business-line">${escapeHtml(businessInfo.address)}</div>
+          <div class="business-line">${escapeHtml(businessInfo.branch)} · ${escapeHtml(businessInfo.branchCode)}</div>
+          <div class="business-line">Tel. ${escapeHtml(businessInfo.phone)}</div>
+        </div>
+        <div class="divider"></div>
+        <div class="section">Cierre de caja</div>
+        <div class="row"><span>Sucursal</span><span>${escapeHtml(data.registerName)}</span></div>
+        <div class="row"><span>Fecha</span><span>${date}</span></div>
+        <div class="row"><span>Hora</span><span>${data.time} hrs</span></div>
+        <div class="row"><span>Cajero</span><span>${escapeHtml(data.cashierName)}</span></div>
+        <div class="row"><span>Transacciones</span><span>${data.salesCount}</span></div>
+        <div class="row"><span>Total de ventas</span><span>$${data.totalSales.toFixed(2)}</span></div>
+        <div style="font-size:12px;color:#b45309;">Pendiente de aprobación del Administrador.</div>
+        <div class="section">Ventas del día</div>
+        ${groupsHtml}
+        <div class="section">Retiros del turno</div>
+        ${retirementsHtml}
+        <div class="section">Arqueo de efectivo</div>
+        <div class="row"><span>Efectivo inicial</span><span>$${data.initial.toFixed(2)}</span></div>
+        <div class="row"><span>Ventas en efectivo</span><span>$${data.cashSales.toFixed(2)}</span></div>
+        <div class="row"><span>Retiros (−)</span><span>−$${data.totalRetirements.toFixed(2)}</span></div>
+        <div class="row"><span>Efectivo esperado</span><span>$${data.expectedCash.toFixed(2)}</span></div>
+        <div class="row"><span>Efectivo contado</span><span>$${data.counted.toFixed(2)}</span></div>
+        <div class="row"><span>Diferencia</span><span class="${diffClass}">${diffSign}$${data.difference.toFixed(2)}</span></div>
+        <div class="section">Billetes y monedas contados</div>
+        ${denominationsHtml}
+        <div class="row"><span>Fondo para el siguiente turno</span><span>$${data.nextTurnCash.toFixed(2)}</span></div>
+        ${data.notes ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;"><strong>Observaciones:</strong> ${escapeHtml(data.notes)}</div>` : ''}
+        <div class="row total"><span>Total de ventas</span><span>$${data.totalSales.toFixed(2)}</span></div>
+        <div class="footer">Gracias por su trabajo</div>
       </body>
     </html>
   `;

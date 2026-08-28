@@ -1,0 +1,697 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Banknote,
+  Clock,
+  CreditCard,
+  Lock,
+  LockOpen,
+  MinusCircle,
+  Printer,
+  QrCode,
+  RefreshCw,
+  ShieldCheck,
+  Wallet,
+} from 'lucide-react';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Textarea } from '@/components/ui/Textarea';
+import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
+import { posClasses } from './pos.styles';
+import { cn } from '@/lib/utils';
+import {
+  BUSINESS_INFO,
+  CASH_BILLS,
+  CASH_COINS,
+  CASH_DENOMINATIONS,
+  formatTicketDate,
+  generateClosureHtml,
+  isToday,
+  itemSubtotal,
+  itemUnitName,
+} from '@/lib/pos';
+import type { CashRetirement, POSSale } from '@/lib/pos';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
+
+interface CorteCajaProps {
+  sales: POSSale[];
+  cashierName: string;
+}
+
+/** Horarios del turno (mock local; vendrán de configuración con el backend). */
+const CLOSING_HOUR = 20;
+const CLOSING_MINUTE = 0;
+const TOLERANCE_MINUTES = 30;
+
+const GROUP_ORDER = ['efectivo', 'tarjeta', 'transferencia', 'mixto'] as const;
+type SaleGroup = (typeof GROUP_ORDER)[number];
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function groupName(group: SaleGroup): string {
+  return group === 'efectivo'
+    ? 'Efectivo'
+    : group === 'tarjeta'
+      ? 'Tarjeta'
+      : group === 'transferencia'
+        ? 'Transferencia'
+        : 'Mixto';
+}
+
+function paymentLabel(sale: POSSale): string {
+  if (sale.payments && sale.payments.length > 1) return 'Mixto';
+  switch (sale.method) {
+    case 'efectivo':
+      return 'Efectivo';
+    case 'tarjeta':
+      return 'Tarjeta';
+    case 'transferencia':
+      return 'Transferencia';
+  }
+}
+
+/**
+ * Cierre de caja (replica del prototipo mobile): apertura del turno,
+ * retiros, arqueo por denominaciones, cierre y ticket imprimible.
+ */
+export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
+  // Apertura / cierre del turno (estado local, fase 1 frontend)
+  const [opened, setOpened] = useState(false);
+  const [openingAmount, setOpeningAmount] = useState('');
+  const [closed, setClosed] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [nextTurnCash, setNextTurnCash] = useState('');
+
+  // Retiros del turno
+  const [retirements, setRetirements] = useState<CashRetirement[]>([]);
+  const [retAmount, setRetAmount] = useState('');
+  const [retReason, setRetReason] = useState('');
+  const [retAuthorizedBy, setRetAuthorizedBy] = useState('');
+
+  // Arqueo por denominaciones
+  const [counts, setCounts] = useState<Record<number, string>>({});
+
+  // Modal de resumen
+  const [showSummary, setShowSummary] = useState(false);
+
+  // ── Métricas del día ────────────────────────────────────────────────────
+  const todaySales = useMemo(() => sales.filter((s) => isToday(s.createdAt)), [sales]);
+  const totalSales = todaySales.reduce((sum, s) => sum + s.total, 0);
+
+  const metodos = useMemo(() => {
+    const resumen = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+    for (const sale of todaySales) {
+      if (sale.payments?.length) {
+        for (const p of sale.payments) resumen[p.method] += p.amount;
+      } else {
+        resumen[sale.method] += sale.total;
+      }
+    }
+    return resumen;
+  }, [todaySales]);
+
+  const salesByGroup = useMemo(() => {
+    const groups: Record<SaleGroup, POSSale[]> = {
+      efectivo: [],
+      tarjeta: [],
+      transferencia: [],
+      mixto: [],
+    };
+    for (const sale of todaySales) {
+      const isMixto = !!sale.payments && sale.payments.length > 1;
+      if (isMixto) groups.mixto.push(sale);
+      else groups[sale.method].push(sale);
+    }
+    return groups;
+  }, [todaySales]);
+
+  // ── Arqueo ──────────────────────────────────────────────────────────────
+  const initial = opened ? (Number(openingAmount) || 0) : 0;
+  const totalRetirements = retirements.reduce((sum, r) => sum + r.amount, 0);
+  const expectedCash = initial + metodos.efectivo - totalRetirements;
+  const counted = CASH_DENOMINATIONS.reduce((sum, d) => sum + (Number(counts[d]) || 0) * d, 0);
+  const difference = counted - expectedCash;
+
+  // ── Ventana de cierre ────────────────────────────────────────────────────
+  const now = new Date();
+  const windowStart = new Date();
+  windowStart.setHours(CLOSING_HOUR, CLOSING_MINUTE - TOLERANCE_MINUTES, 0, 0);
+  const windowEnd = new Date();
+  windowEnd.setHours(CLOSING_HOUR, CLOSING_MINUTE + TOLERANCE_MINUTES, 0, 0);
+  const allowed = now >= windowStart && now <= windowEnd;
+
+  const hour = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  // ── Acciones ─────────────────────────────────────────────────────────────
+  const handleOpen = () => {
+    const amount = Number(openingAmount);
+    if (amount <= 0) return;
+    setOpened(true);
+  };
+
+  const addRetirement = () => {
+    const amount = Number(retAmount);
+    if (amount <= 0 || !retReason.trim()) return;
+    setRetirements((prev) => [
+      ...prev,
+      {
+        id: `ret-${Date.now()}`,
+        date: new Date().toISOString(),
+        amount,
+        reason: retReason.trim(),
+        authorizedBy: retAuthorizedBy.trim() || cashierName,
+      },
+    ]);
+    setRetAmount('');
+    setRetReason('');
+    setRetAuthorizedBy('');
+  };
+
+  const handleClose = () => {
+    if (!allowed || counted <= 0) return;
+    setClosed(true);
+    setOpened(false);
+    setShowSummary(true);
+  };
+
+  const handleNextTurn = () => {
+    setOpened(false);
+    setClosed(false);
+    setOpeningAmount('');
+    setNotes('');
+    setNextTurnCash('');
+    setRetirements([]);
+    setCounts({});
+  };
+
+  const handlePrint = () => {
+    const groups = GROUP_ORDER.map((group) => ({
+      name: groupName(group),
+      count: salesByGroup[group].length,
+      subtotal: salesByGroup[group].reduce((sum, s) => sum + s.total, 0),
+    }));
+    generateClosureHtml({
+      businessInfo: BUSINESS_INFO,
+      registerName: `CAJA-PV · TER-01`,
+      time: hour,
+      cashierName,
+      salesCount: todaySales.length,
+      totalSales,
+      groups,
+      retirements: retirements.map((r) => ({
+        amount: r.amount,
+        reason: r.reason,
+        authorizedBy: r.authorizedBy,
+      })),
+      initial,
+      cashSales: metodos.efectivo,
+      totalRetirements,
+      expectedCash,
+      counted,
+      difference,
+      denominations: CASH_DENOMINATIONS.filter((d) => (Number(counts[d]) || 0) > 0).map((d) => ({
+        value: d,
+        count: Number(counts[d]) || 0,
+      })),
+      nextTurnCash: Number(nextTurnCash) || 0,
+      notes: notes.trim() || undefined,
+    });
+  };
+
+  const countedDenominations = CASH_DENOMINATIONS.filter((d) => (Number(counts[d]) || 0) > 0);
+
+  // ── Estado: apertura (o turno cerrado) ───────────────────────────────────
+  if (!opened) {
+    return (
+      <div className="max-w-xl mx-auto">
+        <div className={posClasses.card}>
+          <div className="flex items-center gap-2 mb-2">
+            <LockOpen className="w-5 h-5 text-primary" />
+            <h3 className="font-black text-slate-700 text-lg">Apertura de caja</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">
+            {`CAJA-PV · Inicio de turno. Ingresa el efectivo con el que inicia el turno para
+            calcular el arqueo al cerrar.`}
+          </p>
+
+          {closed ? (
+            <div className="space-y-3">
+              <div
+                className={cn(
+                  posClasses.alertBox,
+                  'bg-amber-50 border-amber-200 text-amber-700',
+                )}
+              >
+                <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-xs font-medium">
+                  El turno de hoy ya cerró. El siguiente turno se abrirá en el horario
+                  configurado (simulado).
+                </p>
+              </div>
+              <Button variant="secondary" icon={<RefreshCw className="w-4 h-4" />} onClick={handleNextTurn}>
+                Simular siguiente turno
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Input
+                label="Efectivo inicial"
+                type="number"
+                min={0}
+                inputMode="decimal"
+                placeholder="0.00"
+                value={openingAmount}
+                onChange={(e) => setOpeningAmount(e.target.value)}
+              />
+              <Button
+                variant="primary"
+                fullWidth
+                icon={<LockOpen className="w-4 h-4" />}
+                onClick={handleOpen}
+                disabled={!openingAmount || Number(openingAmount) <= 0}
+              >
+                Abrir caja
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Vista principal: cierre ──────────────────────────────────────────────
+  return (
+    <div className="space-y-6">
+      {/* Resumen del día */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className={posClasses.summaryCard}>
+          <Banknote className="w-5 h-5 text-green-600" />
+          <span className={posClasses.summaryValue}>{formatCurrency(totalSales)}</span>
+          <span className={posClasses.summaryLabel}>Total ventas</span>
+        </div>
+        <div className={posClasses.summaryCard}>
+          <Wallet className="w-5 h-5 text-primary" />
+          <span className={posClasses.summaryValue}>{formatCurrency(metodos.efectivo)}</span>
+          <span className={posClasses.summaryLabel}>Efectivo</span>
+        </div>
+        <div className={posClasses.summaryCard}>
+          <CreditCard className="w-5 h-5 text-blue-600" />
+          <span className={posClasses.summaryValue}>{formatCurrency(metodos.tarjeta)}</span>
+          <span className={posClasses.summaryLabel}>Tarjeta</span>
+        </div>
+        <div className={posClasses.summaryCard}>
+          <QrCode className="w-5 h-5 text-indigo-600" />
+          <span className={posClasses.summaryValue}>{formatCurrency(metodos.transferencia)}</span>
+          <span className={posClasses.summaryLabel}>Transferencia</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* ── Columna izquierda ── */}
+        <div className="space-y-4">
+          {/* Retiros */}
+          <div className={posClasses.card}>
+            <h3 className={cn(posClasses.sectionTitle, 'mb-1')}>Retiros de efectivo</h3>
+            <p className="text-xs text-slate-500 mb-3">
+              Registra retiros de efectivo durante el turno. Requieren autorización.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Input
+                label="Monto"
+                type="number"
+                min={0}
+                inputMode="decimal"
+                placeholder="0.00"
+                value={retAmount}
+                onChange={(e) => setRetAmount(e.target.value)}
+              />
+              <Input
+                label="Motivo"
+                placeholder="Compra de insumos, corrección..."
+                value={retReason}
+                onChange={(e) => setRetReason(e.target.value)}
+              />
+            </div>
+            <div className="mt-2">
+              <Input
+                label="Autorizado por"
+                placeholder="Nombre del autorizador"
+                value={retAuthorizedBy}
+                onChange={(e) => setRetAuthorizedBy(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="secondary"
+              className="mt-3"
+              icon={<MinusCircle className="w-4 h-4" />}
+              onClick={addRetirement}
+              disabled={!retAmount || Number(retAmount) <= 0 || !retReason.trim()}
+            >
+              Agregar retiro
+            </Button>
+
+            {retirements.length > 0 && (
+              <div className="mt-3">
+                {retirements.map((r) => (
+                  <div key={r.id} className={posClasses.retirementRow}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-700 truncate">
+                        −{formatCurrency(r.amount)} · {r.reason}
+                      </p>
+                      <p className={posClasses.historyMeta}>Aut: {r.authorizedBy}</p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => setRetirements((prev) => prev.filter((x) => x.id !== r.id))}
+                        className="text-[11px] font-bold text-red-500 hover:underline"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Notas */}
+          <div className={posClasses.card}>
+            <h3 className={cn(posClasses.sectionTitle, 'mb-3')}>Notas del cierre</h3>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Observaciones, incidencias, diferencias..."
+              rows={4}
+            />
+          </div>
+        </div>
+
+        {/* ── Columna derecha ── */}
+        <div className="space-y-4">
+          {/* Horario permitido */}
+          <div className={posClasses.card}>
+            <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Horario permitido</h3>
+            <div className={cn(posClasses.alertBox, 'bg-blue-50 border-blue-200 text-blue-700')}>
+              <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+              <p className="text-xs font-medium">
+                Ventana de cierre:{' '}
+                {`${pad(windowStart.getHours())}:${pad(windowStart.getMinutes())} a ${pad(windowEnd.getHours())}:${pad(windowEnd.getMinutes())} hrs.`}
+              </p>
+            </div>
+            {!allowed && (
+              <div className={cn(posClasses.alertBox, 'bg-red-50 border-red-200 text-red-700 mt-2')}>
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-xs font-medium">
+                  Ahora mismo no está permitido cerrar caja. Espera la ventana configurada.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Arqueo */}
+          <div className={posClasses.card}>
+            <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Arqueo de efectivo</h3>
+            <p className="text-xs text-slate-500 mb-3">
+              Efectivo esperado: {formatCurrency(expectedCash)}
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                  Billetes
+                </p>
+                <div className={cn('grid gap-1.5', 'grid-cols-3')}>
+                  {CASH_BILLS.map((d) => (
+                    <div key={d} className={posClasses.denomEntry}>
+                      <p className={posClasses.denomLabel}>${d.toLocaleString('es-MX')}</p>
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        placeholder="0"
+                        className={posClasses.denomInput}
+                        value={counts[d] ?? ''}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                  Monedas
+                </p>
+                <div className={cn('grid gap-1.5', 'grid-cols-4')}>
+                  {CASH_COINS.map((d) => (
+                    <div key={d} className={posClasses.denomEntry}>
+                      <p className={posClasses.denomLabel}>${d.toLocaleString('es-MX')}</p>
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        placeholder="0"
+                        className={posClasses.denomInput}
+                        value={counts[d] ?? ''}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Resultados */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Total contado</span>
+                <span className={posClasses.resultValue}>{formatCurrency(counted)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Efectivo esperado</span>
+                <span className={posClasses.resultValue}>{formatCurrency(expectedCash)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Diferencia</span>
+                <span
+                  className={cn(
+                    posClasses.resultValue,
+                    difference >= 0 ? 'text-green-600' : 'text-red-600',
+                  )}
+                >
+                  {difference > 0 ? '+' : ''}
+                  {formatCurrency(difference)}
+                  {difference > 0 ? ' · A favor' : difference < 0 ? ' · En contra' : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Fondo siguiente turno + cerrar */}
+            <div className="mt-3">
+              <Input
+                label="Fondo para siguiente turno"
+                type="number"
+                min={0}
+                inputMode="decimal"
+                placeholder="0.00"
+                value={nextTurnCash}
+                onChange={(e) => setNextTurnCash(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="primary"
+              fullWidth
+              className="mt-3"
+              icon={<Lock className="w-4 h-4" />}
+              onClick={handleClose}
+              disabled={!allowed || counted <= 0}
+            >
+              Cerrar caja
+            </Button>
+            {counted <= 0 && (
+              <p className="text-[11px] text-red-500 mt-2">
+                Registra el conteo por denominaciones para cerrar.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Modal resumen del cierre ── */}
+      <Modal open={showSummary} onClose={() => setShowSummary(false)} size="lg">
+        <ModalHeader
+          title="Cierre de caja registrado"
+          subtitle={`CAJA-PV · ${hour} hrs · ${cashierName}`}
+        />
+        <ModalBody>
+          <div className="max-h-[60vh] overflow-y-auto scrollbar-none space-y-4">
+            <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <p className="text-xs font-medium">
+                Pendiente de aprobación del Administrador.
+              </p>
+            </div>
+
+            {/* Ventas por grupo */}
+            <div>
+              <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
+                Ventas del día
+              </p>
+              <div className="space-y-2">
+                {GROUP_ORDER.map((group) => {
+                  const grupo = salesByGroup[group];
+                  const subtotal = grupo.reduce((sum, s) => sum + s.total, 0);
+                  return (
+                    <div key={group} className="rounded-lg border border-slate-100 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-slate-700">
+                          {groupName(group)} · {grupo.length} venta{grupo.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className="font-black text-slate-900">{formatCurrency(subtotal)}</span>
+                      </div>
+                      {grupo.length === 0 ? (
+                        <p className={posClasses.historyMeta}>Sin ventas en {groupName(group).toLowerCase()}.</p>
+                      ) : (
+                        <div className="mt-2 space-y-2">
+                          {grupo.map((sale) => {
+                            const { time } = formatTicketDate(sale.createdAt);
+                            return (
+                              <div key={sale.id} className="bg-slate-50 rounded-lg p-2">
+                                <div className="flex justify-between">
+                                  <span className="text-xs font-black text-primary">
+                                    {sale.ticketNumber} · {time}
+                                  </span>
+                                  <span className="text-xs font-black text-slate-800">
+                                    {formatCurrency(sale.total)}
+                                  </span>
+                                </div>
+                                <p className={posClasses.historyMeta}>
+                                  {sale.customer || 'Público en general'} · Pago:{' '}
+                                  {paymentLabel(sale)}
+                                  {sale.discountPct ? ` · −${sale.discountPct}%` : ''}
+                                </p>
+                                {sale.items.map((item, index) => (
+                                  <div
+                                    key={`${sale.id}-${item.product.id}-${index}`}
+                                    className="flex justify-between text-[11px] text-slate-600 pl-2"
+                                  >
+                                    <span>
+                                      {item.quantity} × {item.product.name} ({itemUnitName(item)})
+                                    </span>
+                                    <span>{formatCurrency(itemSubtotal(item))}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Retiros del turno */}
+            <div>
+              <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
+                Retiros del turno
+              </p>
+              {retirements.length === 0 ? (
+                <p className={posClasses.historyMeta}>Sin retiros registrados.</p>
+              ) : (
+                retirements.map((r) => (
+                  <p key={r.id} className={posClasses.historyMeta}>
+                    −{formatCurrency(r.amount)} · {r.reason} · Autorizado por {r.authorizedBy}
+                  </p>
+                ))
+              )}
+            </div>
+
+            {/* Arqueo */}
+            <div className="rounded-lg border border-slate-100 p-3 space-y-1">
+              <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
+                Arqueo de efectivo
+              </p>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Efectivo inicial</span>
+                <span className={posClasses.resultValue}>{formatCurrency(initial)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Ventas en efectivo</span>
+                <span className={posClasses.resultValue}>{formatCurrency(metodos.efectivo)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Retiros (−)</span>
+                <span className={posClasses.resultValue}>−{formatCurrency(totalRetirements)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Efectivo esperado</span>
+                <span className={posClasses.resultValue}>{formatCurrency(expectedCash)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Efectivo contado</span>
+                <span className={posClasses.resultValue}>{formatCurrency(counted)}</span>
+              </div>
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Diferencia</span>
+                <span
+                  className={cn(
+                    posClasses.resultValue,
+                    difference >= 0 ? 'text-green-600' : 'text-red-600',
+                  )}
+                >
+                  {difference > 0 ? '+' : ''}
+                  {formatCurrency(difference)}
+                  {difference > 0 ? ' · A favor' : difference < 0 ? ' · En contra' : ''}
+                </span>
+              </div>
+
+              <p className="text-xs font-black text-slate-500 uppercase tracking-wide pt-2">
+                Billetes y monedas contados
+              </p>
+              {countedDenominations.length === 0 ? (
+                <p className={posClasses.historyMeta}>Sin denominaciones registradas.</p>
+              ) : (
+                countedDenominations.map((d) => (
+                  <div key={d} className={posClasses.resultRow}>
+                    <span className={posClasses.resultLabel}>
+                      {Number(counts[d])} × ${d.toLocaleString('es-MX')}
+                    </span>
+                    <span className={posClasses.resultValue}>
+                      {formatCurrency((Number(counts[d]) || 0) * d)}
+                    </span>
+                  </div>
+                ))
+              )}
+
+              <div className={posClasses.resultRow}>
+                <span className={posClasses.resultLabel}>Fondo para el siguiente turno</span>
+                <span className={posClasses.resultValue}>
+                  {formatCurrency(Number(nextTurnCash) || 0)}
+                </span>
+              </div>
+              {notes.trim() && (
+                <p className="text-xs text-slate-500 pt-1">
+                  <strong>Observaciones:</strong> {notes}
+                </p>
+              )}
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <Button variant="secondary" onClick={() => setShowSummary(false)}>
+            Entendido
+          </Button>
+          <Button variant="primary" icon={<Printer className="w-4 h-4" />} onClick={handlePrint}>
+            Imprimir / Guardar
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </div>
+  );
+}

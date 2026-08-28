@@ -25,6 +25,7 @@ import { PaymentPanel } from '@/components/pos/PaymentPanel';
 import { QrModal } from '@/components/pos/QrModal';
 import { TicketPreview } from '@/components/pos/TicketPreview';
 import { SalesHistoryModal } from '@/components/pos/SalesHistoryModal';
+import { CorteCaja } from '@/components/pos/CorteCaja';
 import { posClasses } from '@/components/pos/pos.styles';
 
 import {
@@ -190,26 +191,10 @@ export default function VentasPage() {
   };
 
   // ── Métricas del día ──────────────────────────────────────────────────────
-  const hoyIso = new Date().toISOString().split('T')[0];
   const ventasHoy = sales.filter((s) => isToday(s.createdAt));
   const totalHoy = ventasHoy.reduce((sum, s) => sum + s.total, 0);
   const ticketPromedio = ventasHoy.length ? totalHoy / ventasHoy.length : 0;
   const piezasHoy = ventasHoy.reduce((sum, s) => sum + s.itemsSold, 0);
-  const retirosHoy = retiros
-    .filter((r) => r.fecha === hoyIso)
-    .reduce((sum, r) => sum + r.monto, 0);
-
-  const resumenPorMetodo = (() => {
-    const resumen = { efectivo: 0, tarjeta: 0, transferencia: 0 };
-    for (const sale of ventasHoy) {
-      if (sale.payments?.length) {
-        for (const p of sale.payments) resumen[p.method] += p.amount;
-      } else {
-        resumen[sale.method] += sale.total;
-      }
-    }
-    return resumen;
-  })();
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -387,62 +372,7 @@ export default function VentasPage() {
 
             {/* ─── CORTE DEL DÍA ───────────────────────────────────────── */}
             <TabPanel tabKey="corte">
-              <div className="max-w-xl mx-auto space-y-4">
-                <div className="flex items-center gap-3">
-                  <CalendarDays className="w-5 h-5 text-primary" />
-                  <label className="font-bold text-slate-700 text-sm">Corte de hoy</label>
-                  <input
-                    type="date"
-                    value={hoyIso}
-                    readOnly
-                    className={`${inputClass} w-auto pointer-events-none opacity-70`}
-                  />
-                </div>
-
-                <div className={posClasses.card}>
-                  <h3 className="font-black text-slate-700 mb-4 flex items-center gap-2">
-                    <ReceiptText className="w-5 h-5 text-primary" /> Resumen del Corte
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-slate-500 font-medium text-sm">Ventas registradas</span>
-                      <span className="font-black text-slate-900">{ventasHoy.length}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-slate-500 font-medium text-sm">Ingresos totales (bruto)</span>
-                      <span className="font-black text-slate-900">{formatCurrency(totalHoy)}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-slate-500 font-medium text-sm">IVA 16% del día</span>
-                      <span className="font-black text-slate-700">
-                        {formatCurrency(ventasHoy.reduce((sum, s) => sum + s.taxBreakdown.iva, 0))}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-green-600 font-medium text-sm">Efectivo cobrado</span>
-                      <span className="font-black text-green-600">{formatCurrency(resumenPorMetodo.efectivo)}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-blue-600 font-medium text-sm">Tarjeta</span>
-                      <span className="font-black text-blue-600">{formatCurrency(resumenPorMetodo.tarjeta)}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-indigo-600 font-medium text-sm">Transferencia / QR</span>
-                      <span className="font-black text-indigo-600">{formatCurrency(resumenPorMetodo.transferencia)}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-slate-100">
-                      <span className="text-red-500 font-medium text-sm">Retiros de efectivo (hoy)</span>
-                      <span className="font-black text-red-500">− {formatCurrency(retirosHoy)}</span>
-                    </div>
-                    <div className={`flex justify-between py-3 px-4 bg-slate-900 rounded-xl mt-2 ${resumenPorMetodo.efectivo - retirosHoy >= 0 ? '' : 'text-red-400'}`}>
-                      <span className="text-white font-black text-sm">EFECTIVO EN CAJA</span>
-                      <span className={`font-black text-xl ${resumenPorMetodo.efectivo - retirosHoy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {formatCurrency(resumenPorMetodo.efectivo - retirosHoy)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <CorteCaja sales={sales} cashierName={cashierName} />
             </TabPanel>
           </Tabs>
         </>
