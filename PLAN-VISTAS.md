@@ -444,7 +444,7 @@ Para cada vista refactorizada, verificar:
 
 ---
 
-#### 3. Ventas (468 lineas)
+#### 3. Ventas (468 lineas) - REALIZADA (Punto de Venta completo)
 
 **Por que la tercera:**
 - Ya usa Modal, ModalField, useToast -> esta parcialmente refactorizada
@@ -464,6 +464,20 @@ Para cada vista refactorizada, verificar:
 - DataTable para ventas con Badge de estado (Cobrada / Pendiente / Abonada)
 - FormModal para nueva venta
 - Separar en componentes: VentasTable, RetirosTable, VentaModal
+
+**Lo implementado (2026-08-28):** Punto de Venta completo (solo frontend, datos mock en
+`apps/web/src/lib/pos.ts`):
+- `PosScanner` (busqueda por nombre/SKU/codigo + simular lectura)
+- `CartItemRow` (steppers de cantidad, stock, subtotal)
+- `PaymentPanel` (efectivo con atajos de billetes/monedas, tarjeta, transferencia/QR,
+  pago mixto, descuento con autorizacion de Administrador, cambio)
+- `QrModal` (QR simulado + cuenta SPEI)
+- `TicketPreview` (ticket termico 58mm con IVA 16%, monto en letras, codigo de barras
+  Code 39, impresion web)
+- `SalesHistoryModal` (historial del dia con reimpresion)
+- Tabs: Punto de Venta | Retiros/Gastos | Corte del Dia
+- RBAC: `/ventas` (puedeCrear para cobrar)
+- Pendiente: persistencia real (endpoint `ventas` + historico en BD)
 
 ---
 
@@ -509,7 +523,7 @@ Para cada vista refactorizada, verificar:
 
 ---
 
-#### 6. Cotizaciones (660 lineas) - LA MAS COMPLEJA
+#### 6. Cotizaciones (660 lineas) - LA MAS COMPLEJA - REALIZADA
 
 **Por que la ultima:**
 - Es la vista mas compleja del ERP entero (660 lineas)
@@ -555,12 +569,12 @@ Las 6 vistas de Operaciones estan terminadas (full-stack, RBAC, auditoria).
 
 ```
 COMERCIAL:
-  1. Finanzas (129)     -> StatsCard + DataTable + SearchBar (plantilla = inventario)
-  2. Clientes (65)      -> Card grid + FormModal + EmptyState
-  3. Ventas (468)       -> StatsCard + DataTable + FormModal
+  1. Finanzas (129)     -> StatsCard + DataTable + SearchBar (plantilla = inventario) ✅
+  2. Clientes (65)      -> Card grid + FormModal + EmptyState ✅
+  3. Ventas (468)       -> Punto de Venta completo (POS) ✅
   4. Proveedores (495)  -> Card + Tabs + FormModal
   5. Cobranza (439)     -> StatsCard + DataTable + FormModal
-  6. Cotizaciones (660) -> Dividir en componentes primero
+  6. Cotizaciones (660) -> Dividir en componentes primero ✅
 ```
 
 ---
