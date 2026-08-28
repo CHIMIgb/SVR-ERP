@@ -77,6 +77,7 @@ export default function ClientesPage() {
   const [historialCliente, setHistorialCliente] = useState<ClienteDTO | null>(null);
   const [cotizaciones, setCotizaciones] = useState<CotizacionDTO[]>([]);
   const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialPaging, setHistorialPaging] = useState(false);
   const [historialPagination, setHistorialPagination] = useState({ page: 1, limit: 5, total: 0, totalPages: 1 });
   const [cotizacionOpen, setCotizacionOpen] = useState(false);
   const [cotizacionCliente, setCotizacionCliente] = useState<ClienteDTO | null>(null);
@@ -124,8 +125,17 @@ export default function ClientesPage() {
     }
   }, []);
 
-  const fetchCotizaciones = useCallback(async (clienteId: string, page = 1, limit = 5) => {
-    setHistorialLoading(true);
+  const fetchCotizaciones = useCallback(async (
+    clienteId: string,
+    page = 1,
+    limit = 5,
+    options: { paging?: boolean } = {}
+  ) => {
+    if (options.paging) {
+      setHistorialPaging(true);
+    } else {
+      setHistorialLoading(true);
+    }
     try {
       const res = await clientesApi.cotizaciones(clienteId, { page, limit });
       if (res.success && res.data) {
@@ -139,7 +149,11 @@ export default function ClientesPage() {
       setCotizaciones([]);
       setHistorialPagination({ page: 1, limit, total: 0, totalPages: 1 });
     } finally {
-      setHistorialLoading(false);
+      if (options.paging) {
+        setHistorialPaging(false);
+      } else {
+        setHistorialLoading(false);
+      }
     }
   }, []);
 
@@ -189,7 +203,7 @@ export default function ClientesPage() {
     setViewOpen(true);
     setCotizaciones([]);
     setHistorialPagination({ page: 1, limit: 5, total: 0, totalPages: 1 });
-    fetchCotizaciones(item.id, 1, 5);
+    fetchCotizaciones(item.id, 1, 5, { paging: false });
   }, [fetchCotizaciones]);
 
   // ── CRUD handlers (API) ──
@@ -282,7 +296,7 @@ export default function ClientesPage() {
     setHistorialOpen(true);
     setCotizaciones([]);
     setHistorialPagination({ page: 1, limit: 5, total: 0, totalPages: 1 });
-    fetchCotizaciones(item.id, 1, 5);
+    fetchCotizaciones(item.id, 1, 5, { paging: false });
   }, [fetchCotizaciones]);
 
   const handleNuevaCotizacion = useCallback((item: ClienteDTO) => {
@@ -293,7 +307,7 @@ export default function ClientesPage() {
 
   const handleHistorialPageChange = useCallback((page: number) => {
     if (historialCliente) {
-      fetchCotizaciones(historialCliente.id, page, historialPagination.limit);
+      fetchCotizaciones(historialCliente.id, page, historialPagination.limit, { paging: true });
     }
   }, [historialCliente, historialPagination.limit, fetchCotizaciones]);
 
@@ -316,7 +330,7 @@ export default function ClientesPage() {
         setCotizacionOpen(false);
         setCotizacionCliente(null);
         if (historialOpen && historialCliente?.id === cotizacionCliente.id) {
-          fetchCotizaciones(cotizacionCliente.id, historialPagination.page, historialPagination.limit);
+          fetchCotizaciones(cotizacionCliente.id, historialPagination.page, historialPagination.limit, { paging: false });
         }
       } else {
         showToast(res.error?.message || 'Error al crear la cotización.', 'error');
@@ -667,25 +681,32 @@ export default function ClientesPage() {
                 </div>
               ) : (
                 <>
-                  <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                    {cotizaciones.map((cq) => (
-                      <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50/50">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-primary">{cq.codigo}</span>
-                            {estadoBadge(cq.estado)}
+                  <div className="relative">
+                    <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                      {cotizaciones.map((cq) => (
+                        <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50/50">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-primary">{cq.codigo}</span>
+                              {estadoBadge(cq.estado)}
+                            </div>
+                            <p className="text-sm font-semibold text-slate-700 truncate mt-0.5">{cq.descripcion}</p>
+                            <p className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                              <CalendarDays className="w-3 h-3" /> {cq.fecha}
+                            </p>
                           </div>
-                          <p className="text-sm font-semibold text-slate-700 truncate mt-0.5">{cq.descripcion}</p>
-                          <p className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
-                            <CalendarDays className="w-3 h-3" /> {cq.fecha}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-black text-slate-900">{formatCurrency(cq.monto)}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                          <div className="text-right shrink-0">
+                            <p className="font-black text-slate-900">{formatCurrency(cq.monto)}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {historialPaging && (
+                      <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      </div>
+                    )}
+                  </div>
                   {historialPagination.totalPages > 1 && (
                     <Pagination
                       currentPage={historialPagination.page}
@@ -732,7 +753,7 @@ export default function ClientesPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-slate-100">
@@ -755,6 +776,11 @@ export default function ClientesPage() {
                     ))}
                   </tbody>
                 </table>
+                {historialPaging && (
+                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  </div>
+                )}
               </div>
               {historialPagination.totalPages > 1 && (
                 <Pagination
