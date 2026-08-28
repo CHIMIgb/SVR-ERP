@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { X, Printer } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import type { NominaRowDTO } from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
-import { Portal } from '@/components/ui/Portal';
-import { Overlay } from '@/components/ui/Overlay';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 
 interface RecibosNominaModalProps {
   isOpen: boolean;
@@ -26,11 +26,9 @@ export default function RecibosNominaModal({
   const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('todos');
 
-  if (!isOpen) return null;
-
   const handlePrint = () => {
     window.print();
-    showToast('🖨️ Enviando recibos de nómina a la impresora...', 'success');
+    showToast('Enviando recibos de nómina a la impresora...', 'success');
   };
 
   const displayedWorkers = selectedWorkerId === 'todos'
@@ -38,15 +36,7 @@ export default function RecibosNominaModal({
     : workersList.filter((w) => w.id === selectedWorkerId);
 
   return (
-    <Portal>
-      <Overlay onClick={onClose} blur className="z-[9999] p-4">
-        <div
-          className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-        >
-
+    <Modal open={isOpen} onClose={onClose} size="full" contentClassName="overflow-hidden">
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
           <div className="flex items-center gap-3">
@@ -73,19 +63,9 @@ export default function RecibosNominaModal({
               ))}
             </select>
 
-            <button
-              onClick={handlePrint}
-              className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md"
-            >
-              <Printer className="w-4 h-4" /> Imprimir Recibos
-            </button>
-
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white flex items-center justify-center transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <Button size="sm" icon={<Printer size={14} />} onClick={handlePrint}>
+              Imprimir Recibos
+            </Button>
           </div>
         </div>
 
@@ -159,8 +139,8 @@ export default function RecibosNominaModal({
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-orange-50/70 border border-orange-200 text-[11px] font-bold text-orange-950 flex justify-between mb-6">
-                    <span>💵 Efectivo en Sobre: <strong>{fmt.format(efectivoEnSobre)}</strong></span>
-                    <span>💳 SPEI Tarjeta: <strong>{fmt.format(t.sueldoFiscal)}</strong></span>
+                    <span>Efectivo en Sobre: <strong>{fmt.format(efectivoEnSobre)}</strong></span>
+                    <span>SPEI Tarjeta: <strong>{fmt.format(t.sueldoFiscal)}</strong></span>
                   </div>
 
                   <div className="pt-4 border-t border-slate-200 text-center">
@@ -182,23 +162,11 @@ export default function RecibosNominaModal({
           </p>
 
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
-            >
-              Cerrar
-            </button>
-            <button
-              onClick={handlePrint}
-              className="btn-primary flex items-center gap-2 text-xs font-black uppercase tracking-wider"
-            >
-              <Printer className="w-4 h-4" /> Imprimir Todos
-            </button>
+            <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+            <Button icon={<Printer size={16} />} onClick={handlePrint}>Imprimir Todos</Button>
           </div>
         </div>
 
-        </div>
-      </Overlay>
-    </Portal>
+    </Modal>
   );
 }

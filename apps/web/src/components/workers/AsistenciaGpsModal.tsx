@@ -9,8 +9,7 @@ import {
 } from 'lucide-react';
 import type { RegistroAsistenciaDTO } from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
-import { Portal } from '@/components/ui/Portal';
-import { Overlay } from '@/components/ui/Overlay';
+import { Modal } from '@/components/ui/Modal';
 
 interface TrabajadorResumen {
   nombre: string;
@@ -60,7 +59,7 @@ export default function AsistenciaGpsModal({
     try {
       const nuevoEstado = registro.enSitio ? 'Puntual' : 'Justificado';
       await onActualizarEstado(registro.id, nuevoEstado);
-      showToast(`✅ Asistencia de ${trabajador?.nombre ?? 'Trabajador'} validada.`, 'success');
+      showToast(`Asistencia de ${trabajador?.nombre ?? 'Trabajador'} validada.`, 'success');
       onClose();
     } catch {
       showToast('No se pudo actualizar la asistencia.', 'error');
@@ -74,7 +73,7 @@ export default function AsistenciaGpsModal({
     setProcesando(true);
     try {
       await onActualizarEstado(registro.id, 'Falta');
-      showToast(`❌ Marcaje rechazado por exceder el radio permitido de ${radioKm} km.`, 'error');
+      showToast(`Marcaje rechazado por exceder el radio permitido de ${radioKm} km.`, 'error');
       onClose();
     } catch {
       showToast('No se pudo marcar la falta.', 'error');
@@ -88,7 +87,7 @@ export default function AsistenciaGpsModal({
     setProcesando(true);
     try {
       await onAprobarHorasExtra(registro.horasExtra.id);
-      showToast(`🔥 ${registro.horasExtra.horasCalculadas} horas extra aprobadas para ${trabajador?.nombre}.`, 'success');
+      showToast(`${registro.horasExtra.horasCalculadas} horas extra aprobadas para ${trabajador?.nombre}.`, 'success');
     } catch {
       showToast('No se pudieron autorizar las horas extra.', 'error');
     } finally {
@@ -97,15 +96,7 @@ export default function AsistenciaGpsModal({
   };
 
   return (
-    <Portal>
-      <Overlay onClick={onClose} blur className="z-[9999] p-4">
-        <div
-          className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-        >
-
+    <Modal open={isOpen} onClose={onClose} size="xl" contentClassName="overflow-hidden">
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -472,8 +463,6 @@ export default function AsistenciaGpsModal({
           </div>
         </div>
 
-      </div>
-      </Overlay>
-    </Portal>
+    </Modal>
   );
 }

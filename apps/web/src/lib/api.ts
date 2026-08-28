@@ -960,6 +960,21 @@ export interface LiquidacionDesglose {
   granTotalNeto: number;
 }
 
+export interface ProyectoCatalogoDTO {
+  id: string;
+  nombre: string;
+}
+
+export interface MaquinaCatalogoDTO {
+  id: string;
+  nombre: string;
+}
+
+export const catalogosApi = {
+  proyectos: () => apiClient.get<ProyectoCatalogoDTO[]>('/catalogos/proyectos'),
+  maquinas: () => apiClient.get<MaquinaCatalogoDTO[]>('/maquinas'),
+};
+
 export const trabajadoresApi = {
   /** Listar trabajadores con búsqueda, filtros y paginación */
   listar: (params?: { search?: string; categoriaPuesto?: string; estado?: string; page?: number; limit?: number }) => {

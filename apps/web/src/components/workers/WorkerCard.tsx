@@ -3,6 +3,10 @@
 import React from 'react';
 import { Phone, Briefcase, Truck, Award, ClipboardList, Pencil, UserMinus } from 'lucide-react';
 import type { TrabajadorDTO } from '@/lib/api';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Avatar } from '@/components/ui/Avatar';
 
 interface WorkerCardProps {
   trabajador: TrabajadorDTO;
@@ -14,6 +18,12 @@ interface WorkerCardProps {
   onLiquidar?: (t: TrabajadorDTO) => void;
 }
 
+const ESTADO_BADGE: Record<string, 'success' | 'neutral' | 'info'> = {
+  Activo: 'success',
+  Inactivo: 'neutral',
+  Vacaciones: 'info',
+};
+
 export default function WorkerCard({
   trabajador,
   bitacorasCount = 0,
@@ -23,39 +33,21 @@ export default function WorkerCard({
   onEdit,
   onLiquidar,
 }: WorkerCardProps) {
-  const statusColors: Record<string, string> = {
-    Activo: 'bg-green-500',
-    Inactivo: 'bg-slate-400',
-    Vacaciones: 'bg-blue-400',
-  };
-
-  const categoryColors: Record<string, string> = {
-    Operador: 'bg-orange-50 text-orange-700 border-orange-200',
-    Chofer: 'bg-blue-50 text-blue-700 border-blue-200',
-    Mecanico: 'bg-purple-50 text-purple-700 border-purple-200',
-    Ingeniero: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    Administrativo: 'bg-slate-100 text-slate-700 border-slate-200',
-  };
-
   return (
-    <div className="card group p-5 space-y-4 hover:shadow-lg transition-all border border-slate-200">
+    <Card padding="sm" className="space-y-4">
       {/* Top Identity Bar */}
       <div className="flex items-start gap-3.5">
-        <div className="w-13 h-13 bg-secondary rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-md group-hover:scale-105 transition-transform shrink-0">
-          {trabajador.avatar}
-        </div>
+        <Avatar name={trabajador.nombre} size="lg" className="shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start gap-1">
             <h3 className="font-black text-slate-900 text-base leading-tight truncate">{trabajador.nombre}</h3>
-            <span className={`text-[9px] font-black uppercase tracking-widest ${statusColors[trabajador.estado] ?? 'bg-slate-400'} text-white px-2 py-0.5 rounded shadow-sm shrink-0`}>
+            <Badge variant={ESTADO_BADGE[trabajador.estado] ?? 'neutral'} size="sm" dot>
               {trabajador.estado}
-            </span>
+            </Badge>
           </div>
 
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${categoryColors[trabajador.categoriaPuesto] ?? 'bg-slate-100'}`}>
-              {trabajador.categoriaPuesto}
-            </span>
+            <Badge variant="primary" size="sm">{trabajador.categoriaPuesto}</Badge>
             <span className="text-xs font-bold text-primary truncate">{trabajador.puesto}</span>
           </div>
         </div>
@@ -111,9 +103,7 @@ export default function WorkerCard({
             </span>
             <div className="flex gap-1 flex-wrap justify-end">
               {trabajador.proyectos.map((p) => (
-                <span key={p} className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[9px] font-black uppercase">
-                  {p}
-                </span>
+                <Badge key={p} variant="neutral" size="sm">{p}</Badge>
               ))}
             </div>
           </div>
@@ -123,36 +113,30 @@ export default function WorkerCard({
       {/* Operational Actions */}
       <div className="space-y-2 pt-2 border-t border-slate-100">
         {(trabajador.categoriaPuesto === 'Operador' || trabajador.categoriaPuesto === 'Chofer') && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<ClipboardList size={14} />}
             onClick={() => onOpenBitacoras?.(trabajador)}
-            className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider flex items-center justify-between transition-all shadow-sm"
           >
-            <span className="flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-orange-400" /> Hojas de Bitácora / Renta
-            </span>
-            <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-mono">{bitacorasCount} hojas</span>
-          </button>
+            Hojas de Bitácora / Renta ({bitacorasCount})
+          </Button>
         )}
 
         <div className="grid grid-cols-2 gap-2">
           {puedeEditar && (
-            <button
-              onClick={() => onEdit?.(trabajador)}
-              className="py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
-            >
-              <Pencil className="w-3.5 h-3.5" /> Editar
-            </button>
+            <Button variant="warning" size="sm" icon={<Pencil size={14} />} onClick={() => onEdit?.(trabajador)}>
+              Editar
+            </Button>
           )}
           {puedeEliminar && trabajador.estado !== 'Inactivo' && (
-            <button
-              onClick={() => onLiquidar?.(trabajador)}
-              className="py-2 px-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
-            >
-              <UserMinus className="w-3.5 h-3.5" /> Liquidar
-            </button>
+            <Button variant="danger" size="sm" icon={<UserMinus size={14} />} onClick={() => onLiquidar?.(trabajador)}>
+              Liquidar
+            </Button>
           )}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
