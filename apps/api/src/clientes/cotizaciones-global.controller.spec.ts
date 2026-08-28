@@ -28,6 +28,7 @@ describe('CotizacionesGlobalController', () => {
   const mockService = {
     findAll: jest.fn().mockResolvedValue(mockResult),
     findOne: jest.fn().mockResolvedValue(mockCotizacion),
+    update: jest.fn().mockResolvedValue({ ...mockCotizacion, monto: 130000 }),
     cambiarEstado: jest.fn().mockResolvedValue({ ...mockCotizacion, estado: 'Aceptada' }),
     findStats: jest.fn().mockResolvedValue({
       total: 10,
@@ -78,6 +79,16 @@ describe('CotizacionesGlobalController', () => {
       const result = await controller.findOne(mockCotizacion.id);
       expect(result.id).toBe(mockCotizacion.id);
       expect(service.findOne).toHaveBeenCalledWith(mockCotizacion.id);
+    });
+  });
+
+  describe('update', () => {
+    it('should edit a cotizacion passing userId', async () => {
+      const dto = { monto: 130000 };
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.update(mockCotizacion.id, dto as never, req as never);
+      expect(result.monto).toBe(130000);
+      expect(service.update).toHaveBeenCalledWith(mockCotizacion.id, dto, 'user-1');
     });
   });
 

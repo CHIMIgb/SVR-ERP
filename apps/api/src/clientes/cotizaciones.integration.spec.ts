@@ -226,6 +226,40 @@ describe('Cotizaciones Audit (Real DB)', () => {
     });
   });
 
+  describe('COTIZACION_ACTUALIZADA (editar cotización)', () => {
+    it('debe editar campos y registrar COTIZACION_ACTUALIZADA con previous/new value', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Editable ${TEST_ID}`, monto: 1000, fecha: '2026-08-22' },
+        ACTOR_USER_ID,
+      );
+
+      const actualizada = await service.update(
+        cotizacion.id,
+        { descripcion: `Editada ${TEST_ID}`, monto: 2000, fecha: '2026-08-23' },
+        ACTOR_USER_ID,
+      );
+
+      expect(actualizada.descripcion).toBe(`Editada ${TEST_ID}`);
+      expect(actualizada.monto).toBe(2000);
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COTIZACION_ACTUALIZADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      const editAudit = audits.find(
+        (a) => (a.new_value as Record<string, unknown> | null)?.descripcion === `Editada ${TEST_ID}`,
+      );
+      expect(editAudit).toBeDefined();
+      expect((editAudit!.previous_value as Record<string, unknown>).descripcion).toBe(
+        `Editable ${TEST_ID}`,
+      );
+      expect(editAudit!.result).toBe('SUCCESS');
+      expect(editAudit!.actor_user_id).toBe(ACTOR_USER_ID);
+    });
+  });
+
   describe('STATS_GLOBAL', () => {
     it('debe contar cotizaciones por estado', async () => {
       const stats = await service.findStats();

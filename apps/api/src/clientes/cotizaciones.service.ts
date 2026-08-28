@@ -16,6 +16,7 @@ import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { QueryCotizacionesDto } from './dto/query-cotizaciones.dto';
 import { QueryCotizacionesGlobalDto } from './dto/query-cotizaciones-global.dto';
 import { CambiarEstadoCotizacionDto } from './dto/cambiar-estado-cotizacion.dto';
+import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -232,6 +233,73 @@ export class CotizacionesService {
     }
 
     return this.serializeGlobal(row);
+  }
+
+  // ────────────────────────────────────────────
+  //  EDITAR COTIZACIÓN (descripción, monto, fecha, cliente)
+  // ────────────────────────────────────────────
+  async update(id: string, dto: UpdateCotizacionDto, userId: string) {
+    const existente = await this.prisma.cotizaciones.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.COTIZACION_ACTUALIZADA,
+        id,
+        'COTIZACION_NO_ENCONTRADA',
+        NotFoundException,
+        `Cotización con id "${id}" no encontrada`,
+        userId,
+      );
+    }
+
+    // Si se cambia el cliente, validar que exista.
+    let clienteId = existente.cliente_id;
+    if (dto.clienteId && dto.clienteId !== existente.cliente_id) {
+      await this.validarCliente(dto.clienteId, AuditAction.COTIZACION_ACTUALIZADA);
+      clienteId = dto.clienteId;
+    }
+
+    const data: Prisma.cotizacionesUncheckedUpdateInput = {
+      actualizado_por: userId,
+      actualizado_en: new Date(),
+    };
+    if (dto.descripcion !== undefined) data.descripcion = dto.descripcion.trim();
+    if (dto.monto !== undefined) data.monto = dto.monto;
+    if (dto.fecha !== undefined) data.fecha = new Date(dto.fecha);
+    if (clienteId !== existente.cliente_id) data.cliente_id = clienteId;
+
+    const cotizacion = await this.prisma.cotizaciones.update({
+      where: { id },
+      data,
+    });
+
+    const serialized = this.serialize(cotizacion);
+
+    await this.auditService.log({
+      action: AuditAction.COTIZACION_ACTUALIZADA,
+      entityType: 'cotizaciones',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: {
+        clienteId: existente.cliente_id,
+        descripcion: existente.descripcion,
+        monto: Number(existente.monto),
+        fecha: existente.fecha,
+      },
+      newValue: {
+        clienteId,
+        descripcion: cotizacion.descripcion,
+        monto: Number(cotizacion.monto),
+        fecha: cotizacion.fecha,
+      },
+    });
+
+    return serialized;
   }
 
   // ────────────────────────────────────────────

@@ -16,6 +16,7 @@ import { RequirePermission } from '../auth/guards/require-permission.decorator';
 import { CotizacionesService } from './cotizaciones.service';
 import { QueryCotizacionesGlobalDto } from './dto/query-cotizaciones-global.dto';
 import { CambiarEstadoCotizacionDto } from './dto/cambiar-estado-cotizacion.dto';
+import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 
 /**
  * Endpoints GLOBALES de cotizaciones (vista /cotizaciones).
@@ -59,6 +60,22 @@ export class CotizacionesGlobalController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.cotizacionesService.findOne(id);
+  }
+
+  /**
+   * PATCH /api/cotizaciones/:id
+   * Editar campos de la cotización (descripción, monto, fecha, cliente).
+   * Permiso: comercial.cotizaciones.editar
+   */
+  @RequirePermission('comercial', 'cotizaciones', 'editar')
+  @Patch(':id')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCotizacionDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.cotizacionesService.update(id, dto, user.id);
   }
 
   /**

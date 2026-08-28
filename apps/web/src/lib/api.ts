@@ -1624,6 +1624,14 @@ export interface CotizacionCreateInput {
   fecha: string; // YYYY-MM-DD
 }
 
+/** Campos editables de una cotización (todos opcionales = PATCH). */
+export interface CotizacionUpdateInput {
+  clienteId?: string;
+  descripcion?: string;
+  monto?: number;
+  fecha?: string; // YYYY-MM-DD
+}
+
 /** Métricas para las tarjetas de /cotizaciones. */
 export interface CotizacionesStats {
   total: number;
@@ -1668,4 +1676,8 @@ export const cotizacionesApi = {
   /** Cambiar estado (Aceptada / Rechazada). */
   cambiarEstado: (id: string, estado: EstadoCotizacionApi) =>
     apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}/estado`, { estado }),
+
+  /** Editar campos de la cotización (descripción, monto, fecha, cliente). */
+  actualizar: (id: string, data: CotizacionUpdateInput) =>
+    apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}`, data),
 };

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  Plus, FileText, SlidersHorizontal, X,
+  Plus, FileText, SlidersHorizontal, X, Pencil,
   Loader2, Eye, Clock, CheckCircle2, XCircle, CalendarDays,
   Building2, TrendingUp, ThumbsDown,
 } from 'lucide-react';
@@ -89,6 +89,9 @@ export default function CotizacionesPage() {
 
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState(emptyForm);
   const [detailOpen, setDetailOpen] = useState(false);
   const [estadoOpen, setEstadoOpen] = useState(false);
   const [selectedEstado, setSelectedEstado] = useState<'ACEPTADA' | 'RECHAZADA'>('ACEPTADA');
@@ -200,6 +203,18 @@ export default function CotizacionesPage() {
     setEstadoOpen(true);
   }, []);
 
+  const openEditar = useCallback((item: CotizacionDTO) => {
+    setEditId(item.id);
+    setEditForm({
+      clienteId: item.clienteId,
+      descripcion: item.descripcion,
+      monto: String(item.monto),
+      fecha: item.fecha,
+    });
+    setDetailOpen(false);
+    setEditOpen(true);
+  }, []);
+
   const refresh = useCallback(() => {
     fetchData(pagination.page, search, filterValues);
     fetchStats();
@@ -264,6 +279,42 @@ export default function CotizacionesPage() {
     }
   }, [selected, selectedEstado, showToast, refresh]);
 
+  // ── Editar cotización ──
+  const handleEditar = useCallback(async () => {
+    if (!editId) return;
+    if (!editForm.descripcion.trim()) {
+      showToast('Ingresa una descripción o concepto.', 'error');
+      return;
+    }
+    const monto = Number(editForm.monto);
+    if (isNaN(monto) || monto <= 0) {
+      showToast('Ingresa un monto válido.', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await cotizacionesApi.actualizar(editId, {
+        clienteId: editForm.clienteId || undefined,
+        descripcion: editForm.descripcion.trim(),
+        monto,
+        fecha: editForm.fecha,
+      });
+      if (res.success) {
+        showToast('Cotización actualizada.', 'success');
+        setEditOpen(false);
+        setEditId(null);
+        refresh();
+      } else {
+        showToast(res.error?.message || 'Error al actualizar la cotización.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión al actualizar la cotización.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [editId, editForm, showToast, refresh]);
+
   // ── Columnas de DataTable ──
   const columns: Column<CotizacionDTO>[] = [
     {
@@ -314,38 +365,53 @@ export default function CotizacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      render: (item) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<Eye className="w-3.5 h-3.5" />}
-            onClick={(e) => { e.stopPropagation(); openDetail(item); }}
-          >
-            Ver
-          </Button>
-          {puedeEditar && item.estado === 'Pendiente' && (
-            <>
-              <Button
-                variant="success"
-                size="sm"
-                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
-              >
-                Aceptar
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                icon={<XCircle className="w-3.5 h-3.5" />}
-                onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
-              >
-                Rechazar
-              </Button>
-            </>
-          )}
-        </div>
-      ),
+      render: (item) => {
+        const esPendiente = item.estado === 'Pendiente';
+        return (
+          <div className="flex items-center justify-end gap-1 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Eye className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openDetail(item); }}
+            >
+              Ver
+            </Button>
+            {puedeEditar && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Pencil className="w-3.5 h-3.5" />}
+                  onClick={(e) => { e.stopPropagation(); openEditar(item); }}
+                >
+                  Editar
+                </Button>
+                <Button
+                  variant="success"
+                  size="sm"
+                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  disabled={!esPendiente}
+                  title={!esPendiente ? 'Solo cotizaciones pendientes' : undefined}
+                  onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
+                >
+                  Aceptar
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<XCircle className="w-3.5 h-3.5" />}
+                  disabled={!esPendiente}
+                  title={!esPendiente ? 'Solo cotizaciones pendientes' : undefined}
+                  onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
+                >
+                  Rechazar
+                </Button>
+              </>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -562,6 +628,64 @@ export default function CotizacionesPage() {
         </div>
       </FormModal>
 
+      {/* ═══ Editar Cotización ═══ */}
+      <FormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onCancel={() => setEditOpen(false)}
+        title="Editar Cotización"
+        subtitle="Actualiza la descripción, monto, fecha o cliente."
+        submitLabel="Guardar Cambios"
+        cancelLabel="Cancelar"
+        onSubmit={handleEditar}
+        isSubmitting={submitting}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Cliente" className="sm:col-span-2">
+            <select
+              className={modalSelectClass}
+              value={editForm.clienteId}
+              onChange={(e) => setEditForm({ ...editForm, clienteId: e.target.value })}
+            >
+              <option value="">Sin cambio de cliente...</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.empresa} ({c.nombre})</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Descripción / Concepto" required className="sm:col-span-2">
+            <textarea
+              className={`${modalInputClass} min-h-[80px] resize-y`}
+              placeholder="Ej: Renta de excavadora 320 por 100 horas"
+              value={editForm.descripcion}
+              onChange={(e) => setEditForm({ ...editForm, descripcion: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Monto (MXN)" required>
+            <input
+              type="number"
+              className={modalInputClass}
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              value={editForm.monto}
+              onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={editForm.fecha}
+              onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
+            />
+          </ModalField>
+        </div>
+      </FormModal>
+
       {/* ═══ Detalle de cotización ═══ */}
       <Modal
         open={detailOpen}
@@ -612,11 +736,20 @@ export default function CotizacionesPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          {selected && selected.estado === 'Pendiente' && puedeEditar && (
+          {selected && puedeEditar && (
             <>
+              <Button
+                variant="ghost"
+                icon={<Pencil className="w-4 h-4" />}
+                onClick={() => openEditar(selected)}
+              >
+                Editar
+              </Button>
               <Button
                 variant="success"
                 icon={<CheckCircle2 className="w-4 h-4" />}
+                disabled={selected.estado !== 'Pendiente'}
+                title={selected.estado !== 'Pendiente' ? 'Solo cotizaciones pendientes' : undefined}
                 onClick={() => openEstado(selected, 'ACEPTADA')}
               >
                 Aceptar
@@ -624,6 +757,8 @@ export default function CotizacionesPage() {
               <Button
                 variant="danger"
                 icon={<XCircle className="w-4 h-4" />}
+                disabled={selected.estado !== 'Pendiente'}
+                title={selected.estado !== 'Pendiente' ? 'Solo cotizaciones pendientes' : undefined}
                 onClick={() => openEstado(selected, 'RECHAZADA')}
               >
                 Rechazar

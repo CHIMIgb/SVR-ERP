@@ -264,6 +264,89 @@ describe('CotizacionesService', () => {
     });
   });
 
+  describe('update', () => {
+    it('should edit fields, change cliente and log COTIZACION_ACTUALIZADA', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      prisma.cotizaciones.update.mockResolvedValue({
+        ...mockCotizacion,
+        descripcion: 'Renta de retroexcavadora por 80 horas',
+        monto: 98000,
+        cliente_id: '660e8400-e29b-41d4-a716-446655440099',
+      });
+
+      const result = await service.update(mockCotizacion.id, {
+        clienteId: '660e8400-e29b-41d4-a716-446655440099',
+        descripcion: 'Renta de retroexcavadora por 80 horas',
+        monto: 98000,
+        fecha: '2026-08-20',
+      }, 'user-1');
+
+      expect(prisma.cotizaciones.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockCotizacion.id },
+          data: expect.objectContaining({
+            descripcion: 'Renta de retroexcavadora por 80 horas',
+            monto: 98000,
+            cliente_id: '660e8400-e29b-41d4-a716-446655440099',
+          }),
+        }),
+      );
+      expect(result.descripcion).toBe('Renta de retroexcavadora por 80 horas');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COTIZACION_ACTUALIZADA,
+          entityId: mockCotizacion.id,
+          result: AuditResult.SUCCESS,
+          actorUserId: 'user-1',
+        }),
+      );
+    });
+
+    it('should not update cliente when clienteId matches existing', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      prisma.cotizaciones.update.mockResolvedValue({
+        ...mockCotizacion,
+        monto: 110000,
+      });
+
+      await service.update(mockCotizacion.id, { monto: 110000 }, 'user-1');
+
+      const call = prisma.cotizaciones.update.mock.calls[0][0];
+      expect(call.data.cliente_id).toBeUndefined();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('should throw NotFoundException and audit FAIL when cotizacion does not exist', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue(null);
+      await expect(
+        service.update('missing', { monto: 1000 }, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: AuditResult.FAIL,
+          errorCode: 'COTIZACION_NO_ENCONTRADA',
+          actorUserId: 'user-1',
+        }),
+      );
+    });
+
+    it('should throw BadRequestException and audit FAIL when new cliente is invalid', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      prisma.clientes.findFirst.mockResolvedValue(null);
+      await expect(
+        service.update(mockCotizacion.id, { clienteId: 'bad-client-uuid' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: AuditResult.FAIL,
+          errorCode: 'CLIENTE_NO_ENCONTRADO',
+        }),
+      );
+    });
+  });
+
   describe('findStats', () => {
     it('should compute totals per estado and montoAceptado', async () => {
       prisma.cotizaciones.count
