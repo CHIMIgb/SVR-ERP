@@ -8,7 +8,6 @@ import {
   CreditCard,
   Lock,
   LockOpen,
-  MinusCircle,
   Printer,
   QrCode,
   RefreshCw,
@@ -32,12 +31,14 @@ import {
   itemSubtotal,
   itemUnitName,
 } from '@/lib/pos';
-import type { CashRetirement, POSSale } from '@/lib/pos';
+import type { POSSale } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 interface CorteCajaProps {
   sales: POSSale[];
   cashierName: string;
+  /** Retiros registrados en la sección "Retiros / Gastos" (se descuentan del arqueo). */
+  retiros: Array<{ id: string; concepto: string; monto: number; fecha: string; autorizadoPor: string }>;
 }
 
 /** Horarios del turno (mock local; vendrán de configuración con el backend). */
@@ -78,19 +79,13 @@ function paymentLabel(sale: POSSale): string {
  * Cierre de caja (replica del prototipo mobile): apertura del turno,
  * retiros, arqueo por denominaciones, cierre y ticket imprimible.
  */
-export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
+export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   // Apertura / cierre del turno (estado local, fase 1 frontend)
   const [opened, setOpened] = useState(false);
   const [openingAmount, setOpeningAmount] = useState('');
   const [closed, setClosed] = useState(false);
   const [notes, setNotes] = useState('');
   const [nextTurnCash, setNextTurnCash] = useState('');
-
-  // Retiros del turno
-  const [retirements, setRetirements] = useState<CashRetirement[]>([]);
-  const [retAmount, setRetAmount] = useState('');
-  const [retReason, setRetReason] = useState('');
-  const [retAuthorizedBy, setRetAuthorizedBy] = useState('');
 
   // Arqueo por denominaciones
   const [counts, setCounts] = useState<Record<number, string>>({});
@@ -131,7 +126,9 @@ export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
 
   // ── Arqueo ──────────────────────────────────────────────────────────────
   const initial = opened ? (Number(openingAmount) || 0) : 0;
-  const totalRetirements = retirements.reduce((sum, r) => sum + r.amount, 0);
+  const hoyIso = new Date().toISOString().split('T')[0];
+  const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
+  const totalRetirements = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
   const expectedCash = initial + metodos.efectivo - totalRetirements;
   const counted = CASH_DENOMINATIONS.reduce((sum, d) => sum + (Number(counts[d]) || 0) * d, 0);
   const difference = counted - expectedCash;
@@ -153,24 +150,6 @@ export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
     setOpened(true);
   };
 
-  const addRetirement = () => {
-    const amount = Number(retAmount);
-    if (amount <= 0 || !retReason.trim()) return;
-    setRetirements((prev) => [
-      ...prev,
-      {
-        id: `ret-${Date.now()}`,
-        date: new Date().toISOString(),
-        amount,
-        reason: retReason.trim(),
-        authorizedBy: retAuthorizedBy.trim() || cashierName,
-      },
-    ]);
-    setRetAmount('');
-    setRetReason('');
-    setRetAuthorizedBy('');
-  };
-
   const handleClose = () => {
     if (!allowed || counted <= 0) return;
     setClosed(true);
@@ -184,7 +163,6 @@ export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
     setOpeningAmount('');
     setNotes('');
     setNextTurnCash('');
-    setRetirements([]);
     setCounts({});
   };
 
@@ -202,10 +180,10 @@ export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
       salesCount: todaySales.length,
       totalSales,
       groups,
-      retirements: retirements.map((r) => ({
-        amount: r.amount,
-        reason: r.reason,
-        authorizedBy: r.authorizedBy,
+      retirements: retirosHoy.map((r) => ({
+        amount: r.monto,
+        reason: r.concepto,
+        authorizedBy: r.autorizadoPor,
       })),
       initial,
       cashSales: metodos.efectivo,
@@ -313,71 +291,6 @@ export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* ── Columna izquierda ── */}
         <div className="space-y-4">
-          {/* Retiros */}
-          <div className={posClasses.card}>
-            <h3 className={cn(posClasses.sectionTitle, 'mb-1')}>Retiros de efectivo</h3>
-            <p className="text-xs text-slate-500 mb-3">
-              Registra retiros de efectivo durante el turno. Requieren autorización.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <Input
-                label="Monto"
-                type="number"
-                min={0}
-                inputMode="decimal"
-                placeholder="0.00"
-                value={retAmount}
-                onChange={(e) => setRetAmount(e.target.value)}
-              />
-              <Input
-                label="Motivo"
-                placeholder="Compra de insumos, corrección..."
-                value={retReason}
-                onChange={(e) => setRetReason(e.target.value)}
-              />
-            </div>
-            <div className="mt-2">
-              <Input
-                label="Autorizado por"
-                placeholder="Nombre del autorizador"
-                value={retAuthorizedBy}
-                onChange={(e) => setRetAuthorizedBy(e.target.value)}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              className="mt-3"
-              icon={<MinusCircle className="w-4 h-4" />}
-              onClick={addRetirement}
-              disabled={!retAmount || Number(retAmount) <= 0 || !retReason.trim()}
-            >
-              Agregar retiro
-            </Button>
-
-            {retirements.length > 0 && (
-              <div className="mt-3">
-                {retirements.map((r) => (
-                  <div key={r.id} className={posClasses.retirementRow}>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-700 truncate">
-                        −{formatCurrency(r.amount)} · {r.reason}
-                      </p>
-                      <p className={posClasses.historyMeta}>Aut: {r.authorizedBy}</p>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button
-                        onClick={() => setRetirements((prev) => prev.filter((x) => x.id !== r.id))}
-                        className="text-[11px] font-bold text-red-500 hover:underline"
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Notas */}
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-3')}>Notas del cierre</h3>
@@ -601,12 +514,12 @@ export function CorteCaja({ sales, cashierName }: CorteCajaProps) {
               <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
                 Retiros del turno
               </p>
-              {retirements.length === 0 ? (
+              {retirosHoy.length === 0 ? (
                 <p className={posClasses.historyMeta}>Sin retiros registrados.</p>
               ) : (
-                retirements.map((r) => (
+                retirosHoy.map((r) => (
                   <p key={r.id} className={posClasses.historyMeta}>
-                    −{formatCurrency(r.amount)} · {r.reason} · Autorizado por {r.authorizedBy}
+                    −{formatCurrency(r.monto)} · {r.concepto} · Autorizado por {r.autorizadoPor}
                   </p>
                 ))
               )}

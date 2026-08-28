@@ -73,7 +73,6 @@ export const posClasses = {
   resultLabel: 'text-sm font-medium text-slate-500',
   resultValue: 'font-black text-slate-900',
   alertBox: 'flex items-start gap-2 rounded-xl border p-3',
-  retirementRow: 'flex items-center justify-between gap-3 py-2 border-b border-slate-50 last:border-0',
   summaryCard:
     'bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col items-start gap-1',
   summaryValue: 'font-black text-xl sm:text-2xl text-slate-900',

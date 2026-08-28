@@ -372,7 +372,7 @@ export default function VentasPage() {
 
             {/* ─── CORTE DEL DÍA ───────────────────────────────────────── */}
             <TabPanel tabKey="corte">
-              <CorteCaja sales={sales} cashierName={cashierName} />
+              <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} />
             </TabPanel>
           </Tabs>
         </>
