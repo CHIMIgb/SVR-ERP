@@ -41,9 +41,9 @@ export const posClasses = {
   approvalText: 'text-xs text-amber-700 font-medium',
 
   // Total a pagar
-  totalRow: 'flex items-baseline justify-between bg-slate-900 rounded-xl px-4 py-3 mt-3',
-  totalLabel: 'text-white font-bold text-sm',
-  totalValue: 'text-white font-black text-xl sm:text-2xl',
+  totalRow: 'flex items-baseline justify-between border-t border-slate-200 pt-3 mt-3',
+  totalLabel: 'text-sm font-bold text-slate-600',
+  totalValue: 'text-primary font-black text-2xl sm:text-3xl',
 
   // Ticket (papel térmico)
   ticketPaper: 'bg-white border border-slate-200 rounded-xl p-4 max-w-[320px] mx-auto font-mono text-[12px] text-slate-900',
