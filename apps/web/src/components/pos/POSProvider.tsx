@@ -48,7 +48,9 @@ export function POSProvider({ children }: { children: ReactNode }) {
   const [register, setRegister] = useState<CashRegisterState>(initialRegister);
 
   const addSale = useCallback((sale: POSSale) => {
-    setSales((prev) => [sale, ...prev]);
+    // Idempotente por id: evita keys duplicadas si la misma venta llega 2 veces
+    // (StrictMode double-mount, recarga de historial, API con filas repetidas).
+    setSales((prev) => [sale, ...prev.filter((s) => s.id !== sale.id)]);
   }, []);
 
   const value: POSContextValue = {
