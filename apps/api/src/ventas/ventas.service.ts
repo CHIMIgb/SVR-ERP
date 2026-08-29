@@ -60,8 +60,15 @@ export class VentasService {
     // El shape externo se conserva ({ id, sku, nombre, categoria, unidadBase,
     // stock, precios }) para no tocar el frontend; sku = codigo del artículo,
     // categoria = nombre de la categoría, unidadBase = unidad de medida base.
+    // Solo se incluyen artículos con precios de venta por medida configurados
+    // (articulos_precio), para no exponer en el POS artículos sin precio/medida.
     const articulos = await this.prisma.articulos_inventario.findMany({
-      where: { activo: true, eliminado_en: null },
+      where: {
+        activo: true,
+        eliminado_en: null,
+        // Solo artículos con precios de venta por medida configurados.
+        articulos_precio: { some: {} },
+      },
       select: {
         id: true,
         codigo: true,
