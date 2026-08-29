@@ -113,7 +113,15 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
         }
         if (config.success) setTurnoConfig(config.data);
 
-        if (apertura.success && !apertura.data.existe) {
+        if (apertura.success && apertura.data.existe && apertura.data.registro) {
+          // Precargar el fondo inicial real desde la BD (sobrevive a recargas):
+          // así el "Fondo inicial" del cierre aparece automático con el valor
+          // registrado en aperturas_caja, aunque el cajero haya recargado.
+          setRegister((prev) => ({
+            ...prev,
+            openingAmount: String(apertura.data.registro!.fondoInicial),
+          }));
+        } else if (apertura.success && !apertura.data.existe) {
           // Registrar la apertura del turno (fondo inicial actual o 0)
           await ventasApi.crearApertura({
             fondoInicial: Number(openingAmount) || 0,
