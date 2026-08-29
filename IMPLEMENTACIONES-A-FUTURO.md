@@ -227,6 +227,55 @@ las vistas de comercial/finanzas.
 
 ---
 
+### P7 — Edición de precios por medida de venta (POS ↔ Inventario)
+
+**Objetivo:** permitir gestionar los **precios por medida de venta** (`articulos_precio`)
+de los artículos que participan en el Punto de Venta, directamente desde el frontend.
+Hoy ese catálogo quedó **bloqueado**: la vista de `/inventario` solo edita
+`precio_unitario` (medida base), y el POS (`/ventas`) consume los precios por medida pero
+no tiene pantalla de edición.
+
+**Contexto (unificación):** tras unificar el catálogo del POS en
+`articulos_inventario`, un artículo vendible puede tener **varias medidas con precios
+distintos** en `articulos_precio` (p.ej. MAT-001 Arena: `m³` $350, `tonelada` $520,
+`viaje` $1,800). El `precio_unitario` de `articulos_inventario` es la **misma cantidad**
+que la fila de la **medida base** de `articulos_precio` (así lo dejó la migración). Por
+eso, al editar por medida hay que **mantener sincronizado** `precio_unitario` con la
+medida base para evitar que la vista de inventario y el POS se desincronicen.
+
+**Cómo se aplicará:**
+1. **Schema / API (`ventas.service.ts` o endpoint nuevo):** exponer los `articulos_precio`
+   de un artículo (`GET`) y un endpoint de guardado **por medida** (alta/baja/precio).
+2. **Sincronización (regla de negocio):** cuando se edite el precio de la **medida base**
+   del artículo, actualizar también `articulos_inventario.precio_unitario` en la misma
+   `$transaction` (y a la inversa, si se edita `precio_unitario` en inventario, reflejarlo
+   en la fila de la medida base de `articulos_precio`). Esto elimina la desincronización.
+3. **Frontend `/inventario`:** en el modal de editar, cuando el artículo tenga
+   `articulos_precio`, mostrar un editor de **tabla de medidas/precios** en lugar (o además)
+   del campo `precio_unitario` bloqueado. (Hoy ese campo está `readonly` para los artículos
+   con código `MAT-*` y muestra un hint; la gestión por medida reemplazará ese bloqueo.)
+4. **DTOs estrictos:** `class-validator` (`@IsUUID`, `@Min`, `@IsArray`/`@ValidateNested`
+   para el arreglo de medidas).
+5. **Tests:** unit + integración (real contra PostgreSQL) cubriendo la sincronización
+   medida base ↔ `precio_unitario` y el alta/baja de medidas.
+
+**Impacto:** deja de estar "congelado" el precio del POS; el inventario es la fuente
+única de catálogo y de sus precios por medida, consistente con lo que cobra `/ventas`.
+
+**Workflow entre pantallas:**
+```
+/inventario ──(editar un artículo vendible → tabla de medidas/precios)──►
+   └─ § guarda articulos_precio (alta/baja/precio) + sincroniza precio_unitario
+         ├─► /ventas (POS) → el catálogo refleja medidas y precios actualizados
+         └─► /inventario  → precio unitario base coherente con la medida base
+```
+
+> **Regla de sincronización:** `articulos_inventario.precio_unitario` (medida base) y la
+> fila de la medida base en `articulos_precio` deben ser **siempre el mismo valor**. Toda
+> edición de uno implica actualizar el otro en la misma transacción.
+
+---
+
 ## 4. Diagrama de la cadena de valor objetivo
 
 ```
@@ -483,6 +532,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | P4 | Bajada de inventario por líneas | `/cotizaciones` → `/inventario` | ⏳ Pendiente (cuando esté inventario) |
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ⏳ Pendiente (cuando esté cobranza) |
 | P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente |
+| P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
 | 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ⏳ Pendiente |
 | 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente |
 | 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente |
@@ -497,4 +547,6 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 > acoplar a un destino que aún no existe. Hito previo: **migrar `ProjectDetailsModal.tsx`
 > a API real** (único residuo de `@/lib/data` en páginas). El orden sugerido es
 > **P1 → P2 → P3 → P4 → P5 → P6** y, en paralelo, los flujos 6.4 → 6.5 → 6.6 → 6.8 que
-> comparten el cruce con `transacciones` y el inventario.
+> comparten el cruce con `transacciones` y el inventario. **P7** (precios por medida de
+> venta) puede ejecutarse en paralelo con cualquiera de ellos: es independiente del
+> módulo destino y desbloquea el catálogo de precios del POS.
