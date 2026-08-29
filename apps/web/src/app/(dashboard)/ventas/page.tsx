@@ -130,6 +130,7 @@ export default function VentasPage() {
 
   // Modales del POS
   const [lastSale, setLastSale] = useState<POSSale | null>(null);
+  const [viewSale, setViewSale] = useState<POSSale | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
   const [modalRetiro, setModalRetiro] = useState(false);
@@ -486,10 +487,15 @@ export default function VentasPage() {
         <TicketPreview sale={lastSale} businessInfo={BUSINESS_INFO} onClose={() => setLastSale(null)} />
       )}
 
+      {viewSale && (
+        <TicketPreview sale={viewSale} businessInfo={BUSINESS_INFO} onClose={() => setViewSale(null)} />
+      )}
+
       <SalesHistoryModal
         sales={sales}
         onClose={() => setShowHistory(false)}
         onReprint={(sale) => printTicket(sale, BUSINESS_INFO)}
+        onView={(sale) => setViewSale(sale)}
         open={showHistory}
       />
 

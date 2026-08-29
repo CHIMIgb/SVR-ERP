@@ -106,7 +106,7 @@ export function TicketPreview({ sale, businessInfo, onClose }: TicketPreviewProp
 
   return (
     <Modal open onClose={onClose} size="lg">
-      <ModalHeader title="Venta registrada" subtitle={`Ticket ${sale.ticketNumber}`} />
+      <ModalHeader title="Venta registrada" subtitle={`Ticket ${sale.ticketNumber}`} onClose={onClose} />
       <ModalBody>
         <div className={cn(posClasses.ticketPaper, 'max-h-[65vh] overflow-y-auto scrollbar-none')}>
           <div className={posClasses.ticketCenter}>

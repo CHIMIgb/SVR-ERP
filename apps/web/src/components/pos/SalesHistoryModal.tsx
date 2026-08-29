@@ -1,6 +1,6 @@
 'use client';
 
-import { ReceiptText, Printer } from 'lucide-react';
+import { ReceiptText, Eye, Printer } from 'lucide-react';
 import { Modal, ModalBody, ModalHeader } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,11 +26,18 @@ interface SalesHistoryModalProps {
   sales: POSSale[];
   onClose: () => void;
   onReprint: (sale: POSSale) => void;
+  onView?: (sale: POSSale) => void;
   open?: boolean;
 }
 
 /** Historial de ventas del día con reimpresión de ticket (POS). */
-export function SalesHistoryModal({ sales, onClose, onReprint, open = true }: SalesHistoryModalProps) {
+export function SalesHistoryModal({
+  sales,
+  onClose,
+  onReprint,
+  onView,
+  open = true,
+}: SalesHistoryModalProps) {
   const today = sales.filter((s) => isToday(s.createdAt));
   const totalToday = today.reduce((sum, s) => sum + s.total, 0);
 
@@ -39,6 +46,7 @@ export function SalesHistoryModal({ sales, onClose, onReprint, open = true }: Sa
       <ModalHeader
         title="Ventas de hoy"
         subtitle={`${today.length} ventas · ${formatCurrency(totalToday)}`}
+        onClose={onClose}
       />
       <ModalBody>
         {today.length === 0 ? (
@@ -65,6 +73,16 @@ export function SalesHistoryModal({ sales, onClose, onReprint, open = true }: Sa
                     </p>
                   </div>
                   <span className={posClasses.historyTotal}>{formatCurrency(sale.total)}</span>
+                  {onView && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Eye className="w-3.5 h-3.5" />}
+                      onClick={() => onView(sale)}
+                    >
+                      Ver ticket
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"
