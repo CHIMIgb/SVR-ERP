@@ -23,10 +23,13 @@ import {
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
 
-/** Configuración del turno (hora en formato 24h). */
-const APERTURA_HORA = '07:00';
-const CIERRE_HORA = '20:00';
-const TOLERANCIA_MINUTOS = 30;
+/** Configuración del turno (hora en formato 24h), configurable vía .env. */
+const APERTURA_HORA = process.env.TURNO_APERTURA || '07:00';
+const CIERRE_HORA = process.env.TURNO_CIERRE || '20:00';
+const TOLERANCIA_MINUTOS = parseInt(
+  process.env.TURNO_TOLERANCIA_MINUTOS || '30',
+  10,
+);
 
 function hoyIso(): string {
   return new Date().toISOString().split('T')[0];
