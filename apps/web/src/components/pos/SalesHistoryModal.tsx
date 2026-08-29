@@ -98,7 +98,7 @@ export function SalesHistoryModal({
         )}
       </ModalBody>
       <ModalFooter>
-        <Button variant="secondary" onClick={onClose}>
+        <Button variant="primary" onClick={onClose}>
           Cerrar
         </Button>
       </ModalFooter>
