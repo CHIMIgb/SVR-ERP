@@ -1,7 +1,7 @@
 'use client';
 
 import { ReceiptText, Eye, Printer } from 'lucide-react';
-import { Modal, ModalBody, ModalHeader } from '@/components/ui/Modal';
+import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { posClasses } from './pos.styles';
@@ -97,6 +97,11 @@ export function SalesHistoryModal({
           </div>
         )}
       </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>
+          Cerrar
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }
