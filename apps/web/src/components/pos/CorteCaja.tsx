@@ -200,7 +200,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
 
   // ── Acciones ─────────────────────────────────────────────────────────────
   const handleClose = async () => {
-    if (!closed && (!allowed || counted <= 0)) return;
+    if (!closed && (!allowed || counted <= 0 || !(Number(nextTurnCash) > 0))) return;
     if (hasDifference && !confirmDifference) {
       setConfirmDifference(true);
       return;
@@ -472,13 +472,18 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
               className="mt-3"
               icon={<Lock className="w-4 h-4" />}
               onClick={handleClose}
-              disabled={!allowed || counted <= 0}
+              disabled={!allowed || counted <= 0 || !(Number(nextTurnCash) > 0)}
             >
               Cerrar caja
             </Button>
             {counted <= 0 && (
               <p className="text-[11px] text-red-500 mt-2">
                 Registra el conteo por denominaciones para cerrar.
+              </p>
+            )}
+            {counted > 0 && !(Number(nextTurnCash) > 0) && (
+              <p className="text-[11px] text-red-500 mt-2">
+                Define el fondo para el siguiente turno para cerrar.
               </p>
             )}
           </div>
