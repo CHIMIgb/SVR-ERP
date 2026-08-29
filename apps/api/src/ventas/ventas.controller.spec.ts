@@ -23,6 +23,14 @@ describe('VentasController', () => {
     createRetiro: jest.fn().mockResolvedValue({ id: 'r1' }),
     findCierreHoy: jest.fn().mockResolvedValue({ existe: false, registro: null }),
     createCierre: jest.fn().mockResolvedValue({ id: 'c1' }),
+    findConfig: jest.fn().mockResolvedValue({
+      apertura: '07:00',
+      cierre: '20:00',
+      toleranciaMinutos: 30,
+      formato: '24h',
+    }),
+    findAperturaHoy: jest.fn().mockResolvedValue({ existe: false, registro: null }),
+    createApertura: jest.fn().mockResolvedValue({ id: 'a1' }),
   };
 
   beforeEach(async () => {
@@ -86,5 +94,23 @@ describe('VentasController', () => {
     const result = await controller.createCierre(dto, req as never);
     expect(result.id).toBe('c1');
     expect(service.createCierre).toHaveBeenCalledWith(dto, 'user-1', 'Carlos');
+  });
+
+  it('should return turn config', async () => {
+    const result = await controller.findConfig();
+    expect(result.apertura).toBe('07:00');
+  });
+
+  it('should return apertura of the day', async () => {
+    const result = await controller.findAperturaHoy();
+    expect(result.existe).toBe(false);
+  });
+
+  it('should create an apertura passing userId and cajero', async () => {
+    const req = { user: { id: 'user-1', nombre: 'Carlos' } };
+    const dto = { fondoInicial: 500 };
+    const result = await controller.createApertura(dto, req as never);
+    expect(result.id).toBe('a1');
+    expect(service.createApertura).toHaveBeenCalledWith(dto, 'user-1', 'Carlos');
   });
 });

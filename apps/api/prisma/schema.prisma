@@ -1711,6 +1711,21 @@ model cierres_caja {
   @@index([fecha])
 }
 
+/// Apertura del turno de caja (únicamente una por fecha).
+model aperturas_caja {
+  id             String   @id @db.Uuid
+  fecha          DateTime @db.Date @unique
+  cajero         String
+  /// Fondo inicial con el que se abre la caja del turno.
+  fondo_inicial  Decimal  @db.Decimal(12, 2)
+  abierta_en     DateTime @db.Timestamptz() @default(now())
+  creado_en      DateTime @db.Timestamptz() @default(now())
+  actualizado_en DateTime @db.Timestamptz()
+  creado_por     String?  @db.Uuid
+
+  @@index([fecha])
+}
+
 model users {
   id                                                                             String                        @id @db.Uuid
   persona_id                                                                     String                        @unique @db.Uuid
@@ -2001,6 +2016,7 @@ enum AuditAction {
   VENTA_CREADA
   RETIRO_REGISTRADO
   CIERRE_CAJA_REGISTRADO
+  APERTURA_CAJA_REGISTRADA
   ERROR_SISTEMA
   ERROR_SISTEMA
 }

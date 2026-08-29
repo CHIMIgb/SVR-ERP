@@ -18,7 +18,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { ventasApi } from '@/lib/api';
+import { ventasApi, TurnoConfig } from '@/lib/api';
 import {
   BUSINESS_INFO,
   CASH_BILLS,
@@ -42,12 +42,19 @@ interface CorteCajaProps {
   retiros: Array<{ id: string; concepto: string; monto: number; fecha: string; autorizadoPor: string }>;
 }
 
-/** Horarios del turno (mock local; vendrán de configuración con el backend). */
-const OPENING_HOUR = 7;
-const OPENING_MINUTE = 0;
-const CLOSING_HOUR = 20;
-const CLOSING_MINUTE = 0;
-const TOLERANCE_MINUTES = 30;
+/** Configuración del turno (fallback si el backend no responde). */
+const DEFAULT_TURN: TurnoConfig = {
+  apertura: '07:00',
+  cierre: '20:00',
+  toleranciaMinutos: 30,
+  formato: '24h',
+};
+
+/** "07:00" -> {h:7,m:0} */
+function parseHM(s: string): { h: number; m: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+}
 
 const GROUP_ORDER = ['efectivo', 'tarjeta', 'transferencia'] as const;
 type SaleGroup = (typeof GROUP_ORDER)[number];
@@ -86,14 +93,31 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   const closed = register.closed;
   const openingAmount = register.openingAmount;
 
-  // Si el cierre del día ya existe en BD, bloquear el turno al cargar
+  // Config real del turno (apertura/cierre 24h + tolerancia) desde el backend
+  const [turnoConfig, setTurnoConfig] = useState<TurnoConfig>(DEFAULT_TURN);
+
+  // Si el cierre del día ya existe en BD, bloquear el turno al cargar;
+  // además carga la config real y registra la apertura del turno si falta.
   useEffect(() => {
     let activo = true;
     (async () => {
       try {
-        const res = await ventasApi.cierreHoy();
-        if (activo && res.success && res.data.existe) {
+        const [cierre, config, apertura] = await Promise.all([
+          ventasApi.cierreHoy(),
+          ventasApi.config(),
+          ventasApi.aperturaHoy(),
+        ]);
+        if (!activo) return;
+        if (cierre.success && cierre.data.existe) {
           setRegister((prev) => ({ ...prev, closed: true }));
+        }
+        if (config.success) setTurnoConfig(config.data);
+
+        if (apertura.success && !apertura.data.existe) {
+          // Registrar la apertura del turno (fondo inicial actual o 0)
+          await ventasApi.crearApertura({
+            fondoInicial: Number(openingAmount) || 0,
+          });
         }
       } catch {
         // no rompe la UI si el backend no responde
@@ -102,6 +126,8 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
     return () => {
       activo = false;
     };
+    // Correr una sola vez al montar (el fondo inicial usado es el del momento)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setRegister]);
 
   // Notas y fondo del siguiente turno
@@ -155,10 +181,11 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
 
   // ── Ventana de cierre ────────────────────────────────────────────────────
   const now = new Date();
+  const { h: cH, m: cM } = parseHM(turnoConfig.cierre);
   const closingStart = new Date();
-  closingStart.setHours(CLOSING_HOUR, CLOSING_MINUTE - TOLERANCE_MINUTES, 0, 0);
+  closingStart.setHours(cH, cM - turnoConfig.toleranciaMinutos, 0, 0);
   const closingEnd = new Date();
-  closingEnd.setHours(CLOSING_HOUR, CLOSING_MINUTE + TOLERANCE_MINUTES, 0, 0);
+  closingEnd.setHours(cH, cM + turnoConfig.toleranciaMinutos, 0, 0);
   const allowed = now >= closingStart && now <= closingEnd;
 
   const hour = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -321,8 +348,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
             <div className={cn(posClasses.alertBox, 'bg-blue-50 border-blue-200 text-blue-700')}>
               <Clock className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
-                Turno de {`${pad(OPENING_HOUR)}:${pad(OPENING_MINUTE)}`} a{' '}
-                {`${pad(CLOSING_HOUR)}:${pad(CLOSING_MINUTE)}`} hrs · Cierre:{' '}
+                Turno de {turnoConfig.apertura} a {turnoConfig.cierre} hrs · Cierre:{' '}
                 {`${pad(closingStart.getHours())}:${pad(closingStart.getMinutes())} a ${pad(closingEnd.getHours())}:${pad(closingEnd.getMinutes())} hrs.`}
               </p>
             </div>

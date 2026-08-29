@@ -93,6 +93,12 @@ describe('VentasService', () => {
           Promise.resolve({ ...data, id: 'c1' }),
         ),
       },
+      aperturas_caja: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({ ...data, id: 'a1', abierta_en: new Date() }),
+        ),
+      },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         return fn(prisma);
       }),
@@ -251,6 +257,57 @@ describe('VentasService', () => {
       await expect(service.createCierre(dto, 'user-1', 'Cajero')).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('should use apertura fondo when efectivoInicial not provided', async () => {
+      prisma.aperturas_caja.findUnique.mockResolvedValue({
+        id: 'a1',
+        fondo_inicial: 300,
+      });
+      const dto = { denominaciones: {} as Record<string, number> };
+      const result = await service.createCierre(dto, 'user-1', 'Cajero');
+      // 300 (fondo apertura) + 350 (ventas efectivo) - 0 (retiros)
+      expect(result.efectivoInicial).toBe(300);
+      expect(result.esperado).toBe(650);
+    });
+  });
+
+  describe('findConfig', () => {
+    it('should expose apertura/cierre 24h and tolerancia', () => {
+      expect(service.findConfig()).toEqual({
+        apertura: '07:00',
+        cierre: '20:00',
+        toleranciaMinutos: 30,
+        formato: '24h',
+      });
+    });
+  });
+
+  describe('findAperturaHoy', () => {
+    it('should return existe=false when no apertura', async () => {
+      const result = await service.findAperturaHoy();
+      expect(result).toEqual({ existe: false, registro: null });
+    });
+  });
+
+  describe('createApertura', () => {
+    it('should create apertura and audit success', async () => {
+      const result = await service.createApertura({ fondoInicial: 500 }, 'user-1', 'Cajero');
+      expect(result.id).toBe('a1');
+      expect(result.fondoInicial).toBe(500);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.APERTURA_CAJA_REGISTRADA,
+          result: AuditResult.SUCCESS,
+        }),
+      );
+    });
+
+    it('should fail when apertura already exists for today', async () => {
+      prisma.aperturas_caja.findUnique.mockResolvedValue({ id: 'a1' });
+      await expect(
+        service.createApertura({ fondoInicial: 500 }, 'user-1', 'Cajero'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

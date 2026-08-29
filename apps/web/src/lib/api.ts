@@ -1118,6 +1118,25 @@ export interface CrearCierreInput {
   notas?: string;
 }
 
+export interface TurnoConfig {
+  apertura: string;
+  cierre: string;
+  toleranciaMinutos: number;
+  formato: string;
+}
+
+export interface AperturaDTO {
+  id: string;
+  fecha: string;
+  cajero: string;
+  fondoInicial: number;
+  abiertaEn: string;
+}
+
+export interface CrearAperturaInput {
+  fondoInicial: number;
+}
+
 export const ventasApi = {
   /** Catálogo de materiales + medidas + precios (alimenta selects de Material / Medida). */
   catalogos: () => apiClient.get<VentasCatalogos>('/ventas/catalogos'),
@@ -1135,15 +1154,31 @@ export const ventasApi = {
   crearRetiro: (data: CrearRetiroInput) =>
     apiClient.post<RetiroVentaDTO>('/ventas/retiros', data),
 
-  /** Estado del cierre de caja del día. */
+  /** Estado del cierre de caja del día (+ config del turno y apertura). */
   cierreHoy: () =>
-    apiClient.get<{ existe: boolean; registro: CierreVentaDTO | null }>(
-      '/ventas/cierres/hoy',
-    ),
+    apiClient.get<{
+      existe: boolean;
+      registro: CierreVentaDTO | null;
+      config: TurnoConfig;
+      apertura: { existe: boolean; registro: AperturaDTO | null };
+    }>('/ventas/cierres/hoy'),
 
   /** Registrar el cierre de caja del día (arqueo). */
   crearCierre: (data: CrearCierreInput) =>
     apiClient.post<CierreVentaDTO>('/ventas/cierres', data),
+
+  /** Configuración del turno (apertura/cierre 24h + tolerancia). */
+  config: () => apiClient.get<TurnoConfig>('/ventas/config'),
+
+  /** Estado de la apertura de turno del día. */
+  aperturaHoy: () =>
+    apiClient.get<{ existe: boolean; registro: AperturaDTO | null }>(
+      '/ventas/apertura/hoy',
+    ),
+
+  /** Registrar la apertura del turno (fondo inicial). */
+  crearApertura: (data: CrearAperturaInput) =>
+    apiClient.post<AperturaDTO>('/ventas/apertura', data),
 };
 
 /** Convierte un material del catálogo BD al shape `Product` que usa el POS. */

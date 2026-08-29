@@ -15,12 +15,18 @@ import { AuditService } from '../audit/audit.service';
 import { CreateVentaDto, toMetodoPago } from './dto/create-venta.dto';
 import {
   CreateCierreDto,
+  CreateAperturaDto,
   CreateRetiroDto,
 } from './dto/create-retiro-cierre.dto';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
+
+/** Configuración del turno (hora en formato 24h). */
+const APERTURA_HORA = '07:00';
+const CIERRE_HORA = '20:00';
+const TOLERANCIA_MINUTOS = 30;
 
 function hoyIso(): string {
   return new Date().toISOString().split('T')[0];
@@ -416,7 +422,92 @@ export class VentasService {
     return {
       existe: !!cierre,
       registro: cierre ? this.serializeCierre(cierre) : null,
+      config: this.findConfig(),
+      apertura: await this.findAperturaHoy(),
     };
+  }
+
+  /** Configuración del turno (apertura/cierre 24h + tolerancia). */
+  findConfig() {
+    return {
+      apertura: APERTURA_HORA,
+      cierre: CIERRE_HORA,
+      toleranciaMinutos: TOLERANCIA_MINUTOS,
+      formato: '24h',
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  APERTURA DEL TURNO (fondo inicial)
+  // ────────────────────────────────────────────
+  async findAperturaHoy() {
+    const fecha = new Date(hoyIso());
+    const apertura = await this.prisma.aperturas_caja.findUnique({
+      where: { fecha },
+    });
+
+    return {
+      existe: !!apertura,
+      registro: apertura ? this.serializeApertura(apertura) : null,
+    };
+  }
+
+  async createApertura(dto: CreateAperturaDto, userId: string, cajero: string) {
+    const fondoInicial = dto.fondoInicial ?? 0;
+    if (fondoInicial < 0) {
+      return this.fallir(
+        AuditAction.APERTURA_CAJA_REGISTRADA,
+        null,
+        'FONDO_INICIAL_INVALIDO',
+        BadRequestException,
+        'El fondo inicial no puede ser negativo',
+      );
+    }
+
+    const fecha = new Date(hoyIso());
+    const existente = await this.prisma.aperturas_caja.findUnique({
+      where: { fecha },
+    });
+    if (existente) {
+      return this.fallir(
+        AuditAction.APERTURA_CAJA_REGISTRADA,
+        null,
+        'APERTURA_DUPLICADA',
+        BadRequestException,
+        'Ya existe una apertura de turno registrada para hoy',
+      );
+    }
+
+    const ahora = new Date();
+    const apertura = await this.prisma.aperturas_caja.create({
+      data: {
+        id: randomUUID(),
+        fecha,
+        cajero: cajero.trim(),
+        fondo_inicial: fondoInicial,
+        abierta_en: ahora,
+        creado_por: userId,
+        actualizado_en: ahora,
+      },
+    });
+
+    const serialized = this.serializeApertura(apertura);
+
+    await this.auditService.log({
+      action: AuditAction.APERTURA_CAJA_REGISTRADA,
+      entityType: 'aperturas_caja',
+      entityId: apertura.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        fecha: serialized.fecha,
+        fondoInicial: serialized.fondoInicial,
+      },
+    });
+
+    return serialized;
   }
 
   async createCierre(dto: CreateCierreDto, userId: string, cajero: string) {
@@ -458,7 +549,12 @@ export class VentasService {
     const totalRetiros =
       Math.round(retiros.reduce((s, r) => s + Number(r.monto), 0) * 100) / 100;
 
-    const efectivoInicial = dto.efectivoInicial ?? 0;
+    const aperturaHoy = await this.prisma.aperturas_caja.findUnique({
+      where: { fecha },
+    });
+    const efectivoInicial =
+      dto.efectivoInicial ??
+      (aperturaHoy ? Number(aperturaHoy.fondo_inicial) : 0);
     const esperado = Math.round(
       (efectivoInicial + ventasEfectivo - totalRetiros) * 100,
     ) / 100;
@@ -579,6 +675,24 @@ export class VentasService {
         method: p.metodo.toLowerCase(),
         amount: Number(p.monto),
       })),
+    };
+  }
+
+  private serializeApertura(a: {
+    id: string;
+    fecha: Date;
+    cajero: string;
+    fondo_inicial: Prisma.Decimal;
+    abierta_en: Date;
+    creado_por: string | null;
+  }) {
+    return {
+      id: a.id,
+      fecha: a.fecha.toISOString().split('T')[0],
+      cajero: a.cajero,
+      fondoInicial: Number(a.fondo_inicial),
+      abiertaEn: a.abierta_en.toISOString(),
+      creadoPor: a.creado_por ?? undefined,
     };
   }
 

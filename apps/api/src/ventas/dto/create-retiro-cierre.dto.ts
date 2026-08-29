@@ -34,3 +34,11 @@ export class CreateCierreDto {
   @MaxLength(1000)
   notas?: string;
 }
+
+export class CreateAperturaDto {
+  /** Fondo inicial con el que se abre la caja del turno. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fondoInicial?: number;
+}

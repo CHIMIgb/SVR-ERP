@@ -30,6 +30,7 @@ describe('Ventas Audit (Real DB)', () => {
   const createdVentaIds: string[] = [];
   const createdRetiroIds: string[] = [];
   const createdCierreIds: string[] = [];
+  const createdAperturaIds: string[] = [];
 
   // Dependencias del artículo de prueba (aisladas con UUIDs únicos)
   let catId: string;
@@ -129,6 +130,11 @@ describe('Ventas Audit (Real DB)', () => {
     if (createdCierreIds.length > 0) {
       await prisma.cierres_caja.deleteMany({
         where: { id: { in: createdCierreIds } },
+      });
+    }
+    if (createdAperturaIds.length > 0) {
+      await prisma.aperturas_caja.deleteMany({
+        where: { id: { in: createdAperturaIds } },
       });
     }
 
@@ -276,6 +282,30 @@ describe('Ventas Audit (Real DB)', () => {
       expect(typeof cierre.diferencia).toBe('number');
 
       const audits = await findAudits(AuditAction.CIERRE_CAJA_REGISTRADO, cierre.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+    });
+  });
+
+  describe('APERTURA_CAJA_REGISTRADA', () => {
+    it('debe crear apertura del turno y auditar SUCCESS', async () => {
+      // Si ya existe apertura registrada hoy, la limpiamos para aislar el test
+      const hoy = await service.findAperturaHoy();
+      if (hoy.existe && hoy.registro) {
+        await prisma.aperturas_caja.delete({ where: { id: hoy.registro.id } });
+      }
+
+      const apertura = await service.createApertura(
+        { fondoInicial: 300 },
+        ACTOR_USER_ID,
+        'Cajero Test',
+      );
+      createdAperturaIds.push(apertura.id);
+
+      expect(apertura.fondoInicial).toBe(300);
+
+      const audits = await findAudits(AuditAction.APERTURA_CAJA_REGISTRADA, apertura.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);

@@ -13,6 +13,7 @@ import { VentasService } from './ventas.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
 import {
   CreateCierreDto,
+  CreateAperturaDto,
   CreateRetiroDto,
 } from './dto/create-retiro-cierre.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -100,6 +101,39 @@ export class VentasController {
     const user = req.user as { id: string };
     const cajero = this.cajeroDe(req);
     return this.ventasService.createCierre(dto, user.id, cajero);
+  }
+
+  /**
+   * GET /api/ventas/config
+   * Configuración del turno (apertura/cierre 24h + tolerancia).
+   */
+  @RequirePermission('comercial', 'ventas', 'ver')
+  @Get('config')
+  findConfig() {
+    return this.ventasService.findConfig();
+  }
+
+  /**
+   * GET /api/ventas/apertura/hoy
+   * Estado de la apertura de turno del día (existe o no).
+   */
+  @RequirePermission('comercial', 'ventas', 'ver')
+  @Get('apertura/hoy')
+  findAperturaHoy() {
+    return this.ventasService.findAperturaHoy();
+  }
+
+  /**
+   * POST /api/ventas/apertura
+   * Registrar la apertura del turno (fondo inicial).
+   */
+  @RequirePermission('comercial', 'ventas', 'crear')
+  @Post('apertura')
+  @HttpCode(HttpStatus.CREATED)
+  createApertura(@Body() dto: CreateAperturaDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    const cajero = this.cajeroDe(req);
+    return this.ventasService.createApertura(dto, user.id, cajero);
   }
 
   /** Nombre del cajero si viene en el JWT; cae a un placeholder amigable. */
