@@ -1586,6 +1586,146 @@ model unidades_medida {
   articulos_inventario articulos_inventario[]
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Punto de Venta (/ventas) — catálogo de materiales y operaciones del POS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Catálogo de materiales que se venden en el POS (fase 1: lectura desde BD).
+model materiales_venta {
+  id              String    @id @db.Uuid
+  sku             String    @unique
+  nombre          String
+  categoria       String?
+  /// Medida base del material (m³, pieza, bulto...).
+  unidad_base     String
+  stock           Decimal   @db.Decimal(10, 2) @default(0)
+  activo          Boolean   @default(true)
+  creado_en       DateTime  @db.Timestamptz() @default(now())
+  actualizado_en  DateTime  @db.Timestamptz()
+  creado_por      String?   @db.Uuid
+  actualizado_por String?   @db.Uuid
+  eliminado_en    DateTime? @db.Timestamptz()
+  precios         materiales_precio[]
+  ventas_items    ventas_items[]
+}
+
+/// Precio del material por medida de venta (m³, tonelada, viaje, pieza...).
+model materiales_precio {
+  id          String           @id @db.Uuid
+  material_id String           @db.Uuid
+  medida      String
+  precio      Decimal          @db.Decimal(12, 2)
+  creado_en   DateTime         @db.Timestamptz() @default(now())
+  materiales_venta materiales_venta @relation(fields: [material_id], references: [id], onDelete: Cascade)
+
+  @@unique([material_id, medida])
+  @@index([material_id])
+}
+
+/// Venta registrada en el punto de venta.
+model ventas {
+  id                String               @id @db.Uuid
+  folio             String               @unique
+  /// Folio secuencial del día (T-00001, T-00002...).
+  ticket            Int
+  terminal          String               @default("TER-01")
+  caja              String               @default("CAJA-PV")
+  cliente           String               @default("Público en general")
+  cajero            String
+  subtotal          Decimal              @db.Decimal(12, 2)
+  iva               Decimal              @db.Decimal(12, 2)
+  ieps              Decimal              @db.Decimal(12, 2) @default(0)
+  total             Decimal              @db.Decimal(12, 2)
+  metodo            MetodoPago
+  efectivo_recibido Decimal?             @db.Decimal(12, 2)
+  cambio            Decimal?             @db.Decimal(12, 2)
+  descuento_pct     Decimal?             @db.Decimal(5, 2)
+  descuento_total   Decimal?             @db.Decimal(12, 2)
+  autorizado_por    String?
+  items_count       Int
+  creado_en         DateTime             @db.Timestamptz() @default(now())
+  actualizado_en    DateTime             @db.Timestamptz()
+  creado_por        String?              @db.Uuid
+  eliminado_en      DateTime?            @db.Timestamptz()
+  items             ventas_items[]
+  pagos             ventas_pagos[]
+
+  @@index([creado_en])
+  @@index([ticket, creado_en])
+}
+
+/// Línea de venta (material + medida + cantidades; snapshot de precios).
+model ventas_items {
+  id              String           @id @db.Uuid
+  venta_id        String           @db.Uuid
+  material_id     String           @db.Uuid
+  nombre          String
+  cantidad        Decimal          @db.Decimal(10, 2)
+  medida          String
+  precio_unitario Decimal          @db.Decimal(12, 2)
+  subtotal        Decimal          @db.Decimal(12, 2)
+  descuento_pct   Decimal?         @db.Decimal(5, 2)
+  creado_en       DateTime         @db.Timestamptz() @default(now())
+  ventas          ventas           @relation(fields: [venta_id], references: [id], onDelete: Cascade)
+  materiales_venta materiales_venta @relation(fields: [material_id], references: [id])
+
+  @@index([venta_id])
+  @@index([material_id])
+}
+
+/// Pagos de una venta (una venta mixta tiene varios).
+model ventas_pagos {
+  id       String     @id @db.Uuid
+  venta_id String     @db.Uuid
+  metodo   MetodoPago
+  monto    Decimal    @db.Decimal(12, 2)
+  creado_en DateTime  @db.Timestamptz() @default(now())
+  ventas   ventas     @relation(fields: [venta_id], references: [id], onDelete: Cascade)
+
+  @@index([venta_id])
+}
+
+/// Retiro de efectivo de la caja (gastos autorizados del turno).
+model retiros_caja {
+  id             String    @id @db.Uuid
+  concepto       String
+  monto          Decimal   @db.Decimal(12, 2)
+  autorizado_por String
+  cajero         String
+  fecha          DateTime  @db.Date
+  hora           String
+  creado_en      DateTime  @db.Timestamptz() @default(now())
+  actualizado_en DateTime  @db.Timestamptz()
+  creado_por     String?   @db.Uuid
+  eliminado_en   DateTime? @db.Timestamptz()
+
+  @@index([fecha])
+}
+
+/// Cierre de caja del día (únicamente uno por fecha).
+model cierres_caja {
+  id               String   @id @db.Uuid
+  fecha            DateTime @db.Date @unique
+  cajero           String
+  ventas_count     Int
+  total_ventas     Decimal  @db.Decimal(12, 2)
+  efectivo_inicial Decimal  @db.Decimal(12, 2)
+  ventas_efectivo  Decimal  @db.Decimal(12, 2)
+  total_retiros    Decimal  @db.Decimal(12, 2)
+  esperado         Decimal  @db.Decimal(12, 2)
+  contado          Decimal  @db.Decimal(12, 2)
+  diferencia       Decimal  @db.Decimal(12, 2)
+  fondo_siguiente  Decimal  @db.Decimal(12, 2)
+  notas            String?
+  /// Conteo por denominación: { "1000": 1, "500": 3, ... }
+  denominaciones  Json
+  creado_en       DateTime @db.Timestamptz() @default(now())
+  actualizado_en  DateTime @db.Timestamptz()
+  creado_por      String?  @db.Uuid
+
+  @@index([fecha])
+}
+
 model users {
   id                                                                             String                        @id @db.Uuid
   persona_id                                                                     String                        @unique @db.Uuid
@@ -1873,6 +2013,9 @@ enum AuditAction {
   COTIZACION_CREADA
   COTIZACION_ACTUALIZADA
   COTIZACION_ELIMINADA
+  VENTA_CREADA
+  RETIRO_REGISTRADO
+  CIERRE_CAJA_REGISTRADO
   ERROR_SISTEMA
   ERROR_SISTEMA
 }
@@ -2022,6 +2165,7 @@ enum MetodoPago {
   TARJETA
   EFECTIVO
   MIXTO
+  TRANSFERENCIA
 }
 
 enum NivelAceite {

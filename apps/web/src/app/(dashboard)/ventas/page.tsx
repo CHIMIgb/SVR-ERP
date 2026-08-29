@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -10,6 +10,8 @@ import {
   Trash2,
   Banknote,
   Lock,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -34,15 +36,18 @@ import {
   POS_REGISTER,
   POS_TERMINAL,
   PRODUCTS,
-  buildPaymentDetails,
-  calculateTaxBreakdown,
   calculateTotal,
   cartLineKey,
-  generateSaleFolio,
-  generateTicketNumber,
   isToday,
   printTicket,
+  productUnitPrice,
 } from '@/lib/pos';
+import {
+  materialToProduct,
+  ventaDtoToSale,
+  ventasApi,
+} from '@/lib/api';
+import type { CreateVentaInput } from '@/lib/api';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -60,9 +65,73 @@ export default function VentasPage() {
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
     : 'Cajero';
 
+  // Catálogo de materiales desde el backend (fallback al mock solo para previsualizar)
+  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  // El POS solo puede cobrar cuando el catálogo real de BD está disponible;
+  // el mock `PRODUCTS` tiene IDs no-UUID (`p1`) que el backend rechazaría.
+  const [catalogoCargado, setCatalogoCargado] = useState(false);
+
   // Carrito (local) + ventas/retiros/turno (compartidos con /ventas/corte)
   const { sales, retiros, setRetiros, addSale } = usePOS();
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Cargar catálogo BD + ventas/retiros del día (una vez al montar; reintento manual)
+  const precargado = useRef(false);
+  const [catalogoError, setCatalogoError] = useState(false);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
+
+  const cargarDatos = useCallback(async () => {
+    setCatalogoError(false);
+    setCargandoCatalogo(true);
+    try {
+      const res = await ventasApi.catalogos();
+      if (res.success && res.data.materiales.length > 0) {
+        const productos = res.data.materiales.map(materialToProduct);
+        setProducts(productos);
+        setCatalogoCargado(true);
+
+        // Historial del día desde la BD (para el modal y el corte)
+        const hoy = await ventasApi.hoy();
+        if (hoy.success) {
+          const ventas = hoy.data.ventas
+            .map((v) => ventaDtoToSale(v, productos))
+            .reverse(); // addSale prepende; invertimos para que quede: más reciente primero
+          for (const venta of ventas) addSale(venta);
+        }
+      } else {
+        setCatalogoError(true);
+      }
+    } catch {
+      // sin catálogo BD: el POS queda bloqueado para no reenviar IDs mock inválidos
+      setCatalogoError(true);
+    }
+
+    try {
+      const resRetiros = await ventasApi.retiros();
+      if (resRetiros.success) {
+        setRetiros(
+          resRetiros.data.items.map((r) => ({
+            id: r.id,
+            concepto: r.concepto,
+            monto: r.monto,
+            fecha: r.fecha,
+            hora: r.hora,
+            autorizadoPor: r.autorizadoPor,
+          })),
+        );
+      }
+    } catch {
+      // no rompe la UI si el backend no responde
+    }
+    setCargandoCatalogo(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (precargado.current) return;
+    precargado.current = true;
+    cargarDatos();
+  }, [cargarDatos]);
 
   // Modales del POS
   const [qrAmount, setQrAmount] = useState<number | null>(null);
@@ -115,7 +184,10 @@ export default function VentasPage() {
   };
 
   // ── Cobro ─────────────────────────────────────────────────────────────────
-  const handlePay = (
+  // Guard anti doble-submit: evita insertar la venta más de una vez si el
+  // botón "Cobrar" se presiona repetido mientras el request está en vuelo.
+  const cobrando = useRef(false);
+  const handlePay = async (
     payments: Payment[],
     method: PaymentMethod,
     cashReceived: number | undefined,
@@ -124,56 +196,92 @@ export default function VentasPage() {
     discountTotal: number,
     authorizedBy: string | undefined,
   ) => {
-    if (cart.length === 0) return;
-    const totalCobrado = payments.reduce((sum, p) => sum + p.amount, 0);
+    if (cart.length === 0 || cobrando.current) return;
+    if (!catalogoCargado) {
+      showToast('Espera a que cargue el catálogo para poder cobrar.', 'error');
+      return;
+    }
+    // Defensa: nunca enviar IDs no-UUID del mock al backend
+    const hayIdInvalido = cart.some(
+      (i) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.product.id),
+    );
+    if (hayIdInvalido) {
+      showToast('El catálogo de materiales no está listo para cobrar todavía.', 'error');
+      return;
+    }
+    cobrando.current = true;
 
-    const sale: POSSale = {
-      id: `sale-${Date.now()}`,
-      ticketNumber: generateTicketNumber(sales.length),
-      folio: generateSaleFolio(),
+    const payload: CreateVentaInput = {
+      cajero: cashierName,
+      cliente: 'Público en general',
       terminal: POS_TERMINAL,
-      registerNumber: POS_REGISTER,
-      customer: 'Público en general',
-      cashier: cashierName,
-      items: cart,
-      total: totalCobrado,
-      method,
-      cashReceived,
-      change,
-      payments,
-      taxBreakdown: calculateTaxBreakdown(totalCobrado),
-      paymentDetails: buildPaymentDetails(method),
-      discountPct: discountPct || undefined,
-      discountTotal: discountTotal || undefined,
-      authorizedBy,
-      itemsSold: cart.reduce((sum, i) => sum + i.quantity, 0),
-      createdAt: new Date().toISOString(),
+      caja: POS_REGISTER,
+      items: cart.map((i) => ({
+        materialId: i.product.id,
+        medida: i.unit ?? i.product.unit,
+        cantidad: i.quantity,
+        precioUnitario: i.priceOverride ?? productUnitPrice(i.product, i.unit ?? i.product.unit),
+        descuentoPct: i.discountPct,
+      })),
+      pagos: payments.map((p) => ({ metodo: p.method, monto: p.amount })),
+      metodo: method,
+      efectivoRecibido: cashReceived,
+      cambio: change,
+      descuentoPct: discountPct || undefined,
+      descuentoTotal: discountTotal || undefined,
+      autorizadoPor: authorizedBy,
     };
 
-    addSale(sale);
-    setCart([]);
-    setLastSale(sale);
+    try {
+      const res = await ventasApi.crear(payload);
+      if (!res.success) {
+        showToast(res.error?.message ?? 'No se pudo registrar la venta.', 'error');
+        return;
+      }
+      const sale = ventaDtoToSale(res.data, products);
+      addSale(sale);
+      setCart([]);
+      setLastSale(sale);
+    } catch {
+      showToast('No se pudo conectar con el servidor para registrar la venta.', 'error');
+    } finally {
+      cobrando.current = false;
+    }
   };
   // ── Retiros ───────────────────────────────────────────────────────────────
-  const handleRetiro = () => {
+  const handleRetiro = async () => {
     const monto = parseFloat(formRetiro.monto);
     if (!formRetiro.concepto.trim() || !monto || monto <= 0) {
       showToast('Concepto y monto son obligatorios.', 'error');
       return;
     }
-    const ahora = new Date();
-    const nuevo: Retiro = {
-      id: `r-${Date.now()}`,
-      concepto: formRetiro.concepto.trim(),
-      monto,
-      fecha: ahora.toISOString().split('T')[0],
-      hora: ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-      autorizadoPor: formRetiro.autorizadoPor.trim() || 'Sin especificar',
-    };
-    setRetiros((prev) => [nuevo, ...prev]);
-    setModalRetiro(false);
-    setFormRetiro({ concepto: '', monto: '', autorizadoPor: '' });
-    showToast(`Retiro de ${formatCurrency(monto)} registrado.`, 'success');
+    const autorizadoPor = formRetiro.autorizadoPor.trim() || 'Sin especificar';
+
+    try {
+      const res = await ventasApi.crearRetiro({
+        concepto: formRetiro.concepto.trim(),
+        monto,
+        autorizadoPor,
+      });
+      if (!res.success) {
+        showToast(res.error?.message ?? 'No se pudo registrar el retiro.', 'error');
+        return;
+      }
+      const nuevo: Retiro = {
+        id: res.data.id,
+        concepto: res.data.concepto,
+        monto: res.data.monto,
+        fecha: res.data.fecha,
+        hora: res.data.hora,
+        autorizadoPor: res.data.autorizadoPor,
+      };
+      setRetiros((prev) => [nuevo, ...prev]);
+      setModalRetiro(false);
+      setFormRetiro({ concepto: '', monto: '', autorizadoPor: '' });
+      showToast(`Retiro de ${formatCurrency(monto)} registrado.`, 'success');
+    } catch {
+      showToast('No se pudo conectar con el servidor para registrar el retiro.', 'error');
+    }
   };
 
   // ── Métricas del día ──────────────────────────────────────────────────────
@@ -255,7 +363,35 @@ export default function VentasPage() {
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
                 {/* Izquierda: elegir producto + carrito */}
                 <div className="lg:col-span-3 space-y-4">
-                  <ProductPicker products={PRODUCTS} onAdd={addProduct} />
+                  {!catalogoCargado && !catalogoError && (
+                    <div className={posClasses.card}>
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                        <p className="text-sm text-slate-500">
+                          Cargando catálogo de materiales...
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {!catalogoCargado && catalogoError && (
+                    <div className={posClasses.card}>
+                      <p className="text-sm text-red-600 mb-3">
+                        No se pudo cargar el catálogo de materiales. Verifica que la API esté
+                        corriendo y reintenta.
+                      </p>
+                      <Button
+                        variant="primary"
+                        icon={<RefreshCw className="w-4 h-4" />}
+                        onClick={() => cargarDatos()}
+                        disabled={cargandoCatalogo}
+                      >
+                        {cargandoCatalogo ? 'Cargando...' : 'Reintentar'}
+                      </Button>
+                    </div>
+                  )}
+                  {catalogoCargado && (
+                    <ProductPicker products={products} onAdd={addProduct} />
+                  )}
 
                   <div className={posClasses.card}>
                     <div className="flex items-center justify-between mb-3">
@@ -305,7 +441,7 @@ export default function VentasPage() {
                   <PaymentPanel
                     total={total}
                     isAdmin={isAdmin}
-                    disabled={cart.length === 0}
+                    disabled={cart.length === 0 || !catalogoCargado}
                     onPay={handlePay}
                     onRequestQr={setQrAmount}
                   />

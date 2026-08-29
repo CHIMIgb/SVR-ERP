@@ -8,6 +8,8 @@ import {
   type UserAuth,
 } from '@svr-erp/shared';
 
+import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -982,6 +984,238 @@ export const proyectosApi = {
   catalogos: () =>
     apiClient.get<ProyectoCatalogos>('/proyectos/catalogos'),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Ventas (Punto de Venta) API
+// ────────────────────────────────────────────────────────────
+
+export type MetodoPagoVentaApi = 'efectivo' | 'tarjeta' | 'transferencia';
+
+/** Catálogo de materiales del POS (viene de `materiales_venta` + `materiales_precio`). */
+export interface MaterialVentaDTO {
+  id: string;
+  sku: string;
+  nombre: string;
+  categoria: string | null;
+  unidadBase: string;
+  stock: number;
+  precios: { medida: string; precio: number }[];
+}
+
+export interface VentasCatalogos {
+  materiales: MaterialVentaDTO[];
+}
+
+export interface VentaItemInput {
+  materialId: string;
+  medida: string;
+  cantidad: number;
+  precioUnitario: number;
+  descuentoPct?: number;
+}
+
+export interface VentaPagoInput {
+  metodo: MetodoPagoVentaApi;
+  monto: number;
+}
+
+export interface CreateVentaInput {
+  cajero: string;
+  cliente?: string;
+  terminal?: string;
+  caja?: string;
+  items: VentaItemInput[];
+  pagos: VentaPagoInput[];
+  metodo: MetodoPagoVentaApi;
+  efectivoRecibido?: number;
+  cambio?: number;
+  descuentoPct?: number;
+  descuentoTotal?: number;
+  autorizadoPor?: string;
+}
+
+export interface VentaDTO {
+  id: string;
+  folio: string;
+  ticket: string;
+  ticketNumber: number;
+  terminal: string;
+  registerNumber: string;
+  customer: string;
+  cashier: string;
+  subtotal: number;
+  iva: number;
+  ieps: number;
+  total: number;
+  method: MetodoPagoVentaApi;
+  cashReceived?: number;
+  change?: number;
+  discountPct?: number;
+  discountTotal?: number;
+  authorizedBy?: string;
+  itemsSold: number;
+  createdAt: string;
+  items: {
+    id: string;
+    materialId: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    price: number;
+    subtotal: number;
+    discountPct?: number;
+  }[];
+  payments: { method: MetodoPagoVentaApi; amount: number }[];
+}
+
+export interface VentasHoy {
+  ventas: VentaDTO[];
+  stats: {
+    count: number;
+    total: number;
+    efectivo: number;
+    tarjeta: number;
+    transferencia: number;
+  };
+}
+
+export interface RetiroVentaDTO {
+  id: string;
+  concepto: string;
+  monto: number;
+  fecha: string;
+  hora: string;
+  autorizadoPor: string;
+}
+
+export interface CrearRetiroInput {
+  concepto: string;
+  monto: number;
+  autorizadoPor: string;
+}
+
+export interface CierreVentaDTO {
+  id: string;
+  fecha: string;
+  cajero: string;
+  ventasCount: number;
+  totalVentas: number;
+  efectivoInicial: number;
+  ventasEfectivo: number;
+  totalRetiros: number;
+  esperado: number;
+  contado: number;
+  diferencia: number;
+  fondoSiguiente: number;
+  notas?: string;
+  denominaciones: Record<string, number>;
+}
+
+export interface CrearCierreInput {
+  denominaciones: Record<string, number>;
+  efectivoInicial?: number;
+  fondoSiguiente?: number;
+  notas?: string;
+}
+
+export const ventasApi = {
+  /** Catálogo de materiales + medidas + precios (alimenta selects de Material / Medida). */
+  catalogos: () => apiClient.get<VentasCatalogos>('/ventas/catalogos'),
+
+  /** Ventas del día + estadísticas por método de pago. */
+  hoy: () => apiClient.get<VentasHoy>('/ventas/hoy'),
+
+  /** Registrar una venta (valida stock/medida y lo persiste). */
+  crear: (data: CreateVentaInput) => apiClient.post<VentaDTO>('/ventas', data),
+
+  /** Retiros de efectivo del día. */
+  retiros: () => apiClient.get<{ items: RetiroVentaDTO[] }>('/ventas/retiros'),
+
+  /** Registrar un retiro. */
+  crearRetiro: (data: CrearRetiroInput) =>
+    apiClient.post<RetiroVentaDTO>('/ventas/retiros', data),
+
+  /** Estado del cierre de caja del día. */
+  cierreHoy: () =>
+    apiClient.get<{ existe: boolean; registro: CierreVentaDTO | null }>(
+      '/ventas/cierres/hoy',
+    ),
+
+  /** Registrar el cierre de caja del día (arqueo). */
+  crearCierre: (data: CrearCierreInput) =>
+    apiClient.post<CierreVentaDTO>('/ventas/cierres', data),
+};
+
+/** Convierte un material del catálogo BD al shape `Product` que usa el POS. */
+export function materialToProduct(m: MaterialVentaDTO): Product {
+  const prices: Record<string, number> = {};
+  for (const p of m.precios) prices[p.medida] = p.precio;
+  const units = m.precios.map((p) => p.medida);
+  const defaultUnit = m.unidadBase || units[0] || 'm³';
+  return {
+    id: m.id,
+    sku: m.sku,
+    barcode: '',
+    name: m.nombre,
+    category: m.categoria ?? undefined,
+    condition: 'Nuevo',
+    stock: m.stock,
+    unit: defaultUnit,
+    units: units.length ? units : [defaultUnit],
+    prices,
+    priceMxn: prices[defaultUnit] ?? m.precios[0]?.precio ?? 0,
+  };
+}
+
+/** Convierte la respuesta del backend a la `POSSale` que renderiza el ticket. */
+export function ventaDtoToSale(v: VentaDTO, products: Product[]): POSSale {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const items: CartItem[] = v.items.map((i) => {
+    const product = byId.get(i.materialId);
+    return {
+      product: product ?? {
+        id: i.materialId,
+        sku: '',
+        barcode: '',
+        name: i.name,
+        condition: 'Nuevo',
+        stock: 0,
+        unit: i.unit,
+        priceMxn: i.price,
+      },
+      quantity: i.quantity,
+      unit: i.unit,
+    };
+  });
+
+  const subtotal = v.subtotal;
+  const iva = v.iva;
+  const ieps = v.ieps;
+  const taxBreakdown: TaxBreakdown = { subtotal, iva, ieps, totalTax: iva + ieps };
+
+  return {
+    id: v.id,
+    ticketNumber: v.ticket,
+    folio: v.folio,
+    terminal: v.terminal,
+    registerNumber: v.registerNumber,
+    customer: v.customer,
+    cashier: v.cashier,
+    items,
+    total: v.total,
+    method: v.method,
+    cashReceived: v.cashReceived,
+    change: v.change,
+    payments: v.payments.map((p) => ({ method: p.method, amount: p.amount })),
+    taxBreakdown,
+    paymentDetails: {},
+    discountPct: v.discountPct,
+    discountTotal: v.discountTotal,
+    authorizedBy: v.authorizedBy,
+    itemsSold: v.itemsSold,
+    createdAt: v.createdAt,
+  };
+}
 
 // ────────────────────────────────────────────────────────────
 //  Reportes de Campo API

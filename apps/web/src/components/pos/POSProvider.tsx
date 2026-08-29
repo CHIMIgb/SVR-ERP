@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { POSSale } from '@/lib/pos';
 
@@ -47,9 +47,13 @@ export function POSProvider({ children }: { children: ReactNode }) {
   const [retiros, setRetiros] = useState<Retiro[]>([]);
   const [register, setRegister] = useState<CashRegisterState>(initialRegister);
 
+  const addSale = useCallback((sale: POSSale) => {
+    setSales((prev) => [sale, ...prev]);
+  }, []);
+
   const value: POSContextValue = {
     sales,
-    addSale: (sale) => setSales((prev) => [sale, ...prev]),
+    addSale,
     retiros,
     setRetiros,
     register,

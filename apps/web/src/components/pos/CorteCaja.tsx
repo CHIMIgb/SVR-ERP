@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Banknote,
@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
+import { ventasApi } from '@/lib/api';
 import {
   BUSINESS_INFO,
   CASH_BILLS,
@@ -32,6 +33,7 @@ import {
 } from '@/lib/pos';
 import type { POSSale } from '@/lib/pos';
 import { usePOS } from '@/components/pos/POSProvider';
+import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 interface CorteCajaProps {
@@ -84,8 +86,27 @@ function paymentLabel(sale: POSSale): string {
 export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   // Turno de caja compartido (sobrevive al navegar entre Pos y Corte)
   const { register, setRegister } = usePOS();
+  const { showToast } = useToast();
   const closed = register.closed;
   const openingAmount = register.openingAmount;
+
+  // Si el cierre del día ya existe en BD, bloquear el turno al cargar
+  useEffect(() => {
+    let activo = true;
+    (async () => {
+      try {
+        const res = await ventasApi.cierreHoy();
+        if (activo && res.success && res.data.existe) {
+          setRegister((prev) => ({ ...prev, closed: true }));
+        }
+      } catch {
+        // no rompe la UI si el backend no responde
+      }
+    })();
+    return () => {
+      activo = false;
+    };
+  }, [setRegister]);
 
   // Notas y fondo del siguiente turno
   const [notes, setNotes] = useState(register.notes);
@@ -150,12 +171,34 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   const hour = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
   // ── Acciones ─────────────────────────────────────────────────────────────
-  const handleClose = () => {
+  const handleClose = async () => {
     if (!closed && (!allowed || counted <= 0)) return;
     if (hasDifference && !confirmDifference) {
       setConfirmDifference(true);
       return;
     }
+
+    // Persistir el cierre en la BD
+    const denominacionesArray = CASH_DENOMINATIONS.filter((d) => (Number(counts[d]) || 0) > 0);
+    const denominaciones: Record<string, number> = {};
+    for (const d of denominacionesArray) denominaciones[String(d)] = Number(counts[d]) || 0;
+
+    try {
+      const res = await ventasApi.crearCierre({
+        denominaciones,
+        efectivoInicial: initial,
+        fondoSiguiente: Number(nextTurnCash) || 0,
+        notas: notes.trim() || undefined,
+      });
+      if (!res.success) {
+        showToast(res.error?.message ?? 'No se pudo registrar el cierre de caja.', 'error');
+        return;
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor para registrar el cierre.', 'error');
+      return;
+    }
+
     setRegister((prev) => ({
       ...prev,
       closed: true,
