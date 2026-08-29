@@ -1,5 +1,63 @@
 # Plan de Implementación — Punto de Venta (/ventas)
 
+---
+
+# FASE 2: Unificación del catálogo en `articulos_inventario`
+
+## 1. Resumen del Requerimiento
+Eliminar la duplicación de catálogo entre el POS (`materiales_venta` +
+`materiales_precio`) y el inventario (`articulos_inventario`). `/ventas`, por
+decisión del usuario (Opción B), sigue vendiendo un mismo producto en **varias
+medidas con precios distintos**, pero la **única fuente del catálogo pasa a ser
+`articulos_inventario`**. Se conserva el multi-medida/precio con una tabla hija
+`articulos_precio` (ex `materiales_precio`) apuntando a `articulos_inventario`,
+y se **eliminan** las tablas duplicadas `materiales_venta` y `materiales_precio`.
+
+## 2. Impacto Backend
+
+### Schema (`apps/api/prisma/schema.prisma`)
+- `model articulos_precio` (NUEVA, ex `materiales_precio`): `articulo_id` FK →
+  `articulos_inventario.id`, `medida`, `precio`, `@@unique([articulo_id, medida])`.
+- `model articulos_inventario`: +relación `articulos_precio[]` y `ventas_items[]`.
+- `model ventas_items`: `material_id` → **`articulo_id`** FK → `articulos_inventario.id`.
+- **Eliminar**: `materiales_venta`, `materiales_precio`.
+
+### Migración (manual; el parentesco de `migrate dev` está roto)
+`prisma migrate diff --from-config-datasource --to-schema ... --script` →
+carpeta → `migrate deploy`. El SQL debe:
+1. Crear `articulos_precio`.
+2. Re-apuntar `ventas_items.material_id` → `articulo_id` con FK a
+   `articulos_inventario` (existe FK RESTRICT a `materiales_venta`, se migra).
+3. **Datos**: crear categorías faltantes (`Áridos`, `Materiales`, `Acero`),
+   unidades faltantes (`tonelada`, `viaje`, `bulto`, `pieza`), insertar los 12
+   materiales POS como `articulos_inventario` (con `codigo`=sku, stock, precio
+   unitario = precio de la medida base, FKs a categoría/proveedor/unidad).
+4. Migrar `materiales_precio` → `articulos_precio` (articulo_id mapeado).
+5. Re-apuntar `ventas_items` existentes (3 ventas / 6 items) al nuevo `articulo_id`.
+6. `DROP TABLE materiales_precio`, `DROP TABLE materiales_venta`.
+
+### `ventas.service.ts`
+- `findCatalogos()`: lee `articulos_inventario` (+ `articulos_precio`,
+  `categorias_inventario.nombre`, `unidades_medida.nombre`) en vez de
+  `materiales_venta`. **Shape externo al frontend idéntico** →
+  `{ id, sku: codigo, nombre, categoria, unidadBase, stock, precios }`.
+- `create()`: consume `articulos_inventario` (+ `articulos_precio`), descuenta
+  `articulos_inventario.stock` (mismo que descuenta `/inventario`).
+
+## 3. Impacto Frontend
+- **Ninguno.** El shape de `MaterialVentaDTO` se conserva; `materialToProduct` y
+  toda la UI del POS no cambian.
+
+## 4. Validación
+- `tsc` + `next build` (web, sin cambios) y `tsc` (api).
+- Tests unitarios de `ventas.service.spec.ts` y de integración
+  `ventas.integration.spec.ts` actualizados a `articulos_inventario` /
+  `articulos_precio`.
+
+---
+
+# FASE 1: POS funcional sin mocks
+
 ## 1. Resumen del Requerimiento
 Migrar el POS a backend 100% funcional sin mocks: ventas, retiros y cierres de
 caja se guardan en PostgreSQL. Los selects de Material y Medida se alimentan de

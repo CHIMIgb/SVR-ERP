@@ -31,6 +31,11 @@ describe('Ventas Audit (Real DB)', () => {
   const createdRetiroIds: string[] = [];
   const createdCierreIds: string[] = [];
 
+  // Dependencias del artículo de prueba (aisladas con UUIDs únicos)
+  let catId: string;
+  let provId: string;
+  let uniId: string;
+
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [PrismaService, AuditContextService, AuditService, VentasService],
@@ -43,20 +48,54 @@ describe('Ventas Audit (Real DB)', () => {
     service = module.get(VentasService);
     auditContext = module.get(AuditContextService);
 
-    // Material de prueba con una medida/precio
-    materialId = randomUUID();
-    precioId = randomUUID();
-    await prisma.materiales_venta.create({
+    // Dependencias del catálogo (categoría/proveedor/unidad de prueba)
+    catId = randomUUID();
+    provId = randomUUID();
+    uniId = randomUUID();
+    await prisma.categorias_inventario.create({
       data: {
-        id: materialId,
-        sku: `SKU-${TEST_ID}`,
-        nombre: `Material de prueba ${TEST_ID}`,
-        categoria: 'Áridos',
-        unidad_base: 'm³',
-        stock: 100,
+        id: catId,
+        nombre: `Cat_${TEST_ID}`,
         activo: true,
         actualizado_en: new Date(),
-        precios: {
+      },
+    });
+    await prisma.proveedores.create({
+      data: {
+        id: provId,
+        codigo: `PROV-${TEST_ID}`,
+        nombre: `Prov_${TEST_ID}`,
+        activo: true,
+        actualizado_en: new Date(),
+      },
+    });
+    await prisma.unidades_medida.create({
+      data: {
+        id: uniId,
+        codigo: `U${TEST_ID}`,
+        nombre: 'm³',
+        activo: true,
+        actualizado_en: new Date(),
+      },
+    });
+
+    // Artículo de prueba con una medida/precio
+    materialId = randomUUID();
+    precioId = randomUUID();
+    await prisma.articulos_inventario.create({
+      data: {
+        id: materialId,
+        codigo: `SKU-${TEST_ID}`,
+        nombre: `Material de prueba ${TEST_ID}`,
+        stock: 100,
+        stock_minimo: 5,
+        precio_unitario: 350,
+        activo: true,
+        actualizado_en: new Date(),
+        categoria_id: catId,
+        proveedor_id: provId,
+        unidad_id: uniId,
+        articulos_precio: {
           create: {
             id: precioId,
             medida: 'm³',
@@ -93,8 +132,12 @@ describe('Ventas Audit (Real DB)', () => {
       });
     }
 
-    await prisma.materiales_precio.deleteMany({ where: { material_id: materialId } });
-    await prisma.materiales_venta.deleteMany({ where: { id: materialId } });
+    // Catálogo de prueba (artículo → precios → dependencias)
+    await prisma.articulos_precio.deleteMany({ where: { articulo_id: materialId } });
+    await prisma.articulos_inventario.deleteMany({ where: { id: materialId } });
+    await prisma.unidades_medida.deleteMany({ where: { id: uniId } });
+    await prisma.proveedores.deleteMany({ where: { id: provId } });
+    await prisma.categorias_inventario.deleteMany({ where: { id: catId } });
 
     await prisma.$disconnect();
     await app.close();
@@ -127,7 +170,7 @@ describe('Ventas Audit (Real DB)', () => {
       expect(venta.method).toBe('efectivo');
       expect(venta.items).toHaveLength(1);
 
-      const material = await prisma.materiales_venta.findUnique({
+      const material = await prisma.articulos_inventario.findUnique({
         where: { id: materialId },
       });
       expect(Number(material?.stock)).toBe(98);

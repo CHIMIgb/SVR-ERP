@@ -13,13 +13,15 @@ describe('VentasService', () => {
 
   const mockMaterial = {
     id: 'c2000000-0000-0000-0000-000000000001',
-    sku: 'MAT-001',
+    codigo: 'MAT-001',
     nombre: 'Arena de río',
     stock: 120,
     activo: true,
     eliminado_en: null,
-    precios: [
-      { id: 'p1', material_id: 'c2000000-0000-0000-0000-000000000001', medida: 'm³', precio: 350 },
+    categorias_inventario: { nombre: 'Áridos' },
+    unidades_medida: { nombre: 'm³' },
+    articulos_precio: [
+      { id: 'p1', articulo_id: 'c2000000-0000-0000-0000-000000000001', medida: 'm³', precio: 350 },
     ],
   };
 
@@ -50,7 +52,7 @@ describe('VentasService', () => {
       {
         id: 'i1',
         venta_id: '50000000-0000-0000-0000-000000000001',
-        material_id: 'c2000000-0000-0000-0000-000000000001',
+        articulo_id: 'c2000000-0000-0000-0000-000000000001',
         nombre: 'Arena de río',
         cantidad: 1,
         medida: 'm³',
@@ -64,7 +66,7 @@ describe('VentasService', () => {
 
   beforeEach(async () => {
     prisma = {
-      materiales_venta: {
+      articulos_inventario: {
         findMany: jest.fn().mockResolvedValue([mockMaterial]),
         update: jest.fn().mockResolvedValue({ ...mockMaterial, stock: mockMaterial.stock - 1 }),
       },
@@ -180,7 +182,7 @@ describe('VentasService', () => {
     });
 
     it('should fail when stock is insufficient', async () => {
-      prisma.materiales_venta.findMany.mockResolvedValue([
+      prisma.articulos_inventario.findMany.mockResolvedValue([
         { ...mockMaterial, stock: 0 },
       ]);
       const dto = {

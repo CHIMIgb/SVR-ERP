@@ -56,16 +56,20 @@ export class VentasService {
   //  CATÁLOGO de materiales para el POS
   // ────────────────────────────────────────────
   async findCatalogos() {
-    const materiales = await this.prisma.materiales_venta.findMany({
+    // Catálogo unificado con /inventario: se lee de articulos_inventario.
+    // El shape externo se conserva ({ id, sku, nombre, categoria, unidadBase,
+    // stock, precios }) para no tocar el frontend; sku = codigo del artículo,
+    // categoria = nombre de la categoría, unidadBase = unidad de medida base.
+    const articulos = await this.prisma.articulos_inventario.findMany({
       where: { activo: true, eliminado_en: null },
       select: {
         id: true,
-        sku: true,
+        codigo: true,
         nombre: true,
-        categoria: true,
-        unidad_base: true,
         stock: true,
-        precios: {
+        categorias_inventario: { select: { nombre: true } },
+        unidades_medida: { select: { nombre: true } },
+        articulos_precio: {
           select: { medida: true, precio: true },
           orderBy: { medida: 'asc' },
         },
@@ -74,14 +78,14 @@ export class VentasService {
     });
 
     return {
-      materiales: materiales.map((m) => ({
-        id: m.id,
-        sku: m.sku,
-        nombre: m.nombre,
-        categoria: m.categoria,
-        unidadBase: m.unidad_base,
-        stock: Number(m.stock),
-        precios: m.precios.map((p) => ({
+      materiales: articulos.map((a) => ({
+        id: a.id,
+        sku: a.codigo,
+        nombre: a.nombre,
+        categoria: a.categorias_inventario.nombre,
+        unidadBase: a.unidades_medida.nombre,
+        stock: Number(a.stock),
+        precios: a.articulos_precio.map((p) => ({
           medida: p.medida,
           precio: Number(p.precio),
         })),
@@ -140,18 +144,18 @@ export class VentasService {
   //  CREAR VENTA (transacción atómica + stock)
   // ────────────────────────────────────────────
   async create(dto: CreateVentaDto, userId: string) {
-    // 1. Resolver materiales y validar medida+precio+stock
-    const materiales = await this.prisma.materiales_venta.findMany({
+    // 1. Resolver artículos de inventario y validar medida+stock
+    const articulos = await this.prisma.articulos_inventario.findMany({
       where: { id: { in: dto.items.map((i) => i.materialId) } },
-      include: { precios: true },
+      include: { articulos_precio: true },
     });
 
-    const byId = new Map(materiales.map((m) => [m.id, m]));
+    const byId = new Map(articulos.map((m) => [m.id, m]));
 
     // 2. Validar medidas/stock de las líneas y precio unitario
     for (const item of dto.items) {
-      const mat = byId.get(item.materialId);
-      if (!mat || mat.eliminado_en || !mat.activo) {
+      const art = byId.get(item.materialId);
+      if (!art || art.eliminado_en || !art.activo) {
         return this.fallir(
           AuditAction.VENTA_CREADA,
           null,
@@ -160,23 +164,23 @@ export class VentasService {
           `Material no disponible`,
         );
       }
-      const precio = mat.precios.find((p) => p.medida === item.medida);
+      const precio = art.articulos_precio.find((p) => p.medida === item.medida);
       if (!precio) {
         return this.fallir(
           AuditAction.VENTA_CREADA,
           null,
           'MEDIDA_NO_DISPONIBLE',
           BadRequestException,
-          `La medida "${item.medida}" no está disponible para ${mat.nombre}`,
+          `La medida "${item.medida}" no está disponible para ${art.nombre}`,
         );
       }
-      if (Number(mat.stock) < item.cantidad) {
+      if (Number(art.stock) < item.cantidad) {
         return this.fallir(
           AuditAction.VENTA_CREADA,
           null,
           'STOCK_INSUFICIENTE',
           BadRequestException,
-          `Stock insuficiente para ${mat.nombre} (disponible: ${mat.stock})`,
+          `Stock insuficiente para ${art.nombre} (disponible: ${art.stock})`,
         );
       }
     }
@@ -263,7 +267,7 @@ export class VentasService {
                 Math.round(i.precioUnitario * i.cantidad * (1 - desc) * 100) / 100;
               return {
                 id: randomUUID(),
-                material_id: mat.id,
+                articulo_id: mat.id,
                 nombre: mat.nombre,
                 cantidad: i.cantidad,
                 medida: i.medida,
@@ -284,9 +288,10 @@ export class VentasService {
         include: { items: true, pagos: true },
       });
 
-      // 5. Descontar stock (atómico)
+      // 5. Descontar stock del artículo de inventario (atómico; mismo stock
+      //    que descuenta /inventario)
       for (const item of dto.items) {
-        await tx.materiales_venta.update({
+        await tx.articulos_inventario.update({
           where: { id: item.materialId },
           data: { stock: { decrement: item.cantidad } },
         });
@@ -555,7 +560,7 @@ export class VentasService {
       createdAt: v.creado_en.toISOString(),
       items: v.items.map((i) => ({
         id: i.id,
-        materialId: i.material_id,
+        materialId: i.articulo_id,
         name: i.nombre,
         quantity: Number(i.cantidad),
         unit: i.medida,

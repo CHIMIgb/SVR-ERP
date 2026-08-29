@@ -90,6 +90,8 @@ model articulos_inventario {
   users_articulos_inventario_actualizado_porTousers users?                   @relation("articulos_inventario_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_articulos_inventario_actualizado_por")
   users_articulos_inventario_creado_porTousers      users?                   @relation("articulos_inventario_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_articulos_inventario_creado_por")
   movimientos_inventario                            movimientos_inventario[]
+  articulos_precio                                  articulos_precio[]
+  ventas_items                                      ventas_items[]
 
   @@index([categoria_id])
   @@index([proveedor_id])
@@ -1587,39 +1589,22 @@ model unidades_medida {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Punto de Venta (/ventas) — catálogo de materiales y operaciones del POS
+// Punto de Venta (/ventas) — catálogo unificado con /inventario
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Catálogo de materiales que se venden en el POS (fase 1: lectura desde BD).
-model materiales_venta {
-  id              String    @id @db.Uuid
-  sku             String    @unique
-  nombre          String
-  categoria       String?
-  /// Medida base del material (m³, pieza, bulto...).
-  unidad_base     String
-  stock           Decimal   @db.Decimal(10, 2) @default(0)
-  activo          Boolean   @default(true)
-  creado_en       DateTime  @db.Timestamptz() @default(now())
-  actualizado_en  DateTime  @db.Timestamptz()
-  creado_por      String?   @db.Uuid
-  actualizado_por String?   @db.Uuid
-  eliminado_en    DateTime? @db.Timestamptz()
-  precios         materiales_precio[]
-  ventas_items    ventas_items[]
-}
-
-/// Precio del material por medida de venta (m³, tonelada, viaje, pieza...).
-model materiales_precio {
-  id          String           @id @db.Uuid
-  material_id String           @db.Uuid
+/// Precio de un artículo de inventario por medida de venta (m³, tonelada, viaje,
+/// pieza...). Fuente única del catálogo es `articulos_inventario`; el POS y la
+/// vista de inventario comparten esta tabla.
+model articulos_precio {
+  id          String            @id @db.Uuid
+  articulo_id String            @db.Uuid
   medida      String
-  precio      Decimal          @db.Decimal(12, 2)
-  creado_en   DateTime         @db.Timestamptz() @default(now())
-  materiales_venta materiales_venta @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  precio      Decimal           @db.Decimal(12, 2)
+  creado_en   DateTime          @db.Timestamptz() @default(now())
+  articulos_inventario articulos_inventario @relation(fields: [articulo_id], references: [id], onDelete: Cascade)
 
-  @@unique([material_id, medida])
-  @@index([material_id])
+  @@unique([articulo_id, medida])
+  @@index([articulo_id])
 }
 
 /// Venta registrada en el punto de venta.
@@ -1654,23 +1639,23 @@ model ventas {
   @@index([ticket, creado_en])
 }
 
-/// Línea de venta (material + medida + cantidades; snapshot de precios).
+/// Línea de venta (artículo + medida + cantidades; snapshot de precios).
 model ventas_items {
-  id              String           @id @db.Uuid
-  venta_id        String           @db.Uuid
-  material_id     String           @db.Uuid
+  id              String             @id @db.Uuid
+  venta_id        String             @db.Uuid
+  articulo_id     String             @db.Uuid
   nombre          String
-  cantidad        Decimal          @db.Decimal(10, 2)
+  cantidad        Decimal            @db.Decimal(10, 2)
   medida          String
-  precio_unitario Decimal          @db.Decimal(12, 2)
-  subtotal        Decimal          @db.Decimal(12, 2)
-  descuento_pct   Decimal?         @db.Decimal(5, 2)
-  creado_en       DateTime         @db.Timestamptz() @default(now())
-  ventas          ventas           @relation(fields: [venta_id], references: [id], onDelete: Cascade)
-  materiales_venta materiales_venta @relation(fields: [material_id], references: [id])
+  precio_unitario Decimal            @db.Decimal(12, 2)
+  subtotal        Decimal            @db.Decimal(12, 2)
+  descuento_pct   Decimal?           @db.Decimal(5, 2)
+  creado_en       DateTime           @db.Timestamptz() @default(now())
+  ventas          ventas             @relation(fields: [venta_id], references: [id], onDelete: Cascade)
+  articulos_inventario articulos_inventario @relation(fields: [articulo_id], references: [id])
 
   @@index([venta_id])
-  @@index([material_id])
+  @@index([articulo_id])
 }
 
 /// Pagos de una venta (una venta mixta tiene varios).
