@@ -8,7 +8,6 @@ import {
   CreditCard,
   Lock,
   Printer,
-  RefreshCw,
   ShieldCheck,
   Wallet,
 } from 'lucide-react';
@@ -236,20 +235,6 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
     setShowSummary(true);
   };
 
-  /** Inicia un nuevo corte (siguiente turno) y resetea el arqueo. */
-  const handleNewCorte = () => {
-    setRegister({
-      openingAmount: '',
-      closed: false,
-      notes: '',
-      nextTurnCash: '',
-    });
-    setNotes('');
-    setNextTurnCash('');
-    setCounts({});
-    setConfirmDifference(false);
-  };
-
   const handlePrint = () => {
     const groups = GROUP_ORDER.map((group) => ({
       name: groupName(group),
@@ -298,9 +283,6 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
               apertura configurado.
             </p>
           </div>
-          <Button variant="secondary" className="mt-3" icon={<RefreshCw className="w-4 h-4" />} onClick={handleNewCorte}>
-            Nuevo corte
-          </Button>
         </div>
       </div>
     );
@@ -495,6 +477,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
         <ModalHeader
           title="Diferencia en el arqueo"
           subtitle="El efectivo contado no coincide con el esperado"
+          onClose={() => setConfirmDifference(false)}
         />
         <ModalBody>
           <div className="space-y-3">
