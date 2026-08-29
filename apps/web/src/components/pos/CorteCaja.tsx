@@ -7,7 +7,6 @@ import {
   Clock,
   CreditCard,
   Lock,
-  LockOpen,
   Printer,
   QrCode,
   RefreshCw,
@@ -43,6 +42,8 @@ interface CorteCajaProps {
 }
 
 /** Horarios del turno (mock local; vendrán de configuración con el backend). */
+const OPENING_HOUR = 7;
+const OPENING_MINUTE = 0;
 const CLOSING_HOUR = 20;
 const CLOSING_MINUTE = 0;
 const TOLERANCE_MINUTES = 30;
@@ -81,9 +82,8 @@ function paymentLabel(sale: POSSale): string {
  * arqueo por denominaciones, cierre y ticket imprimible.
  */
 export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
-  // Turno de caja compartido (apertura/cierre sobreviven al navegar entre Pos y Corte)
+  // Turno de caja compartido (sobrevive al navegar entre Pos y Corte)
   const { register, setRegister } = usePOS();
-  const opened = register.opened;
   const closed = register.closed;
   const openingAmount = register.openingAmount;
 
@@ -130,7 +130,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   }, [todaySales]);
 
   // ── Arqueo ──────────────────────────────────────────────────────────────
-  const initial = opened ? (Number(openingAmount) || 0) : 0;
+  const initial = Number(openingAmount) || 0;
   const hoyIso = new Date().toISOString().split('T')[0];
   const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
   const totalRetirements = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
@@ -141,23 +141,17 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
 
   // ── Ventana de cierre ────────────────────────────────────────────────────
   const now = new Date();
-  const windowStart = new Date();
-  windowStart.setHours(CLOSING_HOUR, CLOSING_MINUTE - TOLERANCE_MINUTES, 0, 0);
-  const windowEnd = new Date();
-  windowEnd.setHours(CLOSING_HOUR, CLOSING_MINUTE + TOLERANCE_MINUTES, 0, 0);
-  const allowed = now >= windowStart && now <= windowEnd;
+  const closingStart = new Date();
+  closingStart.setHours(CLOSING_HOUR, CLOSING_MINUTE - TOLERANCE_MINUTES, 0, 0);
+  const closingEnd = new Date();
+  closingEnd.setHours(CLOSING_HOUR, CLOSING_MINUTE + TOLERANCE_MINUTES, 0, 0);
+  const allowed = now >= closingStart && now <= closingEnd;
 
   const hour = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
   // ── Acciones ─────────────────────────────────────────────────────────────
-  const handleOpen = () => {
-    const amount = Number(openingAmount);
-    if (amount <= 0) return;
-    setRegister((prev) => ({ ...prev, opened: true }));
-  };
-
   const handleClose = () => {
-    if (!allowed || counted <= 0) return;
+    if (!closed && (!allowed || counted <= 0)) return;
     if (hasDifference && !confirmDifference) {
       setConfirmDifference(true);
       return;
@@ -165,16 +159,15 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
     setRegister((prev) => ({
       ...prev,
       closed: true,
-      opened: false,
       notes,
       nextTurnCash,
     }));
     setShowSummary(true);
   };
 
-  const handleNextTurn = () => {
+  /** Inicia un nuevo corte (siguiente turno) y resetea el arqueo. */
+  const handleNewCorte = () => {
     setRegister({
-      opened: false,
       openingAmount: '',
       closed: false,
       notes: '',
@@ -222,62 +215,21 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
 
   const countedDenominations = CASH_DENOMINATIONS.filter((d) => (Number(counts[d]) || 0) > 0);
 
-  // ── Estado: apertura (o turno cerrado) ───────────────────────────────────
-  if (!opened) {
+  // ── Estado: turno cerrado (siguiente turno disponible en el horario) ─────
+  if (closed) {
     return (
       <div className="max-w-xl mx-auto">
         <div className={posClasses.card}>
-          <div className="flex items-center gap-2 mb-2">
-            <LockOpen className="w-5 h-5 text-primary" />
-            <h3 className="font-black text-slate-700 text-lg">Apertura de caja</h3>
+          <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
+            <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+            <p className="text-xs font-medium">
+              El turno de hoy ya cerró. El siguiente corte se habilitará en el horario de
+              apertura configurado.
+            </p>
           </div>
-          <p className="text-xs text-slate-500 mb-4">
-            {`CAJA-PV · Inicio de turno. Ingresa el efectivo con el que inicia el turno para
-            calcular el arqueo al cerrar.`}
-          </p>
-
-          {closed ? (
-            <div className="space-y-3">
-              <div
-                className={cn(
-                  posClasses.alertBox,
-                  'bg-amber-50 border-amber-200 text-amber-700',
-                )}
-              >
-                <Lock className="w-4 h-4 shrink-0 mt-0.5" />
-                <p className="text-xs font-medium">
-                  El turno de hoy ya cerró. El siguiente turno se abrirá en el horario
-                  configurado (simulado).
-                </p>
-              </div>
-              <Button variant="secondary" icon={<RefreshCw className="w-4 h-4" />} onClick={handleNextTurn}>
-                Simular siguiente turno
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <Input
-                label="Efectivo inicial"
-                type="number"
-                min={0}
-                inputMode="decimal"
-                placeholder="0.00"
-                value={openingAmount}
-                onChange={(e) =>
-                  setRegister((prev) => ({ ...prev, openingAmount: e.target.value }))
-                }
-              />
-              <Button
-                variant="primary"
-                fullWidth
-                icon={<LockOpen className="w-4 h-4" />}
-                onClick={handleOpen}
-                disabled={!openingAmount || Number(openingAmount) <= 0}
-              >
-                Abrir caja
-              </Button>
-            </div>
-          )}
+          <Button variant="secondary" className="mt-3" icon={<RefreshCw className="w-4 h-4" />} onClick={handleNewCorte}>
+            Nuevo corte
+          </Button>
         </div>
       </div>
     );
@@ -333,8 +285,9 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
             <div className={cn(posClasses.alertBox, 'bg-blue-50 border-blue-200 text-blue-700')}>
               <Clock className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
-                Ventana de cierre:{' '}
-                {`${pad(windowStart.getHours())}:${pad(windowStart.getMinutes())} a ${pad(windowEnd.getHours())}:${pad(windowEnd.getMinutes())} hrs.`}
+                Turno de {`${pad(OPENING_HOUR)}:${pad(OPENING_MINUTE)}`} a{' '}
+                {`${pad(CLOSING_HOUR)}:${pad(CLOSING_MINUTE)}`} hrs · Cierre:{' '}
+                {`${pad(closingStart.getHours())}:${pad(closingStart.getMinutes())} a ${pad(closingEnd.getHours())}:${pad(closingEnd.getMinutes())} hrs.`}
               </p>
             </div>
             {!allowed && (
@@ -350,6 +303,19 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
           {/* Arqueo */}
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Arqueo de efectivo</h3>
+            <div className="mb-3">
+              <Input
+                label="Fondo inicial del turno"
+                type="number"
+                min={0}
+                inputMode="decimal"
+                placeholder="0.00"
+                value={openingAmount}
+                onChange={(e) =>
+                  setRegister((prev) => ({ ...prev, openingAmount: e.target.value }))
+                }
+              />
+            </div>
             <p className="text-xs text-slate-500 mb-3">
               Efectivo esperado: {formatCurrency(expectedCash)}
             </p>

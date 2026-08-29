@@ -1,16 +1,13 @@
 'use client';
 
-import { ArrowLeft, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function CorteDelDiaPage() {
-  const router = useRouter();
   const { user } = useAuth();
   const { sales, retiros } = usePOS();
 
@@ -25,15 +22,6 @@ export default function CorteDelDiaPage() {
       <PageHeader
         title="Corte del Día"
         subtitle={`Cierre de caja · Cajero: ${cashierName}`}
-        action={
-          <Button
-            variant="outline"
-            icon={<ArrowLeft className="w-4 h-4" />}
-            onClick={() => router.push('/ventas')}
-          >
-            Volver al Pos
-          </Button>
-        }
       />
 
       {!puedeVer ? (

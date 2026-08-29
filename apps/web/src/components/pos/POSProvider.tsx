@@ -14,10 +14,11 @@ export interface Retiro {
   autorizadoPor: string;
 }
 
-/** Turno de caja: apertura y cierre (fase 1 frontend; el backend lo persistirá). */
+/** Turno de caja: estado compartido entre /ventas y /ventas/corte (fase 1 frontend). */
 export interface CashRegisterState {
-  opened: boolean;
+  /** Fondo inicial del turno (alimenta el arqueo). */
   openingAmount: string;
+  /** true una vez que se registró el cierre del día. */
   closed: boolean;
   notes: string;
   nextTurnCash: string;
@@ -35,7 +36,6 @@ interface POSContextValue {
 const POSContext = createContext<POSContextValue | undefined>(undefined);
 
 const initialRegister: CashRegisterState = {
-  opened: false,
   openingAmount: '',
   closed: false,
   notes: '',
