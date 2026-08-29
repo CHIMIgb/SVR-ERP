@@ -374,17 +374,10 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Arqueo de efectivo</h3>
             <div className="mb-3">
-              <Input
-                label="Fondo inicial del turno"
-                type="number"
-                min={0}
-                inputMode="decimal"
-                placeholder="0.00"
-                value={openingAmount}
-                onChange={(e) =>
-                  setRegister((prev) => ({ ...prev, openingAmount: e.target.value }))
-                }
-              />
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                Fondo inicial del turno
+              </p>
+              <p className={cn(posClasses.resultValue)}>{formatCurrency(initial)}</p>
             </div>
             <p className="text-xs text-slate-500 mb-3">
               Efectivo esperado: {formatCurrency(expectedCash)}
