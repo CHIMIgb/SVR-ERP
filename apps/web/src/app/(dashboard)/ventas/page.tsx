@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Plus,
   ReceiptText,
@@ -9,7 +8,6 @@ import {
   ArrowDownCircle,
   Trash2,
   Banknote,
-  Lock,
   Loader2,
   RefreshCw,
 } from 'lucide-react';
@@ -136,7 +134,6 @@ export default function VentasPage() {
 
   const [modalRetiro, setModalRetiro] = useState(false);
   const [formRetiro, setFormRetiro] = useState({ concepto: '', monto: '', autorizadoPor: '' });
-  const router = useRouter();
 
   const total = useMemo(() => calculateTotal(cart), [cart]);
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
@@ -291,9 +288,6 @@ export default function VentasPage() {
               onClick={() => setShowHistory(true)}
             >
               Ventas de hoy ({ventasHoy.length})
-            </Button>
-            <Button variant="primary" icon={<Lock className="w-4 h-4" />} onClick={() => router.push('/ventas/corte')}>
-              Corte del Día
             </Button>
           </div>
         }
