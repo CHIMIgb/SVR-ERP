@@ -258,6 +258,12 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
    para el arreglo de medidas).
 5. **Tests:** unit + integración (real contra PostgreSQL) cubriendo la sincronización
    medida base ↔ `precio_unitario` y el alta/baja de medidas.
+6. **Stock por medida (importante):** actualmente **todas las medidas de un mismo
+   artículo comparten el mismo stock** (el de `articulos_inventario`). Esto es incorrecto:
+   1 `m³` y 1 `tonelada` no descuentan el mismo inventario físico. Al gestionar medidas
+   por precio hay que **separar (o al menos tolerar) el stock por medida de venta** para
+   que el POS valide/disponga existencias de forma correcta y las ventas descuenten la
+   unidad adecuada (ver § P7 nota de stock).
 
 **Impacto:** deja de estar "congelado" el precio del POS; el inventario es la fuente
 única de catálogo y de sus precios por medida, consistente con lo que cobra `/ventas`.
@@ -273,6 +279,16 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 > **Regla de sincronización:** `articulos_inventario.precio_unitario` (medida base) y la
 > fila de la medida base en `articulos_precio` deben ser **siempre el mismo valor**. Toda
 > edición de uno implica actualizar el otro en la misma transacción.
+
+> **Nota de stock por medida:** hoy no existe stock por medida — todas las medidas del
+> mismo artículo usan el stock de `articulos_inventario`, y el POS valida cantidad contra
+> ese valor (p.ej. comprar 5 `viajes` descuenta/mide contra el mismo stock que 5 `m³`).
+> Esta conducta es aceptable solo mientras el stock físico se maneje en la medida base;
+> **se deberá separar el stock por medida** cuando los precios por medida entren en
+> producción (o agregar `stock`/`stock_minimo` en `articulos_precio` por cada medida y
+> sumar/validar por artículo), para que el POS descuente existencias correctas por unidad
+> de venta. Esta separación es un requisito colateral de P7, no parte de la edición de
+> precios.
 
 ---
 
