@@ -63,7 +63,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           onChange={(e) => handleProductChange(e.target.value)}
           options={products.map((p) => ({
             value: p.id,
-            label: `${p.name} — ${formatCurrency(p.priceMxn)}`,
+            label: p.name,
           }))}
         />
         <Select

@@ -95,7 +95,7 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/cotizaciones": { group: "Comercial" },
   "/finanzas": { group: "Comercial" },
   "/proveedores": { group: "Comercial", badge: "NUEVO" },
-  "/ventas": { group: "Comercial", badge: "NUEVO" },
+  "/ventas": { group: "Comercial" },
   "/ventas/corte": { group: "Comercial" },
   "/cobranza": { group: "Comercial", badge: "NUEVO" },
   "/documentos": { group: "Sistema", warn: "2" },
