@@ -126,9 +126,9 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
     return () => {
       activo = false;
     };
-    // Correr una sola vez al montar (el fondo inicial usado es el del momento)
+    // Correr una sola vez al montar (usa setRegister/openingAmount del momento).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setRegister]);
+  }, []);
 
   // Notas y fondo del siguiente turno
   const [notes, setNotes] = useState(register.notes);
