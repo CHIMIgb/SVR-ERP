@@ -80,6 +80,11 @@ export default function InventarioPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
+  // Artículos migrados del POS: tienen precios por medida de venta
+  // (articulos_precio) que se gestionan por separado, su precio unitario
+  // base no se edita desde aquí.
+  const esMaterialDeVenta = selectedItem?.codigo?.startsWith('MAT-') ?? false;
+
   // ── Cargar catálogos (una sola vez) ──
   useEffect(() => {
     inventarioApi.catalogos().then((res) => {
@@ -728,7 +733,13 @@ export default function InventarioPage() {
               step="0.01"
               value={form.precioUnitario}
               onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+              readOnly={esMaterialDeVenta}
             />
+            {esMaterialDeVenta && (
+              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                Tiene precios por medida de venta; el precio unitario no se edita aquí.
+              </p>
+            )}
           </ModalField>
         </div>
       </FormModal>
@@ -884,7 +895,13 @@ export default function InventarioPage() {
               step="0.01"
               value={form.precioUnitario}
               onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+              readOnly={esMaterialDeVenta}
             />
+            {esMaterialDeVenta && (
+              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                Tiene precios por medida de venta; el precio unitario no se edita aquí.
+              </p>
+            )}
           </ModalField>
         </div>
       </FormModal>
