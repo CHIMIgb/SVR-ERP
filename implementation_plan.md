@@ -1,10 +1,12 @@
-# Plan de Implementación — Backend del Punto de Venta (/ventas)
+# Plan de Implementación — Punto de Venta (/ventas)
 
 ## 1. Resumen del Requerimiento
-Migrar el POS de mock a datos reales: ventas, retiros y cierres de caja se
-guardan en PostgreSQL. Los selects de Material y Medida se alimentan de un
-catálogo en BD (`materiales_venta` + `materiales_precio`), reemplazando el
-`PRODUCTS` estático de `lib/pos.ts`.
+Migrar el POS a backend 100% funcional sin mocks: ventas, retiros y cierres de
+caja se guardan en PostgreSQL. Los selects de Material y Medida se alimentan de
+un catálogo en BD (`materiales_venta` + `materiales_precio`). El backend ignora
+los métodos de pago por terminal, QR y mixto; solo soporta efectivo, tarjeta y
+transferencia. Toda mutación registra auditoría (éxito y fracaso) y cuenta con
+tests de integración contra la base de datos real.
 
 ## 2. Impacto Backend
 - **Schema** (`apps/api/prisma/schema.prisma`):
@@ -24,46 +26,48 @@ catálogo en BD (`materiales_venta` + `materiales_precio`), reemplazando el
     (arqueo; valida que no exista cierre del día: `fecha` único).
 - **RBAC**: `@RequirePermission('comercial','ventas','ver'|'crear')`.
 - **Auditoría**: SUCCESS en cada mutación + patrón `fallir()` en fallos de negocio.
-- **Tests**: specs unitarios de service/controller/DTO (obligatorio por AGENTS.md).
+  - `create`: fallos auditados para material no disponible, medida no disponible,
+    stock insuficiente, método de pago no soportado y total de pagos no cuadrado.
+  - `createRetiro`: fallos auditados para monto inválido y concepto vacío.
+  - `createCierre`: fallo auditado para cierre duplicado del día.
+- **Tests**:
+  - Specs unitarios de service/controller/DTO (obligatorio por AGENTS.md).
+  - Spec de integración `ventas.integration.spec.ts` con DB real: crea material de
+    prueba, valida venta/retiro/cierre y verifica registros SUCCESS y FAIL en
+    `registro_auditoria`.
 
 ## 3. Impacto Frontend
 - `lib/api.ts`: `ventasApi` (catalogos, hoy, crear, retiros, crearRetiro, cierreHoy,
   crearCierre) + DTOs + mappers `materialToProduct` (DTO BD → `Product` del POS) y
   `ventaDtoToSale` (respuesta del backend → `POSSale` para el ticket).
-- `ventas/page.tsx`: carga `GET /ventas/catalogos` al montar (fallback a `PRODUCTS`
-  si no responde) → `ProductPicker` (selects de Material y Medida) se alimenta del
-  catálogo BD. `handlePay` hace `POST /ventas` y agrega la venta persistida (folio/
-  ticket reales del backend). `handleRetiro` hace `POST /ventas/retiros`; precarga
+- `ventas/page.tsx`: carga `GET /ventas/catalogos` al montar **sin fallback a mock**
+  (`PRODUCTS` eliminado). El POS muestra loading/error hasta que el catálogo BD esté
+  disponible; solo entonces se permite cobrar. `handlePay` hace `POST /ventas` y
+  agrega la venta persistida. `handleRetiro` hace `POST /ventas/retiros`; precarga
   los retiros del día con `GET /ventas/retiros`.
+- `PaymentPanel`: solo métodos soportados por el backend (efectivo, tarjeta,
+  transferencia). Se eliminaron mixto, botón QR y modal QR.
 - `CorteCaja`: bloquea el turno si `GET /ventas/cierres/hoy` reporta un cierre
-  existente; al cerrar hace `POST /ventas/cierres` con el arqueo antes de habilitar
-  el estado `closed`.
+  existente; al cerrar hace `POST /ventas/cierres` con el arqueo. Se eliminó el
+  agrupamiento "Mixto" y el icono QR.
 
 ## 4. Estado
-- ✅ Backend completo: schema + DDL/seed aplicados (12 materiales, 29 precios),
-  módulo NestJS `ventas` (service/controller/DTO/tests), `VentasModule` en
-  `AppModule`, enums nuevos en `ACTION_SEVERITY_MAP`. `tsc` OK + 25 tests OK.
-- ✅ Frontend completo: `ventasApi` + mappers, catálogo BD en selects, ventas/
-  retiros/cierre persistidos. `tsc` OK + `next build` OK + lint OK.
-- ✅ Bugfix "bucle + keys duplicados": el `useEffect` de precarga dependía de
-  `addSale` (función inline inestable en `POSProvider`) y `setRetiros`, por lo que
-  se re-ejecutaba en cada render del provider → el historial `sales` se duplicaba
-  en loop (mismos `sale.id` → keys duplicados en `SalesHistoryModal`/`TicketPreview`)
-  y se golpeaba la API (`catalogos`/`hoy`/`retiros`) en bucle.
-  - Fix: `addSale` memoizada con `useCallback([])` en `POSProvider` + `useEffect`
-    con guard `useRef` y dependencias `[]` en `page.tsx` (precarga UNA sola vez).
-  - Fix anti doble-submit: `cobrando` `useRef` en `handlePay` para impedir
-    `POST /ventas` repetido mientras el request está en vuelo.
-- ✅ Bugfix "Error 500 uuid: p1 al cobrar": el carrito podía envíar los IDs del
-  mock `PRODUCTS` (`p1`, `p2`...) al backend, que espera UUIDs reales de BD
-  (`c2000000-...`), porque la carga del catálogo BD es async y el usuario podía
-  agregar/cobrar antes de que terminara.
-  - Fix: estado `catalogoCargado` (se activa solo cuando `GET /ventas/catalogos`
-    responde con materiales). Mientras esté en `false` el `ProductPicker` se
-    sustituye por loading, el `PaymentPanel` queda `disabled` y `handlePay`
-    rechaza con un guard de validación de UUID. Nunca se reenvían IDs mock.
-  - UX: si la carga falla, se muestra estado de error con botón "Reintentar"
-    (`cargarDatos` reutilizable con `useCallback` + `cargandoCatalogo`).
+- ✅ Backend 100% funcional sin mocks:
+  - Schema: `materiales_venta` (datos del material) y `materiales_precio` (medida +
+    precio) ya están separados; DDL/seed aplicados (12 materiales, 29 precios).
+  - Módulo NestJS `ventas` (service/controller/DTO/tests), `VentasModule` en
+    `AppModule`, enums nuevos en `ACTION_SEVERITY_MAP`.
+  - DTO valida `materialId` como UUID y rechaza métodos de pago no soportados.
+  - Auditoría SUCCESS/FAIL en `create`, `createRetiro` y `createCierre`.
+  - Tests unitarios: 26 passed. Tests de integración (DB real + auditoría): 5 passed.
+- ✅ Frontend alineado al backend:
+  - `PRODUCTS` mock eliminado de `lib/pos.ts`; el POS no muestra productos hasta
+    cargar el catálogo BD.
+  - `PaymentPanel` simplificado: solo efectivo/tarjeta/transferencia; sin mixto,
+    sin QR.
+  - `QrModal` eliminado.
+  - `CorteCaja` y `SalesHistoryModal` sin referencias a mixto/QR.
+  - `tsc` OK + `next build` OK + lint OK.
 
 ## 5. Validación y Riesgos
 - `npm run test` (backend) y `tsc` + `next build` (frontend) ya verificados.

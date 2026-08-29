@@ -30,7 +30,7 @@ export const posClasses = {
     'px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-black hover:bg-slate-100 active:bg-slate-200 transition-colors',
   billGroupLabel: 'text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5',
 
-  // Terminal / QR placeholder
+  // Transferencia / tarjeta placeholder
   terminalBox: 'bg-slate-50 border border-slate-200 rounded-xl p-4 text-center',
   terminalTitle: 'font-bold text-slate-800 text-sm mt-2',
   terminalText: 'text-xs text-slate-500 mt-1 leading-relaxed',

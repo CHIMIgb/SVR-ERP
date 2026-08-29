@@ -43,6 +43,27 @@ describe('CreateVentaDto', () => {
     expect(errors.map((e) => e.property)).toContain('metodo');
   });
 
+  it('should reject materialId that is not a UUID', async () => {
+    const dto = plainToInstance(CreateVentaDto, {
+      cajero: 'Carlos',
+      items: [{ materialId: 'p1', medida: 'm³', cantidad: 1, precioUnitario: 350 }],
+      pagos: [{ metodo: 'efectivo', monto: 350 }],
+      metodo: 'efectivo',
+    });
+    const errors = await validate(dto);
+    const hasMaterialIdError = errors.some((e) =>
+      e.property === 'items' &&
+      e.children?.some((c) =>
+        c.children?.some(
+          (cc) =>
+            cc.property === 'materialId' &&
+            (cc.constraints?.['matches'] || cc.constraints?.['isUuid']),
+        ),
+      ),
+    );
+    expect(hasMaterialIdError).toBe(true);
+  });
+
   it('should reject when cantidad is zero', async () => {
     const dto = plainToInstance(CreateVentaDto, {
       cajero: 'Carlos',

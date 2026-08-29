@@ -1,12 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard, QrCode, Banknote, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Banknote, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { applyDiscount, CASH_BILLS, CASH_COINS, discountAmount, getChange, SPEI_ACCOUNT } from '@/lib/pos';
+import {
+  applyDiscount,
+  CASH_BILLS,
+  CASH_COINS,
+  discountAmount,
+  getChange,
+  SPEI_ACCOUNT,
+} from '@/lib/pos';
 import type { Payment, PaymentMethod } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -23,44 +30,21 @@ interface PaymentPanelProps {
     discountTotal: number,
     authorizedBy: string | undefined,
   ) => void;
-  /** Abre el modal QR con el monto a transferir. */
-  onRequestQr: (amount: number) => void;
   disabled: boolean;
 }
 
-type PanelMethod = PaymentMethod | 'mixto';
-
-const METHOD_OPTIONS: { label: string; value: PanelMethod }[] = [
+const METHOD_OPTIONS: { label: string; value: PaymentMethod }[] = [
   { label: 'Efectivo', value: 'efectivo' },
-  { label: 'Tarjeta (terminal)', value: 'tarjeta' },
-  { label: 'Transferencia / QR', value: 'transferencia' },
-  { label: 'Mixto', value: 'mixto' },
-];
-
-const MIXED_SECONDARY_OPTIONS: { label: string; value: PaymentMethod }[] = [
-  { label: 'Tarjeta (terminal)', value: 'tarjeta' },
-  { label: 'Transferencia / QR', value: 'transferencia' },
+  { label: 'Tarjeta', value: 'tarjeta' },
+  { label: 'Transferencia', value: 'transferencia' },
 ];
 
 /** Descuento máximo que el cajero puede aplicar sin autorización del Administrador. */
 const DISCOUNT_APPROVAL_THRESHOLD = 10;
 
-function methodLabel(method: PaymentMethod): string {
-  switch (method) {
-    case 'efectivo':
-      return 'Efectivo';
-    case 'tarjeta':
-      return 'Tarjeta';
-    case 'transferencia':
-      return 'Transferencia';
-  }
-}
-
-export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: PaymentPanelProps) {
-  const [method, setMethod] = useState<PanelMethod>('efectivo');
+export function PaymentPanel({ total, isAdmin, onPay, disabled }: PaymentPanelProps) {
+  const [method, setMethod] = useState<PaymentMethod>('efectivo');
   const [cashReceived, setCashReceived] = useState('');
-  const [cashPart, setCashPart] = useState('');
-  const [secondaryMethod, setSecondaryMethod] = useState<PaymentMethod>('tarjeta');
   const [discountPct, setDiscountPct] = useState('');
   const [discountAuthorized, setDiscountAuthorized] = useState(false);
 
@@ -69,19 +53,13 @@ export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: P
   const totalFinal = applyDiscount(total, discount);
 
   const received = Number(cashReceived) || 0;
-  const cashPartValue = Number(cashPart) || 0;
   const change = getChange(received, totalFinal);
 
   const needsApproval = discount > DISCOUNT_APPROVAL_THRESHOLD;
   const approved = needsApproval ? discountAuthorized || isAdmin : true;
 
-  const mixedValid = cashPartValue > 0 && cashPartValue < totalFinal;
-  const secondaryAmount = mixedValid ? totalFinal - cashPartValue : 0;
-
   const canPay =
-    !disabled &&
-    approved &&
-    (method === 'efectivo' ? received >= totalFinal : method === 'mixto' ? mixedValid : true);
+    !disabled && approved && (method === 'efectivo' ? received >= totalFinal : true);
 
   const addCash = (amount: number) => {
     setCashReceived((prev) => ((Number(prev) || 0) + amount).toFixed(2));
@@ -94,14 +72,7 @@ export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: P
     let cashReceivedValue: number | undefined;
     let changeValue: number | undefined;
 
-    if (method === 'mixto') {
-      payments = [
-        { method: 'efectivo', amount: cashPartValue },
-        { method: secondaryMethod, amount: secondaryAmount },
-      ];
-      cashReceivedValue = cashPartValue;
-      changeValue = 0;
-    } else if (method === 'efectivo') {
+    if (method === 'efectivo') {
       payments = [{ method: 'efectivo', amount: totalFinal }];
       cashReceivedValue = received;
       changeValue = change;
@@ -109,12 +80,9 @@ export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: P
       payments = [{ method, amount: totalFinal }];
     }
 
-    const finalMethod: PaymentMethod =
-      method === 'mixto' ? (cashPartValue >= secondaryAmount ? 'efectivo' : secondaryMethod) : method;
-
     onPay(
       payments,
-      finalMethod,
+      method,
       cashReceivedValue,
       changeValue,
       discount,
@@ -124,13 +92,9 @@ export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: P
 
     setMethod('efectivo');
     setCashReceived('');
-    setCashPart('');
-    setSecondaryMethod('tarjeta');
     setDiscountPct('');
     setDiscountAuthorized(false);
   };
-
-  const qrAmount = method === 'mixto' ? secondaryAmount : totalFinal;
 
   return (
     <div className={cn(posClasses.card, 'flex flex-col')}>
@@ -144,7 +108,10 @@ export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: P
             <button
               key={opt.value}
               onClick={() => setMethod(opt.value)}
-              className={cn(posClasses.chipBase, method === opt.value ? posClasses.chipActive : posClasses.chipInactive)}
+              className={cn(
+                posClasses.chipBase,
+                method === opt.value ? posClasses.chipActive : posClasses.chipInactive,
+              )}
             >
               {opt.label}
             </button>
@@ -205,75 +172,17 @@ export function PaymentPanel({ total, isAdmin, onPay, onRequestQr, disabled }: P
         </div>
       )}
 
-      {/* Transferencia / QR */}
+      {/* Transferencia */}
       {method === 'transferencia' && (
         <div className={posClasses.terminalBox}>
-          <QrCode className="w-10 h-10 text-primary mx-auto" />
-          <p className={posClasses.terminalTitle}>Transferencia / QR</p>
+          <Banknote className="w-6 h-6 text-primary mx-auto" />
+          <p className={posClasses.terminalTitle}>Transferencia</p>
           <p className={posClasses.terminalText}>
             El cliente transfiere{' '}
             <span className={posClasses.terminalAmount}>{formatCurrency(totalFinal)}</span> a la
-            cuenta (simulada) y confirma.
+            cuenta indicada y confirma.
           </p>
           <p className="font-mono text-xs font-black text-slate-700 mt-2">{SPEI_ACCOUNT}</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-2"
-            icon={<QrCode className="w-4 h-4" />}
-            onClick={() => onRequestQr(qrAmount)}
-          >
-            Ver código QR
-          </Button>
-        </div>
-      )}
-
-      {/* Mixto */}
-      {method === 'mixto' && (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-600">
-            Total: {formatCurrency(totalFinal)} — ingresa la parte en efectivo; el resto se cobra
-            con el segundo método.
-          </p>
-          <Input
-            value={cashPart}
-            onChange={(e) => setCashPart(e.target.value)}
-            placeholder="Efectivo a recibir (MXN)"
-            inputMode="decimal"
-            type="number"
-          />
-          <div>
-            <label className={posClasses.fieldLabel}>Método para el resto</label>
-            <div className="flex flex-wrap gap-2">
-              {MIXED_SECONDARY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setSecondaryMethod(opt.value)}
-                  className={cn(
-                    posClasses.chipBase,
-                    secondaryMethod === opt.value ? posClasses.chipActive : posClasses.chipInactive,
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {mixedValid && (
-            <p className="text-xs font-bold text-slate-700">
-              Resto con {methodLabel(secondaryMethod)}: {formatCurrency(secondaryAmount)}
-            </p>
-          )}
-          {mixedValid && secondaryMethod === 'transferencia' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<QrCode className="w-4 h-4" />}
-              onClick={() => onRequestQr(qrAmount)}
-            >
-              Ver código QR del resto
-            </Button>
-          )}
         </div>
       )}
 

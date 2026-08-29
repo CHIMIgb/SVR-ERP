@@ -6,6 +6,8 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -20,9 +22,9 @@ export type MetodoPagoInput = 'efectivo' | 'tarjeta' | 'transferencia';
 
 /** Línea del carrito que se va a cobrar. */
 export class VentaItemDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(40)
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'materialId debe ser un UUID válido',
+  })
   materialId!: string;
 
   @IsString()

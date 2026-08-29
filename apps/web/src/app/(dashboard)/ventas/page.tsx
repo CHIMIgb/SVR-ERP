@@ -25,7 +25,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
 import { PaymentPanel } from '@/components/pos/PaymentPanel';
-import { QrModal } from '@/components/pos/QrModal';
 import { TicketPreview } from '@/components/pos/TicketPreview';
 import { SalesHistoryModal } from '@/components/pos/SalesHistoryModal';
 import { posClasses } from '@/components/pos/pos.styles';
@@ -35,7 +34,6 @@ import {
   BUSINESS_INFO,
   POS_REGISTER,
   POS_TERMINAL,
-  PRODUCTS,
   calculateTotal,
   cartLineKey,
   isToday,
@@ -65,10 +63,9 @@ export default function VentasPage() {
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
     : 'Cajero';
 
-  // Catálogo de materiales desde el backend (fallback al mock solo para previsualizar)
-  const [products, setProducts] = useState<Product[]>(PRODUCTS);
-  // El POS solo puede cobrar cuando el catálogo real de BD está disponible;
-  // el mock `PRODUCTS` tiene IDs no-UUID (`p1`) que el backend rechazaría.
+  // Catálogo de materiales desde el backend. No hay fallback a mock:
+  // el POS queda bloqueado hasta que cargue el catálogo real.
+  const [products, setProducts] = useState<Product[]>([]);
   const [catalogoCargado, setCatalogoCargado] = useState(false);
 
   // Carrito (local) + ventas/retiros/turno (compartidos con /ventas/corte)
@@ -134,7 +131,6 @@ export default function VentasPage() {
   }, [cargarDatos]);
 
   // Modales del POS
-  const [qrAmount, setQrAmount] = useState<number | null>(null);
   const [lastSale, setLastSale] = useState<POSSale | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -199,14 +195,6 @@ export default function VentasPage() {
     if (cart.length === 0 || cobrando.current) return;
     if (!catalogoCargado) {
       showToast('Espera a que cargue el catálogo para poder cobrar.', 'error');
-      return;
-    }
-    // Defensa: nunca enviar IDs no-UUID del mock al backend
-    const hayIdInvalido = cart.some(
-      (i) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.product.id),
-    );
-    if (hayIdInvalido) {
-      showToast('El catálogo de materiales no está listo para cobrar todavía.', 'error');
       return;
     }
     cobrando.current = true;
@@ -443,7 +431,6 @@ export default function VentasPage() {
                     isAdmin={isAdmin}
                     disabled={cart.length === 0 || !catalogoCargado}
                     onPay={handlePay}
-                    onRequestQr={setQrAmount}
                   />
                 </div>
               </div>
@@ -500,8 +487,6 @@ export default function VentasPage() {
       )}
 
       {/* ─── Modales ─────────────────────────────────────────────────────── */}
-
-      <QrModal amount={qrAmount ?? 0} onClose={() => setQrAmount(null)} open={qrAmount !== null} />
 
       {lastSale && (
         <TicketPreview sale={lastSale} businessInfo={BUSINESS_INFO} onClose={() => setLastSale(null)} />

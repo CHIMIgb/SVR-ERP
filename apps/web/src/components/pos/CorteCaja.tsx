@@ -8,7 +8,6 @@ import {
   CreditCard,
   Lock,
   Printer,
-  QrCode,
   RefreshCw,
   ShieldCheck,
   Wallet,
@@ -50,7 +49,7 @@ const CLOSING_HOUR = 20;
 const CLOSING_MINUTE = 0;
 const TOLERANCE_MINUTES = 30;
 
-const GROUP_ORDER = ['efectivo', 'tarjeta', 'transferencia', 'mixto'] as const;
+const GROUP_ORDER = ['efectivo', 'tarjeta', 'transferencia'] as const;
 type SaleGroup = (typeof GROUP_ORDER)[number];
 
 function pad(n: number): string {
@@ -62,13 +61,10 @@ function groupName(group: SaleGroup): string {
     ? 'Efectivo'
     : group === 'tarjeta'
       ? 'Tarjeta'
-      : group === 'transferencia'
-        ? 'Transferencia'
-        : 'Mixto';
+      : 'Transferencia';
 }
 
 function paymentLabel(sale: POSSale): string {
-  if (sale.payments && sale.payments.length > 1) return 'Mixto';
   switch (sale.method) {
     case 'efectivo':
       return 'Efectivo';
@@ -140,12 +136,9 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
       efectivo: [],
       tarjeta: [],
       transferencia: [],
-      mixto: [],
     };
     for (const sale of todaySales) {
-      const isMixto = !!sale.payments && sale.payments.length > 1;
-      if (isMixto) groups.mixto.push(sale);
-      else groups[sale.method].push(sale);
+      groups[sale.method].push(sale);
     }
     return groups;
   }, [todaySales]);
@@ -299,7 +292,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
           <span className={posClasses.summaryLabel}>Tarjeta</span>
         </div>
         <div className={posClasses.summaryCard}>
-          <QrCode className="w-5 h-5 text-indigo-600" />
+          <Banknote className="w-5 h-5 text-indigo-600" />
           <span className={posClasses.summaryValue}>{formatCurrency(metodos.transferencia)}</span>
           <span className={posClasses.summaryLabel}>Transferencia</span>
         </div>

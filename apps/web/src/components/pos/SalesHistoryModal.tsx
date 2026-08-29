@@ -60,7 +60,7 @@ export function SalesHistoryModal({ sales, onClose, onReprint, open = true }: Sa
                       {time} · {sale.customer || 'Público en general'}
                     </p>
                     <p className={posClasses.historyMeta}>
-                      {sale.payments?.length ? 'Pago mixto' : methodLabel(sale.method)}
+                      {methodLabel(sale.method)}
                       {sale.discountPct ? ` · −${sale.discountPct}%` : ''}
                     </p>
                   </div>

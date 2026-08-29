@@ -148,7 +148,7 @@ export class VentasService {
 
     const byId = new Map(materiales.map((m) => [m.id, m]));
 
-    // 2. Validar medidas/stock de las líneas
+    // 2. Validar medidas/stock de las líneas y precio unitario
     for (const item of dto.items) {
       const mat = byId.get(item.materialId);
       if (!mat || mat.eliminado_en || !mat.activo) {
@@ -157,7 +157,7 @@ export class VentasService {
           null,
           'MATERIAL_NO_ENCONTRADO',
           BadRequestException,
-          `Material "${item.materialId}" no disponible`,
+          `Material no disponible`,
         );
       }
       const precio = mat.precios.find((p) => p.medida === item.medida);
@@ -181,20 +181,45 @@ export class VentasService {
       }
     }
 
-    // Método principal de la venta
-    const metodo = toMetodoPago(dto.metodo);
+    // 3. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
+    const metodosSoportados: string[] = ['efectivo', 'tarjeta', 'transferencia'];
+    for (const pago of dto.pagos) {
+      if (!metodosSoportados.includes(pago.metodo)) {
+        return this.fallir(
+          AuditAction.VENTA_CREADA,
+          null,
+          'METODO_PAGO_NO_SOPORTADO',
+          BadRequestException,
+          `El método de pago "${pago.metodo}" no está soportado`,
+        );
+      }
+    }
 
-    // Subtotal/descuento desde el frontend (ya calculado) o recalcular server-side.
-    // Server-side: el total = suma de líneas (precio_catálogo * cant), honesto.
-    const subtotal = dto.items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0);
+    const totalLineas = dto.items.reduce(
+      (s, i) => s + i.precioUnitario * i.cantidad,
+      0,
+    );
     const descuentoTotal = dto.descuentoTotal ?? 0;
+    const totalEsperado = Math.round((totalLineas - descuentoTotal) * 100) / 100;
     const totalCobrado = dto.pagos.reduce((s, p) => s + p.monto, 0);
+
+    if (Math.abs(totalCobrado - totalEsperado) > 0.01) {
+      return this.fallir(
+        AuditAction.VENTA_CREADA,
+        null,
+        'TOTAL_PAGOS_NO_CUADRA',
+        BadRequestException,
+        `El total cobrado (${totalCobrado}) no coincide con el total de la venta (${totalEsperado})`,
+      );
+    }
+
+    const metodo = toMetodoPago(dto.metodo);
 
     // IVA 16% sobre el total cobrado (consistente con calculateTaxBreakdown del front)
     const iva = Math.round(totalCobrado * 0.16 * 100) / 100;
     const base = Math.round((totalCobrado - iva) * 100) / 100;
 
-    // 3. Ticket secuencial del día + guardar (transacción)
+    // 4. Ticket secuencial del día + guardar (transacción)
     const venta = await this.prisma.$transaction(async (tx) => {
       const hoy = hoyIso();
       const maxTicket = await tx.ventas.aggregate({
@@ -234,9 +259,8 @@ export class VentasService {
             create: dto.items.map((i) => {
               const mat = byId.get(i.materialId)!;
               const desc = (i.descuentoPct ?? 0) / 100;
-              const subtotalLinea = Math.round(
-                i.precioUnitario * i.cantidad * (1 - desc) * 100,
-              ) / 100;
+              const subtotalLinea =
+                Math.round(i.precioUnitario * i.cantidad * (1 - desc) * 100) / 100;
               return {
                 id: randomUUID(),
                 material_id: mat.id,
@@ -260,7 +284,7 @@ export class VentasService {
         include: { items: true, pagos: true },
       });
 
-      // 4. Descontar stock (atómico)
+      // 5. Descontar stock (atómico)
       for (const item of dto.items) {
         await tx.materiales_venta.update({
           where: { id: item.materialId },
@@ -281,7 +305,7 @@ export class VentasService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: { folio: serialized.folio, ticket: serialized.ticket, total: serialized.total },
+      newValue: serialized,
     });
 
     return serialized;
@@ -309,6 +333,25 @@ export class VentasService {
   }
 
   async createRetiro(dto: CreateRetiroDto, userId: string, cajero: string) {
+    if (dto.monto <= 0) {
+      return this.fallir(
+        AuditAction.RETIRO_REGISTRADO,
+        null,
+        'RETIRO_MONTO_INVALIDO',
+        BadRequestException,
+        'El monto del retiro debe ser mayor a 0',
+      );
+    }
+    if (!dto.concepto.trim()) {
+      return this.fallir(
+        AuditAction.RETIRO_REGISTRADO,
+        null,
+        'RETIRO_CONCEPTO_VACIO',
+        BadRequestException,
+        'El concepto del retiro es obligatorio',
+      );
+    }
+
     const ahora = new Date();
     const retiro = await this.prisma.retiros_caja.create({
       data: {
