@@ -1167,6 +1167,14 @@ export const ventasApi = {
   crearCierre: (data: CrearCierreInput) =>
     apiClient.post<CierreVentaDTO>('/ventas/cierres', data),
 
+  /** Aprobar un cierre de caja (solo Administrador). */
+  aprobarCierre: (id: string) =>
+    apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/aprobar`, {}),
+
+  /** Rechazar un cierre de caja con motivo (solo Administrador). */
+  rechazarCierre: (id: string, motivo: string) =>
+    apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/rechazar`, { motivo }),
+
   /** Configuración del turno (apertura/cierre 24h + tolerancia). */
   config: () => apiClient.get<TurnoConfig>('/ventas/config'),
 

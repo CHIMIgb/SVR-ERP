@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Banknote,
+  CheckCircle2,
   Clock,
   CreditCard,
   Lock,
   Printer,
   ShieldCheck,
   Wallet,
+  XCircle,
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -17,7 +19,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { ventasApi, TurnoConfig } from '@/lib/api';
+import { ventasApi, TurnoConfig, CierreVentaDTO } from '@/lib/api';
 import {
   BUSINESS_INFO,
   CASH_BILLS,
@@ -39,6 +41,8 @@ interface CorteCajaProps {
   cashierName: string;
   /** Retiros registrados en la sección "Retiros / Gastos" (se descuentan del arqueo). */
   retiros: Array<{ id: string; concepto: string; monto: number; fecha: string; autorizadoPor: string }>;
+  /** true si el usuario tiene el rol Administrador (puede aprobar/rechazar cierres). */
+  isAdmin: boolean;
 }
 
 /** Configuración del turno (fallback si el backend no responde). */
@@ -85,7 +89,7 @@ function paymentLabel(sale: POSSale): string {
  * Cierre de caja (replica del prototipo mobile): apertura del turno,
  * arqueo por denominaciones, cierre y ticket imprimible.
  */
-export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
+export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaProps) {
   // Turno de caja compartido (sobrevive al navegar entre Pos y Corte)
   const { register, setRegister } = usePOS();
   const { showToast } = useToast();
@@ -109,6 +113,7 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
         if (!activo) return;
         if (cierre.success && cierre.data.existe) {
           setRegister((prev) => ({ ...prev, closed: true }));
+          if (cierre.data.registro) setCierreHoyData(cierre.data.registro);
         }
         if (config.success) setTurnoConfig(config.data);
 
@@ -147,6 +152,11 @@ export function CorteCaja({ sales, cashierName, retiros }: CorteCajaProps) {
   // Modal de resumen + confirmación de diferencia
   const [showSummary, setShowSummary] = useState(false);
   const [confirmDifference, setConfirmDifference] = useState(false);
+
+  // Cierre del día persistido (estado de aprobación) + modal de rechazo
+  const [cierreHoyData, setCierreHoyData] = useState<CierreVentaDTO | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectMotivo, setRejectMotivo] = useState('');
 
   // ── Métricas del día ────────────────────────────────────────────────────
   const todaySales = useMemo(() => sales.filter((s) => isToday(s.createdAt)), [sales]);

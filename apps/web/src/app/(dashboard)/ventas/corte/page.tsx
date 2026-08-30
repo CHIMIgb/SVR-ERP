@@ -15,6 +15,8 @@ export default function CorteDelDiaPage() {
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
     : 'Cajero';
 
+  const isAdmin = user?.roles.some((r) => r.nombre.toLowerCase().includes('admin')) ?? false;
+
   const puedeVer = user?.vistas.find((v) => v.ruta === '/ventas/corte')?.puedeVer ?? false;
 
   return (
@@ -31,7 +33,7 @@ export default function CorteDelDiaPage() {
           subtitle="Tu rol no tiene acceso a /ventas/corte. Contacta a un administrador."
         />
       ) : (
-        <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} />
+        <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} />
       )}
     </div>
   );
