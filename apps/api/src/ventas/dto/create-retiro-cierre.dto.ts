@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, MaxLength, Min, MinLength, IsDateString, IsIn, IsEnum, Max } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength, Min, MinLength, IsDateString, IsIn, IsEnum, Max, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateRetiroDto {
@@ -83,12 +83,12 @@ export class QueryCierresDto {
 export class UpdateConfigDto {
   @IsOptional()
   @IsString()
-  @IsIn(['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'])
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'apertura debe tener formato HH:mm (24h)' })
   apertura?: string;
 
   @IsOptional()
   @IsString()
-  @IsIn(['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'])
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'cierre debe tener formato HH:mm (24h)' })
   cierre?: string;
 
   @IsOptional()
