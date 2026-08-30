@@ -877,3 +877,448 @@ export const reportesCampoApi = {
   stats: () =>
     apiClient.get<ReportesCampoStats>('/reportes-campo/stats'),
 };
+
+export interface LicenciaDTO {
+  tipo: string;
+  categoria: string;
+  folio: string;
+  vigencia?: string;
+  vigenciaIndefinida?: boolean;
+}
+
+export interface ContactoEmergenciaDTO {
+  nombre: string;
+  telefono: string;
+  parentesco: string;
+}
+
+export interface TrabajadorDTO {
+  id: string;
+  nombre: string;
+  puesto: string;
+  categoriaPuesto: string;
+  estado: 'Activo' | 'Inactivo' | 'Vacaciones';
+  entrada: string;
+  telefono: string;
+  proyectos: string[];
+  avatar: string;
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  metodoPago: 'Tarjeta' | 'Efectivo' | 'Mixto';
+  maquinaAsignadaId?: string;
+  maquinaAsignadaNombre?: string;
+  estadoRenta?: string;
+  clienteRentaActual?: string;
+  licenciaODC3?: { tipo: string; vigencia: string; folio: string };
+  fechaContratacion?: string;
+  contactoEmergencia?: ContactoEmergenciaDTO;
+  vacacionesDias?: number;
+  horasExtraSemana?: number;
+  tarifaHoraExtra?: number;
+  descuentosSemana?: number;
+  conceptoDescuento?: string;
+}
+
+export interface TrabajadorCreateInput {
+  nombre: string;
+  puesto: string;
+  categoriaPuesto: string;
+  telefono: string;
+  entrada: string;
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  metodoPago: 'Tarjeta' | 'Efectivo' | 'Mixto';
+  proyecto?: string;
+  maquinaId?: string;
+  fechaContratacion?: string;
+  vacacionesDias?: number;
+  licencia?: LicenciaDTO;
+  contactoEmergencia?: ContactoEmergenciaDTO;
+}
+
+export interface LiquidarInput {
+  tipoTerminacion: 'Despido' | 'Renuncia' | 'Convenio';
+  diasTrabajadosPeriodo: number;
+  diasVacacionesPendientes: number;
+  deduccionesPrestamos?: number;
+}
+
+export interface LiquidacionDesglose {
+  tipoTerminacion: string;
+  aniosAntiguedad: number;
+  sueldoDiario: number;
+  montoDiasTrabajados: number;
+  montoAguinaldo: number;
+  montoVacaciones: number;
+  montoPrimaVacacional: number;
+  subtotalFiniquito: number;
+  montoIndemnizacion90Dias: number;
+  montoIndemnizacion20DiasPorAno: number;
+  montoPrimaAntiguedad: number;
+  subtotalIndemnizaciones: number;
+  deduccionesPrestamos: number;
+  granTotalNeto: number;
+}
+
+export interface ProyectoCatalogoDTO {
+  id: string;
+  nombre: string;
+}
+
+export interface MaquinaCatalogoDTO {
+  id: string;
+  nombre: string;
+}
+
+export const catalogosApi = {
+  proyectos: () => apiClient.get<ProyectoCatalogoDTO[]>('/catalogos/proyectos'),
+  maquinas: () => apiClient.get<MaquinaCatalogoDTO[]>('/maquinas'),
+};
+
+export const trabajadoresApi = {
+  /** Listar trabajadores con búsqueda, filtros y paginación */
+  listar: (params?: { search?: string; categoriaPuesto?: string; estado?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.categoriaPuesto) searchParams.set('categoriaPuesto', params.categoriaPuesto);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<TrabajadorDTO>>(`/trabajadores${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<TrabajadorDTO>(`/trabajadores/${id}`),
+
+  crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorDTO>('/trabajadores', data),
+
+  actualizar: (id: string, data: Partial<TrabajadorCreateInput> & { estado?: string }) =>
+    apiClient.patch<TrabajadorDTO>(`/trabajadores/${id}`, data),
+
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/trabajadores/${id}`),
+
+  liquidar: (id: string, data: LiquidarInput) => apiClient.post<LiquidacionDesglose>(`/trabajadores/${id}/liquidar`, data),
+};
+
+export interface BitacoraRentaDTO {
+  id: string;
+  folio: string;
+  trabajadorId: string;
+  trabajadorNombre: string;
+  maquinaId: string;
+  maquinaNombre: string;
+  fecha: string;
+  cliente: string;
+  obraUbicacion: string;
+  horaInicio: string;
+  horaFin: string;
+  horasEfectivas: number;
+  horasExtras: number;
+  horometroInicial: number;
+  horometroFinal: number;
+  actividadRealizada: string;
+  firmaCliente: { firmado: boolean; nombreResidente?: string; cargoResidente?: string; fechaFirma?: string };
+  estadoCobro: 'Listo para Facturar' | 'Facturado' | 'Pendiente Firma';
+  tarifaHoraRenta: number;
+  importeTotalRenta: number;
+}
+
+export interface BitacoraRentaCreateInput {
+  trabajadorId: string;
+  maquinaId: string;
+  fecha: string;
+  cliente: string;
+  obraUbicacion: string;
+  horaInicio: string;
+  horaFin: string;
+  horasEfectivas: number;
+  horasExtras?: number;
+  horometroInicial: number;
+  horometroFinal: number;
+  actividadRealizada: string;
+  tarifaHoraRenta: number;
+  firmado?: boolean;
+  nombreResidente?: string;
+  cargoResidente?: string;
+}
+
+export const bitacorasRentaApi = {
+  listar: (params?: { search?: string; trabajadorId?: string; maquinaId?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.trabajadorId) searchParams.set('trabajadorId', params.trabajadorId);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<BitacoraRentaDTO>>(`/bitacoras-renta${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<BitacoraRentaDTO>(`/bitacoras-renta/${id}`),
+
+  crear: (data: BitacoraRentaCreateInput) => apiClient.post<BitacoraRentaDTO>('/bitacoras-renta', data),
+
+  actualizar: (id: string, data: Partial<BitacoraRentaCreateInput> & { estadoCobro?: string }) =>
+    apiClient.patch<BitacoraRentaDTO>(`/bitacoras-renta/${id}`, data),
+
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/bitacoras-renta/${id}`),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Asistencia API
+// ────────────────────────────────────────────────────────────
+
+export interface HorasExtraAsistenciaDTO {
+  id: string;
+  inicio: string;
+  fin?: string;
+  horasCalculadas: number;
+  tarifaPorHora: number;
+  montoTotal: number;
+  estado: 'En Curso' | 'Aprobado' | 'Pendiente' | 'Rechazado';
+  motivo?: string;
+  coordenadasInicio?: { lat: number; lng: number };
+  coordenadasFin?: { lat: number; lng: number };
+}
+
+export interface RegistroAsistenciaDTO {
+  id: string;
+  trabajadorId: string;
+  fecha: string;
+  horaEntrada?: string;
+  horaSalida?: string;
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada';
+  ubicacion: string;
+  coordenadas: { lat: number; lng: number };
+  salidaCoordenadas?: { lat: number; lng: number };
+  salidaUbicacion?: string;
+  obraAsignada: string;
+  obraCoordenadas: { lat: number; lng: number };
+  distanciaMetros: number;
+  radioPermitidoMetros: number;
+  enSitio: boolean;
+  precisionGpsMetros: number;
+  dispositivo: string;
+  horaMarcajeExacta?: string;
+  horaSalidaExacta?: string;
+  horasTrabajadasOrdinarias?: number;
+  salidaAnticipada?: boolean;
+  motivoSalidaAnticipada?: string;
+  horasExtra?: HorasExtraAsistenciaDTO;
+  bateria?: number;
+  notas?: string;
+}
+
+export interface DiaAsistenciaSemanaDTO {
+  dia: 'Lun' | 'Mar' | 'Mie' | 'Jue' | 'Vie' | 'Sab';
+  fecha: string;
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso';
+  horaEntrada?: string;
+  horaSalida?: string;
+  horasTrabajadas: number;
+  horasExtra?: number;
+  enSitioGps: boolean;
+  motivo?: string;
+}
+
+export interface AsistenciaSemanalDTO {
+  trabajadorId: string;
+  semana: string;
+  dias: DiaAsistenciaSemanaDTO[];
+  totalDiasAsistidos: number;
+  totalFaltas: number;
+  totalRetardos: number;
+  totalHorasOrdinarias: number;
+  totalHorasExtra: number;
+}
+
+export interface MarcarEntradaInput {
+  trabajadorId: string;
+  obraId: string;
+  obraLat: number;
+  obraLng: number;
+  radioPermitidoMetros?: number;
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  bateria?: number;
+  ubicacion?: string;
+  notas?: string;
+}
+
+export interface MarcarSalidaInput {
+  trabajadorId: string;
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  ubicacion?: string;
+  salidaAnticipada?: boolean;
+  motivoSalidaAnticipada?: string;
+  horasTrabajadasOrdinarias?: number;
+}
+
+export interface MarcarCuadrillaInput {
+  obraId: string;
+  obraLat: number;
+  obraLng: number;
+  radioPermitidoMetros?: number;
+  trabajadorIds: string[];
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  ubicacion?: string;
+}
+
+export interface RegistrarHorasExtraInput {
+  inicio: string;
+  fin?: string;
+  horasCalculadas: number;
+  tarifaPorHora?: number;
+  motivo?: string;
+  latInicio?: number;
+  lngInicio?: number;
+  latFin?: number;
+  lngFin?: number;
+}
+
+export interface ObraLite {
+  id: string;
+  nombre: string;
+  lat?: number;
+  lng?: number;
+  radioPermitidoMetros?: number;
+}
+
+export const asistenciaApi = {
+  listar: (params?: {
+    fecha?: string;
+    trabajadorId?: string;
+    obraId?: string;
+    estado?: string;
+    enSitio?: boolean;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    if (params?.trabajadorId) searchParams.set('trabajadorId', params.trabajadorId);
+    if (params?.obraId) searchParams.set('obraId', params.obraId);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.enSitio !== undefined) searchParams.set('enSitio', String(params.enSitio));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<RegistroAsistenciaDTO>>(`/asistencia${qs ? `?${qs}` : ''}`);
+  },
+
+  semanal: (params?: { fecha?: string; trabajadorId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    if (params?.trabajadorId) searchParams.set('trabajadorId', params.trabajadorId);
+    const qs = searchParams.toString();
+    return apiClient.get<AsistenciaSemanalDTO[]>(`/asistencia/semanal${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<RegistroAsistenciaDTO>(`/asistencia/${id}`),
+
+  marcarEntrada: (data: MarcarEntradaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/entrada', data),
+
+  marcarSalida: (data: MarcarSalidaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/salida', data),
+
+  marcarCuadrilla: (data: MarcarCuadrillaInput) =>
+    apiClient.post<{ creados: RegistroAsistenciaDTO[]; omitidos: string[] }>('/asistencia/cuadrilla', data),
+
+  registrarFalta: (data: { trabajadorId: string; fecha?: string; notas?: string }) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/faltas', data),
+
+  actualizarEstado: (id: string, estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/${id}/estado`, { estado }),
+
+  registrarHorasExtra: (id: string, data: RegistrarHorasExtraInput) =>
+    apiClient.post<RegistroAsistenciaDTO>(`/asistencia/${id}/horas-extra`, data),
+
+  aprobarHorasExtra: (horasExtraId: string) =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/horas-extra/${horasExtraId}/aprobar`, {}),
+
+  rechazarHorasExtra: (horasExtraId: string) =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/horas-extra/${horasExtraId}/rechazar`, {}),
+
+  obras: () => apiClient.get<ObraLite[]>('/catalogos/obras'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Nómina API
+// ────────────────────────────────────────────────────────────
+
+export interface LineaNominaDTO {
+  id: string;
+  concepto: string;
+  tipo: string;
+  monto: number;
+}
+
+export interface NominaRowDTO {
+  id: string;
+  trabajadorId: string;
+  trabajadorNombre: string;
+  puesto: string;
+  categoriaPuesto: string;
+  avatar: string;
+  metodoPago: 'Tarjeta' | 'Efectivo' | 'Mixto';
+  sueldoFiscal: number;
+  sueldoEfectivo: number;
+  diasTrabajados: number;
+  diasFaltas: number;
+  horasOrdinarias: number;
+  horasExtra: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  totalNeto: number;
+  estado: 'Pendiente' | 'Pagado';
+  percepciones: LineaNominaDTO[];
+  deducciones: LineaNominaDTO[];
+}
+
+export interface PeriodoNominaDTO {
+  id: string;
+  codigo: string;
+  nombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+  estado: string;
+}
+
+export interface RegistrarAjusteInput {
+  tipo: 'Bono' | 'Descuento' | 'Prestamo';
+  monto: number;
+  concepto: string;
+}
+
+export const nominaApi = {
+  actual: (params?: { fecha?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    const qs = searchParams.toString();
+    return apiClient.get<{ periodo: PeriodoNominaDTO; items: NominaRowDTO[] }>(`/nomina/actual${qs ? `?${qs}` : ''}`);
+  },
+
+  sincronizarAsistencia: (periodoId: string) =>
+    apiClient.post<{ items: NominaRowDTO[]; totalHorasExtraSincronizadas: number; totalFaltasAplicadas: number }>(
+      `/nomina/${periodoId}/sincronizar`,
+      {},
+    ),
+
+  registrarAjuste: (nominaId: string, data: RegistrarAjusteInput) =>
+    apiClient.post<NominaRowDTO>(`/nomina/${nominaId}/ajuste`, data),
+
+  actualizarEstado: (nominaId: string, estado: 'Pendiente' | 'Pagado') =>
+    apiClient.patch<NominaRowDTO>(`/nomina/${nominaId}/estado`, { estado }),
+
+  pagarTodos: (periodoId: string) =>
+    apiClient.post<{ items: NominaRowDTO[]; actualizados: number }>(`/nomina/${periodoId}/pagar-todos`, {}),
+};

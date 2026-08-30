@@ -1,476 +1,484 @@
 "use client";
 
-import React, { useState } from 'react';
-import { 
-  Plus, Search, Filter, UserCheck, UserMinus, Clock, 
-  Truck, HardHat, Wrench, Compass, Building2, FileText,
-  ClipboardList, CheckCircle2, AlertCircle, DollarSign,
-  Calendar, Eye, ChevronRight
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Plus, UserCheck, UserMinus, Truck, Compass, Wrench, Building2, FileText,
+  ClipboardList, CheckCircle2, AlertCircle, Calendar,
 } from 'lucide-react';
-import { 
-  trabajadores as initialTrabajadores, 
-  bitacorasRentaData as initialBitacoras,
-  Trabajador, 
-  CategoriaPuesto,
-  BitacoraRentaDiaria,
-  maquinaria,
-  proyectos
-} from '@/lib/data';
+import type { Maquina } from '@svr-erp/shared';
+import {
+  trabajadoresApi, bitacorasRentaApi, catalogosApi,
+  type TrabajadorDTO, type TrabajadorCreateInput, type BitacoraRentaDTO, type ProyectoCatalogoDTO,
+} from '@/lib/api';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import WorkerCard from '@/components/workers/WorkerCard';
 import BitacorasRentaModal from '@/components/workers/BitacorasRentaModal';
 import LiquidacionModal from '@/components/workers/LiquidacionModal';
-import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { formatCurrency } from '@/lib/formatters';
+
+const PAGE_SIZE = 12;
+
+const CATEGORIAS = [
+  { id: 'Todos', label: 'Todos los Puestos', icon: UserCheck },
+  { id: 'Operador', label: 'Operadores de Maquinaria', icon: Truck },
+  { id: 'Chofer', label: 'Choferes de Transporte', icon: Compass },
+  { id: 'Mecanico', label: 'Mecánicos de Taller', icon: Wrench },
+  { id: 'Ingeniero', label: 'Ingenieros y Encargados', icon: Building2 },
+  { id: 'Administrativo', label: 'Administración', icon: FileText },
+] as const;
+
+const emptyForm = {
+  nombre: '',
+  puesto: '',
+  categoriaPuesto: 'Operador' as TrabajadorCreateInput['categoriaPuesto'],
+  telefono: '',
+  entrada: '07:00',
+  proyecto: '',
+  sueldoFiscal: '2500',
+  sueldoEfectivo: '3500',
+  metodoPago: 'Mixto' as TrabajadorCreateInput['metodoPago'],
+  maquinaId: '',
+};
 
 export default function TrabajadoresPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
-  const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
-  // State
-  const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialTrabajadores);
-  const [bitacoras, setBitacoras] = useState<BitacoraRentaDiaria[]>(initialBitacoras);
+  const vista = user?.vistas?.find((v) => v.ruta === '/trabajadores');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
+  const puedeEliminar = vista?.puedeEliminar ?? false;
+
+  const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
+  const [proyectos, setProyectos] = useState<ProyectoCatalogoDTO[]>([]);
+  const [bitacorasCountPorTrabajador, setBitacorasCountPorTrabajador] = useState<Record<string, number>>({});
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const hasLoaded = useRef(false);
+
   const [activeMainTab, setActiveMainTab] = useState<'plantilla' | 'bitacoras_renta'>('plantilla');
-  const [selectedRole, setSelectedRole] = useState<'Todos' | CategoriaPuesto>('Todos');
+  const [selectedRole, setSelectedRole] = useState<(typeof CATEGORIAS)[number]['id']>('Todos');
   const [search, setSearch] = useState('');
-  
-  // Modals state
+
+  const [bitacorasConcentrado, setBitacorasConcentrado] = useState<BitacoraRentaDTO[]>([]);
+  const [bitacorasLoading, setBitacorasLoading] = useState(false);
+
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [bitacorasModalOpen, setBitacorasModalOpen] = useState(false);
-  const [selectedWorkerForBitacora, setSelectedWorkerForBitacora] = useState<Trabajador | null>(null);
+  const [selectedWorkerForBitacora, setSelectedWorkerForBitacora] = useState<TrabajadorDTO | null>(null);
   const [liquidacionModalOpen, setLiquidacionModalOpen] = useState(false);
-  const [selectedWorkerForLiquidacion, setSelectedWorkerForLiquidacion] = useState<Trabajador | null>(null);
+  const [selectedWorkerForLiquidacion, setSelectedWorkerForLiquidacion] = useState<TrabajadorDTO | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // New Worker Form
-  const [form, setForm] = useState({ 
-    nombre: '', 
-    puesto: '', 
-    categoriaPuesto: 'Operador' as CategoriaPuesto,
-    telefono: '', 
-    proyecto: 'Fraccionamiento Valle Sur',
-    sueldoFiscal: '2500',
-    sueldoEfectivo: '3500',
-    metodoPago: 'Mixto' as const,
-    maquinaId: 'M001'
-  });
+  const [form, setForm] = useState(emptyForm);
 
-  // Filter Workers
-  const filteredTrabajadores = trabajadores.filter((t) => {
-    const matchSearch = 
-      t.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      t.puesto.toLowerCase().includes(search.toLowerCase()) ||
-      (t.clienteRentaActual && t.clienteRentaActual.toLowerCase().includes(search.toLowerCase()));
+  const fetchTrabajadores = useCallback(async (page = 1, searchVal = search, role = selectedRole) => {
+    const res = await trabajadoresApi.listar({
+      search: searchVal || undefined,
+      categoriaPuesto: role !== 'Todos' ? role : undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success) {
+      setTrabajadores(res.data.items);
+      setPagination(res.data.pagination);
+      setErrorCarga(null);
 
-    if (!matchSearch) return false;
-    if (selectedRole !== 'Todos' && t.categoriaPuesto !== selectedRole) return false;
-    return true;
-  });
+      // Conteo de bitácoras por operador — para el badge del botón en cada card.
+      const operadores = res.data.items.filter((t) => t.categoriaPuesto === 'Operador' || t.categoriaPuesto === 'Chofer');
+      const conteos = await Promise.all(
+        operadores.map((t) => bitacorasRentaApi.listar({ trabajadorId: t.id, limit: 1 })),
+      );
+      const mapa: Record<string, number> = {};
+      operadores.forEach((t, i) => {
+        const res2 = conteos[i];
+        mapa[t.id] = res2.success ? res2.data.pagination.total : 0;
+      });
+      setBitacorasCountPorTrabajador(mapa);
+    } else {
+      setErrorCarga(res.error.message);
+    }
+    hasLoaded.current = true;
+    setInitialLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Filter Bitácoras
-  const filteredBitacoras = bitacoras.filter((b) => {
-    return (
-      b.cliente.toLowerCase().includes(search.toLowerCase()) ||
-      b.trabajadorNombre.toLowerCase().includes(search.toLowerCase()) ||
-      b.maquinaNombre.toLowerCase().includes(search.toLowerCase()) ||
-      b.folio.toLowerCase().includes(search.toLowerCase())
-    );
-  });
+  const fetchBitacorasConcentrado = useCallback(async (searchVal = search) => {
+    setBitacorasLoading(true);
+    const res = await bitacorasRentaApi.listar({ search: searchVal || undefined, limit: 100 });
+    if (res.success) setBitacorasConcentrado(res.data.items);
+    setBitacorasLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Category counts
-  const countByRole = (role: CategoriaPuesto) => trabajadores.filter(t => t.categoriaPuesto === role).length;
+  useEffect(() => {
+    catalogosApi.maquinas().then((res) => {
+      if (res.success) setMaquinaria(res.data as unknown as Maquina[]);
+    });
+    catalogosApi.proyectos().then((res) => {
+      if (res.success) setProyectos(res.data);
+    });
+    fetchTrabajadores(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleCreateWorker = () => {
+  useEffect(() => {
+    if (activeMainTab === 'bitacoras_renta') fetchBitacorasConcentrado(search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMainTab]);
+
+  useEffect(() => {
+    if (maquinaria.length > 0 && !form.maquinaId) {
+      setForm((f) => ({ ...f, maquinaId: maquinaria[0].id }));
+    }
+  }, [maquinaria, form.maquinaId]);
+
+  const handleSearchChange = (value: string) => setSearch(value);
+
+  const handleSearch = () => {
+    if (activeMainTab === 'plantilla') fetchTrabajadores(1, search, selectedRole);
+    else fetchBitacorasConcentrado(search);
+  };
+
+  const handleRoleChange = (role: (typeof CATEGORIAS)[number]['id']) => {
+    setSelectedRole(role);
+    fetchTrabajadores(1, search, role);
+  };
+
+  const handlePageChange = (page: number) => fetchTrabajadores(page, search, selectedRole);
+
+  const openCreate = () => {
+    setEditingId(null);
+    setForm({ ...emptyForm, maquinaId: maquinaria[0]?.id ?? '' });
+    setModalOpen(true);
+  };
+
+  const openEdit = (t: TrabajadorDTO) => {
+    setEditingId(t.id);
+    setForm({
+      nombre: t.nombre,
+      puesto: t.puesto,
+      categoriaPuesto: t.categoriaPuesto as TrabajadorCreateInput['categoriaPuesto'],
+      telefono: t.telefono,
+      entrada: t.entrada,
+      proyecto: t.proyectos[0] ?? '',
+      sueldoFiscal: String(t.sueldoFiscal),
+      sueldoEfectivo: String(t.sueldoEfectivo),
+      metodoPago: t.metodoPago,
+      maquinaId: maquinaria.find((m) => m.id === t.maquinaAsignadaId)?.id ?? '',
+    });
+    setModalOpen(true);
+  };
+
+  const handleSubmit = async () => {
     if (!form.nombre.trim() || !form.puesto.trim()) {
       showToast('Por favor completa nombre y puesto.', 'error');
       return;
     }
-    const maq = maquinaria.find(m => m.id === form.maquinaId);
-    const nuevo: Trabajador = {
-      id: `T${Date.now()}`,
-      nombre: form.nombre,
-      puesto: form.puesto,
+
+    const payload: TrabajadorCreateInput = {
+      nombre: form.nombre.trim(),
+      puesto: form.puesto.trim(),
       categoriaPuesto: form.categoriaPuesto,
       telefono: form.telefono || '55 0000 0000',
-      entrada: '07:00 AM',
-      estado: 'Activo',
-      avatar: form.nombre.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
-      proyectos: form.proyecto ? [form.proyecto] : [],
+      entrada: form.entrada,
       sueldoFiscal: parseFloat(form.sueldoFiscal) || 2000,
       sueldoEfectivo: parseFloat(form.sueldoEfectivo) || 3000,
       metodoPago: form.metodoPago,
-      maquinaAsignadaId: form.categoriaPuesto === 'Operador' || form.categoriaPuesto === 'Chofer' ? form.maquinaId : undefined,
-      maquinaAsignadaNombre: form.categoriaPuesto === 'Operador' || form.categoriaPuesto === 'Chofer' ? maq?.nombre : undefined,
-      estadoRenta: 'En Obra Propia',
-      fechaContratacion: new Date().toISOString().split('T')[0],
-      vacacionesDias: 6,
-      horasExtraSemana: 0,
-      tarifaHoraExtra: 80,
-      descuentosSemana: 0
+      proyecto: form.proyecto || undefined,
+      maquinaId: form.categoriaPuesto === 'Operador' || form.categoriaPuesto === 'Chofer' ? form.maquinaId || undefined : undefined,
     };
 
-    setTrabajadores(prev => [nuevo, ...prev]);
-    setForm({ 
-      nombre: '', 
-      puesto: '', 
-      categoriaPuesto: 'Operador', 
-      telefono: '', 
-      proyecto: 'Fraccionamiento Valle Sur',
-      sueldoFiscal: '2500',
-      sueldoEfectivo: '3500',
-      metodoPago: 'Mixto',
-      maquinaId: 'M001'
-    });
-    setModalOpen(false);
-    showToast(`✅ ${nuevo.nombre} (${nuevo.categoriaPuesto}) dado de alta correctamente.`, 'success');
+    setSubmitting(true);
+    const res = editingId ? await trabajadoresApi.actualizar(editingId, payload) : await trabajadoresApi.crear(payload);
+    setSubmitting(false);
+
+    if (res.success) {
+      showToast(`${res.data.nombre} ${editingId ? 'actualizado' : 'dado de alta'} correctamente.`, 'success');
+      setModalOpen(false);
+      fetchTrabajadores(pagination.page, search, selectedRole);
+    } else {
+      showToast(res.error.message, 'error');
+    }
   };
 
-  const handleOpenBitacorasModal = (worker?: Trabajador) => {
-    setSelectedWorkerForBitacora(worker ?? null);
+  const handleOpenBitacorasModal = (worker: TrabajadorDTO) => {
+    setSelectedWorkerForBitacora(worker);
     setBitacorasModalOpen(true);
   };
 
-  const handleAgregarBitacora = (nueva: BitacoraRentaDiaria) => {
-    setBitacoras(prev => [nueva, ...prev]);
+  const handleOpenLiquidacion = (worker: TrabajadorDTO) => {
+    setSelectedWorkerForLiquidacion(worker);
+    setLiquidacionModalOpen(true);
   };
 
-  const handleConfirmarBaja = (trabajadorId: string, tipo: string, monto: number) => {
-    setTrabajadores(prev => prev.map(t => t.id === trabajadorId ? {
-      ...t,
-      estado: 'Inactivo',
-      maquinaAsignadaId: undefined,
-      maquinaAsignadaNombre: undefined,
-      estadoRenta: undefined,
-      clienteRentaActual: undefined
-    } : t));
-  };
+  const bitacorasColumns: Column<BitacoraRentaDTO>[] = [
+    {
+      key: 'folio',
+      header: 'Folio & Fecha',
+      render: (b) => (
+        <div>
+          <span className="font-black text-slate-900 text-xs bg-slate-100 px-2 py-0.5 rounded">{b.folio}</span>
+          <p className="text-[10px] text-slate-400 font-medium mt-1 flex items-center gap-1"><Calendar className="w-3 h-3" />{b.fecha}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'operador',
+      header: 'Operador & Máquina',
+      render: (b) => (
+        <div>
+          <div className="font-bold text-slate-900 text-sm">{b.trabajadorNombre}</div>
+          <p className="text-[10px] text-primary font-bold">{b.maquinaId} — {b.maquinaNombre}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'cliente',
+      header: 'Cliente & Frente de Obra',
+      render: (b) => (
+        <div>
+          <div className="font-black text-slate-800 text-xs">{b.cliente}</div>
+          <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{b.obraUbicacion}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'horas',
+      header: 'Horas & Horómetro',
+      align: 'center',
+      render: (b) => (
+        <div>
+          <div className="text-xs font-black text-slate-900">{b.horasEfectivas + b.horasExtras} hrs</div>
+          <p className="text-[9px] text-slate-400 font-mono">{b.horometroInicial} a {b.horometroFinal}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'firma',
+      header: 'Vo.Bo. Residente Cliente',
+      render: (b) => (
+        b.firmaCliente.firmado ? (
+          <div className="text-emerald-700 text-xs font-bold flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /><span>{b.firmaCliente.nombreResidente}</span>
+          </div>
+        ) : (
+          <div className="text-amber-700 text-xs font-bold flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /><span>Pendiente de Firma</span>
+          </div>
+        )
+      ),
+    },
+    {
+      key: 'importe',
+      header: 'Importe Cobro',
+      align: 'right',
+      render: (b) => <span className="font-black text-slate-900 text-sm">{formatCurrency(b.importeTotalRenta)}</span>,
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      align: 'center',
+      render: (b) => (
+        <Badge variant={b.estadoCobro === 'Facturado' ? 'info' : b.estadoCobro === 'Listo para Facturar' ? 'success' : 'warning'} size="sm">
+          {b.estadoCobro}
+        </Badge>
+      ),
+    },
+  ];
+
+  if (errorCarga && !hasLoaded.current) {
+    return (
+      <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
+        <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
+        <p className="text-sm font-bold text-red-700">{errorCarga}</p>
+        <Button onClick={() => fetchTrabajadores(1)}>Reintentar</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      
-      {/* ── HEADER ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Gestión de Personal &amp; Operadores</h1>
-          <p className="text-slate-500 font-medium">Control de plantilla por categorías, asignación de maquinaria y bitácoras de renta diaria.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button 
-            onClick={() => handleOpenBitacorasModal()}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md"
-          >
-            <ClipboardList className="w-4 h-4 text-orange-400" /> Hojas de Bitácora
-          </button>
-
-          <button 
-            onClick={() => {
-              setSelectedWorkerForLiquidacion(null);
-              setLiquidacionModalOpen(true);
-            }}
-            className="bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm"
-          >
-            <UserMinus className="w-4 h-4 text-red-600" /> ⚖️ Liquidar / Finiquito
-          </button>
-
-          <button 
-            onClick={() => setModalOpen(true)}
-            className="btn-primary flex items-center gap-2 text-xs font-black uppercase tracking-wider"
-          >
-            <Plus className="w-4 h-4" /> Alta de Empleado
-          </button>
-        </div>
-      </div>
-
-      {/* ── MAIN TABS (PLANTILLA vs BITÁCORAS DE RENTA) ── */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          onClick={() => setActiveMainTab('plantilla')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-            activeMainTab === 'plantilla'
-              ? 'bg-slate-900 text-white shadow-md'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <HardHat className="w-4 h-4" /> Plantilla de Personal ({trabajadores.length})
-        </button>
-
-        <button
-          onClick={() => setActiveMainTab('bitacoras_renta')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-            activeMainTab === 'bitacoras_renta'
-              ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <ClipboardList className="w-4 h-4 text-orange-500" /> Bitácoras de Renta Diaria ({bitacoras.length})
-        </button>
-      </div>
-
-      {/* ── VISTA 1: PLANTILLA DE PERSONAL POR CATEGORÍAS ── */}
-      {activeMainTab === 'plantilla' && (
-        <div className="space-y-6">
-          
-          {/* Role Category Selector Pills */}
-          <div className="flex flex-wrap items-center gap-2">
-            {[
-              { id: 'Todos', label: 'Todos los Puestos', count: trabajadores.length, icon: UserCheck },
-              { id: 'Operador', label: '🚜 Operadores de Maquinaria', count: countByRole('Operador'), icon: Truck },
-              { id: 'Chofer', label: '🚚 Choferes de Transporte', count: countByRole('Chofer'), icon: Compass },
-              { id: 'Mecanico', label: '🔧 Mecánicos de Taller', count: countByRole('Mecanico'), icon: Wrench },
-              { id: 'Ingeniero', label: '📐 Ingenieros y Encargados', count: countByRole('Ingeniero'), icon: Building2 },
-              { id: 'Administrativo', label: '💼 Administración', count: countByRole('Administrativo'), icon: FileText }
-            ].map(r => {
-              const Icon = r.icon;
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => setSelectedRole(r.id as any)}
-                  className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-                    selectedRole === r.id
-                      ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]'
-                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>{r.label}</span>
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
-                    selectedRole === r.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-                  }`}>
-                    {r.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Search Bar */}
-          <div className="flex gap-4 items-center">
-            <div className="relative flex-1 w-full">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nombre, puesto o cliente de renta..."
-                className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:border-primary/50 text-xs font-medium"
-              />
+      <PageHeader
+        title="Gestión de Personal & Operadores"
+        subtitle="Control de plantilla por categorías, asignación de maquinaria y bitácoras de renta diaria."
+        action={
+          puedeCrear ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="danger"
+                icon={<UserMinus size={16} />}
+                onClick={() => { setSelectedWorkerForLiquidacion(null); setLiquidacionModalOpen(true); }}
+              >
+                Liquidar / Finiquito
+              </Button>
+              <Button icon={<Plus size={16} />} onClick={openCreate}>Alta de Empleado</Button>
             </div>
-          </div>
+          ) : undefined
+        }
+      />
 
-          {/* Workers Grid */}
-          {filteredTrabajadores.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 text-slate-400 font-medium">
-              No se encontraron empleados en esta categoría.
-            </div>
+      <Tabs
+        tabs={[
+          { key: 'plantilla', label: 'Plantilla de Personal', icon: <UserCheck size={16} />, count: pagination.total },
+          { key: 'bitacoras_renta', label: 'Bitácoras de Renta Diaria', icon: <ClipboardList size={16} /> },
+        ]}
+        value={activeMainTab}
+        onChange={(key) => setActiveMainTab(key as 'plantilla' | 'bitacoras_renta')}
+      >
+        <TabPanel tabKey="plantilla">
+          {initialLoading ? (
+            <LoadingState text="Cargando trabajadores..." size="lg" />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredTrabajadores.map((t) => (
-                <WorkerCard 
-                  key={t.id} 
-                  trabajador={t} 
-                  onOpenBitacoras={handleOpenBitacorasModal}
-                />
-              ))}
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center gap-2">
+                {CATEGORIAS.map((r) => {
+                  const Icon = r.icon;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => handleRoleChange(r.id)}
+                      className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${selectedRole === r.id ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{r.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <SearchBar
+                value={search}
+                onChange={handleSearchChange}
+                onSearch={handleSearch}
+                placeholder="Buscar por nombre, puesto o cliente de renta..."
+              />
+
+              {trabajadores.length === 0 ? (
+                <EmptyState title="Sin resultados" subtitle="No se encontraron empleados para los filtros aplicados." />
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {trabajadores.map((t) => (
+                      <WorkerCard
+                        key={t.id}
+                        trabajador={t}
+                        bitacorasCount={bitacorasCountPorTrabajador[t.id] ?? 0}
+                        puedeEditar={puedeEditar}
+                        puedeEliminar={puedeEliminar}
+                        onOpenBitacoras={handleOpenBitacorasModal}
+                        onEdit={openEdit}
+                        onLiquidar={handleOpenLiquidacion}
+                      />
+                    ))}
+                  </div>
+                  <Pagination
+                    currentPage={pagination.page}
+                    totalPages={pagination.totalPages}
+                    totalRecords={pagination.total}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={handlePageChange}
+                  />
+                </>
+              )}
             </div>
           )}
-        </div>
-      )}
+        </TabPanel>
 
-      {/* ── VISTA 2: CONCENTRADO DE BITÁCORAS DE RENTA DIARIA ── */}
-      {activeMainTab === 'bitacoras_renta' && (
-        <div className="space-y-4">
-          
-          {/* Header Banner */}
-          <div className="card bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-800">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">
-                Soporte Diario de Cobro a Clientes
-              </span>
-              <h3 className="text-2xl font-black mt-2">
-                Hojas de Bitácora Diaria y Tareo de Maquinaria
-              </h3>
-              <p className="text-xs text-slate-400 mt-1 font-medium">
-                Partes de trabajo que entregan los operadores con horas efectivas, horómetros y firma del cliente para facturación.
-              </p>
-            </div>
-            
-            <button
-              onClick={() => handleOpenBitacorasModal()}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-orange-500/20 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> + Capturar Hoja Diaria
-            </button>
-          </div>
-
-          {/* Table */}
-          <div className="card p-0 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <h4 className="font-bold text-slate-900 text-base">Registros de Trabajo en Renta</h4>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por cliente u operador..."
-                  className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-primary/50 w-64 bg-slate-50 focus:bg-white"
-                />
+        <TabPanel tabKey="bitacoras_renta">
+          <div className="space-y-4">
+            <div className="card bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-800">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">
+                  Soporte Diario de Cobro a Clientes
+                </span>
+                <h3 className="text-2xl font-black mt-2">Hojas de Bitácora Diaria y Tareo de Maquinaria</h3>
+                <p className="text-xs text-slate-400 mt-1 font-medium">
+                  Partes de trabajo que entregan los operadores con horas efectivas, horómetros y firma del cliente para facturación.
+                </p>
+              </div>
+              <div className="w-full md:w-64">
+                <SearchBar value={search} onChange={handleSearchChange} onSearch={handleSearch} placeholder="Buscar por cliente u operador..." />
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Folio &amp; Fecha</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Operador &amp; Máquina</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Cliente &amp; Frente de Obra</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Horas &amp; Horómetro</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Vo.Bo. Residente Cliente</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Importe Cobro</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredBitacoras.map((b) => (
-                    <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <span className="font-black text-slate-900 text-xs bg-slate-100 px-2 py-0.5 rounded">
-                          {b.folio}
-                        </span>
-                        <p className="text-[10px] text-slate-400 font-medium mt-1">{b.fecha}</p>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-slate-900 text-sm">{b.trabajadorNombre}</div>
-                        <p className="text-[10px] text-primary font-bold">{b.maquinaId} — {b.maquinaNombre}</p>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="font-black text-slate-800 text-xs">{b.cliente}</div>
-                        <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{b.obraUbicacion}</p>
-                      </td>
-
-                      <td className="px-6 py-4 text-center">
-                        <div className="text-xs font-black text-slate-900">
-                          {b.horasEfectivas + b.horasExtras} hrs
-                        </div>
-                        <p className="text-[9px] text-slate-400 font-mono">
-                          {b.horometroInicial} ➔ {b.horometroFinal}
-                        </p>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        {b.firmaCliente.firmado ? (
-                          <div className="text-emerald-700 text-xs font-bold flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>{b.firmaCliente.nombreResidente}</span>
-                          </div>
-                        ) : (
-                          <div className="text-amber-700 text-xs font-bold flex items-center gap-1.5">
-                            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span>Pendiente de Firma</span>
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 text-right font-black text-slate-900 text-sm">
-                        {fmt.format(b.importeTotalRenta)}
-                      </td>
-
-                      <td className="px-6 py-4 text-center">
-                        <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
-                          b.estadoCobro === 'Facturado' ? 'bg-blue-100 text-blue-800' :
-                          b.estadoCobro === 'Listo para Facturar' ? 'bg-emerald-100 text-emerald-800' :
-                          'bg-amber-100 text-amber-800'
-                        }`}>
-                          {b.estadoCobro}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={bitacorasColumns}
+              data={bitacorasConcentrado}
+              loading={bitacorasLoading}
+              keyExtractor={(b) => b.id}
+              emptyText="Sin bitácoras registradas."
+            />
           </div>
+        </TabPanel>
+      </Tabs>
 
-        </div>
-      )}
-
-      {/* ── MODAL ALTA DE EMPLEADO POR CATEGORÍA ── */}
-      <Modal
-        isOpen={modalOpen}
+      {/* MODAL ALTA/EDICIÓN DE EMPLEADO */}
+      <FormModal
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onConfirm={handleCreateWorker}
-        title="Alta de Empleado por Puesto"
-        confirmLabel="Dar de Alta"
+        onSubmit={handleSubmit}
+        title={editingId ? 'Editar Empleado' : 'Alta de Empleado por Puesto'}
+        submitLabel={submitting ? 'Guardando…' : editingId ? 'Guardar Cambios' : 'Dar de Alta'}
+        isSubmitting={submitting}
       >
         <div className="space-y-3">
-          
-          <ModalField label="Nombre Completo *">
-            <input 
-              className={inputClass} 
-              placeholder="Juan Pérez García" 
-              value={form.nombre} 
-              onChange={(e) => setForm({ ...form, nombre: e.target.value })} 
-            />
+          <ModalField label="Nombre Completo" required>
+            <input className={modalInputClass} placeholder="Juan Pérez García" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
           </ModalField>
 
           <div className="grid grid-cols-2 gap-3">
-            <ModalField label="Categoría de Puesto *">
-              <select 
-                className={selectClass} 
-                value={form.categoriaPuesto} 
-                onChange={(e) => setForm({ ...form, categoriaPuesto: e.target.value as CategoriaPuesto })}
-              >
-                <option value="Operador">🚜 Operador de Maquinaria</option>
-                <option value="Chofer">🚚 Chofer de Transporte</option>
-                <option value="Mecanico">🔧 Mecánico de Taller</option>
-                <option value="Ingeniero">📐 Ingeniero / Encargado</option>
-                <option value="Administrativo">💼 Personal Administrativo</option>
+            <ModalField label="Categoría de Puesto" required>
+              <select className={modalSelectClass} value={form.categoriaPuesto} onChange={(e) => setForm({ ...form, categoriaPuesto: e.target.value as TrabajadorCreateInput['categoriaPuesto'] })}>
+                <option value="Operador">Operador de Maquinaria</option>
+                <option value="Chofer">Chofer de Transporte</option>
+                <option value="Mecanico">Mecánico de Taller</option>
+                <option value="Ingeniero">Ingeniero / Encargado</option>
+                <option value="Administrativo">Personal Administrativo</option>
               </select>
             </ModalField>
-
-            <ModalField label="Puesto Específico *">
-              <input 
-                className={inputClass} 
-                placeholder="Ej: Operador de Excavadora CAT" 
-                value={form.puesto} 
-                onChange={(e) => setForm({ ...form, puesto: e.target.value })} 
-              />
+            <ModalField label="Puesto Específico" required>
+              <input className={modalInputClass} placeholder="Ej: Operador de Excavadora CAT" value={form.puesto} onChange={(e) => setForm({ ...form, puesto: e.target.value })} />
             </ModalField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <ModalField label="Teléfono de Contacto">
-              <input 
-                className={inputClass} 
-                placeholder="55 1234 5678" 
-                value={form.telefono} 
-                onChange={(e) => setForm({ ...form, telefono: e.target.value })} 
-              />
+              <input className={modalInputClass} placeholder="55 1234 5678" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
             </ModalField>
-
-            <ModalField label="Obra Asignada">
-              <select 
-                className={selectClass} 
-                value={form.proyecto} 
-                onChange={(e) => setForm({ ...form, proyecto: e.target.value })}
-              >
-                {proyectos.map(p => (
-                  <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                ))}
-                <option value="Taller Central SVR">Taller Central SVR</option>
-                <option value="Oficina Central SVR">Oficina Central SVR</option>
-              </select>
+            <ModalField label="Hora de Entrada">
+              <input type="time" className={modalInputClass} value={form.entrada} onChange={(e) => setForm({ ...form, entrada: e.target.value })} />
             </ModalField>
           </div>
 
+          <ModalField label="Obra Asignada">
+            <select className={modalSelectClass} value={form.proyecto} onChange={(e) => setForm({ ...form, proyecto: e.target.value })}>
+              <option value="">Sin asignar</option>
+              {proyectos.map((p) => (
+                <option key={p.id} value={p.nombre}>{p.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
           {(form.categoriaPuesto === 'Operador' || form.categoriaPuesto === 'Chofer') && (
             <ModalField label="Máquina Asignada">
-              <select 
-                className={selectClass} 
-                value={form.maquinaId} 
-                onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-              >
-                {maquinaria.map(m => (
+              <select className={modalSelectClass} value={form.maquinaId} onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}>
+                <option value="">Sin asignar</option>
+                {maquinaria.map((m) => (
                   <option key={m.id} value={m.id}>{m.id} — {m.nombre}</option>
                 ))}
               </select>
@@ -479,50 +487,36 @@ export default function TrabajadoresPage() {
 
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
             <ModalField label="Sueldo Fiscal (SPEI Tarjeta)">
-              <input 
-                type="number"
-                className={inputClass} 
-                placeholder="2500" 
-                value={form.sueldoFiscal} 
-                onChange={(e) => setForm({ ...form, sueldoFiscal: e.target.value })} 
-              />
+              <input type="number" className={modalInputClass} value={form.sueldoFiscal} onChange={(e) => setForm({ ...form, sueldoFiscal: e.target.value })} />
             </ModalField>
-
             <ModalField label="Complemento Efectivo (Sobre)">
-              <input 
-                type="number"
-                className={inputClass} 
-                placeholder="3500" 
-                value={form.sueldoEfectivo} 
-                onChange={(e) => setForm({ ...form, sueldoEfectivo: e.target.value })} 
-              />
+              <input type="number" className={modalInputClass} value={form.sueldoEfectivo} onChange={(e) => setForm({ ...form, sueldoEfectivo: e.target.value })} />
             </ModalField>
           </div>
-
         </div>
-      </Modal>
+      </FormModal>
 
-      {/* ── MODAL BITÁCORAS DE RENTA ── */}
-      {bitacorasModalOpen && (
+      {/* MODAL BITÁCORAS DE RENTA */}
+      {bitacorasModalOpen && selectedWorkerForBitacora && (
         <BitacorasRentaModal
           isOpen={bitacorasModalOpen}
           onClose={() => setBitacorasModalOpen(false)}
           trabajador={selectedWorkerForBitacora}
-          bitacoras={bitacoras}
-          onAgregarBitacora={handleAgregarBitacora}
+          maquinaria={maquinaria}
+          puedeCrear={puedeCrear}
+          onBitacoraCreada={() => fetchTrabajadores(pagination.page, search, selectedRole)}
         />
       )}
 
-      {/* ── MODAL LIQUIDACIÓN Y FINIQUITO ── */}
+      {/* MODAL LIQUIDACIÓN Y FINIQUITO */}
       {liquidacionModalOpen && (
         <LiquidacionModal
           isOpen={liquidacionModalOpen}
           onClose={() => setLiquidacionModalOpen(false)}
           trabajador={selectedWorkerForLiquidacion}
-          onConfirmarBaja={handleConfirmarBaja}
+          onLiquidado={() => fetchTrabajadores(pagination.page, search, selectedRole)}
         />
       )}
-
     </div>
   );
 }

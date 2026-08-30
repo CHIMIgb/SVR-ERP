@@ -7,32 +7,39 @@ import {
   CheckCircle2, AlertTriangle, Building2, User, Flame,
   ArrowRight
 } from 'lucide-react';
-import { RegistroAsistencia, trabajadores } from '@/lib/data';
+import type { RegistroAsistenciaDTO } from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
-import { Portal } from '@/components/ui/Portal';
-import { Overlay } from '@/components/ui/Overlay';
+import { Modal } from '@/components/ui/Modal';
+
+interface TrabajadorResumen {
+  nombre: string;
+  puesto: string;
+  avatar: string;
+}
 
 interface AsistenciaGpsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  registro: RegistroAsistencia | null;
-  onActualizarEstado?: (registroId: string, nuevoEstado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') => void;
-  onAprobarHorasExtra?: (registroId: string) => void;
+  registro: RegistroAsistenciaDTO | null;
+  trabajador?: TrabajadorResumen;
+  onActualizarEstado?: (registroId: string, nuevoEstado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') => Promise<void>;
+  onAprobarHorasExtra?: (horasExtraId: string) => Promise<void>;
 }
 
 export default function AsistenciaGpsModal({
   isOpen,
   onClose,
   registro,
+  trabajador,
   onActualizarEstado,
   onAprobarHorasExtra
 }: AsistenciaGpsModalProps) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'entrada' | 'salida' | 'horas_extra'>('entrada');
+  const [procesando, setProcesando] = useState(false);
 
   if (!isOpen || !registro) return null;
 
-  const trabajador = trabajadores.find(t => t.id === registro.trabajadorId);
   const distanciaFormateada = registro.distanciaMetros >= 1000
     ? `${(registro.distanciaMetros / 1000).toFixed(2)} km`
     : `${registro.distanciaMetros} metros`;
@@ -40,34 +47,56 @@ export default function AsistenciaGpsModal({
   const radioKm = (registro.radioPermitidoMetros / 1000).toFixed(1);
 
   // Offset visual relativo para el mapa interactivo simulado
-  const workerOffset = registro.enSitio 
-    ? { x: 53, y: 47 } // Dentro del círculo de 2km
-    : { x: 86, y: 18 }; // Fuera del círculo (> 2km)
+  const workerOffset = registro.enSitio
+    ? { x: 53, y: 47 } // Dentro del círculo de la geocerca
+    : { x: 86, y: 18 }; // Fuera del círculo
 
   const googleMapsUrl = `https://www.google.com/maps?q=${registro.coordenadas.lat},${registro.coordenadas.lng}`;
 
-  const handleAprobar = () => {
-    onActualizarEstado?.(registro.id, 'Puntual');
-    showToast(`✅ Asistencia de ${trabajador?.nombre ?? 'Trabajador'} validada.`, 'success');
-    onClose();
+  const handleAprobar = async () => {
+    if (!onActualizarEstado || procesando) return;
+    setProcesando(true);
+    try {
+      const nuevoEstado = registro.enSitio ? 'Puntual' : 'Justificado';
+      await onActualizarEstado(registro.id, nuevoEstado);
+      showToast(`Asistencia de ${trabajador?.nombre ?? 'Trabajador'} validada.`, 'success');
+      onClose();
+    } catch {
+      showToast('No se pudo actualizar la asistencia.', 'error');
+    } finally {
+      setProcesando(false);
+    }
   };
 
-  const handleMarcarFalta = () => {
-    onActualizarEstado?.(registro.id, 'Falta');
-    showToast(`❌ Marcaje rechazado por exceder el radio permitido de ${radioKm} km.`, 'error');
-    onClose();
+  const handleMarcarFalta = async () => {
+    if (!onActualizarEstado || procesando) return;
+    setProcesando(true);
+    try {
+      await onActualizarEstado(registro.id, 'Falta');
+      showToast(`Marcaje rechazado por exceder el radio permitido de ${radioKm} km.`, 'error');
+      onClose();
+    } catch {
+      showToast('No se pudo marcar la falta.', 'error');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const handleAutorizarHorasExtra = async () => {
+    if (!onAprobarHorasExtra || !registro.horasExtra || procesando) return;
+    setProcesando(true);
+    try {
+      await onAprobarHorasExtra(registro.horasExtra.id);
+      showToast(`${registro.horasExtra.horasCalculadas} horas extra aprobadas para ${trabajador?.nombre}.`, 'success');
+    } catch {
+      showToast('No se pudieron autorizar las horas extra.', 'error');
+    } finally {
+      setProcesando(false);
+    }
   };
 
   return (
-    <Portal>
-      <Overlay onClick={onClose} blur className="z-[9999] p-4">
-        <div
-          className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] animate-[fadeScaleIn_0.2s_ease-out]"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-        >
-
+    <Modal open={isOpen} onClose={onClose} size="xl" contentClassName="overflow-hidden">
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -88,7 +117,7 @@ export default function AsistenciaGpsModal({
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white flex items-center justify-center transition-colors"
           >
@@ -98,7 +127,7 @@ export default function AsistenciaGpsModal({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
-          
+
           {/* Worker Info Card */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
             <div className="flex items-center gap-3.5">
@@ -118,11 +147,11 @@ export default function AsistenciaGpsModal({
             {/* Shift hours summary */}
             <div className="flex sm:flex-col items-end justify-between sm:justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200/60 text-right">
               <div className="text-xs font-black text-slate-900">
-                {registro.horasTrabajadasOrdinarias ?? 8}h ordinarias laboradas
+                {registro.horasTrabajadasOrdinarias ?? 0}h ordinarias laboradas
               </div>
               <div className="flex items-center gap-2 mt-1 text-[10px] font-black uppercase tracking-wider">
                 <span className="text-green-600 flex items-center gap-0.5">
-                  <Battery className="w-3 h-3" /> {registro.bateria ?? 85}%
+                  <Battery className="w-3 h-3" /> {registro.bateria ?? '—'}%
                 </span>
                 <span className="text-slate-400 font-mono">{registro.dispositivo}</span>
               </div>
@@ -168,11 +197,11 @@ export default function AsistenciaGpsModal({
           {/* TAB 1 & 2: ENTRADA / SALIDA ORDINARIA */}
           {(activeTab === 'entrada' || activeTab === 'salida') && (
             <div className="space-y-4">
-              
+
               {/* Geofence Alert Banner */}
               <div className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
-                registro.enSitio 
-                  ? 'bg-green-50/80 border-green-200 text-green-900' 
+                registro.enSitio
+                  ? 'bg-green-50/80 border-green-200 text-green-900'
                   : 'bg-red-50 border-red-200 text-red-900'
               }`}>
                 {registro.enSitio ? (
@@ -182,8 +211,8 @@ export default function AsistenciaGpsModal({
                 )}
                 <div className="flex-1">
                   <h5 className="text-xs font-black uppercase tracking-wide">
-                    {registro.enSitio 
-                      ? `Marcaje dentro del Polígono (${distanciaFormateada})` 
+                    {registro.enSitio
+                      ? `Marcaje dentro del Polígono (${distanciaFormateada})`
                       : `Alerta: Fuera del Radio Autorizado de ${radioKm} km`}
                   </h5>
                   <p className="text-xs font-medium mt-1 leading-relaxed text-slate-600">
@@ -200,7 +229,7 @@ export default function AsistenciaGpsModal({
                 </div>
               </div>
 
-              {/* Interactive 2km Geofence Map Visualizer */}
+              {/* Interactive Geofence Map Visualizer */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
@@ -218,9 +247,9 @@ export default function AsistenciaGpsModal({
                 </div>
 
                 <div className="relative h-64 w-full bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center group select-none">
-                  
+
                   {/* Grid */}
-                  <div 
+                  <div
                     className="absolute inset-0 opacity-25"
                     style={{
                       backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.2) 1px, transparent 0)`,
@@ -235,8 +264,8 @@ export default function AsistenciaGpsModal({
                     <path d="M 450 0 L 450 300" fill="none" stroke="#94a3b8" strokeWidth="6" />
                   </svg>
 
-                  {/* 2km Geofence Circle Zone */}
-                  <div 
+                  {/* Geofence Circle Zone */}
+                  <div
                     className="absolute rounded-full border-2 border-emerald-400 bg-emerald-500/15 backdrop-blur-[1px] flex items-center justify-center transition-all animate-pulse"
                     style={{
                       width: '210px',
@@ -251,7 +280,7 @@ export default function AsistenciaGpsModal({
                   </div>
 
                   {/* Obra Center Pin */}
-                  <div 
+                  <div
                     className="absolute flex flex-col items-center z-10 -translate-x-1/2 -translate-y-1/2"
                     style={{ top: '50%', left: '50%' }}
                   >
@@ -265,19 +294,19 @@ export default function AsistenciaGpsModal({
 
                   {/* Distance Connecting Line */}
                   <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
-                    <line 
-                      x1="50%" 
-                      y1="50%" 
-                      x2={`${workerOffset.x}%`} 
-                      y2={`${workerOffset.y}%`} 
-                      stroke={registro.enSitio ? '#10b981' : '#ef4444'} 
-                      strokeWidth="2.5" 
-                      strokeDasharray="5,5" 
+                    <line
+                      x1="50%"
+                      y1="50%"
+                      x2={`${workerOffset.x}%`}
+                      y2={`${workerOffset.y}%`}
+                      stroke={registro.enSitio ? '#10b981' : '#ef4444'}
+                      strokeWidth="2.5"
+                      strokeDasharray="5,5"
                     />
                   </svg>
 
                   {/* Worker Pin */}
-                  <div 
+                  <div
                     className="absolute flex flex-col items-center z-30 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
                     style={{ top: `${workerOffset.y}%`, left: `${workerOffset.x}%` }}
                   >
@@ -319,7 +348,7 @@ export default function AsistenciaGpsModal({
                   <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                   <div>
                     <h6 className="text-xs font-black uppercase tracking-wide text-amber-900">
-                      Alerta de Salida Anticipada ({registro.horasTrabajadasOrdinarias ?? 5.5}h laboradas)
+                      Alerta de Salida Anticipada ({registro.horasTrabajadasOrdinarias ?? 0}h laboradas)
                     </h6>
                     <p className="text-xs text-amber-800 font-medium mt-0.5">
                       <strong>Motivo reportado:</strong> {registro.motivoSalidaAnticipada ?? 'Retiro antes del término reglamentario de turno.'}
@@ -334,7 +363,7 @@ export default function AsistenciaGpsModal({
           {/* TAB 3: HORAS EXTRAS */}
           {activeTab === 'horas_extra' && registro.horasExtra && (
             <div className="space-y-4">
-              
+
               {/* Overtime KPI Header */}
               <div className="p-5 rounded-3xl bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 flex items-center justify-between">
                 <div>
@@ -369,9 +398,11 @@ export default function AsistenciaGpsModal({
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                   <span className="font-bold text-slate-500">Estado de Aprobación:</span>
                   <span className={`font-black uppercase px-2 py-0.5 rounded text-[10px] ${
-                    registro.horasExtra.estado === 'Aprobado' 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-yellow-100 text-yellow-800'
+                    registro.horasExtra.estado === 'Aprobado'
+                      ? 'bg-green-100 text-green-700'
+                      : registro.horasExtra.estado === 'Rechazado'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-yellow-100 text-yellow-800'
                   }`}>
                     {registro.horasExtra.estado}
                   </span>
@@ -385,17 +416,17 @@ export default function AsistenciaGpsModal({
               </div>
 
               {/* Supervisor Actions for Overtime */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    onAprobarHorasExtra?.(registro.id);
-                    showToast(`🔥 ${registro.horasExtra?.horasCalculadas} horas extra aprobadas para ${trabajador?.nombre}.`, 'success');
-                  }}
-                  className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Autorizar Horas Extra para Nómina
-                </button>
-              </div>
+              {registro.horasExtra.estado !== 'Aprobado' && registro.horasExtra.estado !== 'Rechazado' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAutorizarHorasExtra}
+                    disabled={procesando}
+                    className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> {procesando ? 'Autorizando...' : 'Autorizar Horas Extra para Nómina'}
+                  </button>
+                </div>
+              )}
 
             </div>
           )}
@@ -415,23 +446,23 @@ export default function AsistenciaGpsModal({
             {!registro.enSitio && (
               <button
                 onClick={handleMarcarFalta}
-                className="px-4 py-2.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 font-black text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5"
+                disabled={procesando}
+                className="px-4 py-2.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60 border border-red-200 font-black text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5"
               >
                 <AlertTriangle className="w-4 h-4" /> Marcar Falta por Geocerca
               </button>
             )}
             <button
               onClick={handleAprobar}
-              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-primary text-white font-black text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5"
+              disabled={procesando}
+              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-primary disabled:opacity-60 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5"
             >
               <CheckCircle2 className="w-4 h-4 text-green-400" />
-              {registro.enSitio ? 'Confirmar Asistencia' : 'Justificar Excepción'}
+              {procesando ? 'Procesando...' : registro.enSitio ? 'Confirmar Asistencia' : 'Justificar Excepción'}
             </button>
           </div>
         </div>
 
-      </div>
-      </Overlay>
-    </Portal>
+    </Modal>
   );
 }
