@@ -145,8 +145,11 @@ export default function CotizacionesPage() {
   }, []);
 
   useEffect(() => {
-    fetchData(1);
+    // Usa los filtros iniciales (p. ej. ?clienteId=xxx desde /clientes).
+    // No se incluye filterValues en deps: los cambios manuales ya fetchean via handlers.
+    fetchData(1, search, filterValues);
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
