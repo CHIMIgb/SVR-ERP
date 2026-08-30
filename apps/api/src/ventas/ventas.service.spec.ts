@@ -107,6 +107,16 @@ describe('VentasService', () => {
       $transaction: jest.fn().mockImplementation(async (fn) => {
         return fn(prisma);
       }),
+      configuracion_sistema: {
+        findUnique: jest.fn().mockImplementation(({ where }) => {
+          const configs: Record<string, { clave: string; valor: string }> = {
+            turno_apertura: { clave: 'turno_apertura', valor: '00:00' },
+            turno_cierre: { clave: 'turno_cierre', valor: '23:59' },
+            turno_tolerancia_minutos: { clave: 'turno_tolerancia_minutos', valor: '1440' },
+          };
+          return Promise.resolve(configs[where?.clave] || null);
+        }),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -281,9 +291,10 @@ describe('VentasService', () => {
   });
 
   describe('findConfig', () => {
-    it('should expose apertura/cierre 24h and tolerancia', () => {
-      // En tests, beforeEach setea TURNO_APERTURA=00:00, TURNO_CIERRE=23:59, TOLERANCIA=1440
-      expect(service.findConfig()).toEqual({
+    it('should expose apertura/cierre 24h and tolerancia', async () => {
+      // Configuración mockeada en beforeEach: 00:00-23:59, tolerancia 1440
+      const result = await service.findConfig();
+      expect(result).toEqual({
         apertura: '00:00',
         cierre: '23:59',
         toleranciaMinutos: 1440,

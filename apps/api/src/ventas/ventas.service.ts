@@ -25,11 +25,6 @@ import {
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
 
-/** Configuración del turno (hora en formato 24h), configurable vía .env. Lee en runtime para permitir tests. */
-function getAperturaHora(): string { return process.env.TURNO_APERTURA || '07:00'; }
-function getCierreHora(): string { return process.env.TURNO_CIERRE || '20:00'; }
-function getToleranciaMinutos(): number { return parseInt(process.env.TURNO_TOLERANCIA_MINUTOS || '30', 10); }
-
 function hoyIso(): string {
   return new Date().toISOString().split('T')[0];
 }
@@ -40,18 +35,45 @@ function parseHM(s: string): { h: number; m: number } {
   return { h: h || 0, m: m || 0 };
 }
 
+/** Cache simple en memoria para configuración (TTL 30s) */
+const configCache = new Map<string, { valor: string; expira: number }>();
+const CACHE_TTL_MS = 30_000;
+
+async function getConfigFromDb(prisma: PrismaService, clave: string, fallback: string): Promise<string> {
+  const now = Date.now();
+  const cached = configCache.get(clave);
+  if (cached && cached.expira > now) return cached.valor;
+
+  try {
+    const row = await prisma.configuracion_sistema.findUnique({ where: { clave } });
+    const valor = row?.valor ?? fallback;
+    configCache.set(clave, { valor, expira: now + CACHE_TTL_MS });
+    return valor;
+  } catch {
+    return fallback;
+  }
+}
+
+async function getAperturaHora(prisma: PrismaService): Promise<string> {
+  return getConfigFromDb(prisma, 'turno_apertura', '07:00');
+}
+async function getCierreHora(prisma: PrismaService): Promise<string> {
+  return getConfigFromDb(prisma, 'turno_cierre', '20:00');
+}
+async function getToleranciaMinutos(prisma: PrismaService): Promise<number> {
+  return getConfigFromDb(prisma, 'turno_tolerancia_minutos', '30').then(v => parseInt(v, 10));
+}
+
 /**
  * Verifica si la hora actual está dentro del horario de atención (POS).
  * Rango: APERTURA_HORA <= now <= CIERRE_HORA (sin tolerancia).
  */
-function estaEnHorarioAtencion(): boolean {
+async function estaEnHorarioAtencion(prisma: PrismaService): Promise<boolean> {
   const now = new Date();
-  const { h: aH, m: aM } = parseHM(getAperturaHora());
-  const { h: cH, m: cM } = parseHM(getCierreHora());
-  const apertura = new Date();
-  apertura.setHours(aH, aM, 0, 0);
-  const cierre = new Date();
-  cierre.setHours(cH, cM, 0, 0);
+  const [aH, aM] = (await getAperturaHora(prisma)).split(':').map(Number);
+  const [cH, cM] = (await getCierreHora(prisma)).split(':').map(Number);
+  const apertura = new Date(); apertura.setHours(aH, aM, 0, 0);
+  const cierre = new Date(); cierre.setHours(cH, cM, 0, 0);
   return now >= apertura && now <= cierre;
 }
 
@@ -59,23 +81,18 @@ function estaEnHorarioAtencion(): boolean {
  * Verifica si la hora actual está dentro de la ventana de cierre de caja.
  * Rango: (CIERRE_HORA - tolerancia) <= now <= (CIERRE_HORA + tolerancia).
  */
-function estaEnVentanaCierre(): boolean {
+async function estaEnVentanaCierre(prisma: PrismaService): Promise<boolean> {
   const now = new Date();
-  const { h: cH, m: cM } = parseHM(getCierreHora());
-  const tol = getToleranciaMinutos();
-  const cierreStart = new Date();
-  cierreStart.setHours(cH, cM - tol, 0, 0);
-  const cierreEnd = new Date();
-  cierreEnd.setHours(cH, cM + tol, 0, 0);
+  const [cH, cM] = (await getCierreHora(prisma)).split(':').map(Number);
+  const tol = await getToleranciaMinutos(prisma);
+  const cierreStart = new Date(); cierreStart.setHours(cH, cM - tol, 0, 0);
+  const cierreEnd = new Date(); cierreEnd.setHours(cH, cM + tol, 0, 0);
   return now >= cierreStart && now <= cierreEnd;
 }
 
-/**
- * Devuelve mensaje descriptivo del horario actual para el usuario.
- */
-function getHorarioMensaje(): string {
-  const { h: aH, m: aM } = parseHM(getAperturaHora());
-  const { h: cH, m: cM } = parseHM(getCierreHora());
+async function getHorarioMensaje(prisma: PrismaService): Promise<string> {
+  const [aH, aM] = (await getAperturaHora(prisma)).split(':').map(Number);
+  const [cH, cM] = (await getCierreHora(prisma)).split(':').map(Number);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `El turno es de ${pad(aH)}:${pad(aM)} a ${pad(cH)}:${pad(cM)} hrs.`;
 }
@@ -206,13 +223,13 @@ export class VentasService {
   // ────────────────────────────────────────────
   async create(dto: CreateVentaDto, userId: string) {
     // Validar horario de atención (POS)
-    if (!estaEnHorarioAtencion()) {
+    if (!(await estaEnHorarioAtencion(this.prisma))) {
       return this.fallir(
         AuditAction.VENTA_CREADA,
         null,
         'FUERA_DE_HORARIO',
         BadRequestException,
-        `Fuera de horario de atención. ${getHorarioMensaje()}`,
+        `Fuera de horario de atención. ${await getHorarioMensaje(this.prisma)}`,
       );
     }
 
@@ -487,13 +504,35 @@ export class VentasService {
   }
 
   /** Configuración del turno (apertura/cierre 24h + tolerancia). */
-  findConfig() {
+  async findConfig() {
     return {
-      apertura: getAperturaHora(),
-      cierre: getCierreHora(),
-      toleranciaMinutos: getToleranciaMinutos(),
+      apertura: await getAperturaHora(this.prisma),
+      cierre: await getCierreHora(this.prisma),
+      toleranciaMinutos: await getToleranciaMinutos(this.prisma),
       formato: '24h',
     };
+  }
+
+  /** Actualiza configuración de turno (solo Admin). */
+  async updateConfig(dto: { apertura?: string; cierre?: string; toleranciaMinutos?: number }, userId: string) {
+    const ahora = new Date();
+    const updates: Array<{ clave: string; valor: string }> = [];
+
+    if (dto.apertura) updates.push({ clave: 'turno_apertura', valor: dto.apertura });
+    if (dto.cierre) updates.push({ clave: 'turno_cierre', valor: dto.cierre });
+    if (dto.toleranciaMinutos !== undefined) updates.push({ clave: 'turno_tolerancia_minutos', valor: String(dto.toleranciaMinutos) });
+
+    for (const u of updates) {
+      await this.prisma.configuracion_sistema.upsert({
+        where: { clave: u.clave },
+        update: { valor: u.valor, actualizado_en: ahora, actualizado_por: userId },
+        create: { clave: u.clave, valor: u.valor, descripcion: 'Configuración de turno', tipo: u.clave.includes('tolerancia') ? 'number' : 'string', categoria: 'turno', creado_por: userId, actualizado_por: userId },
+      });
+      // Invalidar cache
+      configCache.delete(u.clave);
+    }
+
+    return this.findConfig();
   }
 
   // ────────────────────────────────────────────
@@ -573,13 +612,13 @@ export class VentasService {
     const fecha = new Date(hoyIso());
 
     // Validar ventana de cierre de caja
-    if (!estaEnVentanaCierre()) {
+    if (!(await estaEnVentanaCierre(this.prisma))) {
       return this.fallir(
         AuditAction.CIERRE_CAJA_REGISTRADO,
         null,
         'FUERA_DE_VENTANA_CIERRE',
         BadRequestException,
-        `Fuera de la ventana de cierre. ${getHorarioMensaje()} (ventana: ±${getToleranciaMinutos()} min)`,
+        `Fuera de la ventana de cierre. ${await getHorarioMensaje(this.prisma)} (ventana: ±${await getToleranciaMinutos(this.prisma)} min)`,
       );
     }
 

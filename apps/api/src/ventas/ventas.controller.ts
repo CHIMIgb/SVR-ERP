@@ -18,6 +18,8 @@ import {
   CreateAperturaDto,
   CreateRetiroDto,
   RechazarCierreDto,
+  QueryCierresDto,
+  UpdateConfigDto,
 } from './dto/create-retiro-cierre.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -140,6 +142,17 @@ export class VentasController {
   @Get('config')
   findConfig() {
     return this.ventasService.findConfig();
+  }
+
+  /**
+   * PATCH /api/ventas/config
+   * Actualiza configuración del turno (solo Administrador).
+   */
+  @RequirePermission('comercial', 'ventas', 'editar')
+  @Patch('config')
+  updateConfig(@Body() dto: UpdateConfigDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.ventasService.updateConfig(dto, user.id);
   }
 
   /**

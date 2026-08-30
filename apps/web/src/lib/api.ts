@@ -1203,6 +1203,10 @@ export const ventasApi = {
   /** Configuración del turno (apertura/cierre 24h + tolerancia). */
   config: () => apiClient.get<TurnoConfig>('/ventas/config'),
 
+  /** Actualiza configuración del turno (solo Administrador). */
+  updateConfig: (data: Partial<TurnoConfig>) =>
+    apiClient.patch<TurnoConfig>('/ventas/config', data),
+
   /** Estado de la apertura de turno del día. */
   aperturaHoy: () =>
     apiClient.get<{ existe: boolean; registro: AperturaDTO | null }>(

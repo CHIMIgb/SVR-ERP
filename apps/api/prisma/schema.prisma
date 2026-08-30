@@ -1897,6 +1897,21 @@ model usuarios_bloqueados {
   @@index([ip_address, activo])
 }
 
+model configuracion_sistema {
+  clave        String   @id @db.VarChar(100)
+  valor        String   @db.Text
+  descripcion  String?  @db.Text
+  tipo         String   @default("string") @db.VarChar(20)  // string, number, boolean, json
+  categoria    String   @default("general") @db.VarChar(50)
+  creado_en    DateTime @db.Timestamptz() @default(now())
+  actualizado_en DateTime @db.Timestamptz() @default(now()) @updatedAt
+  creado_por   String?  @db.Uuid
+  actualizado_por String? @db.Uuid
+
+  @@index([categoria], map: "idx_configuracion_categoria")
+  @@map("configuracion_sistema")
+}
+
 model vistas {
   id                                  String        @id @db.Uuid
   nombre                              String
