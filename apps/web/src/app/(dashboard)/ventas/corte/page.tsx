@@ -1,11 +1,18 @@
 'use client';
 
-import { Lock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Lock, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
+import { ventasApi, type TurnoConfig } from '@/lib/api';
+
+function parseHM(s: string): { h: number; m: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+}
 
 export default function CorteDelDiaPage() {
   const { user } = useAuth();
@@ -18,6 +25,28 @@ export default function CorteDelDiaPage() {
   const isAdmin = user?.roles.some((r) => r.nombre.toLowerCase().includes('admin')) ?? false;
 
   const puedeVer = user?.vistas.find((v) => v.ruta === '/ventas/corte')?.puedeVer ?? false;
+
+  // Configuración de turno + validación de ventana de cierre
+  const [turnoConfig, setTurnoConfig] = useState<TurnoConfig | null>(null);
+  const [fueraDeVentana, setFueraDeVentana] = useState(false);
+
+  useEffect(() => {
+    ventasApi.config().then((res) => {
+      if (res.success) {
+        setTurnoConfig(res.data);
+        // Verificar ventana de cierre
+        const now = new Date();
+        const { h: cH, m: cM } = parseHM(res.data.cierre);
+        const tol = res.data.toleranciaMinutos;
+        const cierreStart = new Date();
+        cierreStart.setHours(cH, cM - tol, 0, 0);
+        const cierreEnd = new Date();
+        cierreEnd.setHours(cH, cM + tol, 0, 0);
+        const fuera = now < cierreStart || now > cierreEnd;
+        setFueraDeVentana(fuera);
+      }
+    });
+  }, []);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -33,7 +62,27 @@ export default function CorteDelDiaPage() {
           subtitle="Tu rol no tiene acceso a /ventas/corte. Contacta a un administrador."
         />
       ) : (
-        <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} />
+        <>
+          {/* Bloqueo por fuera de ventana de cierre */}
+          {fueraDeVentana && turnoConfig && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-red-900 font-bold text-lg">Fuera de la ventana de cierre de caja</p>
+                  <p className="text-red-700 text-sm font-medium mt-1">
+                    El cierre solo está permitido de <strong>{turnoConfig.cierre}</strong> ± <strong>{turnoConfig.toleranciaMinutos} min</strong>.
+                    Hora actual: <strong>{new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} />
+        </>
       )}
     </div>
   );

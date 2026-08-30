@@ -65,6 +65,11 @@ describe('VentasService', () => {
   };
 
   beforeEach(async () => {
+    // Configurar variables de entorno para tests: horario 00:00-23:59 = siempre abierto
+    process.env.TURNO_APERTURA = '00:00';
+    process.env.TURNO_CIERRE = '23:59';
+    process.env.TURNO_TOLERANCIA_MINUTOS = '1440'; // 24 horas
+
     prisma = {
       articulos_inventario: {
         findMany: jest.fn().mockResolvedValue([mockMaterial]),
@@ -116,6 +121,9 @@ describe('VentasService', () => {
   });
 
   afterEach(() => {
+    delete process.env.TURNO_APERTURA;
+    delete process.env.TURNO_CIERRE;
+    delete process.env.TURNO_TOLERANCIA_MINUTOS;
     jest.clearAllMocks();
   });
 
@@ -274,10 +282,11 @@ describe('VentasService', () => {
 
   describe('findConfig', () => {
     it('should expose apertura/cierre 24h and tolerancia', () => {
+      // En tests, beforeEach setea TURNO_APERTURA=00:00, TURNO_CIERRE=23:59, TOLERANCIA=1440
       expect(service.findConfig()).toEqual({
-        apertura: '07:00',
-        cierre: '20:00',
-        toleranciaMinutos: 30,
+        apertura: '00:00',
+        cierre: '23:59',
+        toleranciaMinutos: 1440,
         formato: '24h',
       });
     });

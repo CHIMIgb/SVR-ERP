@@ -10,6 +10,7 @@ import {
   Banknote,
   Loader2,
   RefreshCw,
+  Clock,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -42,10 +43,16 @@ import {
   materialToProduct,
   ventaDtoToSale,
   ventasApi,
+  type TurnoConfig,
 } from '@/lib/api';
 import type { CreateVentaInput } from '@/lib/api';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+
+function parseHM(s: string): { h: number; m: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -66,6 +73,10 @@ export default function VentasPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogoCargado, setCatalogoCargado] = useState(false);
 
+  // Horario de atención (se carga desde BD)
+  const [turnoConfig, setTurnoConfig] = useState<TurnoConfig | null>(null);
+  const [fueraDeHorario, setFueraDeHorario] = useState(false);
+
   // Carrito (local) + ventas/retiros/turno (compartidos con /ventas/corte)
   const { sales, retiros, setRetiros, addSale } = usePOS();
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -79,7 +90,13 @@ export default function VentasPage() {
     setCatalogoError(false);
     setCargandoCatalogo(true);
     try {
-      const res = await ventasApi.catalogos();
+      // Cargar config de turno + catálogo en paralelo
+      const [resConfig, res] = await Promise.all([
+        ventasApi.config(),
+        ventasApi.catalogos(),
+      ]);
+      if (resConfig.success) setTurnoConfig(resConfig.data);
+
       if (res.success && res.data.materiales.length > 0) {
         const productos = res.data.materiales.map(materialToProduct);
         setProducts(productos);
@@ -99,6 +116,19 @@ export default function VentasPage() {
     } catch {
       // sin catálogo BD: el POS queda bloqueado para no reenviar IDs mock inválidos
       setCatalogoError(true);
+    }
+
+    // Verificar si estamos fuera de horario de atención
+    if (turnoConfig) {
+      const now = new Date();
+      const { h: aH, m: aM } = parseHM(turnoConfig.apertura);
+      const { h: cH, m: cM } = parseHM(turnoConfig.cierre);
+      const apertura = new Date();
+      apertura.setHours(aH, aM, 0, 0);
+      const cierre = new Date();
+      cierre.setHours(cH, cM, 0, 0);
+      const fuera = now < apertura || now > cierre;
+      setFueraDeHorario(fuera);
     }
 
     try {
@@ -305,6 +335,27 @@ export default function VentasPage() {
 
       {puedeCrear && (
         <>
+          {/* Bloqueo por horario fuera de atención */}
+          {fueraDeHorario && turnoConfig && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-red-900 font-bold text-lg">Fuera de horario de atención</p>
+                  <p className="text-red-700 text-sm font-medium mt-1">
+                    El turno es de <strong>{turnoConfig.apertura}</strong> a <strong>{turnoConfig.cierre}</strong> hrs.
+                    El punto de venta solo está disponible dentro de este horario.
+                  </p>
+                </div>
+              </div>
+              <div className="text-xs text-red-600 font-medium shrink-0">
+                Hora actual: {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          )}
+
           {/* Stats del día */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <StatsCard

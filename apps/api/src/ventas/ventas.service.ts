@@ -25,16 +25,59 @@ import {
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
 
-/** Configuración del turno (hora en formato 24h), configurable vía .env. */
-const APERTURA_HORA = process.env.TURNO_APERTURA || '07:00';
-const CIERRE_HORA = process.env.TURNO_CIERRE || '20:00';
-const TOLERANCIA_MINUTOS = parseInt(
-  process.env.TURNO_TOLERANCIA_MINUTOS || '30',
-  10,
-);
+/** Configuración del turno (hora en formato 24h), configurable vía .env. Lee en runtime para permitir tests. */
+function getAperturaHora(): string { return process.env.TURNO_APERTURA || '07:00'; }
+function getCierreHora(): string { return process.env.TURNO_CIERRE || '20:00'; }
+function getToleranciaMinutos(): number { return parseInt(process.env.TURNO_TOLERANCIA_MINUTOS || '30', 10); }
 
 function hoyIso(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+/** Parsea "HH:mm" a {h, m}. */
+function parseHM(s: string): { h: number; m: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+}
+
+/**
+ * Verifica si la hora actual está dentro del horario de atención (POS).
+ * Rango: APERTURA_HORA <= now <= CIERRE_HORA (sin tolerancia).
+ */
+function estaEnHorarioAtencion(): boolean {
+  const now = new Date();
+  const { h: aH, m: aM } = parseHM(getAperturaHora());
+  const { h: cH, m: cM } = parseHM(getCierreHora());
+  const apertura = new Date();
+  apertura.setHours(aH, aM, 0, 0);
+  const cierre = new Date();
+  cierre.setHours(cH, cM, 0, 0);
+  return now >= apertura && now <= cierre;
+}
+
+/**
+ * Verifica si la hora actual está dentro de la ventana de cierre de caja.
+ * Rango: (CIERRE_HORA - tolerancia) <= now <= (CIERRE_HORA + tolerancia).
+ */
+function estaEnVentanaCierre(): boolean {
+  const now = new Date();
+  const { h: cH, m: cM } = parseHM(getCierreHora());
+  const tol = getToleranciaMinutos();
+  const cierreStart = new Date();
+  cierreStart.setHours(cH, cM - tol, 0, 0);
+  const cierreEnd = new Date();
+  cierreEnd.setHours(cH, cM + tol, 0, 0);
+  return now >= cierreStart && now <= cierreEnd;
+}
+
+/**
+ * Devuelve mensaje descriptivo del horario actual para el usuario.
+ */
+function getHorarioMensaje(): string {
+  const { h: aH, m: aM } = parseHM(getAperturaHora());
+  const { h: cH, m: cM } = parseHM(getCierreHora());
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `El turno es de ${pad(aH)}:${pad(aM)} a ${pad(cH)}:${pad(cM)} hrs.`;
 }
 
 @Injectable()
@@ -162,6 +205,17 @@ export class VentasService {
   //  CREAR VENTA (transacción atómica + stock)
   // ────────────────────────────────────────────
   async create(dto: CreateVentaDto, userId: string) {
+    // Validar horario de atención (POS)
+    if (!estaEnHorarioAtencion()) {
+      return this.fallir(
+        AuditAction.VENTA_CREADA,
+        null,
+        'FUERA_DE_HORARIO',
+        BadRequestException,
+        `Fuera de horario de atención. ${getHorarioMensaje()}`,
+      );
+    }
+
     // 1. Resolver artículos de inventario y validar medida+stock
     const articulos = await this.prisma.articulos_inventario.findMany({
       where: { id: { in: dto.items.map((i) => i.materialId) } },
@@ -435,9 +489,9 @@ export class VentasService {
   /** Configuración del turno (apertura/cierre 24h + tolerancia). */
   findConfig() {
     return {
-      apertura: APERTURA_HORA,
-      cierre: CIERRE_HORA,
-      toleranciaMinutos: TOLERANCIA_MINUTOS,
+      apertura: getAperturaHora(),
+      cierre: getCierreHora(),
+      toleranciaMinutos: getToleranciaMinutos(),
       formato: '24h',
     };
   }
@@ -517,6 +571,17 @@ export class VentasService {
 
   async createCierre(dto: CreateCierreDto, userId: string, cajero: string) {
     const fecha = new Date(hoyIso());
+
+    // Validar ventana de cierre de caja
+    if (!estaEnVentanaCierre()) {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_REGISTRADO,
+        null,
+        'FUERA_DE_VENTANA_CIERRE',
+        BadRequestException,
+        `Fuera de la ventana de cierre. ${getHorarioMensaje()} (ventana: ±${getToleranciaMinutos()} min)`,
+      );
+    }
 
     // No permitir cierre duplicado del día
     const existente = await this.prisma.cierres_caja.findUnique({
