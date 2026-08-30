@@ -31,7 +31,6 @@ export default function ConfiguracionPage() {
   const [formData, setFormData] = useState<Partial<TurnoConfig>>({
     apertura: "07:00",
     cierre: "20:00",
-    toleranciaMinutos: 30,
   });
 
   // Cargar config
@@ -44,7 +43,6 @@ export default function ConfiguracionPage() {
         setFormData({
           apertura: res.data.apertura,
           cierre: res.data.cierre,
-          toleranciaMinutos: res.data.toleranciaMinutos,
         });
       } else {
         showToast("Error al cargar configuración", "error");
@@ -109,7 +107,7 @@ export default function ConfiguracionPage() {
     <div className="space-y-6 sm:space-y-8 max-w-2xl mx-auto">
       <PageHeader
         title="Configuración del Turno"
-        subtitle="Horarios de apertura, cierre y tolerancia para el punto de venta"
+        subtitle="Horarios de apertura y cierre para el punto de venta"
       />
 
       {/* Estado de carga inicial */}
@@ -152,22 +150,6 @@ export default function ConfiguracionPage() {
                 />
               </div>
 
-              <div>
-                <Input
-                  label="Tolerancia para Cierre (minutos)"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  step={5}
-                  value={formData.toleranciaMinutos ?? 30}
-                  onChange={(e) => handleChange("toleranciaMinutos", Number(e.target.value))}
-                  disabled={!puedeEditar}
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Minutos antes y después de la hora de cierre permitidos para hacer el arqueo de caja.
-                </p>
-              </div>
-
               {puedeEditar && (
                 <div className="pt-4 border-t border-slate-100 flex justify-end">
                   <Button
@@ -192,7 +174,7 @@ export default function ConfiguracionPage() {
                   <Settings className="w-5 h-5 text-primary" />
                   Configuración Actual (en BD)
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div className="bg-slate-50 rounded-xl p-4">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                       Apertura
@@ -204,14 +186,6 @@ export default function ConfiguracionPage() {
                       Cierre
                     </p>
                     <p className="font-black text-slate-900 text-2xl">{config.cierre}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      Tolerancia
-                    </p>
-                    <p className="font-black text-slate-900 text-2xl">
-                      ±{config.toleranciaMinutos} min
-                    </p>
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 mt-4">
@@ -233,7 +207,7 @@ export default function ConfiguracionPage() {
                   <p className="text-amber-900 font-bold text-sm">Impacto en el sistema</p>
                   <ul className="text-amber-800 text-xs mt-2 space-y-1 list-disc list-inside">
                     <li><strong>Punto de Venta (/ventas):</strong> Solo permite cobrar entre <code className="bg-white/50 px-1 rounded">{config?.apertura || "07:00"}</code> y <code className="bg-white/50 px-1 rounded">{config?.cierre || "20:00"}</code>.</li>
-                    <li><strong>Corte de Caja (/ventas/corte):</strong> Solo permite cerrar en ventana <code className="bg-white/50 px-1 rounded">{config?.cierre || "20:00"}</code> ± <code className="bg-white/50 px-1 rounded">{config?.toleranciaMinutos || 30}</code> min.</li>
+                    <li><strong>Corte de Caja (/ventas/corte):</strong> Solo permite cerrar después de la hora de cierre y hasta antes de la próxima apertura.</li>
                     <li>Cambios surten efecto inmediato (cache TTL 30s).</li>
                     <li>No requiere reinicio del backend ni del frontend.</li>
                   </ul>

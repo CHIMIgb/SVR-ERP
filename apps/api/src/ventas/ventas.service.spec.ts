@@ -71,7 +71,6 @@ describe('VentasService', () => {
     // Configurar variables de entorno para tests: horario 00:00-23:59 = siempre abierto
     process.env.TURNO_APERTURA = '00:00';
     process.env.TURNO_CIERRE = '23:59';
-    process.env.TURNO_TOLERANCIA_MINUTOS = '1440'; // 24 horas
 
     prisma = {
       articulos_inventario: {
@@ -115,7 +114,6 @@ describe('VentasService', () => {
           const configs: Record<string, { clave: string; valor: string }> = {
             turno_apertura: { clave: 'turno_apertura', valor: '00:00' },
             turno_cierre: { clave: 'turno_cierre', valor: '23:59' },
-            turno_tolerancia_minutos: { clave: 'turno_tolerancia_minutos', valor: '1440' },
           };
           return Promise.resolve(configs[where?.clave] || null);
         }),
@@ -136,7 +134,6 @@ describe('VentasService', () => {
   afterEach(() => {
     delete process.env.TURNO_APERTURA;
     delete process.env.TURNO_CIERRE;
-    delete process.env.TURNO_TOLERANCIA_MINUTOS;
     jest.clearAllMocks();
   });
 
@@ -265,7 +262,6 @@ describe('VentasService', () => {
         const configs: Record<string, { clave: string; valor: string }> = {
           turno_apertura: { clave: 'turno_apertura', valor: '23:00' },
           turno_cierre: { clave: 'turno_cierre', valor: '00:00' },
-          turno_tolerancia_minutos: { clave: 'turno_tolerancia_minutos', valor: '30' },
         };
         return Promise.resolve(configs[where?.clave] || null);
       });
@@ -307,13 +303,12 @@ describe('VentasService', () => {
   });
 
   describe('findConfig', () => {
-    it('should expose apertura/cierre 24h and tolerancia', async () => {
-      // Configuración mockeada en beforeEach: 00:00-23:59, tolerancia 1440
+    it('should expose apertura/cierre 24h', async () => {
+      // Configuración mockeada en beforeEach: 00:00-23:59
       const result = await service.findConfig();
       expect(result).toEqual({
         apertura: '00:00',
         cierre: '23:59',
-        toleranciaMinutos: 1440,
         formato: '24h',
       });
     });

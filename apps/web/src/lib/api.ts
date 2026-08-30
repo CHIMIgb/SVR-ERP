@@ -1133,7 +1133,6 @@ export interface QueryCierresDto {
 export interface TurnoConfig {
   apertura: string;
   cierre: string;
-  toleranciaMinutos: number;
   formato: string;
 }
 
@@ -1200,7 +1199,7 @@ export const ventasApi = {
     return apiClient.get<{ items: CierreVentaDTO[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/ventas/cierres${qs ? `?${qs}` : ''}`);
   },
 
-  /** Configuración del turno (apertura/cierre 24h + tolerancia). */
+  /** Configuración del turno (apertura/cierre 24h). */
   config: () => apiClient.get<TurnoConfig>('/ventas/config'),
 
   /** Actualiza configuración del turno (solo Administrador). */

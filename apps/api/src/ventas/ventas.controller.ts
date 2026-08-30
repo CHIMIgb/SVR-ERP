@@ -136,7 +136,7 @@ export class VentasController {
 
   /**
    * GET /api/ventas/config
-   * Configuración del turno (apertura/cierre 24h + tolerancia).
+   * Configuración del turno (apertura/cierre 24h).
    */
   @RequirePermission('comercial', 'ventas', 'ver')
   @Get('config')

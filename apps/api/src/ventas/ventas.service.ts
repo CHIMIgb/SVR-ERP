@@ -29,6 +29,16 @@ function hoyIso(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+/**
+ * Fecha/hora de inicio del turno actual (misma fecha que `fechaIso`) según el
+ * horario de apertura configurado. Los scopes del día (ventas, retiros, cierre)
+ * usan este límite inferior para mostrar/contabilizar SOLO lo del turno.
+ */
+async function getTurnoInicio(prisma: PrismaService, fechaIso: string): Promise<Date> {
+  const [h, m] = (await getAperturaHora(prisma)).split(':').map((n) => n.padStart(2, '0'));
+  return new Date(`${fechaIso}T${h}:${m}:00.000Z`);
+}
+
 /** Parsea "HH:mm" a {h, m}. */
 function parseHM(s: string): { h: number; m: number } {
   const [h, m] = s.split(':').map(Number);
@@ -65,13 +75,9 @@ async function getAperturaHora(prisma: PrismaService): Promise<string> {
 async function getCierreHora(prisma: PrismaService): Promise<string> {
   return getConfigFromDb(prisma, 'turno_cierre', '20:00');
 }
-async function getToleranciaMinutos(prisma: PrismaService): Promise<number> {
-  return getConfigFromDb(prisma, 'turno_tolerancia_minutos', '30').then(v => parseInt(v, 10));
-}
-
 /**
  * Verifica si la hora actual está dentro del horario de atención (POS).
- * Rango: APERTURA_HORA <= now <= CIERRE_HORA (sin tolerancia).
+ * Rango: APERTURA_HORA <= now <= CIERRE_HORA.
  */
 async function estaEnHorarioAtencion(prisma: PrismaService): Promise<boolean> {
   const now = new Date();
@@ -198,9 +204,9 @@ export class VentasService {
   //  VENTAS DEL DÍA (historial + método)
   // ────────────────────────────────────────────
   async findHoy() {
-    const inicio = hoyIso();
-    const inicioDate = new Date(`${inicio}T00:00:00.000Z`);
-    const finDate = new Date(`${inicio}T23:59:59.999Z`);
+    const inicio = await getTurnoInicio(this.prisma, hoyIso());
+    const inicioDate = inicio;
+    const finDate = new Date(`${hoyIso()}T23:59:59.999Z`);
 
     const ventas = await this.prisma.ventas.findMany({
       where: {
@@ -433,8 +439,9 @@ export class VentasService {
   // ────────────────────────────────────────────
   async findRetiros() {
     const fecha = new Date(hoyIso());
+    const turnoInicio = await getTurnoInicio(this.prisma, hoyIso());
     const retiros = await this.prisma.retiros_caja.findMany({
-      where: { eliminado_en: null, fecha },
+      where: { eliminado_en: null, fecha, creado_en: { gte: turnoInicio } },
       orderBy: { creado_en: 'desc' },
     });
     return {
@@ -526,30 +533,75 @@ export class VentasService {
     };
   }
 
-  /** Configuración del turno (apertura/cierre 24h + tolerancia). */
+  // ────────────────────────────────────────────
+  //  LISTAR CIERRES (con filtros y paginación)
+  // ────────────────────────────────────────────
+  async findAllCierres(query: QueryCierresDto) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+
+    const where: Prisma.cierres_cajaWhereInput = {};
+
+    if (query.search) {
+      where.OR = [
+        { cajero: { contains: query.search, mode: 'insensitive' } },
+        { notas: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (query.estado) {
+      where.estado = query.estado;
+    }
+
+    if (query.fechaDesde || query.fechaHasta) {
+      where.fecha = {};
+      if (query.fechaDesde) where.fecha.gte = new Date(query.fechaDesde);
+      if (query.fechaHasta) where.fecha.lte = new Date(query.fechaHasta);
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.cierres_caja.findMany({
+        where,
+        orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.cierres_caja.count({ where }),
+    ]);
+
+    return {
+      items: items.map((c) => this.serializeCierre(c)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  /** Configuración del turno (apertura/cierre 24h). */
   async findConfig() {
     return {
       apertura: await getAperturaHora(this.prisma),
       cierre: await getCierreHora(this.prisma),
-      toleranciaMinutos: await getToleranciaMinutos(this.prisma),
       formato: '24h',
     };
   }
 
   /** Actualiza configuración de turno (solo Admin). */
-  async updateConfig(dto: { apertura?: string; cierre?: string; toleranciaMinutos?: number }, userId: string) {
+  async updateConfig(dto: { apertura?: string; cierre?: string }, userId: string) {
     const ahora = new Date();
     const updates: Array<{ clave: string; valor: string }> = [];
 
     if (dto.apertura) updates.push({ clave: 'turno_apertura', valor: dto.apertura });
     if (dto.cierre) updates.push({ clave: 'turno_cierre', valor: dto.cierre });
-    if (dto.toleranciaMinutos !== undefined) updates.push({ clave: 'turno_tolerancia_minutos', valor: String(dto.toleranciaMinutos) });
 
     for (const u of updates) {
       await this.prisma.configuracion_sistema.upsert({
         where: { clave: u.clave },
         update: { valor: u.valor, actualizado_en: ahora, actualizado_por: userId },
-        create: { clave: u.clave, valor: u.valor, descripcion: 'Configuración de turno', tipo: u.clave.includes('tolerancia') ? 'number' : 'string', categoria: 'turno', creado_por: userId, actualizado_por: userId },
+        create: { clave: u.clave, valor: u.valor, descripcion: 'Configuración de turno', tipo: 'string', categoria: 'turno', creado_por: userId, actualizado_por: userId },
       });
       // Invalidar cache
       configCache.delete(u.clave);
@@ -659,8 +711,8 @@ export class VentasService {
       );
     }
 
-    // Ventas y retiros del día
-    const inicio = new Date(`${hoyIso()}T00:00:00.000Z`);
+    // Ventas y retiros del turno (límite inferior = hora de apertura)
+    const inicio = await getTurnoInicio(this.prisma, hoyIso());
     const fin = new Date(`${hoyIso()}T23:59:59.999Z`);
     const [ventas, retiros] = await Promise.all([
       this.prisma.ventas.findMany({
@@ -668,7 +720,7 @@ export class VentasService {
         include: { pagos: true },
       }),
       this.prisma.retiros_caja.findMany({
-        where: { eliminado_en: null, fecha },
+        where: { eliminado_en: null, fecha, creado_en: { gte: inicio } },
       }),
     ]);
 

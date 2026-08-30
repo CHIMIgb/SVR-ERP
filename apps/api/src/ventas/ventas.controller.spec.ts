@@ -26,7 +26,6 @@ describe('VentasController', () => {
     findConfig: jest.fn().mockResolvedValue({
       apertura: '07:00',
       cierre: '20:00',
-      toleranciaMinutos: 30,
       formato: '24h',
     }),
     findAperturaHoy: jest.fn().mockResolvedValue({ existe: false, registro: null }),

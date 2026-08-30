@@ -51,7 +51,6 @@ interface CorteCajaProps {
 const DEFAULT_TURN: TurnoConfig = {
   apertura: '07:00',
   cierre: '20:00',
-  toleranciaMinutos: 30,
   formato: '24h',
 };
 
@@ -92,7 +91,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
   const closed = register.closed;
   const openingAmount = register.openingAmount;
 
-  // Config real del turno (apertura/cierre 24h + tolerancia) desde el backend
+  // Config real del turno (apertura/cierre 24h) desde el backend
   const [turnoConfig, setTurnoConfig] = useState<TurnoConfig>(DEFAULT_TURN);
 
   // Si el cierre del día ya existe en BD, bloquear el turno al cargar;

@@ -90,11 +90,5 @@ export class UpdateConfigDto {
   @IsString()
   @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'cierre debe tener formato HH:mm (24h)' })
   cierre?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @Min(0)
-  @Max(1440)
-  toleranciaMinutos?: number;
 }
 

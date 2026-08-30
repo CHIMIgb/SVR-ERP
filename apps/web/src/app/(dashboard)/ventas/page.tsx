@@ -303,7 +303,12 @@ export default function VentasPage() {
   // ── Métricas del día ──────────────────────────────────────────────────────
   const ventasHoy = sales.filter((s) => isToday(s.createdAt));
   const totalHoy = ventasHoy.reduce((sum, s) => sum + s.total, 0);
-  const ticketPromedio = ventasHoy.length ? totalHoy / ventasHoy.length : 0;
+  const hoyIso = new Date().toISOString().split('T')[0];
+  const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
+  const totalRetirosHoy = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
+  // Ingresos del día netos: se descuentan los retiros/gastos del turno (efectivo).
+  const ingresosNetos = totalHoy - totalRetirosHoy;
+  const ticketPromedio = ventasHoy.length ? ingresosNetos / ventasHoy.length : 0;
   const piezasHoy = ventasHoy.reduce((sum, s) => sum + s.itemsSold, 0);
 
   return (
@@ -366,8 +371,8 @@ export default function VentasPage() {
             />
             <StatsCard
               icon={<Banknote className="w-5 h-5" />}
-              value={formatCurrency(totalHoy)}
-              label="Ingresos del día"
+              value={formatCurrency(ingresosNetos)}
+              label="Ingresos del día (netos)"
               color="success"
             />
             <StatsCard

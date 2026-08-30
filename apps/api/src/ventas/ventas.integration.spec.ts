@@ -14,7 +14,7 @@ import { AuditAction, MetodoPago } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
-import { VentasService } from './ventas.service';
+import { VentasService, clearConfigCache } from './ventas.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -268,23 +268,180 @@ describe('Ventas Audit (Real DB)', () => {
 
   describe('CIERRE_CAJA_REGISTRADO', () => {
     it('debe crear cierre y auditar SUCCESS', async () => {
-      const dto = {
-        efectivoInicial: 500,
-        denominaciones: { '1000': 1, '500': 1 } as Record<string, number>,
-        fondoSiguiente: 200,
-        notas: 'Cierre de prueba',
-      };
+      // `createCierre` solo permite cerrar dentro de la ventana horaria real
+      // (turno diurno 08:00-18:00 => cierra de 18:00 a 08:00). Para que el test
+      // sea determinista a cualquier hora, forzamos un turno CONTINUO en la
+      // config (apertura === cierre en 00:00) donde permiteCerrarCaja() es siempre
+      // true, y restauramos la config original al terminar.
+      const original = await prisma.configuracion_sistema.findMany({
+        where: { clave: { in: ['turno_apertura', 'turno_cierre'] } },
+      });
+      const originalMap = new Map(original.map((c) => [c.clave, c.valor]));
 
-      const cierre = await service.createCierre(dto, ACTOR_USER_ID, 'Cajero Test');
+      // Protección: no puede existir ya un cierre con la fecha de hoy (unique)
+      const hoy = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z';
+      const existente = await prisma.cierres_caja.findUnique({ where: { fecha: hoy } });
+      if (existente) {
+        await prisma.cierres_caja.delete({ where: { id: existente.id } });
+      }
+
+      try {
+        for (const clave of ['turno_apertura', 'turno_cierre']) {
+          await prisma.configuracion_sistema.upsert({
+            where: { clave },
+            create: { clave, valor: '00:00', categoria: 'turno' },
+            update: { valor: '00:00' },
+          });
+        }
+        // Invalidar el caché de config para que createCierre relea la BD
+        clearConfigCache();
+
+        const dto = {
+          efectivoInicial: 500,
+          denominaciones: { '1000': 1, '500': 1 } as Record<string, number>,
+          fondoSiguiente: 200,
+          notas: 'Cierre de prueba',
+        };
+
+        const cierre = await service.createCierre(dto, ACTOR_USER_ID, 'Cajero Test');
+        createdCierreIds.push(cierre.id);
+
+        expect(cierre.contado).toBe(1500);
+        expect(typeof cierre.diferencia).toBe('number');
+
+        const audits = await findAudits(AuditAction.CIERRE_CAJA_REGISTRADO, cierre.id);
+        expect(audits.length).toBeGreaterThanOrEqual(1);
+        expect(audits[0].result).toBe('SUCCESS');
+        expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+      } finally {
+        // Invalidar caché para que el próximo acceso relea la config restaurada
+        clearConfigCache();
+        // Restaurar config original
+        for (const [clave, valor] of originalMap) {
+          await prisma.configuracion_sistema.update({ where: { clave }, data: { valor } });
+        }
+        for (const clave of ['turno_apertura', 'turno_cierre']) {
+          if (!originalMap.has(clave)) {
+            await prisma.configuracion_sistema.deleteMany({ where: { clave } });
+          }
+        }
+        clearConfigCache();
+      }
+    });
+  });
+
+  describe('CIERRE_CAJA_APROBADO', () => {
+    it('debe aprobar un cierre pendiente, cambiarlo a APROBADO y auditar SUCCESS', async () => {
+      // Cierre PENDIENTE con fecha única (ayer) para aislar el test
+      const fecha = new Date();
+      fecha.setDate(fecha.getDate() - 1);
+      const cierre = await prisma.cierres_caja.create({
+        data: {
+          id: randomUUID(),
+          fecha: new Date(fecha.toISOString().split('T')[0] + 'T00:00:00Z'),
+          cajero: 'Cajero Test',
+          ventas_count: 0,
+          total_ventas: 0,
+          efectivo_inicial: 500,
+          ventas_efectivo: 0,
+          total_retiros: 0,
+          esperado: 500,
+          contado: 500,
+          diferencia: 0,
+          fondo_siguiente: 200,
+          notas: 'Para aprobar',
+          denominaciones: {},
+          estado: 'PENDIENTE',
+          actualizado_en: new Date(),
+        },
+      });
       createdCierreIds.push(cierre.id);
 
-      expect(cierre.contado).toBe(1500);
-      expect(typeof cierre.diferencia).toBe('number');
+      const aprobado = await service.aprobarCierre(cierre.id, ACTOR_USER_ID);
+      expect(aprobado.estado).toBe('APROBADO');
 
-      const audits = await findAudits(AuditAction.CIERRE_CAJA_REGISTRADO, cierre.id);
+      const audits = await findAudits(AuditAction.CIERRE_CAJA_APROBADO, cierre.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue?.estado).toBe('APROBADO');
+    });
+
+    it('debe rechazar aprobación de un cierre ya aprobado y auditar FAIL', async () => {
+      const actualizado = await prisma.cierres_caja.findFirst({
+        where: { estado: 'APROBADO', actualizado_en: { gte: new Date(Date.now() - 60000) } },
+        orderBy: { actualizado_en: 'desc' },
+      });
+      if (!actualizado) return;
+
+      await auditContext.run(
+        {
+          jwtUserId: ACTOR_USER_ID,
+          endpoint: '/api/ventas/cierres/:id/aprobar',
+          method: 'PATCH',
+        },
+        async () => {
+          await expect(service.aprobarCierre(actualizado.id, ACTOR_USER_ID)).rejects.toThrow(
+            'ya fue aprobado',
+          );
+        },
+      );
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.CIERRE_CAJA_APROBADO,
+          entity_id: actualizado.id,
+          result: 'FAIL',
+          error_code: 'CIERRE_YA_RESUELTO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('CIERRE_CAJA_RECHAZADO', () => {
+    it('debe rechazar un cierre pendiente, cambiarlo a RECHAZADO y auditar SUCCESS', async () => {
+      // Cierre PENDIENTE con fecha única (anterior a ayer) para aislar el test
+      const fecha = new Date();
+      fecha.setDate(fecha.getDate() - 2);
+      const cierre = await prisma.cierres_caja.create({
+        data: {
+          id: randomUUID(),
+          fecha: new Date(fecha.toISOString().split('T')[0] + 'T00:00:00Z'),
+          cajero: 'Cajero Test',
+          ventas_count: 0,
+          total_ventas: 0,
+          efectivo_inicial: 500,
+          ventas_efectivo: 0,
+          total_retiros: 0,
+          esperado: 500,
+          contado: 500,
+          diferencia: 0,
+          fondo_siguiente: 200,
+          notas: 'Para rechazar',
+          denominaciones: {},
+          estado: 'PENDIENTE',
+          actualizado_en: new Date(),
+        },
+      });
+      createdCierreIds.push(cierre.id);
+
+      const rechazado = await service.rechazarCierre(
+        cierre.id,
+        { motivo: 'Faltan comprobantes' },
+        ACTOR_USER_ID,
+      );
+      expect(rechazado.estado).toBe('RECHAZADO');
+
+      const audits = await findAudits(AuditAction.CIERRE_CAJA_RECHAZADO, cierre.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue?.estado).toBe('RECHAZADO');
+      expect(newValue?.motivo).toBe('Faltan comprobantes');
     });
   });
 
