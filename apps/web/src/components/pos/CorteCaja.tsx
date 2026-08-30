@@ -285,8 +285,8 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
           <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
             <Lock className="w-4 h-4 shrink-0 mt-0.5" />
             <p className="text-xs font-medium">
-              El turno de hoy ya cerró. El siguiente corte se habilitará en el horario de
-              apertura configurado.
+              El turno de hoy ya cerró. El siguiente corte se habilitará después de la hora de
+              cierre del próximo turno ({turnoConfig.cierre} hrs).
             </p>
           </div>
         </div>
