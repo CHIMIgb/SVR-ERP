@@ -1109,6 +1109,9 @@ export interface CierreVentaDTO {
   fondoSiguiente: number;
   notas?: string;
   denominaciones: Record<string, number>;
+  estado?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+  aprobadorId?: string | null;
+  motivoRechazo?: string | null;
 }
 
 export interface CrearCierreInput {
@@ -1116,6 +1119,15 @@ export interface CrearCierreInput {
   efectivoInicial?: number;
   fondoSiguiente?: number;
   notas?: string;
+}
+
+export interface QueryCierresDto {
+  search?: string;
+  estado?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+  fechaDesde?: string;
+  fechaHasta?: string;
+  page?: number;
+  limit?: number;
 }
 
 export interface TurnoConfig {
@@ -1174,6 +1186,19 @@ export const ventasApi = {
   /** Rechazar un cierre de caja con motivo (solo Administrador). */
   rechazarCierre: (id: string, motivo: string) =>
     apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/rechazar`, { motivo }),
+
+  /** Listar cierres de caja con filtros y paginación. */
+  listarCierres: (query: QueryCierresDto) => {
+    const searchParams = new URLSearchParams();
+    if (query.search) searchParams.set('search', query.search);
+    if (query.estado) searchParams.set('estado', query.estado);
+    if (query.fechaDesde) searchParams.set('fechaDesde', query.fechaDesde);
+    if (query.fechaHasta) searchParams.set('fechaHasta', query.fechaHasta);
+    if (query.page) searchParams.set('page', String(query.page));
+    if (query.limit) searchParams.set('limit', String(query.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<{ items: CierreVentaDTO[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/ventas/cierres${qs ? `?${qs}` : ''}`);
+  },
 
   /** Configuración del turno (apertura/cierre 24h + tolerancia). */
   config: () => apiClient.get<TurnoConfig>('/ventas/config'),
