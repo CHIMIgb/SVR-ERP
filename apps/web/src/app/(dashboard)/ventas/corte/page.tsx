@@ -8,11 +8,7 @@ import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { ventasApi, type TurnoConfig } from '@/lib/api';
-
-function parseHM(s: string): { h: number; m: number } {
-  const [h, m] = s.split(':').map(Number);
-  return { h: h || 0, m: m || 0 };
-}
+import { parseHM, permiteCerrarCaja } from '@/lib/pos';
 
 export default function CorteDelDiaPage() {
   const { user } = useAuth();
@@ -34,14 +30,11 @@ export default function CorteDelDiaPage() {
     ventasApi.config().then((res) => {
       if (res.success) {
         setTurnoConfig(res.data);
-        // Verificar si se puede cerrar: después de la hora de cierre y
-        // antes de la hora de apertura del siguiente turno (cruza medianoche)
+        // Verificar si se puede cerrar (según el tipo de turno: diurno/nocturno)
         const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
         const { h: cH, m: cM } = parseHM(res.data.cierre);
         const { h: aH, m: aM } = parseHM(res.data.apertura);
-        const cierreMin = cH * 60 + cM;
-        const aperturaMin = aH * 60 + aM;
-        const fuera = !(nowMin >= cierreMin || nowMin < aperturaMin);
+        const fuera = !permiteCerrarCaja(nowMin, aH * 60 + aM, cH * 60 + cM);
         setFueraDeVentana(fuera);
       }
     });

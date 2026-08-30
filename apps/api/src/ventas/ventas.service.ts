@@ -83,21 +83,34 @@ async function estaEnHorarioAtencion(prisma: PrismaService): Promise<boolean> {
 }
 
 /**
- * Determina si ahora se puede cerrar la caja.
- * Regla: se permite cerrar desde que pasa la hora de cierre y hasta antes de la
- * hora de apertura del siguiente turno (la ventana cruza la medianoche).
- * Fuera de esa ventana (hora de trabajo) NO se puede cerrar.
- * # ponytail: asume turno diurno (cierre > apertura). Turno nocturno invertido
- * requeriría cambiar la comparación.
+ * Regla general de cuándo se puede cerrar la caja, según el tipo de turno.
+ * - Turno DIURNO (cierre > apertura): p. ej. 07:00-20:00. El turno va de apertura a
+ *   cierre el mismo día. Se puede cerrar tras el cierre y hasta la apertura del
+ *   día siguiente (la ventana cruza la medianoche): now >= cierre || now < apertura.
+ * - Turno NOCTURNO (apertura > cierre): p. ej. 23:00-00:00. El turno va de apertura
+ *   (día D) a cierre (día D+1). Se puede cerrar tras el cierre y hasta la próxima
+ *   apertura: now >= cierre && now < apertura.
+ * - Turno continuo (apertura === cierre): siempre se puede cerrar.
+ */
+export function permiteCerrarCaja(nowMin: number, aperturaMin: number, cierreMin: number): boolean {
+  if (cierreMin > aperturaMin) {
+    return nowMin >= cierreMin || nowMin < aperturaMin;
+  }
+  if (cierreMin < aperturaMin) {
+    return nowMin >= cierreMin && nowMin < aperturaMin;
+  }
+  return true;
+}
+
+/**
+ * Determina si ahora se puede cerrar la caja (lee la config del turno desde la BD).
  */
 async function puedeCerrarCaja(prisma: PrismaService): Promise<boolean> {
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const { h: cH, m: cM } = parseHM(await getCierreHora(prisma));
   const { h: aH, m: aM } = parseHM(await getAperturaHora(prisma));
-  const cierreMin = cH * 60 + cM;
-  const aperturaMin = aH * 60 + aM;
-  return nowMin >= cierreMin || nowMin < aperturaMin;
+  return permiteCerrarCaja(nowMin, aH * 60 + aM, cH * 60 + cM);
 }
 
 async function getHorarioMensaje(prisma: PrismaService): Promise<string> {

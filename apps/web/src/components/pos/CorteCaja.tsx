@@ -30,6 +30,8 @@ import {
   isToday,
   itemSubtotal,
   itemUnitName,
+  parseHM,
+  permiteCerrarCaja,
 } from '@/lib/pos';
 import type { POSSale } from '@/lib/pos';
 import { usePOS } from '@/components/pos/POSProvider';
@@ -52,12 +54,6 @@ const DEFAULT_TURN: TurnoConfig = {
   toleranciaMinutos: 30,
   formato: '24h',
 };
-
-/** "07:00" -> {h:7,m:0} */
-function parseHM(s: string): { h: number; m: number } {
-  const [h, m] = s.split(':').map(Number);
-  return { h: h || 0, m: m || 0 };
-}
 
 const GROUP_ORDER = ['efectivo', 'tarjeta', 'transferencia'] as const;
 type SaleGroup = (typeof GROUP_ORDER)[number];
@@ -203,9 +199,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const { h: cH, m: cM } = parseHM(turnoConfig.cierre);
   const { h: aH, m: aM } = parseHM(turnoConfig.apertura);
-  const cierreMin = cH * 60 + cM;
-  const aperturaMin = aH * 60 + aM;
-  const allowed = nowMin >= cierreMin || nowMin < aperturaMin;
+  const allowed = permiteCerrarCaja(nowMin, aH * 60 + aM, cH * 60 + cM);
 
   const hour = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 

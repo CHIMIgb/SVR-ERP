@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditResult, MetodoPago } from '@prisma/client';
-import { VentasService, clearConfigCache } from './ventas.service';
+import { VentasService, clearConfigCache, permiteCerrarCaja } from './ventas.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -344,6 +344,55 @@ describe('VentasService', () => {
       await expect(
         service.createApertura({ fondoInicial: 500 }, 'user-1', 'Cajero'),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+});
+
+describe('permiteCerrarCaja', () => {
+  const hm = (s: string) => {
+    const [h, m] = s.split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  describe('turno diurno (apertura 07:00, cierre 20:00)', () => {
+    const apertura = hm('07:00');
+    const cierre = hm('20:00');
+
+    it('permite cerrar después de la hora de cierre (22:00)', () => {
+      expect(permiteCerrarCaja(hm('22:00'), apertura, cierre)).toBe(true);
+    });
+
+    it('permite cerrar en la madrugada antes de la apertura (03:00)', () => {
+      expect(permiteCerrarCaja(hm('03:00'), apertura, cierre)).toBe(true);
+    });
+
+    it('NO permite cerrar durante la hora de trabajo (12:00)', () => {
+      expect(permiteCerrarCaja(hm('12:00'), apertura, cierre)).toBe(false);
+    });
+  });
+
+  describe('turno nocturno (apertura 23:00, cierre 00:00)', () => {
+    const apertura = hm('23:00');
+    const cierre = hm('00:00');
+
+    it('permite cerrar tras la medianoche justo después del cierre (00:05)', () => {
+      expect(permiteCerrarCaja(hm('00:05'), apertura, cierre)).toBe(true);
+    });
+
+    it('permite cerrar durante el día antes de la próxima apertura (12:00)', () => {
+      expect(permiteCerrarCaja(hm('12:00'), apertura, cierre)).toBe(true);
+    });
+
+    it('NO permite cerrar durante el turno nocturno (23:30)', () => {
+      expect(permiteCerrarCaja(hm('23:30'), apertura, cierre)).toBe(false);
+    });
+  });
+
+  describe('turno continuo (apertura === cierre)', () => {
+    it('siempre permite cerrar', () => {
+      expect(permiteCerrarCaja(hm('05:00'), hm('12:00'), hm('12:00'))).toBe(true);
+      expect(permiteCerrarCaja(hm('12:00'), hm('12:00'), hm('12:00'))).toBe(true);
+      expect(permiteCerrarCaja(hm('23:59'), hm('12:00'), hm('12:00'))).toBe(true);
     });
   });
 });

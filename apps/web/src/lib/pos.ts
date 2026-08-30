@@ -63,6 +63,28 @@ export function cartLineKey(item: CartItem): string {
   return `${item.product.id}:${item.unit ?? item.product.unit}`;
 }
 
+/** "HH:mm" -> minutos desde medianoche. */
+export function parseHM(s: string): { h: number; m: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+}
+
+/**
+ * Regla general de cuándo se puede cerrar la caja, según el tipo de turno.
+ * - DIURNO (cierre > apertura): cerrar tras el cierre y hasta la apertura del día sig.
+ * - NOCTURNO (apertura > cierre): cerrar tras el cierre y hasta la próxima apertura.
+ * - Continuo (apertura === cierre): siempre.
+ */
+export function permiteCerrarCaja(
+  nowMin: number,
+  aperturaMin: number,
+  cierreMin: number,
+): boolean {
+  if (cierreMin > aperturaMin) return nowMin >= cierreMin || nowMin < aperturaMin;
+  if (cierreMin < aperturaMin) return nowMin >= cierreMin && nowMin < aperturaMin;
+  return true;
+}
+
 /** Unidad de medida efectiva de una línea (la elegida o la del producto). */
 export function itemUnitName(item: CartItem): string {
   return item.unit ?? item.product.unit;
