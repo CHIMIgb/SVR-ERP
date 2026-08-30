@@ -197,13 +197,15 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
   const difference = counted - expectedCash;
 
   // ── Ventana de cierre ────────────────────────────────────────────────────
+  // Se puede cerrar desde que pasa la hora de cierre y hasta antes de la hora
+  // de apertura del siguiente turno (la ventana cruza la medianoche).
   const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   const { h: cH, m: cM } = parseHM(turnoConfig.cierre);
-  const closingStart = new Date();
-  closingStart.setHours(cH, cM - turnoConfig.toleranciaMinutos, 0, 0);
-  const closingEnd = new Date();
-  closingEnd.setHours(cH, cM + turnoConfig.toleranciaMinutos, 0, 0);
-  const allowed = now >= closingStart && now <= closingEnd;
+  const { h: aH, m: aM } = parseHM(turnoConfig.apertura);
+  const cierreMin = cH * 60 + cM;
+  const aperturaMin = aH * 60 + aM;
+  const allowed = nowMin >= cierreMin || nowMin < aperturaMin;
 
   const hour = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
@@ -348,15 +350,15 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
             <div className={cn(posClasses.alertBox, 'bg-blue-50 border-blue-200 text-blue-700')}>
               <Clock className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
-                Turno de {turnoConfig.apertura} a {turnoConfig.cierre} hrs · Cierre:{' '}
-                {`${pad(closingStart.getHours())}:${pad(closingStart.getMinutes())} a ${pad(closingEnd.getHours())}:${pad(closingEnd.getMinutes())} hrs.`}
+                Turno de {turnoConfig.apertura} a {turnoConfig.cierre} hrs · Cierre permitido:{' '}
+                desde las {turnoConfig.cierre} y hasta antes de las {turnoConfig.apertura} (siguiente turno).
               </p>
             </div>
             {!allowed && (
               <div className={cn(posClasses.alertBox, 'bg-red-50 border-red-200 text-red-700 mt-2')}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <p className="text-xs font-medium">
-                  Ahora mismo no está permitido cerrar caja. Espera la ventana configurada.
+                  Ahora mismo no está permitido cerrar caja (horario de trabajo). Se habilita después de las {turnoConfig.cierre} hrs.
                 </p>
               </div>
             )}

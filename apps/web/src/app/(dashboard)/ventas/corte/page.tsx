@@ -34,15 +34,14 @@ export default function CorteDelDiaPage() {
     ventasApi.config().then((res) => {
       if (res.success) {
         setTurnoConfig(res.data);
-        // Verificar ventana de cierre
-        const now = new Date();
+        // Verificar si se puede cerrar: después de la hora de cierre y
+        // antes de la hora de apertura del siguiente turno (cruza medianoche)
+        const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
         const { h: cH, m: cM } = parseHM(res.data.cierre);
-        const tol = res.data.toleranciaMinutos;
-        const cierreStart = new Date();
-        cierreStart.setHours(cH, cM - tol, 0, 0);
-        const cierreEnd = new Date();
-        cierreEnd.setHours(cH, cM + tol, 0, 0);
-        const fuera = now < cierreStart || now > cierreEnd;
+        const { h: aH, m: aM } = parseHM(res.data.apertura);
+        const cierreMin = cH * 60 + cM;
+        const aperturaMin = aH * 60 + aM;
+        const fuera = !(nowMin >= cierreMin || nowMin < aperturaMin);
         setFueraDeVentana(fuera);
       }
     });
@@ -73,7 +72,7 @@ export default function CorteDelDiaPage() {
                 <div>
                   <p className="text-red-900 font-bold text-lg">Fuera de la ventana de cierre de caja</p>
                   <p className="text-red-700 text-sm font-medium mt-1">
-                    El cierre solo está permitido de <strong>{turnoConfig.cierre}</strong> ± <strong>{turnoConfig.toleranciaMinutos} min</strong>.
+                    El cierre solo está permitido después de las <strong>{turnoConfig.cierre}</strong> y hasta antes de las <strong>{turnoConfig.apertura}</strong> hrs (siguiente turno).
                     Hora actual: <strong>{new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong>.
                   </p>
                 </div>

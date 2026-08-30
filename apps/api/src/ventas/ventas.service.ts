@@ -39,6 +39,11 @@ function parseHM(s: string): { h: number; m: number } {
 const configCache = new Map<string, { valor: string; expira: number }>();
 const CACHE_TTL_MS = 30_000;
 
+/** Fuerza la invalidación del cache de configuración (útil tras cambios externos o en tests). */
+export function clearConfigCache(): void {
+  configCache.clear();
+}
+
 async function getConfigFromDb(prisma: PrismaService, clave: string, fallback: string): Promise<string> {
   const now = Date.now();
   const cached = configCache.get(clave);
@@ -78,16 +83,21 @@ async function estaEnHorarioAtencion(prisma: PrismaService): Promise<boolean> {
 }
 
 /**
- * Verifica si la hora actual está dentro de la ventana de cierre de caja.
- * Rango: (CIERRE_HORA - tolerancia) <= now <= (CIERRE_HORA + tolerancia).
+ * Determina si ahora se puede cerrar la caja.
+ * Regla: se permite cerrar desde que pasa la hora de cierre y hasta antes de la
+ * hora de apertura del siguiente turno (la ventana cruza la medianoche).
+ * Fuera de esa ventana (hora de trabajo) NO se puede cerrar.
+ * # ponytail: asume turno diurno (cierre > apertura). Turno nocturno invertido
+ * requeriría cambiar la comparación.
  */
-async function estaEnVentanaCierre(prisma: PrismaService): Promise<boolean> {
+async function puedeCerrarCaja(prisma: PrismaService): Promise<boolean> {
   const now = new Date();
-  const [cH, cM] = (await getCierreHora(prisma)).split(':').map(Number);
-  const tol = await getToleranciaMinutos(prisma);
-  const cierreStart = new Date(); cierreStart.setHours(cH, cM - tol, 0, 0);
-  const cierreEnd = new Date(); cierreEnd.setHours(cH, cM + tol, 0, 0);
-  return now >= cierreStart && now <= cierreEnd;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const { h: cH, m: cM } = parseHM(await getCierreHora(prisma));
+  const { h: aH, m: aM } = parseHM(await getAperturaHora(prisma));
+  const cierreMin = cH * 60 + cM;
+  const aperturaMin = aH * 60 + aM;
+  return nowMin >= cierreMin || nowMin < aperturaMin;
 }
 
 async function getHorarioMensaje(prisma: PrismaService): Promise<string> {
@@ -611,14 +621,14 @@ export class VentasService {
   async createCierre(dto: CreateCierreDto, userId: string, cajero: string) {
     const fecha = new Date(hoyIso());
 
-    // Validar ventana de cierre de caja
-    if (!(await estaEnVentanaCierre(this.prisma))) {
+    // Validar que se pueda cerrar la caja (después de la hora de cierre, antes de la apertura)
+    if (!(await puedeCerrarCaja(this.prisma))) {
       return this.fallir(
         AuditAction.CIERRE_CAJA_REGISTRADO,
         null,
         'FUERA_DE_VENTANA_CIERRE',
         BadRequestException,
-        `Fuera de la ventana de cierre. ${await getHorarioMensaje(this.prisma)} (ventana: ±${await getToleranciaMinutos(this.prisma)} min)`,
+        `No se puede cerrar la caja ahora. El cierre se habilita después de las ${await getCierreHora(this.prisma)} y hasta antes de las ${await getAperturaHora(this.prisma)} (siguiente turno).`,
       );
     }
 

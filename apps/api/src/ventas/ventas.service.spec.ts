@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditResult, MetodoPago } from '@prisma/client';
-import { VentasService } from './ventas.service';
+import { VentasService, clearConfigCache } from './ventas.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -65,6 +65,9 @@ describe('VentasService', () => {
   };
 
   beforeEach(async () => {
+    // Limpiar cache de configuración para que cada test use su propio mock
+    // (el cache TTL 30s del módulo NO debe filtrarse entre tests).
+    clearConfigCache();
     // Configurar variables de entorno para tests: horario 00:00-23:59 = siempre abierto
     process.env.TURNO_APERTURA = '00:00';
     process.env.TURNO_CIERRE = '23:59';
@@ -255,6 +258,19 @@ describe('VentasService', () => {
   });
 
   describe('createCierre', () => {
+    // Config con cierre=00:00 hace que puedeCerrarCaja() sea siempre true
+    // (nowMin >= 0min), para no depender de la hora real al correr el test.
+    beforeEach(() => {
+      (prisma.configuracion_sistema.findUnique as jest.Mock).mockImplementation(({ where }) => {
+        const configs: Record<string, { clave: string; valor: string }> = {
+          turno_apertura: { clave: 'turno_apertura', valor: '23:00' },
+          turno_cierre: { clave: 'turno_cierre', valor: '00:00' },
+          turno_tolerancia_minutos: { clave: 'turno_tolerancia_minutos', valor: '30' },
+        };
+        return Promise.resolve(configs[where?.clave] || null);
+      });
+    });
+
     it('should compute arqueo esperado/contado/diferencia', async () => {
       const dto = {
         efectivoInicial: 500,
