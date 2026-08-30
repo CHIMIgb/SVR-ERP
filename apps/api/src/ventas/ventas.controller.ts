@@ -2,7 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
+  Param,
   Req,
   UseGuards,
   HttpCode,
@@ -15,6 +17,7 @@ import {
   CreateCierreDto,
   CreateAperturaDto,
   CreateRetiroDto,
+  RechazarCierreDto,
 } from './dto/create-retiro-cierre.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -101,6 +104,32 @@ export class VentasController {
     const user = req.user as { id: string };
     const cajero = this.cajeroDe(req);
     return this.ventasService.createCierre(dto, user.id, cajero);
+  }
+
+  /**
+   * PATCH /api/ventas/cierres/:id/aprobar
+   * Aprueba un cierre de caja (solo Administrador).
+   */
+  @RequirePermission('comercial', 'ventas', 'ver')
+  @Patch('cierres/:id/aprobar')
+  aprobarCierre(@Param('id') id: string, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.ventasService.aprobarCierre(id, user.id);
+  }
+
+  /**
+   * PATCH /api/ventas/cierres/:id/rechazar
+   * Rechaza un cierre de caja con motivo (solo Administrador).
+   */
+  @RequirePermission('comercial', 'ventas', 'ver')
+  @Patch('cierres/:id/rechazar')
+  rechazarCierre(
+    @Param('id') id: string,
+    @Body() dto: RechazarCierreDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.ventasService.rechazarCierre(id, dto, user.id);
   }
 
   /**

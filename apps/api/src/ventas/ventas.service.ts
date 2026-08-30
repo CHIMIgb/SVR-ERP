@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -17,6 +18,7 @@ import {
   CreateCierreDto,
   CreateAperturaDto,
   CreateRetiroDto,
+  RechazarCierreDto,
 } from './dto/create-retiro-cierre.dto';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad. */
@@ -616,6 +618,128 @@ export class VentasService {
   }
 
   // ────────────────────────────────────────────
+  //  APROBACIÓN DEL CIERRE (solo Administrador)
+  // ────────────────────────────────────────────
+  private async esAdmin(userId: string): Promise<boolean> {
+    const vinculacion = await this.prisma.users_roles.findFirst({
+      where: {
+        user_id: userId,
+        activo: true,
+        roles: { nombre: 'Administrador', activo: true },
+      },
+    });
+    return !!vinculacion;
+  }
+
+  async aprobarCierre(id: string, userId: string) {
+    if (!(await this.esAdmin(userId))) {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_APROBADO,
+        id,
+        'SOLO_ADMIN',
+        ForbiddenException,
+        'Solo el Administrador puede aprobar cierres de caja',
+      );
+    }
+
+    const cierre = await this.prisma.cierres_caja.findUnique({ where: { id } });
+    if (!cierre) {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_APROBADO,
+        id,
+        'CIERRE_NO_ENCONTRADO',
+        NotFoundException,
+        'No se encontró el cierre de caja',
+      );
+    }
+    if (cierre.estado !== 'PENDIENTE') {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_APROBADO,
+        id,
+        'CIERRE_YA_RESUELTO',
+        BadRequestException,
+        `El cierre ya fue ${cierre.estado === 'APROBADO' ? 'aprobado' : 'rechazado'}`,
+      );
+    }
+
+    const actualizado = await this.prisma.cierres_caja.update({
+      where: { id },
+      data: { estado: 'APROBADO', aprobador_id: userId, actualizado_en: new Date() },
+    });
+
+    const serialized = this.serializeCierre(actualizado);
+    await this.auditService.log({
+      action: AuditAction.CIERRE_CAJA_APROBADO,
+      entityType: 'cierres_caja',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { fecha: serialized.fecha, estado: serialized.estado },
+    });
+
+    return serialized;
+  }
+
+  async rechazarCierre(id: string, dto: RechazarCierreDto, userId: string) {
+    if (!(await this.esAdmin(userId))) {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_RECHAZADO,
+        id,
+        'SOLO_ADMIN',
+        ForbiddenException,
+        'Solo el Administrador puede rechazar cierres de caja',
+      );
+    }
+
+    const cierre = await this.prisma.cierres_caja.findUnique({ where: { id } });
+    if (!cierre) {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_RECHAZADO,
+        id,
+        'CIERRE_NO_ENCONTRADO',
+        NotFoundException,
+        'No se encontró el cierre de caja',
+      );
+    }
+    if (cierre.estado !== 'PENDIENTE') {
+      return this.fallir(
+        AuditAction.CIERRE_CAJA_RECHAZADO,
+        id,
+        'CIERRE_YA_RESUELTO',
+        BadRequestException,
+        `El cierre ya fue ${cierre.estado === 'APROBADO' ? 'aprobado' : 'rechazado'}`,
+      );
+    }
+
+    const motivo = dto.motivo.trim();
+    const actualizado = await this.prisma.cierres_caja.update({
+      where: { id },
+      data: {
+        estado: 'RECHAZADO',
+        aprobador_id: userId,
+        motivo_rechazo: motivo,
+        actualizado_en: new Date(),
+      },
+    });
+
+    const serialized = this.serializeCierre(actualizado);
+    await this.auditService.log({
+      action: AuditAction.CIERRE_CAJA_RECHAZADO,
+      entityType: 'cierres_caja',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { fecha: serialized.fecha, estado: serialized.estado, motivo },
+    });
+
+    return serialized;
+  }
+
+  // ────────────────────────────────────────────
   //  SERIALIZE
   // ────────────────────────────────────────────
   private serializeVenta(v: {
@@ -714,6 +838,9 @@ export class VentasService {
     fondo_siguiente: Prisma.Decimal;
     notas: string | null;
     denominaciones: Prisma.JsonValue;
+    estado: string;
+    aprobador_id: string | null;
+    motivo_rechazo: string | null;
   }) {
     return {
       id: c.id,
@@ -730,6 +857,9 @@ export class VentasService {
       fondoSiguiente: Number(c.fondo_siguiente),
       notas: c.notas ?? undefined,
       denominaciones: (c.denominaciones as Record<string, number>) ?? {},
+      estado: c.estado,
+      aprobadorId: c.aprobador_id ?? undefined,
+      motivoRechazo: c.motivo_rechazo ?? undefined,
     };
   }
 }

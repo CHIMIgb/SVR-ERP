@@ -1704,6 +1704,12 @@ model cierres_caja {
   notas            String?
   /// Conteo por denominación: { "1000": 1, "500": 3, ... }
   denominaciones  Json
+  /// Estado de aprobación del cierre por el Administrador.
+  estado          String   @default("PENDIENTE")
+  /// Usuario (Administrador) que aprobó o rechazó el cierre.
+  aprobador_id    String?  @db.Uuid
+  /// Motivo del rechazo (obligatorio al rechazar).
+  motivo_rechazo  String?
   creado_en       DateTime @db.Timestamptz() @default(now())
   actualizado_en  DateTime @db.Timestamptz()
   creado_por      String?  @db.Uuid
@@ -2017,6 +2023,8 @@ enum AuditAction {
   RETIRO_REGISTRADO
   CIERRE_CAJA_REGISTRADO
   APERTURA_CAJA_REGISTRADA
+  CIERRE_CAJA_APROBADO
+  CIERRE_CAJA_RECHAZADO
   ERROR_SISTEMA
   ERROR_SISTEMA
 }

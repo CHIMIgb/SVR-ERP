@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreateRetiroDto {
   @IsString()
@@ -41,4 +41,12 @@ export class CreateAperturaDto {
   @IsNumber()
   @Min(0)
   fondoInicial?: number;
+}
+
+export class RechazarCierreDto {
+  /** Motivo por el que el Administrador rechaza el cierre. */
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  motivo!: string;
 }
