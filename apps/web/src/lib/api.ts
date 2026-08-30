@@ -793,10 +793,285 @@ export const asistenciaApi = {
     estado?: string;
     enSitio?: boolean;
     search?: string;
+ }
+
+export interface MantenimientoDTO {
+  id: string;
+  maquinaId: string;
+  tipo: 'Correctivo' | 'Preventivo';
+  descripcion: string;
+  fecha: string;
+  horasServicio: number;
+  costo: number;
+  proximoServicioHoras: number;
+}
+
+export interface MantenimientoStats {
+  serviciosProximos: number;
+  promedioHorasServicio: number;
+  equiposEnOptimoEstado: number;
+  totalMaquinas: number;
+}
+
+export interface MantenimientoCreateInput {
+  maquinaId: string;
+  tipo: 'Correctivo' | 'Preventivo';
+  descripcion: string;
+  fecha: string;
+  horasServicio: number;
+  costo: number;
+  proximoServicioHoras: number;
+}
+
+export const mantenimientoApi = {
+  /** Listar registros de mantenimiento con búsqueda, filtros y paginación */
+  listar: (params?: { search?: string; tipo?: string; maquinaId?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<MantenimientoDTO>>(`/mantenimiento${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Obtener un registro por ID */
+  obtener: (id: string) => apiClient.get<MantenimientoDTO>(`/mantenimiento/${id}`),
+
+  /** Crear un registro de mantenimiento */
+  crear: (data: MantenimientoCreateInput) => apiClient.post<MantenimientoDTO>('/mantenimiento', data),
+
+  /** Actualizar un registro de mantenimiento */
+  actualizar: (id: string, data: Partial<MantenimientoCreateInput>) =>
+    apiClient.patch<MantenimientoDTO>(`/mantenimiento/${id}`, data),
+
+  /** Eliminar un registro (soft delete) */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/mantenimiento/${id}`),
+
+  /** Estadísticas para las tarjetas */
+  stats: () => apiClient.get<MantenimientoStats>('/mantenimiento/stats'),
+};
+
+export interface CargaCombustibleDTO {
+  id: string;
+  maquinaId: string;
+  fecha: string;
+  litros: number;
+  costo: number;
+  operador: string;
+  lugar: string;
+  horometroActual: number;
+  horasTrabajadasPeriodo: number;
+  consumoEsperadoLtsHora: number;
+  rendimientoLtsHora: number;
+  alertaOrdena: boolean;
+  desviacionPorcentaje: number;
+}
+
+export interface CombustibleStats {
+  totalLitros: number;
+  totalCosto: number;
+  rendimientoPromedio: number;
+  totalAlertasOrdena: number;
+}
+
+export interface CombustibleCreateInput {
+  maquinaId: string;
+  litros: number;
+  horasTrabajadasPeriodo: number;
+  lugar: string;
+  costo?: number;
+  operador?: string;
+  fecha?: string;
+}
+
+export const combustibleApi = {
+  /** Listar cargas de combustible con búsqueda, filtros y paginación */
+  listar: (params?: { search?: string; maquinaId?: string; soloAlertas?: boolean; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.soloAlertas) searchParams.set('soloAlertas', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CargaCombustibleDTO>>(`/combustible${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Obtener una carga por ID */
+  obtener: (id: string) => apiClient.get<CargaCombustibleDTO>(`/combustible/${id}`),
+
+  /** Registrar una carga de combustible */
+  crear: (data: CombustibleCreateInput) => apiClient.post<CargaCombustibleDTO>('/combustible', data),
+
+  /** Actualizar una carga de combustible */
+  actualizar: (id: string, data: Partial<CombustibleCreateInput>) =>
+    apiClient.patch<CargaCombustibleDTO>(`/combustible/${id}`, data),
+
+  /** Eliminar una carga (soft delete) */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/combustible/${id}`),
+
+  /** Estadísticas para las tarjetas */
+  stats: () => apiClient.get<CombustibleStats>('/combustible/stats'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Incidentes API
+// ────────────────────────────────────────────────────────────
+
+export interface IncidenteDTO {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  prioridad: 'Crítica' | 'Alta' | 'Media' | 'Baja';
+  estado: 'Abierto' | 'En Revisión' | 'Resuelto';
+  fecha: string;
+  maquinaId: string | null;
+  maquina: string | null;
+  obraId: string;
+  obra: string;
+  reporteDescripcion: string | null;
+  reportadoEn: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface IncidenteStats {
+  total: number;
+  abiertos: number;
+  criticos: number;
+}
+
+export interface IncidenteCatalogos {
+  maquinas: CatalogoItem[];
+  obras: CatalogoItem[];
+}
+
+export interface IncidenteCreateInput {
+  titulo: string;
+  descripcion: string;
+  prioridad: 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
+  estado: 'ABIERTO' | 'EN_REVISION' | 'RESUELTO';
+  fecha: string;
+  maquinaId?: string;
+  obraId: string;
+}
+
+export interface IncidenteReportarInput {
+  descripcion: string;
+}
+
+export const incidentesApi = {
+  listar: (params?: {
+    search?: string;
+    prioridad?: 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
+    estado?: 'ABIERTO' | 'EN_REVISION' | 'RESUELTO';
+    maquinaId?: string;
+    obraId?: string;
     page?: number;
     limit?: number;
   }) => {
     const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.prioridad) searchParams.set('prioridad', params.prioridad);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.obraId) searchParams.set('obraId', params.obraId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<IncidenteDTO>>(
+      `/incidentes${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  obtener: (id: string) =>
+    apiClient.get<IncidenteDTO>(`/incidentes/${id}`),
+
+  crear: (data: IncidenteCreateInput) =>
+    apiClient.post<IncidenteDTO>('/incidentes', data),
+
+  actualizar: (id: string, data: Partial<IncidenteCreateInput>) =>
+    apiClient.patch<IncidenteDTO>(`/incidentes/${id}`, data),
+
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/incidentes/${id}`),
+
+  resolver: (id: string) =>
+    apiClient.patch<IncidenteDTO>(`/incidentes/${id}/resolver`, {}),
+
+  reportar: (id: string, data: IncidenteReportarInput) =>
+    apiClient.patch<IncidenteDTO>(`/incidentes/${id}/reportar`, data),
+
+  stats: () =>
+    apiClient.get<IncidenteStats>('/incidentes/stats'),
+
+  catalogos: () =>
+    apiClient.get<IncidenteCatalogos>('/incidentes/catalogos'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Proyectos API
+// ────────────────────────────────────────────────────────────
+
+export interface ProyectoDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  clienteId: string;
+  cliente: string;
+  presupuesto: number;
+  progreso: number;
+  estado: 'En Proceso' | 'Finalizado' | 'Pausado';
+  fechaInicio: string;
+  fechaFin: string;
+  ingresoCobrado: number;
+  gastado: number;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface ProyectoStats {
+  total: number;
+  enProceso: number;
+  finalizados: number;
+  presupuestoTotal: number;
+}
+
+export interface ProyectoCatalogos {
+  clientes: CatalogoItem[];
+}
+
+export interface ProyectoCreateInput {
+  nombre: string;
+  clienteId: string;
+  presupuesto: number;
+  fechaInicio: string;
+  fechaFin: string;
+  estado?: 'EN_PROCESO' | 'FINALIZADO' | 'PAUSADO';
+  progreso?: number;
+  ingresoCobrado?: number;
+  gastado?: number;
+}
+
+export interface ProyectoFinanzasInput {
+  ingresoCobrado?: number;
+  gastado?: number;
+}
+
+export const proyectosApi = {
+  listar: (params?: {
+    search?: string;
+    estado?: 'EN_PROCESO' | 'FINALIZADO' | 'PAUSADO';
+    clienteId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+
     if (params?.fecha) searchParams.set('fecha', params.fecha);
     if (params?.trabajadorId) searchParams.set('trabajadorId', params.trabajadorId);
     if (params?.obraId) searchParams.set('obraId', params.obraId);
@@ -914,4 +1189,134 @@ export const nominaApi = {
 
   pagarTodos: (periodoId: string) =>
     apiClient.post<{ items: NominaRowDTO[]; actualizados: number }>(`/nomina/${periodoId}/pagar-todos`, {}),
+
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ProyectoDTO>>(
+      `/proyectos${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  obtener: (id: string) =>
+    apiClient.get<ProyectoDTO>(`/proyectos/${id}`),
+
+  crear: (data: ProyectoCreateInput) =>
+    apiClient.post<ProyectoDTO>('/proyectos', data),
+
+  actualizar: (id: string, data: Partial<ProyectoCreateInput>) =>
+    apiClient.patch<ProyectoDTO>(`/proyectos/${id}`, data),
+
+  actualizarFinanzas: (id: string, data: ProyectoFinanzasInput) =>
+    apiClient.patch<ProyectoDTO>(`/proyectos/${id}/finanzas`, data),
+
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/proyectos/${id}`),
+
+  stats: () =>
+    apiClient.get<ProyectoStats>('/proyectos/stats'),
+
+  catalogos: () =>
+    apiClient.get<ProyectoCatalogos>('/proyectos/catalogos'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Reportes de Campo API
+// ────────────────────────────────────────────────────────────
+
+export type TipoReporte = 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
+export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto';
+export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
+
+/** Valores de enum que acepta la API en query/body (mayúsculas). */
+export type TipoReporteApi = 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
+export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO';
+export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+
+export interface ReporteCampoDTO {
+  id: string;
+  codigo: string | null;
+  tipo: TipoReporte;
+  usuario: string;
+  usuarioId: string | null;
+  maquinaId: string | null;
+  maquinaCodigo: string | null;
+  maquinaNombre: string | null;
+  obraId: string | null;
+  obra: string;
+  fecha: string;
+  hora: string;
+  descripcion: string;
+  estado: EstadoReporte;
+  prioridad: PrioridadReporte | null;
+  detalles: Record<string, unknown> | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface ReportesCampoStats {
+  pendientes: number;
+  enRevision: number;
+  atendidos: number;
+  resueltos: number;
+  criticosActivos: number;
+}
+
+export interface ReporteCampoCreateInput {
+  tipo: TipoReporteApi;
+  usuario: string;
+  maquinaId?: string;
+  obraId?: string;
+  obraTexto: string;
+  fecha: string;
+  hora: string;
+  descripcion: string;
+  prioridad?: PrioridadReporteApi;
+}
+
+export const reportesCampoApi = {
+  listar: (params?: {
+    search?: string;
+    estado?: EstadoReporteApi;
+    tipo?: TipoReporteApi;
+    prioridad?: PrioridadReporteApi;
+    criticos?: boolean;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.prioridad) searchParams.set('prioridad', params.prioridad);
+    if (params?.criticos) searchParams.set('criticos', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ReporteCampoDTO>>(
+      `/reportes-campo${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  obtener: (id: string) =>
+    apiClient.get<ReporteCampoDTO>(`/reportes-campo/${id}`),
+
+  crear: (data: ReporteCampoCreateInput) =>
+    apiClient.post<ReporteCampoDTO>('/reportes-campo', data),
+
+  actualizar: (id: string, data: Partial<ReporteCampoCreateInput>) =>
+    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}`, data),
+
+  cambiarEstado: (id: string, estado: EstadoReporteApi) =>
+    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/estado`, { estado }),
+
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/reportes-campo/${id}`),
+
+  stats: () =>
+    apiClient.get<ReportesCampoStats>('/reportes-campo/stats'),
 };

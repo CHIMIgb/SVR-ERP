@@ -725,7 +725,7 @@ model incidentes {
   descripcion                             String
   prioridad                               Prioridad
   estado                                  EstadoIncidente @default(ABIERTO)
-  fecha                                   DateTime        @db.Date
+  fecha                                   DateTime        @db.Timestamptz()
   maquina_id                              String?         @db.Uuid
   activo                                  Boolean         @default(true)
   creado_en                               DateTime @db.Timestamptz()        @default(now())
@@ -736,8 +736,12 @@ model incidentes {
   obra_id                                 String?         @db.Uuid
   obra_texto                              String
   reporto_id                              String?         @db.Uuid
+  reporte_descripcion                     String?
+  reportado_por                           String?         @db.Uuid
+  reportado_en                            DateTime?       @db.Timestamptz()
   users_incidentes_actualizado_porTousers users?          @relation("incidentes_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_incidentes_actualizado_por")
   users_incidentes_creado_porTousers      users?          @relation("incidentes_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_incidentes_creado_por")
+  users_incidentes_reportado_porTousers   users?          @relation("incidentes_reportado_porTousers", fields: [reportado_por], references: [id], onUpdate: NoAction, map: "fk_incidentes_reportado_por")
   trabajadores                            trabajadores?   @relation(fields: [reporto_id], references: [id], onUpdate: NoAction, map: "fk_incidentes_reporto")
   maquinas                                maquinas?       @relation(fields: [maquina_id], references: [id])
   obras                                   obras?          @relation(fields: [obra_id], references: [id])
@@ -1148,10 +1152,12 @@ model proyectos {
   id                                     String                   @id @db.Uuid
   codigo                                 String?                  @unique
   nombre                                 String
-  cliente_id                             String                   @db.Uuid
+  cliente_id                              String                   @db.Uuid
   presupuesto                            Decimal                  @db.Decimal(14, 2)
   progreso                               Decimal                  @default(0) @db.Decimal(5, 2)
   estado                                 EstadoProyecto           @default(EN_PROCESO)
+  ingreso_cobrado                        Decimal                  @default(0) @db.Decimal(14, 2)
+  gastado                                Decimal                  @default(0) @db.Decimal(14, 2)
   fecha_inicio                           DateTime                 @db.Date
   fecha_fin                              DateTime                 @db.Date
   activo                                 Boolean                  @default(true)
@@ -1639,6 +1645,7 @@ model users {
   horas_extra_asistencia_horas_extra_asistencia_actualizado_porTousers           horas_extra_asistencia[]      @relation("horas_extra_asistencia_actualizado_porTousers")
   horas_extra_asistencia_horas_extra_asistencia_creado_porTousers                horas_extra_asistencia[]      @relation("horas_extra_asistencia_creado_porTousers")
   incidentes_incidentes_actualizado_porTousers                                   incidentes[]                  @relation("incidentes_actualizado_porTousers")
+  incidentes_incidentes_reportado_porTousers                                     incidentes[]                  @relation("incidentes_reportado_porTousers")
   incidentes_incidentes_creado_porTousers                                        incidentes[]                  @relation("incidentes_creado_porTousers")
   intentos_login                                                                 intentos_login[]
   lecturas_horometro_lecturas_horometro_actualizado_porTousers                   lecturas_horometro[]          @relation("lecturas_horometro_actualizado_porTousers")
@@ -1838,6 +1845,24 @@ enum AuditAction {
   ASISTENCIA_HORAS_EXTRA_RECHAZADAS
   NOMINA_AJUSTE_APLICADO
   NOMINA_PAGO_MARCADO
+  MANTENIMIENTO_REGISTRADO
+  MANTENIMIENTO_ACTUALIZADO
+  MANTENIMIENTO_ELIMINADO
+  COMBUSTIBLE_ACTUALIZADO
+  COMBUSTIBLE_ELIMINADO
+  INCIDENTE_CREADO
+  INCIDENTE_ACTUALIZADO
+  INCIDENTE_ELIMINADO
+  INCIDENTE_RESUELTO
+  INCIDENTE_REPORTADO
+  PROYECTO_CREADO
+  PROYECTO_ACTUALIZADO
+  PROYECTO_ELIMINADO
+  PROYECTO_FINANZAS_ACTUALIZADO
+  REGISTRO_CRIBA_CREADO
+  REGISTRO_CRIBA_ACTUALIZADO
+  REGISTRO_CRIBA_ELIMINADO
+
   ERROR_SISTEMA
 }
 

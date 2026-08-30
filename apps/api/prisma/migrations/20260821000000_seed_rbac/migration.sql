@@ -109,6 +109,14 @@ INSERT INTO permissions (id, modulo, recurso, accion, descripcion, activo, cread
 ('aa00000e-0000-0000-0000-000000000003', 'operaciones', 'proyectos', 'editar', 'Editar proyecto', true, NOW(), NOW()),
 ('aa00000e-0000-0000-0000-000000000004', 'operaciones', 'proyectos', 'eliminar', 'Eliminar proyecto', true, NOW(), NOW());
 
+-- Operaciones: Incidentes
+INSERT INTO permissions (id, modulo, recurso, accion, descripcion, activo, creado_en, actualizado_en) VALUES
+('aa00001b-0000-0000-0000-000000000001', 'operaciones', 'incidentes', 'ver', 'Ver incidentes', true, NOW(), NOW()),
+('aa00001b-0000-0000-0000-000000000002', 'operaciones', 'incidentes', 'crear', 'Reportar incidente', true, NOW(), NOW()),
+('aa00001b-0000-0000-0000-000000000003', 'operaciones', 'incidentes', 'editar', 'Editar incidente', true, NOW(), NOW()),
+('aa00001b-0000-0000-0000-000000000004', 'operaciones', 'incidentes', 'eliminar', 'Eliminar incidente', true, NOW(), NOW()),
+('aa00001b-0000-0000-0000-000000000005', 'operaciones', 'incidentes', 'exportar', 'Exportar incidentes', true, NOW(), NOW());
+
 -- Comercial: Clientes
 INSERT INTO permissions (id, modulo, recurso, accion, descripcion, activo, creado_en, actualizado_en) VALUES
 ('aa00000f-0000-0000-0000-000000000001', 'comercial', 'clientes', 'ver', 'Ver clientes', true, NOW(), NOW()),
@@ -210,6 +218,7 @@ INSERT INTO vistas (id, nombre, ruta, icono, orden, es_menu, es_visible, requier
 ('bb000004-0000-0000-0000-000000000003', 'Criba', '/criba', 'Layers', 32, true, true, true, true, NOW(), NOW()),
 ('bb000004-0000-0000-0000-000000000004', 'Inventario', '/inventario', 'Package', 33, true, true, true, true, NOW(), NOW()),
 ('bb000004-0000-0000-0000-000000000005', 'Proyectos', '/proyectos', 'HardHat', 34, true, true, true, true, NOW(), NOW()),
+('bb000004-0000-0000-0000-000000000006', 'Incidentes', '/incidentes', 'AlertTriangle', 35, true, true, true, true, NOW(), NOW()),
 ('bb000005-0000-0000-0000-000000000001', 'Clientes', '/clientes', 'Building2', 40, true, true, true, true, NOW(), NOW()),
 ('bb000005-0000-0000-0000-000000000002', 'Cotizaciones', '/cotizaciones', 'FileText', 41, true, true, true, true, NOW(), NOW()),
 ('bb000005-0000-0000-0000-000000000003', 'Finanzas', '/finanzas', 'Banknote', 42, true, true, true, true, NOW(), NOW()),

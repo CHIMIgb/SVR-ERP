@@ -60,6 +60,20 @@ export function formatTime(
   }).format(date);
 }
 
+/**
+ * Formatea una fecha PURA sin hora (ej. "2026-08-23" de una columna
+ * `@db.Date`) sin pasar por conversión de zona horaria. A diferencia de
+ * `formatDate()`, que interpreta el string como medianoche UTC y por eso
+ * puede mostrar el día anterior al convertir a `America/Mexico_City`
+ * (UTC-6), esto solo reordena los mismos dígitos.
+ */
+export function formatFechaSolo(value: string | null | undefined): string {
+  if (!value) return '';
+  const [year, month, day] = value.split('T')[0].split('-');
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
 export function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined) return '';
   return new Intl.NumberFormat('es-MX', {

@@ -8,12 +8,18 @@ import { HorometroModule } from './modules/horometro/horometro.module';
 import { DespachosModule } from './modules/despachos/despachos.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { CatalogosModule } from './modules/catalogos/catalogos.module';
+import { MantenimientoModule } from './modules/mantenimiento/mantenimiento.module';
+import { CombustibleModule } from './modules/combustible/combustible.module';
+import { CribaModule } from './criba/criba.module';
+import { ReportesCampoModule } from './reportes-campo/reportes-campo.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
 import { TrabajadoresModule } from './trabajadores/trabajadores.module';
 import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
 import { AsistenciaModule } from './asistencia/asistencia.module';
 import { NominaModule } from './nomina/nomina.module';
+import { IncidentesModule } from './incidentes/incidentes.module';
+import { ProyectosModule } from './proyectos/proyectos.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -46,12 +52,18 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     DespachosModule,
     ChecklistsModule,
     CatalogosModule,
+    MantenimientoModule,
+    CombustibleModule,
+    CribaModule,
+    ReportesCampoModule,
     InventarioModule,
     BitacoraModule,
     TrabajadoresModule,
     BitacorasRentaModule,
     AsistenciaModule,
     NominaModule,
+    IncidentesModule,
+    ProyectosModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController

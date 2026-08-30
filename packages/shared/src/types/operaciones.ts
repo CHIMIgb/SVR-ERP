@@ -110,6 +110,7 @@ export interface ReporteCampo {
   tipo: 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
   usuario: string;
   maquinaId?: string;
+  obraId?: string;
   obra: string;
   fecha: string;
   hora: string;

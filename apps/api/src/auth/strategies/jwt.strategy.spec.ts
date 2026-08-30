@@ -119,13 +119,47 @@ describe('JwtStrategy', () => {
       });
     });
 
-    it('debe consultar el usuario por el sub del payload', async () => {
+    it('debe consultar el usuario por el sub del payload (con nombre de persona)', async () => {
       await strategy.validate(validPayload);
 
       expect(prisma.users.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-1' },
-        select: { id: true, email: true, activo: true, eliminado_en: true },
+        select: {
+          id: true,
+          email: true,
+          activo: true,
+          eliminado_en: true,
+          personas_users_persona_idTopersonas: {
+            select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+          },
+        },
       });
+    });
+
+    it('debe incluir el nombre completo de la persona en req.user', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr.com',
+        activo: true,
+        eliminado_en: null,
+        personas_users_persona_idTopersonas: {
+          nombre: 'Carlos',
+          apellido_paterno: 'García',
+          apellido_materno: 'López',
+        },
+      });
+
+      const result = await strategy.validate(validPayload);
+
+      expect(result.nombre).toBe('Carlos García López');
+    });
+
+    it('debe propagar el iat del token para la metadata de auditoría', async () => {
+      const payloadConIat = { ...validPayload, iat: 1756000000 };
+
+      const result = await strategy.validate(payloadConIat);
+
+      expect(result.iat).toBe(1756000000);
     });
   });
 

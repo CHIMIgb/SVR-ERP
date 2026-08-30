@@ -9,11 +9,9 @@
 --   - rastreo_gps.posicion: punto espacial derivado de lat/lng.
 --
 -- REQUISITO para aplicar esta migracion: PostGIS debe estar instalado en
--- el servidor de Postgres que la va a correr (Windows: bundle oficial
--- postgis-bundle-pgXX desde https://postgis.net/windows_downloads/,
--- extraer sobre la carpeta de PostgreSQL; o via Stack Builder si viene
--- con el instalador de EDB). Sin esto, "CREATE EXTENSION postgis"
--- fallara y la migracion no aplicara.
+-- el servidor de Postgres que la va a correr. Si no esta disponible, la
+-- migracion se salta estos cambios sin fallar (util para shadow DBs o
+-- entornos de desarrollo sin PostGIS).
 --
 -- No se declaran en schema.prisma: son columnas GENERATED ALWAYS AS
 -- (STORED) de tipo geography, y Prisma no tiene sintaxis para columnas
@@ -22,19 +20,44 @@
 -- objetos crudos de esta base (triggers, CHECK constraints).
 -- ═══════════════════════════════════════════════════════════════════════
 
-CREATE EXTENSION IF NOT EXISTS postgis;
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS postgis;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'PostGIS no disponible, se omiten columnas geograficas: %', SQLERRM;
+END $$;
 
-ALTER TABLE "geocercas" ADD COLUMN "geometria" geography(Polygon, 4326) GENERATED ALWAYS AS (
-    ST_Buffer(
-        ST_SetSRID(ST_MakePoint(centro_lng::float, centro_lat::float), 4326)::geography,
-        radio_metros
-    )
-) STORED;
+DO $$
+BEGIN
+  EXECUTE 'ALTER TABLE "geocercas" ADD COLUMN IF NOT EXISTS "geometria" geography(Polygon, 4326) GENERATED ALWAYS AS (
+      ST_Buffer(
+          ST_SetSRID(ST_MakePoint(centro_lng::float, centro_lat::float), 4326)::geography,
+          radio_metros
+      )
+  ) STORED';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'No se pudo agregar geometria de geocercas: %', SQLERRM;
+END $$;
 
-CREATE INDEX idx_geocercas_geometria ON geocercas USING gist(geometria);
+DO $$
+BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_geocercas_geometria ON geocercas USING gist(geometria)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'No se pudo crear indice de geocercas: %', SQLERRM;
+END $$;
 
-ALTER TABLE "rastreo_gps" ADD COLUMN "posicion" geography(Point, 4326) GENERATED ALWAYS AS (
-    ST_SetSRID(ST_MakePoint(lng::float, lat::float), 4326)::geography
-) STORED;
+DO $$
+BEGIN
+  EXECUTE 'ALTER TABLE "rastreo_gps" ADD COLUMN IF NOT EXISTS "posicion" geography(Point, 4326) GENERATED ALWAYS AS (
+      ST_SetSRID(ST_MakePoint(lng::float, lat::float), 4326)::geography
+  ) STORED';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'No se pudo agregar posicion de rastreo_gps: %', SQLERRM;
+END $$;
 
-CREATE INDEX idx_rastreo_gps_posicion ON rastreo_gps USING gist(posicion);
+DO $$
+BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_rastreo_gps_posicion ON rastreo_gps USING gist(posicion)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'No se pudo crear indice de rastreo_gps: %', SQLERRM;
+END $$;

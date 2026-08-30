@@ -57,6 +57,17 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('Usuario no encontrado');
     }
 
+    // Exponer roles reales para la metadata de auditoría (el interceptor los lee).
+    // Se asigna ANTES de validar el permiso para que los DENIED también lo lleven.
+    const roles = [
+      ...new Set(
+        userWithPermissions.users_roles_users_roles_user_idTousers.map(
+          (ur) => ur.roles.nombre,
+        ),
+      ),
+    ];
+    request['auditRoles'] = roles;
+
     const permisos = userWithPermissions.users_roles_users_roles_user_idTousers
       .flatMap((ur) => ur.roles.role_permissions)
       .map((rp) => rp.permissions);
