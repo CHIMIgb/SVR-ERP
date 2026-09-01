@@ -77,6 +77,8 @@ describe('CotizacionesService', () => {
           take: 10,
         }),
       );
+      // No debe validar que el cliente exista/esté activo
+      expect(prisma.clientes.findFirst).not.toHaveBeenCalled();
     });
 
     it('should apply custom page and limit', async () => {
@@ -86,16 +88,11 @@ describe('CotizacionesService', () => {
       );
     });
 
-    it('should throw BadRequestException AND audit failure when cliente not found', async () => {
+    it('should return history even if the cliente is soft-deleted', async () => {
       prisma.clientes.findFirst.mockResolvedValue(null);
-      await expect(service.findByCliente('non-existent')).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.COTIZACION_CREADA,
-          result: AuditResult.FAIL,
-          errorCode: 'CLIENTE_NO_ENCONTRADO',
-        }),
-      );
+      const result = await service.findByCliente(mockClienteId);
+      expect(result.items).toHaveLength(1);
+      expect(prisma.clientes.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -247,10 +244,26 @@ describe('CotizacionesService', () => {
       );
     });
 
-    it('should reject when estado is the same (ESTADO_SIN_CAMBIO)', async () => {
+    it('should reject changing an already ACEPTADA quote (COTIZACION_YA_DECIDIDA)', async () => {
       prisma.cotizaciones.findFirst.mockResolvedValue({
         ...mockCotizacion,
         estado: EstadoCotizacion.ACEPTADA,
+      });
+      await expect(
+        service.cambiarEstado(mockCotizacion.id, { estado: EstadoCotizacion.RECHAZADA }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: AuditResult.FAIL,
+          errorCode: 'COTIZACION_YA_DECIDIDA',
+        }),
+      );
+    });
+
+    it('should reject changing an already RECHAZADA quote (COTIZACION_YA_DECIDIDA)', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.RECHAZADA,
       });
       await expect(
         service.cambiarEstado(mockCotizacion.id, { estado: EstadoCotizacion.ACEPTADA }, 'user-1'),
@@ -258,7 +271,7 @@ describe('CotizacionesService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           result: AuditResult.FAIL,
-          errorCode: 'ESTADO_SIN_CAMBIO',
+          errorCode: 'COTIZACION_YA_DECIDIDA',
         }),
       );
     });
@@ -313,23 +326,23 @@ describe('CotizacionesService', () => {
       );
     });
 
-    it('should clear motivoRechazo when accepting', async () => {
+    it('should reject reverting a decided quote back to PENDIENTE (DTO blocks it)', async () => {
+      const dto = { estado: EstadoCotizacion.PENDIENTE };
+      // El servicio no se llega a ejecutar porque el DTO rechaza PENDIENTE,
+      // pero verificamos que el servicio tampoco lo permitiría por el guardia de estado.
       prisma.cotizaciones.findFirst.mockResolvedValue({
         ...mockCotizacion,
         estado: EstadoCotizacion.RECHAZADA,
-        motivo_rechazo: 'Motivo anterior',
       });
-      prisma.cotizaciones.update.mockResolvedValue({
-        ...mockCotizacion,
-        estado: EstadoCotizacion.ACEPTADA,
-        motivo_rechazo: null,
-      });
-
-      await service.cambiarEstado(mockCotizacion.id, { estado: EstadoCotizacion.ACEPTADA }, 'user-1');
-
-      expect(prisma.cotizaciones.update).toHaveBeenCalledWith(
+      // Simulamos que el DTO no bloqueó (no debería pasar en producción);
+      // el servicio bloquea porque la cotización ya fue decidida.
+      await expect(service.cambiarEstado(mockCotizacion.id, dto as never, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ estado: EstadoCotizacion.ACEPTADA, motivo_rechazo: null }),
+          result: AuditResult.FAIL,
+          errorCode: 'COTIZACION_YA_DECIDIDA',
         }),
       );
     });
@@ -337,9 +350,13 @@ describe('CotizacionesService', () => {
 
   describe('update', () => {
     it('should edit fields, change cliente and log COTIZACION_ACTUALIZADA', async () => {
-      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+      });
       prisma.cotizaciones.update.mockResolvedValue({
         ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
         descripcion: 'Renta de retroexcavadora por 80 horas',
         monto: 98000,
         cliente_id: '660e8400-e29b-41d4-a716-446655440099',
@@ -374,9 +391,13 @@ describe('CotizacionesService', () => {
     });
 
     it('should not update cliente when clienteId matches existing', async () => {
-      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+      });
       prisma.cotizaciones.update.mockResolvedValue({
         ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
         monto: 110000,
       });
 
@@ -404,7 +425,10 @@ describe('CotizacionesService', () => {
     });
 
     it('should throw BadRequestException and audit FAIL when new cliente is invalid', async () => {
-      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+      });
       prisma.clientes.findFirst.mockResolvedValue(null);
       await expect(
         service.update(mockCotizacion.id, { clienteId: 'bad-client-uuid' }, 'user-1'),
@@ -415,6 +439,20 @@ describe('CotizacionesService', () => {
           errorCode: 'CLIENTE_NO_ENCONTRADO',
         }),
       );
+    });
+
+    it('should reject editing an already decided quote (COTIZACION_YA_DECIDIDA)', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
+      await expect(
+        service.update(mockCotizacion.id, { monto: 200000 }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: AuditResult.FAIL,
+          errorCode: 'COTIZACION_YA_DECIDIDA',
+        }),
+      );
+      expect(prisma.cotizaciones.update).not.toHaveBeenCalled();
     });
   });
 

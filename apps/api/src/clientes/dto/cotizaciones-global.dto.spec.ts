@@ -21,6 +21,15 @@ describe('CambiarEstadoCotizacionDto', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
+  it('should reject returning a decided quote to PENDIENTE', async () => {
+    const dto = plainToInstance(CambiarEstadoCotizacionDto, {
+      estado: EstadoCotizacion.PENDIENTE,
+    });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.map((e) => e.property)).toContain('estado');
+  });
+
   it('should pass when rejecting with a valid motivoRechazo', async () => {
     const dto = plainToInstance(CambiarEstadoCotizacionDto, {
       estado: EstadoCotizacion.RECHAZADA,

@@ -85,7 +85,8 @@ export class CotizacionesService {
   //  HISTORIAL DE COTIZACIONES DEL CLIENTE
   // ────────────────────────────────────────────
   async findByCliente(clienteId: string, query: QueryCotizacionesDto = {}) {
-    await this.validarCliente(clienteId, AuditAction.COTIZACION_CREADA);
+    // NOTA: no validamos que el cliente esté activo; el historial debe seguir
+    // consultable aunque el cliente haya sido eliminado (soft-delete).
 
     const page = query.page || 1;
     const limit = Math.min(query.limit || 10, 100);
@@ -254,6 +255,17 @@ export class CotizacionesService {
       );
     }
 
+    if (existente.estado !== EstadoCotizacion.PENDIENTE) {
+      return this.fallir(
+        AuditAction.COTIZACION_ACTUALIZADA,
+        id,
+        'COTIZACION_YA_DECIDIDA',
+        BadRequestException,
+        `No se puede editar una cotización ${ESTADO_LABELS[existente.estado as EstadoCotizacion]}`,
+        userId,
+      );
+    }
+
     // Si se cambia el cliente, validar que exista.
     let clienteId = existente.cliente_id;
     if (dto.clienteId && dto.clienteId !== existente.cliente_id) {
@@ -322,6 +334,17 @@ export class CotizacionesService {
     }
 
     const estadoAnterior = existente.estado as EstadoCotizacion;
+
+    if (estadoAnterior !== EstadoCotizacion.PENDIENTE) {
+      return this.fallir(
+        AuditAction.COTIZACION_ACTUALIZADA,
+        id,
+        'COTIZACION_YA_DECIDIDA',
+        BadRequestException,
+        `No se puede cambiar el estado de una cotización ${ESTADO_LABELS[estadoAnterior]}`,
+        userId,
+      );
+    }
 
     if (estadoAnterior === dto.estado) {
       return this.fallir(
