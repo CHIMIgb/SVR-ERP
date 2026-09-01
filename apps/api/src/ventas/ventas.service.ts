@@ -37,7 +37,8 @@ function hoyIso(): string {
  */
 async function getTurnoInicio(prisma: PrismaService, fechaIso: string): Promise<Date> {
   const [h, m] = (await getAperturaHora(prisma)).split(':').map((n) => n.padStart(2, '0'));
-  return new Date(`${fechaIso}T${h}:${m}:00.000Z`);
+  // Sin 'Z' => usa hora local del proceso (configurada en main.ts: TZ=America/Mexico_City)
+  return new Date(`${fechaIso}T${h}:${m}:00.000`);
 }
 
 /** Parsea "HH:mm" a {h, m}. */
@@ -77,8 +78,13 @@ async function getCierreHora(prisma: PrismaService): Promise<string> {
   return getConfigFromDb(prisma, 'turno_cierre', '20:00');
 }
 /**
- * Verifica si la hora actual está dentro del horario de atención (POS).
- * Rango: APERTURA_HORA <= now <= CIERRE_HORA.
+ * Verifica si la hora actual está dentro del HORARIO DE VENTAS (POS).
+ * Ventana de ventas: APERTURA_HORA <= now <= CIERRE_HORA (mismo día).
+ * 
+ * DISEÑO: Solo se permite vender en el turno "diurno" (apertura < cierre).
+ * Tras CIERRE_HORA empieza el turno de "CIERRE DE CAJA" (no ventas).
+ * Los turnos nocturnos (apertura > cierre) NO tienen ventana de ventas;
+ * solo permiten cerrar caja vía `puedeCerrarCaja()`.
  */
 async function estaEnHorarioAtencion(prisma: PrismaService): Promise<boolean> {
   const now = new Date();
@@ -291,6 +297,17 @@ export class VentasService {
           'MEDIDA_NO_DISPONIBLE',
           BadRequestException,
           `La medida "${item.medida}" no está disponible para ${art.nombre}`,
+        );
+      }
+      // Validar precio unitario contra catálogo (tolerancia 0.01 MXN)
+      const precioCatalogo = Number(precio.precio);
+      if (Math.abs(precioCatalogo - item.precioUnitario) > 0.01) {
+        return this.fallir(
+          AuditAction.VENTA_CREADA,
+          null,
+          'PRECIO_NO_COINCIDE_CATALOGO',
+          BadRequestException,
+          `El precio unitario (${item.precioUnitario}) no coincide con el catálogo (${precioCatalogo}) para ${art.nombre} [${item.medida}]`,
         );
       }
       if (Number(art.stock) < item.cantidad) {
