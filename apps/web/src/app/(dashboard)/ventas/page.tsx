@@ -46,6 +46,7 @@ import {
   type TurnoConfig,
 } from '@/lib/api';
 import type { CreateVentaInput } from '@/lib/api';
+import { generateUUID } from '@/lib/utils';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -232,7 +233,7 @@ export default function VentasPage() {
       cliente: 'Público en general',
       terminal: POS_TERMINAL,
       caja: POS_REGISTER,
-      idempotenciaKey: crypto.randomUUID(),
+      idempotenciaKey: generateUUID(),
       items: cart.map((i) => ({
         materialId: i.product.id,
         medida: i.unit ?? i.product.unit,
