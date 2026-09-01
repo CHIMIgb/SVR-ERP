@@ -32,6 +32,7 @@ export default function CierresCajaPage() {
 
   // ── Estado de datos ──
   const [cierres, setCierres] = useState<CierreVentaDTO[]>([]);
+  const [stats, setStats] = useState({ total: 0, aprobados: 0, rechazados: 0, pendientes: 0 });
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -77,6 +78,7 @@ export default function CierresCajaPage() {
       if (res.success && res.data) {
         setCierres(res.data.items);
         setPagination(res.data.pagination);
+        setStats(res.data.stats);
       } else {
         showToast('Error al cargar cierres de caja.', 'error');
       }
@@ -326,11 +328,6 @@ export default function CierresCajaPage() {
     },
   ];
 
-  // ── Stats Cards ──
-  const pendingCount = cierres.filter((c) => c.estado === 'PENDIENTE').length;
-  const approvedCount = cierres.filter((c) => c.estado === 'APROBADO').length;
-  const rejectedCount = cierres.filter((c) => c.estado === 'RECHAZADO').length;
-
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
@@ -341,21 +338,21 @@ export default function CierresCajaPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <StatsCard
           icon={<ReceiptText className="w-6 h-6" />}
-          value={`${pagination.total} cierres`}
+          value={`${stats.total} cierres`}
           label="Total Registrados"
           color="info"
         />
         <StatsCard
           icon={<CheckCircle2 className="w-6 h-6" />}
-          value={`${approvedCount} aprobados`}
+          value={`${stats.aprobados} aprobados`}
           label="Aprobados"
-          color={approvedCount > 0 ? 'success' : 'neutral'}
+          color={stats.aprobados > 0 ? 'success' : 'neutral'}
         />
         <StatsCard
           icon={<AlertTriangle className="w-6 h-6" />}
-          value={`${pendingCount} pendientes`}
+          value={`${stats.pendientes} pendientes`}
           label="Pendientes de Aprobación"
-          color={pendingCount > 0 ? 'warning' : 'success'}
+          color={stats.pendientes > 0 ? 'warning' : 'success'}
         />
       </div>
 

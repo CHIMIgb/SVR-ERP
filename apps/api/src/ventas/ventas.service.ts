@@ -589,7 +589,7 @@ export class VentasService {
       if (query.fechaHasta) where.fecha.lte = new Date(query.fechaHasta);
     }
 
-    const [items, total] = await Promise.all([
+    const [items, total, aprobados, rechazados, pendientes] = await Promise.all([
       this.prisma.cierres_caja.findMany({
         where,
         orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
@@ -597,6 +597,9 @@ export class VentasService {
         take: limit,
       }),
       this.prisma.cierres_caja.count({ where }),
+      this.prisma.cierres_caja.count({ where: { ...where, estado: 'APROBADO' } }),
+      this.prisma.cierres_caja.count({ where: { ...where, estado: 'RECHAZADO' } }),
+      this.prisma.cierres_caja.count({ where: { ...where, estado: 'PENDIENTE' } }),
     ]);
 
     return {
@@ -606,6 +609,12 @@ export class VentasService {
         limit,
         total,
         totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      stats: {
+        total,
+        aprobados,
+        rechazados,
+        pendientes,
       },
     };
   }

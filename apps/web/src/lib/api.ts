@@ -1740,7 +1740,11 @@ export const ventasApi = {
     if (query.page) searchParams.set('page', String(query.page));
     if (query.limit) searchParams.set('limit', String(query.limit));
     const qs = searchParams.toString();
-    return apiClient.get<{ items: CierreVentaDTO[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/ventas/cierres${qs ? `?${qs}` : ''}`);
+    return apiClient.get<{
+      items: CierreVentaDTO[];
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+      stats: { total: number; aprobados: number; rechazados: number; pendientes: number };
+    }>(`/ventas/cierres${qs ? `?${qs}` : ''}`);
   },
 
   /** Configuración del turno (apertura/cierre 24h). */

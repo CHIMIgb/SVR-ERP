@@ -64,6 +64,45 @@ describe('VentasService', () => {
     pagos: [{ id: 'pa1', venta_id: 'v1', metodo: MetodoPago.EFECTIVO, monto: 350 }],
   };
 
+  const mockCierre = (overrides: Partial<{
+    id: string;
+    estado: string;
+    cajero: string;
+    fecha: Date;
+    ventas_count: number;
+    total_ventas: number;
+    efectivo_inicial: number;
+    ventas_efectivo: number;
+    total_retiros: number;
+    esperado: number;
+    contado: number;
+    diferencia: number;
+    fondo_siguiente: number;
+    notas: string;
+    aprobador_id: string | null;
+    motivo_rechazo: string | null;
+  }> = {}) => ({
+    id: 'c1',
+    fecha: new Date(),
+    cajero: 'Cajero',
+    ventas_count: 1,
+    total_ventas: 350,
+    efectivo_inicial: 0,
+    ventas_efectivo: 350,
+    total_retiros: 0,
+    esperado: 350,
+    contado: 350,
+    diferencia: 0,
+    fondo_siguiente: 0,
+    notas: null,
+    estado: 'PENDIENTE',
+    aprobador_id: null,
+    motivo_rechazo: null,
+    creado_en: new Date(),
+    actualizado_en: new Date(),
+    ...overrides,
+  });
+
   beforeEach(async () => {
     // Limpiar cache de configuración para que cada test use su propio mock
     // (el cache TTL 30s del módulo NO debe filtrarse entre tests).
@@ -96,9 +135,11 @@ describe('VentasService', () => {
       },
       cierres_caja: {
         findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockImplementation(({ data }) =>
           Promise.resolve({ ...data, id: 'c1' }),
         ),
+        count: jest.fn().mockResolvedValue(0),
       },
       aperturas_caja: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -312,6 +353,53 @@ describe('VentasService', () => {
       // 300 (fondo apertura) + 350 (ventas efectivo) - 0 (retiros)
       expect(result.efectivoInicial).toBe(300);
       expect(result.esperado).toBe(650);
+    });
+  });
+
+  describe('findAllCierres', () => {
+    it('should return paginated items and stats for all matching records', async () => {
+      prisma.cierres_caja.findMany.mockResolvedValue([
+        mockCierre({ id: 'c1', estado: 'PENDIENTE', cajero: 'Cajero A' }),
+        mockCierre({ id: 'c2', estado: 'APROBADO', cajero: 'Cajero B' }),
+      ]);
+      prisma.cierres_caja.count
+        .mockResolvedValueOnce(12) // total
+        .mockResolvedValueOnce(5)  // aprobados
+        .mockResolvedValueOnce(3)  // rechazados
+        .mockResolvedValueOnce(4); // pendientes
+
+      const result = await service.findAllCierres({ page: 1, limit: 10 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.pagination.total).toBe(12);
+      expect(result.stats).toEqual({
+        total: 12,
+        aprobados: 5,
+        rechazados: 3,
+        pendientes: 4,
+      });
+    });
+
+    it('should apply filters to counts and items', async () => {
+      prisma.cierres_caja.findMany.mockResolvedValue([
+        mockCierre({ id: 'c1', estado: 'PENDIENTE', cajero: 'Cajero A' }),
+      ]);
+      prisma.cierres_caja.count
+        .mockResolvedValueOnce(3) // total with filter
+        .mockResolvedValueOnce(0) // aprobados
+        .mockResolvedValueOnce(0) // rechazados
+        .mockResolvedValueOnce(3); // pendientes
+
+      const result = await service.findAllCierres({ estado: 'PENDIENTE', page: 1, limit: 10 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.stats.total).toBe(3);
+      expect(result.stats.pendientes).toBe(3);
+      expect(prisma.cierres_caja.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: 'PENDIENTE' }),
+        }),
+      );
     });
   });
 

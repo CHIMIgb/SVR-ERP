@@ -5,6 +5,7 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   HttpCode,
@@ -83,6 +84,16 @@ export class VentasController {
     const user = req.user as { id: string };
     const cajero = this.cajeroDe(req);
     return this.ventasService.createRetiro(dto, user.id, cajero);
+  }
+
+  /**
+   * GET /api/ventas/cierres
+   * Listar cierres de caja con filtros y paginación.
+   */
+  @RequirePermission('comercial', 'ventas', 'ver')
+  @Get('cierres')
+  findAllCierres(@Query() query: QueryCierresDto) {
+    return this.ventasService.findAllCierres(query);
   }
 
   /**

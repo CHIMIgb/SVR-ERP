@@ -23,6 +23,11 @@ describe('VentasController', () => {
     createRetiro: jest.fn().mockResolvedValue({ id: 'r1' }),
     findCierreHoy: jest.fn().mockResolvedValue({ existe: false, registro: null }),
     createCierre: jest.fn().mockResolvedValue({ id: 'c1' }),
+    findAllCierres: jest.fn().mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+      stats: { total: 0, aprobados: 0, rechazados: 0, pendientes: 0 },
+    }),
     findConfig: jest.fn().mockResolvedValue({
       apertura: '07:00',
       cierre: '20:00',
@@ -85,6 +90,15 @@ describe('VentasController', () => {
   it('should return cierre/registro of the day', async () => {
     const result = await controller.findCierreHoy();
     expect(result.existe).toBe(false);
+  });
+
+  it('should list cierres with pagination and stats', async () => {
+    const query = { page: 1, limit: 10 };
+    const result = await controller.findAllCierres(query as never);
+    expect(result).toHaveProperty('items');
+    expect(result).toHaveProperty('pagination');
+    expect(result).toHaveProperty('stats');
+    expect(service.findAllCierres).toHaveBeenCalledWith(query);
   });
 
   it('should create a cierre passing userId', async () => {
