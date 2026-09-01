@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Banknote,
@@ -149,6 +149,9 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
   const [showSummary, setShowSummary] = useState(false);
   const [confirmDifference, setConfirmDifference] = useState(false);
 
+  // Guard anti doble-submit al cerrar caja (igual que en venta normal)
+  const [isClosing, setIsClosing] = useState(false);
+
   // Cierre del día persistido (estado de aprobación) + modal de rechazo
   const [cierreHoyData, setCierreHoyData] = useState<CierreVentaDTO | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -205,11 +208,14 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
 
   // ── Acciones ─────────────────────────────────────────────────────────────
   const handleClose = async () => {
+    if (isClosing) return;
     if (!closed && (!allowed || counted <= 0 || !(Number(nextTurnCash) > 0))) return;
     if (hasDifference && !confirmDifference) {
       setConfirmDifference(true);
       return;
     }
+
+    setIsClosing(true);
 
     // Persistir el cierre en la BD
     const denominacionesArray = CASH_DENOMINATIONS.filter((d) => (Number(counts[d]) || 0) > 0);
@@ -225,10 +231,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
       });
       if (!res.success) {
         showToast(res.error?.message ?? 'No se pudo registrar el cierre de caja.', 'error');
+        setIsClosing(false);
         return;
       }
     } catch {
       showToast('No se pudo conectar con el servidor para registrar el cierre.', 'error');
+      setIsClosing(false);
       return;
     }
 
@@ -460,7 +468,8 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
               className="mt-3"
               icon={<Lock className="w-4 h-4" />}
               onClick={handleClose}
-              disabled={!allowed || counted <= 0 || !(Number(nextTurnCash) > 0)}
+              disabled={!allowed || counted <= 0 || !(Number(nextTurnCash) > 0) || isClosing}
+              loading={isClosing}
             >
               Cerrar caja
             </Button>
@@ -525,7 +534,8 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
           <Button
             variant="primary"
             onClick={handleClose}
-            disabled={!notes.trim()}
+            disabled={!notes.trim() || isClosing}
+            loading={isClosing}
           >
             Confirmar y cerrar
           </Button>
