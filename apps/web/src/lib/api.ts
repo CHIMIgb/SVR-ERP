@@ -1575,6 +1575,7 @@ export interface CreateVentaInput {
   descuentoPct?: number;
   descuentoTotal?: number;
   autorizadoPor?: string;
+  idempotenciaKey?: string;
 }
 
 export interface VentaDTO {

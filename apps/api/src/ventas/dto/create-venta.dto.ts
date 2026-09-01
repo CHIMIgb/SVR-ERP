@@ -122,6 +122,13 @@ export class CreateVentaDto {
   autorizadoPor?: string;
 
   /** IVA/IEPS no se reciben; el backend calcula sobre el total (16%). */
+
+  /** Clave de idempotencia (UUID v4) para evitar ventas duplicadas por doble clic o reintento de red. */
+  @IsOptional()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'idempotenciaKey debe ser un UUID válido',
+  })
+  idempotenciaKey?: string;
 }
 
 /** Mapea el método del frontend (camelCase) al enum Prisma. */

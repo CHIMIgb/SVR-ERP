@@ -232,6 +232,7 @@ export default function VentasPage() {
       cliente: 'Público en general',
       terminal: POS_TERMINAL,
       caja: POS_REGISTER,
+      idempotenciaKey: crypto.randomUUID(),
       items: cart.map((i) => ({
         materialId: i.product.id,
         medida: i.unit ?? i.product.unit,

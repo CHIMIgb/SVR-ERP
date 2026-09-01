@@ -258,6 +258,17 @@ export class VentasService {
   //  CREAR VENTA (transacción atómica + stock)
   // ────────────────────────────────────────────
   async create(dto: CreateVentaDto, userId: string) {
+    // Idempotencia: si ya existe una venta con la misma key, retornarla sin duplicar stock
+    if (dto.idempotenciaKey) {
+      const existente = await this.prisma.ventas.findUnique({
+        where: { idempotencia_key: dto.idempotenciaKey },
+        include: { items: true, pagos: true },
+      });
+      if (existente) {
+        return this.serializeVenta(existente);
+      }
+    }
+
     // Validar horario de atención (POS)
     if (!(await estaEnHorarioAtencion(this.prisma))) {
       return this.fallir(
@@ -393,6 +404,7 @@ export class VentasService {
           descuento_total: descuentoTotal,
           autorizado_por: dto.autorizadoPor?.trim() || null,
           items_count: dto.items.length,
+          idempotencia_key: dto.idempotenciaKey ?? null,
           creado_por: userId,
           actualizado_en: new Date(),
           items: {
