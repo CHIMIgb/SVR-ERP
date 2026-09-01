@@ -69,6 +69,11 @@ export function parseHM(s: string): { h: number; m: number } {
   return { h: h || 0, m: m || 0 };
 }
 
+/** Redondea un número a 2 decimales (pesos MXN). Evita errores de float. */
+export function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 /**
  * Regla general de cuándo se puede cerrar la caja, según el tipo de turno.
  * - DIURNO (cierre > apertura): cerrar tras el cierre y hasta la apertura del día sig.
@@ -160,34 +165,34 @@ export function itemUnitPrice(item: CartItem): number {
 
 export function itemSubtotal(item: CartItem): number {
   const discountFactor = 1 - (item.discountPct ?? 0) / 100;
-  return itemUnitPrice(item) * item.quantity * discountFactor;
+  return round2(itemUnitPrice(item) * item.quantity * discountFactor);
 }
 
 export function calculateTotal(items: CartItem[]): number {
-  return items.reduce((sum, item) => sum + itemSubtotal(item), 0);
+  return round2(items.reduce((sum, item) => sum + itemSubtotal(item), 0));
 }
 
 export function discountAmount(total: number, pct: number): number {
-  return (total * pct) / 100;
+  return round2((total * pct) / 100);
 }
 
 export function applyDiscount(total: number, pct: number): number {
-  return Math.max(0, total - discountAmount(total, pct));
+  return round2(Math.max(0, total - discountAmount(total, pct)));
 }
 
 export function getChange(received: number, total: number): number {
-  return Math.max(0, received - total);
+  return round2(Math.max(0, received - total));
 }
 
 /** Desglose de impuestos fijo al 16% IVA (subtotal = total / 1.16). */
 export function calculateTaxBreakdown(total: number): TaxBreakdown {
-  const subtotal = total / 1.16;
-  const iva = total - subtotal;
+  const subtotal = round2(total / 1.16);
+  const iva = round2(total - subtotal);
   return {
-    subtotal: Math.round(subtotal * 100) / 100,
-    iva: Math.round(iva * 100) / 100,
+    subtotal,
+    iva,
     ieps: 0,
-    totalTax: Math.round(iva * 100) / 100,
+    totalTax: iva,
   };
 }
 
@@ -614,7 +619,7 @@ export function generateClosureHtml(data: ClosureTicketData): void {
     ? data.denominations
         .map(
           (d) => `
-            <div class="row"><span>${d.count} × $${d.value.toLocaleString('es-MX')}</span><span>$${(d.count * d.value).toFixed(2)}</span></div>
+            <div class="row"><span>${d.count} × $${d.value.toLocaleString('es-MX')}</span><span>$${round2(d.count * d.value).toFixed(2)}</span></div>
           `,
         )
         .join('')

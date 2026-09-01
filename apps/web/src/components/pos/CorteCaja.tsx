@@ -32,6 +32,7 @@ import {
   itemUnitName,
   parseHM,
   permiteCerrarCaja,
+  round2,
 } from '@/lib/pos';
 import type { POSSale } from '@/lib/pos';
 import { usePOS } from '@/components/pos/POSProvider';
@@ -155,15 +156,15 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
 
   // ── Métricas del día ────────────────────────────────────────────────────
   const todaySales = useMemo(() => sales.filter((s) => isToday(s.createdAt)), [sales]);
-  const totalSales = todaySales.reduce((sum, s) => sum + s.total, 0);
+  const totalSales = round2(todaySales.reduce((sum, s) => sum + s.total, 0));
 
   const metodos = useMemo(() => {
     const resumen = { efectivo: 0, tarjeta: 0, transferencia: 0 };
     for (const sale of todaySales) {
       if (sale.payments?.length) {
-        for (const p of sale.payments) resumen[p.method] += p.amount;
+        for (const p of sale.payments) resumen[p.method] = round2(resumen[p.method] + p.amount);
       } else {
-        resumen[sale.method] += sale.total;
+        resumen[sale.method] = round2(resumen[sale.method] + sale.total);
       }
     }
     return resumen;
@@ -186,10 +187,10 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
   const hoyIso = new Date().toISOString().split('T')[0];
   const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
   const totalRetirements = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
-  const expectedCash = initial + metodos.efectivo - totalRetirements;
-  const counted = CASH_DENOMINATIONS.reduce((sum, d) => sum + (Number(counts[d]) || 0) * d, 0);
-  const hasDifference = counted !== expectedCash;
-  const difference = counted - expectedCash;
+  const expectedCash = round2(initial + metodos.efectivo - totalRetirements);
+  const counted = round2(CASH_DENOMINATIONS.reduce((sum, d) => sum + (Number(counts[d]) || 0) * d, 0));
+  const hasDifference = Math.abs(counted - expectedCash) > 0.01;
+  const difference = round2(counted - expectedCash);
 
   // ── Ventana de cierre ────────────────────────────────────────────────────
   // Se puede cerrar desde que pasa la hora de cierre y hasta antes de la hora
