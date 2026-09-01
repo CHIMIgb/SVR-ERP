@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard, Banknote, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Banknote, ShieldCheck } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
@@ -46,7 +46,6 @@ export function PaymentPanel({ total, isAdmin, onPay, disabled }: PaymentPanelPr
   const [method, setMethod] = useState<PaymentMethod>('efectivo');
   const [cashReceived, setCashReceived] = useState('');
   const [discountPct, setDiscountPct] = useState('');
-  const [discountAuthorized, setDiscountAuthorized] = useState(false);
 
   const discount = Math.min(100, Math.max(0, Number(discountPct) || 0));
   const discountTotal = discountAmount(total, discount);
@@ -56,7 +55,7 @@ export function PaymentPanel({ total, isAdmin, onPay, disabled }: PaymentPanelPr
   const change = getChange(received, totalFinal);
 
   const needsApproval = discount > DISCOUNT_APPROVAL_THRESHOLD;
-  const approved = needsApproval ? discountAuthorized || isAdmin : true;
+  const approved = !needsApproval || isAdmin;
 
   const canPay =
     !disabled && approved && (method === 'efectivo' ? received >= totalFinal : true);
@@ -87,13 +86,12 @@ export function PaymentPanel({ total, isAdmin, onPay, disabled }: PaymentPanelPr
       changeValue,
       discount,
       discountTotal,
-      needsApproval ? (isAdmin ? 'Administrador' : 'Administrador (simulado)') : undefined,
+      needsApproval && isAdmin ? 'Administrador' : undefined,
     );
 
     setMethod('efectivo');
     setCashReceived('');
     setDiscountPct('');
-    setDiscountAuthorized(false);
   };
 
   return (
@@ -215,22 +213,10 @@ export function PaymentPanel({ total, isAdmin, onPay, disabled }: PaymentPanelPr
                   Autorizado por tu rol (Administrador)
                 </p>
               ) : (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="mt-1"
-                  icon={
-                    discountAuthorized ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : (
-                      <ShieldCheck className="w-4 h-4" />
-                    )
-                  }
-                  onClick={() => setDiscountAuthorized(true)}
-                  disabled={discountAuthorized}
-                >
-                  {discountAuthorized ? 'Autorizado' : 'Autorizar como Administrador'}
-                </Button>
+                <p className="text-[11px] font-bold text-red-600 mt-1">
+                  Solo un Administrador puede aplicar este descuento. Reduce el porcentaje o pide
+                  autorización.
+                </p>
               )}
             </div>
           </div>

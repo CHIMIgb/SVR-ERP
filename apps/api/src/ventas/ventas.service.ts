@@ -332,7 +332,19 @@ export class VentasService {
       }
     }
 
-    // 3. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
+    // 3. Validar descuento: >10% requiere rol Administrador
+    const DESCUENTO_MAXIMO_SIN_AUTORIZACION = 10;
+    if ((dto.descuentoPct ?? 0) > DESCUENTO_MAXIMO_SIN_AUTORIZACION && !(await this.esAdmin(userId))) {
+      return this.fallir(
+        AuditAction.VENTA_CREADA,
+        null,
+        'DESCUENTO_NO_AUTORIZADO',
+        ForbiddenException,
+        `Los descuentos mayores al ${DESCUENTO_MAXIMO_SIN_AUTORIZACION}% requieren autorización de Administrador`,
+      );
+    }
+
+    // 4. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
     const metodosSoportados: string[] = ['efectivo', 'tarjeta', 'transferencia'];
     for (const pago of dto.pagos) {
       if (!metodosSoportados.includes(pago.metodo)) {

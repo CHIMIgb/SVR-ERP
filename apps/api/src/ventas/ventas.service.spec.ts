@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditResult, MetodoPago } from '@prisma/client';
 import { VentasService, clearConfigCache, permiteCerrarCaja } from './ventas.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -140,6 +140,10 @@ describe('VentasService', () => {
           Promise.resolve({ ...data, id: 'c1' }),
         ),
         count: jest.fn().mockResolvedValue(0),
+        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...data, id: 'c1' })),
+      },
+      users_roles: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       aperturas_caja: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -277,6 +281,42 @@ describe('VentasService', () => {
         metodo: 'efectivo' as const,
       };
       await expect(service.create(dto, 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject discount >10% from non-admin user', async () => {
+      const dto = {
+        cajero: 'Cajero',
+        items: [
+          { materialId: mockMaterial.id, medida: 'm³', cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: 'efectivo' as const, monto: 315 }],
+        metodo: 'efectivo' as const,
+        descuentoPct: 15,
+      };
+      await expect(service.create(dto, 'user-1')).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.VENTA_CREADA,
+          result: AuditResult.FAIL,
+          errorCode: 'DESCUENTO_NO_AUTORIZADO',
+        }),
+      );
+    });
+
+    it('should allow discount >10% from admin user', async () => {
+      prisma.users_roles.findFirst.mockResolvedValue({ id: 'ur-1' });
+      const dto = {
+        cajero: 'Cajero',
+        items: [
+          { materialId: mockMaterial.id, medida: 'm³', cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: 'efectivo' as const, monto: 297.5 }],
+        metodo: 'efectivo' as const,
+        descuentoPct: 15,
+        descuentoTotal: 52.5,
+      };
+      const result = await service.create(dto, 'admin-1');
+      expect(result.total).toBe(297.5);
     });
   });
 
