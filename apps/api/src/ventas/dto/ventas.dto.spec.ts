@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreateVentaDto, VentaItemDto, VentaPagoDto } from './create-venta.dto';
-import { CreateRetiroDto, CreateCierreDto } from './create-retiro-cierre.dto';
+import { CreateRetiroDto, CreateCierreDto, UpdateConfigDto } from './create-retiro-cierre.dto';
 
 describe('CreateVentaDto', () => {
   it('should pass with a valid venta', async () => {
@@ -101,6 +101,26 @@ describe('CreateRetiroDto / CreateCierreDto', () => {
       fondoSiguiente: 200,
       notas: 'todo ok',
     });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+});
+
+describe('UpdateConfigDto', () => {
+  it('should accept valid HH:mm times', async () => {
+    const dto = plainToInstance(UpdateConfigDto, { apertura: '07:00', cierre: '20:00' });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('should reject invalid time formats', async () => {
+    const dto = plainToInstance(UpdateConfigDto, { apertura: '7:00', cierre: '25:00' });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.map((e) => e.property)).toContain('apertura');
+    expect(errors.map((e) => e.property)).toContain('cierre');
+  });
+
+  it('should accept empty update (controller validates with at-least-one logic)', async () => {
+    const dto = plainToInstance(UpdateConfigDto, {});
     expect(await validate(dto)).toHaveLength(0);
   });
 });

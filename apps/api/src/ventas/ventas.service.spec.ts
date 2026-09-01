@@ -109,13 +109,26 @@ describe('VentasService', () => {
       $transaction: jest.fn().mockImplementation(async (fn) => {
         return fn(prisma);
       }),
+      _configs: {
+        turno_apertura: { clave: 'turno_apertura', valor: '00:00' },
+        turno_cierre: { clave: 'turno_cierre', valor: '23:59' },
+      },
       configuracion_sistema: {
         findUnique: jest.fn().mockImplementation(({ where }) => {
-          const configs: Record<string, { clave: string; valor: string }> = {
-            turno_apertura: { clave: 'turno_apertura', valor: '00:00' },
-            turno_cierre: { clave: 'turno_cierre', valor: '23:59' },
-          };
-          return Promise.resolve(configs[where?.clave] || null);
+          return Promise.resolve(prisma._configs[where?.clave] || null);
+        }),
+        upsert: jest.fn().mockImplementation(({ where, update, create }) => {
+          prisma._configs[where.clave].valor = update?.valor ?? create?.valor;
+          return Promise.resolve({
+            id: 'cfg-1',
+            clave: where?.clave,
+            valor: prisma._configs[where.clave].valor,
+            descripcion: 'Configuración de turno',
+            tipo: 'string',
+            categoria: 'turno',
+            creado_en: new Date(),
+            actualizado_en: new Date(),
+          });
         }),
       },
     };
@@ -311,6 +324,45 @@ describe('VentasService', () => {
         cierre: '23:59',
         formato: '24h',
       });
+    });
+  });
+
+  describe('updateConfig', () => {
+    it('should update apertura and cierre and audit success', async () => {
+      const result = await service.updateConfig({ apertura: '07:00', cierre: '20:00' }, 'user-1');
+      expect(result).toEqual({ apertura: '07:00', cierre: '20:00', formato: '24h' });
+      expect(prisma.configuracion_sistema.upsert).toHaveBeenCalledTimes(2);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.CONFIG_TURNO_ACTUALIZADA,
+          result: AuditResult.SUCCESS,
+          newValue: { apertura: '07:00', cierre: '20:00', formato: '24h' },
+        }),
+      );
+    });
+
+    it('should update only apertura and audit success', async () => {
+      const result = await service.updateConfig({ apertura: '08:00' }, 'user-1');
+      expect(result).toEqual({ apertura: '08:00', cierre: '23:59', formato: '24h' });
+      expect(prisma.configuracion_sistema.upsert).toHaveBeenCalledTimes(1);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.CONFIG_TURNO_ACTUALIZADA,
+          result: AuditResult.SUCCESS,
+        }),
+      );
+    });
+
+    it('should fail when no fields are provided and audit fail', async () => {
+      await expect(service.updateConfig({}, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.configuracion_sistema.upsert).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.CONFIG_TURNO_ACTUALIZADA,
+          result: AuditResult.FAIL,
+          errorCode: 'CONFIG_SIN_CAMBIOS',
+        }),
+      );
     });
   });
 

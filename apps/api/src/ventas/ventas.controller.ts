@@ -110,9 +110,9 @@ export class VentasController {
 
   /**
    * PATCH /api/ventas/cierres/:id/aprobar
-   * Aprueba un cierre de caja (solo Administrador).
+   * Aprueba un cierre de caja (requiere permiso de editar ventas; además el servicio verifica que sea Administrador).
    */
-  @RequirePermission('comercial', 'ventas', 'ver')
+  @RequirePermission('comercial', 'ventas', 'editar')
   @Patch('cierres/:id/aprobar')
   aprobarCierre(@Param('id') id: string, @Req() req: Request) {
     const user = req.user as { id: string };
@@ -121,9 +121,9 @@ export class VentasController {
 
   /**
    * PATCH /api/ventas/cierres/:id/rechazar
-   * Rechaza un cierre de caja con motivo (solo Administrador).
+   * Rechaza un cierre de caja con motivo (requiere permiso de editar ventas; además el servicio verifica que sea Administrador).
    */
-  @RequirePermission('comercial', 'ventas', 'ver')
+  @RequirePermission('comercial', 'ventas', 'editar')
   @Patch('cierres/:id/rechazar')
   rechazarCierre(
     @Param('id') id: string,

@@ -627,6 +627,16 @@ export class VentasService {
     if (dto.apertura) updates.push({ clave: 'turno_apertura', valor: dto.apertura });
     if (dto.cierre) updates.push({ clave: 'turno_cierre', valor: dto.cierre });
 
+    if (updates.length === 0) {
+      return this.fallir(
+        AuditAction.CONFIG_TURNO_ACTUALIZADA,
+        null,
+        'CONFIG_SIN_CAMBIOS',
+        BadRequestException,
+        'Debe proporcionar al menos apertura o cierre para actualizar',
+      );
+    }
+
     for (const u of updates) {
       await this.prisma.configuracion_sistema.upsert({
         where: { clave: u.clave },
@@ -637,7 +647,20 @@ export class VentasService {
       configCache.delete(u.clave);
     }
 
-    return this.findConfig();
+    const config = await this.findConfig();
+
+    await this.auditService.log({
+      action: AuditAction.CONFIG_TURNO_ACTUALIZADA,
+      entityType: 'configuracion_sistema',
+      entityId: ENTITY_PLACEHOLDER,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: config,
+    });
+
+    return config;
   }
 
   // ────────────────────────────────────────────
