@@ -19,6 +19,7 @@ import {
   CreateAperturaDto,
   CreateRetiroDto,
   RechazarCierreDto,
+  QueryCierresDto,
 } from './dto/create-retiro-cierre.dto';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad. */

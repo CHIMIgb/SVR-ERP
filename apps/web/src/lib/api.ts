@@ -383,209 +383,6 @@ export const inventarioApi = {
 };
 
 // ────────────────────────────────────────────────────────────
-//  Finanzas API
-// ────────────────────────────────────────────────────────────
-
-export type TipoTransaccionApi = 'INGRESO' | 'EGRESO';
-
-/** Formato que devuelve el backend serializado (modelo `transacciones`) */
-export interface TransaccionDTO {
-  id: string;
-  codigo: string | null;
-  tipo: TipoTransaccionApi;
-  categoria: string;
-  /** Categoría personalizada cuando `categoria` es "Otros". */
-  otraCategoria?: string | null;
-  /** Categoría efectiva a mostrar (si "Otros" con texto, muestra el texto). */
-  catEfectiva?: string;
-  monto: number;
-  fecha: string;
-  descripcion: string;
-  activo: boolean;
-  creadoEn: string;
-}
-
-export interface FinanzasStats {
-  balance: number;
-  totalIngresos: number;
-  totalEgresos: number;
-  cantidad: number;
-}
-
-export interface TransaccionCreateInput {
-  tipo: TipoTransaccionApi;
-  categoria: string;
-  monto: number;
-  fecha: string;
-  descripcion: string;
-  /** Categoría personalizada cuando `categoria` es "Otros". */
-  otraCategoria?: string;
-}
-
-/** Catálogo de categorías financieras disponibles (frontend estático) */
-export const FinanzasCategorias: { value: string; label: string }[] = [
-  { value: 'Pago de Obra', label: 'Pago de Obra' },
-  { value: 'Anticipo de Cliente', label: 'Anticipo de Cliente' },
-  { value: 'Venta de Material', label: 'Venta de Material' },
-  { value: 'Renta de Maquinaria', label: 'Renta de Maquinaria' },
-  { value: 'Combustible', label: 'Combustible' },
-  { value: 'Nómina', label: 'Nómina' },
-  { value: 'Refacciones', label: 'Refacciones' },
-  { value: 'Mantenimiento', label: 'Mantenimiento' },
-  { value: 'Servicios', label: 'Servicios' },
-  { value: 'Impuestos', label: 'Impuestos' },
-  { value: 'Otros', label: 'Otros' },
-];
-
-export const finanzasApi = {
-  /** Listar transacciones con búsqueda, filtros y paginación */
-  listar: (params?: {
-    search?: string;
-    tipo?: TipoTransaccionApi;
-    categoria?: string;
-    page?: number;
-    limit?: number;
-  }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.search) searchParams.set('search', params.search);
-    if (params?.tipo) searchParams.set('tipo', params.tipo);
-    if (params?.categoria) searchParams.set('categoria', params.categoria);
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.limit) searchParams.set('limit', String(params.limit));
-    const qs = searchParams.toString();
-    return apiClient.get<PaginatedResponse<TransaccionDTO>>(
-      `/finanzas${qs ? `?${qs}` : ''}`,
-    );
-  },
-
-  /** Obtener una transacción por ID */
-  obtener: (id: string) =>
-    apiClient.get<TransaccionDTO>(`/finanzas/${id}`),
-
-  /** Crear una transacción */
-  crear: (data: TransaccionCreateInput) =>
-    apiClient.post<TransaccionDTO>('/finanzas', data),
-
-  /** Actualizar una transacción */
-  actualizar: (id: string, data: Partial<TransaccionCreateInput>) =>
-    apiClient.patch<TransaccionDTO>(`/finanzas/${id}`, data),
-
-  /** Eliminar una transacción (soft delete) */
-  eliminar: (id: string) =>
-    apiClient.delete<{ message: string }>(`/finanzas/${id}`),
-
-  /** Estadísticas financieras */
-  stats: () =>
-    apiClient.get<FinanzasStats>('/finanzas/stats'),
-};
-
-// ────────────────────────────────────────────────────────────
-//  Criba API
-// ────────────────────────────────────────────────────────────
-
-/** Enum de turno que espera el backend (Prisma `Turno`) — para crear/editar/filtrar. */
-export type TurnoCribaApi = 'MATUTINO' | 'VESPERTINO';
-
-/** Formato que devuelve el backend serializado (la UI muestra `turno` como etiqueta). */
-export interface RegistroCribaDTO {
-  id: string;
-  codigo: string | null;
-  fecha: string; // YYYY-MM-DD
-  turno: 'Matutino' | 'Vespertino';
-  operadorId: string | null;
-  operador: string | null;
-  tipoMaterial: string;
-  materialProducido: number;
-  horasTrabajadas: number;
-  materialAlBanco: number;
-  observaciones: string | null;
-  activo: boolean;
-  creadoEn: string;
-  actualizadoEn: string;
-}
-
-export interface CribaStats {
-  totalProducido: number;
-  totalAlBanco: number;
-  totalHoras: number;
-  eficiencia: number;
-  merma: number;
-  mermaPorcentaje: number;
-  porMaterial: {
-    tipo: string;
-    producido: number;
-    alBanco: number;
-    merma: number;
-    ef: number;
-  }[];
-}
-
-export interface CribaCatalogos {
-  trabajadores: { id: string; nombre: string }[];
-}
-
-export interface CribaCreateInput {
-  fecha: string;
-  turno: TurnoCribaApi;
-  operadorId?: string;
-  tipoMaterial: string;
-  materialProducido: number;
-  horasTrabajadas: number;
-  materialAlBanco: number;
-  observaciones?: string;
-}
-
-export const cribaApi = {
-  /** Listar registros con búsqueda, filtros y paginación (server-side) */
-  listar: (params?: {
-    search?: string;
-    turno?: TurnoCribaApi;
-    tipoMaterial?: string;
-    fechaDesde?: string;
-    fechaHasta?: string;
-    page?: number;
-    limit?: number;
-  }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.search) searchParams.set('search', params.search);
-    if (params?.turno) searchParams.set('turno', params.turno);
-    if (params?.tipoMaterial) searchParams.set('tipoMaterial', params.tipoMaterial);
-    if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
-    if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.limit) searchParams.set('limit', String(params.limit));
-    const qs = searchParams.toString();
-    return apiClient.get<PaginatedResponse<RegistroCribaDTO>>(
-      `/criba${qs ? `?${qs}` : ''}`,
-    );
-  },
-
-  /** Obtener un registro por ID */
-  obtener: (id: string) =>
-    apiClient.get<RegistroCribaDTO>(`/criba/${id}`),
-
-  /** Estadísticas para las tarjetas */
-  stats: () =>
-    apiClient.get<CribaStats>('/criba/stats'),
-
-  /** Catálogo de trabajadores (operadores) para el formulario */
-  catalogos: () =>
-    apiClient.get<CribaCatalogos>('/criba/catalogos'),
-
-  /** Crear un registro de turno */
-  crear: (data: CribaCreateInput) =>
-    apiClient.post<RegistroCribaDTO>('/criba', data),
-
-  /** Actualizar un registro de turno */
-  actualizar: (id: string, data: Partial<CribaCreateInput>) =>
-    apiClient.patch<RegistroCribaDTO>(`/criba/${id}`, data),
-
-  /** Eliminar (soft delete) un registro */
-  eliminar: (id: string) =>
-    apiClient.delete<{ message: string }>(`/criba/${id}`),
-};
-
-// ────────────────────────────────────────────────────────────
 //  Bitácora API
 // ────────────────────────────────────────────────────────────
 
@@ -984,309 +781,6 @@ export const proyectosApi = {
   catalogos: () =>
     apiClient.get<ProyectoCatalogos>('/proyectos/catalogos'),
 };
-
-// ────────────────────────────────────────────────────────────
-//  Ventas (Punto de Venta) API
-// ────────────────────────────────────────────────────────────
-
-export type MetodoPagoVentaApi = 'efectivo' | 'tarjeta' | 'transferencia';
-
-/** Catálogo de materiales del POS (viene de `materiales_venta` + `materiales_precio`). */
-export interface MaterialVentaDTO {
-  id: string;
-  sku: string;
-  nombre: string;
-  categoria: string | null;
-  unidadBase: string;
-  stock: number;
-  precios: { medida: string; precio: number }[];
-}
-
-export interface VentasCatalogos {
-  materiales: MaterialVentaDTO[];
-}
-
-export interface VentaItemInput {
-  materialId: string;
-  medida: string;
-  cantidad: number;
-  precioUnitario: number;
-  descuentoPct?: number;
-}
-
-export interface VentaPagoInput {
-  metodo: MetodoPagoVentaApi;
-  monto: number;
-}
-
-export interface CreateVentaInput {
-  cajero: string;
-  cliente?: string;
-  terminal?: string;
-  caja?: string;
-  items: VentaItemInput[];
-  pagos: VentaPagoInput[];
-  metodo: MetodoPagoVentaApi;
-  efectivoRecibido?: number;
-  cambio?: number;
-  descuentoPct?: number;
-  descuentoTotal?: number;
-  autorizadoPor?: string;
-}
-
-export interface VentaDTO {
-  id: string;
-  folio: string;
-  ticket: string;
-  ticketNumber: number;
-  terminal: string;
-  registerNumber: string;
-  customer: string;
-  cashier: string;
-  subtotal: number;
-  iva: number;
-  ieps: number;
-  total: number;
-  method: MetodoPagoVentaApi;
-  cashReceived?: number;
-  change?: number;
-  discountPct?: number;
-  discountTotal?: number;
-  authorizedBy?: string;
-  itemsSold: number;
-  createdAt: string;
-  items: {
-    id: string;
-    materialId: string;
-    name: string;
-    quantity: number;
-    unit: string;
-    price: number;
-    subtotal: number;
-    discountPct?: number;
-  }[];
-  payments: { method: MetodoPagoVentaApi; amount: number }[];
-}
-
-export interface VentasHoy {
-  ventas: VentaDTO[];
-  stats: {
-    count: number;
-    total: number;
-    efectivo: number;
-    tarjeta: number;
-    transferencia: number;
-  };
-}
-
-export interface RetiroVentaDTO {
-  id: string;
-  concepto: string;
-  monto: number;
-  fecha: string;
-  hora: string;
-  autorizadoPor: string;
-}
-
-export interface CrearRetiroInput {
-  concepto: string;
-  monto: number;
-  autorizadoPor: string;
-}
-
-export interface CierreVentaDTO {
-  id: string;
-  fecha: string;
-  cajero: string;
-  ventasCount: number;
-  totalVentas: number;
-  efectivoInicial: number;
-  ventasEfectivo: number;
-  totalRetiros: number;
-  esperado: number;
-  contado: number;
-  diferencia: number;
-  fondoSiguiente: number;
-  notas?: string;
-  denominaciones: Record<string, number>;
-  estado?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
-  aprobadorId?: string | null;
-  motivoRechazo?: string | null;
-}
-
-export interface CrearCierreInput {
-  denominaciones: Record<string, number>;
-  efectivoInicial?: number;
-  fondoSiguiente?: number;
-  notas?: string;
-}
-
-export interface QueryCierresDto {
-  search?: string;
-  estado?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
-  fechaDesde?: string;
-  fechaHasta?: string;
-  page?: number;
-  limit?: number;
-}
-
-export interface TurnoConfig {
-  apertura: string;
-  cierre: string;
-  formato: string;
-}
-
-export interface AperturaDTO {
-  id: string;
-  fecha: string;
-  cajero: string;
-  fondoInicial: number;
-  abiertaEn: string;
-}
-
-export interface CrearAperturaInput {
-  fondoInicial: number;
-}
-
-export const ventasApi = {
-  /** Catálogo de materiales + medidas + precios (alimenta selects de Material / Medida). */
-  catalogos: () => apiClient.get<VentasCatalogos>('/ventas/catalogos'),
-
-  /** Ventas del día + estadísticas por método de pago. */
-  hoy: () => apiClient.get<VentasHoy>('/ventas/hoy'),
-
-  /** Registrar una venta (valida stock/medida y lo persiste). */
-  crear: (data: CreateVentaInput) => apiClient.post<VentaDTO>('/ventas', data),
-
-  /** Retiros de efectivo del día. */
-  retiros: () => apiClient.get<{ items: RetiroVentaDTO[] }>('/ventas/retiros'),
-
-  /** Registrar un retiro. */
-  crearRetiro: (data: CrearRetiroInput) =>
-    apiClient.post<RetiroVentaDTO>('/ventas/retiros', data),
-
-  /** Estado del cierre de caja del día (+ config del turno y apertura). */
-  cierreHoy: () =>
-    apiClient.get<{
-      existe: boolean;
-      registro: CierreVentaDTO | null;
-      config: TurnoConfig;
-      apertura: { existe: boolean; registro: AperturaDTO | null };
-    }>('/ventas/cierres/hoy'),
-
-  /** Registrar el cierre de caja del día (arqueo). */
-  crearCierre: (data: CrearCierreInput) =>
-    apiClient.post<CierreVentaDTO>('/ventas/cierres', data),
-
-  /** Aprobar un cierre de caja (solo Administrador). */
-  aprobarCierre: (id: string) =>
-    apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/aprobar`, {}),
-
-  /** Rechazar un cierre de caja con motivo (solo Administrador). */
-  rechazarCierre: (id: string, motivo: string) =>
-    apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/rechazar`, { motivo }),
-
-  /** Listar cierres de caja con filtros y paginación. */
-  listarCierres: (query: QueryCierresDto) => {
-    const searchParams = new URLSearchParams();
-    if (query.search) searchParams.set('search', query.search);
-    if (query.estado) searchParams.set('estado', query.estado);
-    if (query.fechaDesde) searchParams.set('fechaDesde', query.fechaDesde);
-    if (query.fechaHasta) searchParams.set('fechaHasta', query.fechaHasta);
-    if (query.page) searchParams.set('page', String(query.page));
-    if (query.limit) searchParams.set('limit', String(query.limit));
-    const qs = searchParams.toString();
-    return apiClient.get<{ items: CierreVentaDTO[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/ventas/cierres${qs ? `?${qs}` : ''}`);
-  },
-
-  /** Configuración del turno (apertura/cierre 24h). */
-  config: () => apiClient.get<TurnoConfig>('/ventas/config'),
-
-  /** Actualiza configuración del turno (solo Administrador). */
-  updateConfig: (data: Partial<TurnoConfig>) =>
-    apiClient.patch<TurnoConfig>('/ventas/config', data),
-
-  /** Estado de la apertura de turno del día. */
-  aperturaHoy: () =>
-    apiClient.get<{ existe: boolean; registro: AperturaDTO | null }>(
-      '/ventas/apertura/hoy',
-    ),
-
-  /** Registrar la apertura del turno (fondo inicial). */
-  crearApertura: (data: CrearAperturaInput) =>
-    apiClient.post<AperturaDTO>('/ventas/apertura', data),
-};
-
-/** Convierte un material del catálogo BD al shape `Product` que usa el POS. */
-export function materialToProduct(m: MaterialVentaDTO): Product {
-  const prices: Record<string, number> = {};
-  for (const p of m.precios) prices[p.medida] = p.precio;
-  const units = m.precios.map((p) => p.medida);
-  const defaultUnit = m.unidadBase || units[0] || 'm³';
-  return {
-    id: m.id,
-    sku: m.sku,
-    barcode: '',
-    name: m.nombre,
-    category: m.categoria ?? undefined,
-    condition: 'Nuevo',
-    stock: m.stock,
-    unit: defaultUnit,
-    units: units.length ? units : [defaultUnit],
-    prices,
-    priceMxn: prices[defaultUnit] ?? m.precios[0]?.precio ?? 0,
-  };
-}
-
-/** Convierte la respuesta del backend a la `POSSale` que renderiza el ticket. */
-export function ventaDtoToSale(v: VentaDTO, products: Product[]): POSSale {
-  const byId = new Map(products.map((p) => [p.id, p]));
-  const items: CartItem[] = v.items.map((i) => {
-    const product = byId.get(i.materialId);
-    return {
-      product: product ?? {
-        id: i.materialId,
-        sku: '',
-        barcode: '',
-        name: i.name,
-        condition: 'Nuevo',
-        stock: 0,
-        unit: i.unit,
-        priceMxn: i.price,
-      },
-      quantity: i.quantity,
-      unit: i.unit,
-    };
-  });
-
-  const subtotal = v.subtotal;
-  const iva = v.iva;
-  const ieps = v.ieps;
-  const taxBreakdown: TaxBreakdown = { subtotal, iva, ieps, totalTax: iva + ieps };
-
-  return {
-    id: v.id,
-    ticketNumber: v.ticket,
-    folio: v.folio,
-    terminal: v.terminal,
-    registerNumber: v.registerNumber,
-    customer: v.customer,
-    cashier: v.cashier,
-    items,
-    total: v.total,
-    method: v.method,
-    cashReceived: v.cashReceived,
-    change: v.change,
-    payments: v.payments.map((p) => ({ method: p.method, amount: p.amount })),
-    taxBreakdown,
-    paymentDetails: {},
-    discountPct: v.discountPct,
-    discountTotal: v.discountTotal,
-    authorizedBy: v.authorizedBy,
-    itemsSold: v.itemsSold,
-    createdAt: v.createdAt,
-  };
-}
 
 // ────────────────────────────────────────────────────────────
 //  Reportes de Campo API
@@ -1717,42 +1211,6 @@ export const asistenciaApi = {
     if (params?.obraId) searchParams.set('obraId', params.obraId);
     if (params?.estado) searchParams.set('estado', params.estado);
     if (params?.enSitio !== undefined) searchParams.set('enSitio', String(params.enSitio));
-// ────────────────────────────────────────────────────────────
-//  Clientes API
-// ────────────────────────────────────────────────────────────
-
-export interface ClienteDTO {
-  id: string;
-  codigo: string | null;
-  nombre: string;
-  empresa: string;
-  correo: string;
-  telefono: string;
-  rfc: string | null;
-  activo: boolean;
-  creadoEn: string;
-  actualizadoEn: string;
-}
-
-export interface ClientesStats {
-  totalClientes: number;
-  clientesActivos: number;
-  empresas: number;
-}
-
-export interface ClienteCreateInput {
-  nombre: string;
-  empresa: string;
-  correo: string;
-  telefono: string;
-  rfc?: string;
-  activo?: boolean;
-}
-
-export const clientesApi = {
-  /** Listar clientes con búsqueda y paginación */
-  listar: (params?: { search?: string; page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set('search', params.search);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
@@ -1865,6 +1323,554 @@ export const nominaApi = {
 
   pagarTodos: (periodoId: string) =>
     apiClient.post<{ items: NominaRowDTO[]; actualizados: number }>(`/nomina/${periodoId}/pagar-todos`, {}),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Finanzas API
+// ────────────────────────────────────────────────────────────
+
+export type TipoTransaccionApi = 'INGRESO' | 'EGRESO';
+
+/** Formato que devuelve el backend serializado (modelo `transacciones`) */
+export interface TransaccionDTO {
+  id: string;
+  codigo: string | null;
+  tipo: TipoTransaccionApi;
+  categoria: string;
+  /** Categoría personalizada cuando `categoria` es "Otros". */
+  otraCategoria?: string | null;
+  /** Categoría efectiva a mostrar (si "Otros" con texto, muestra el texto). */
+  catEfectiva?: string;
+  monto: number;
+  fecha: string;
+  descripcion: string;
+  activo: boolean;
+  creadoEn: string;
+}
+
+export interface FinanzasStats {
+  balance: number;
+  totalIngresos: number;
+  totalEgresos: number;
+  cantidad: number;
+}
+
+export interface TransaccionCreateInput {
+  tipo: TipoTransaccionApi;
+  categoria: string;
+  monto: number;
+  fecha: string;
+  descripcion: string;
+  /** Categoría personalizada cuando `categoria` es "Otros". */
+  otraCategoria?: string;
+}
+
+/** Catálogo de categorías financieras disponibles (frontend estático) */
+export const FinanzasCategorias: { value: string; label: string }[] = [
+  { value: 'Pago de Obra', label: 'Pago de Obra' },
+  { value: 'Anticipo de Cliente', label: 'Anticipo de Cliente' },
+  { value: 'Venta de Material', label: 'Venta de Material' },
+  { value: 'Renta de Maquinaria', label: 'Renta de Maquinaria' },
+  { value: 'Combustible', label: 'Combustible' },
+  { value: 'Nómina', label: 'Nómina' },
+  { value: 'Refacciones', label: 'Refacciones' },
+  { value: 'Mantenimiento', label: 'Mantenimiento' },
+  { value: 'Servicios', label: 'Servicios' },
+  { value: 'Impuestos', label: 'Impuestos' },
+  { value: 'Otros', label: 'Otros' },
+];
+
+export const finanzasApi = {
+  /** Listar transacciones con búsqueda, filtros y paginación */
+  listar: (params?: {
+    search?: string;
+    tipo?: TipoTransaccionApi;
+    categoria?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.categoria) searchParams.set('categoria', params.categoria);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<TransaccionDTO>>(
+      `/finanzas${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener una transacción por ID */
+  obtener: (id: string) =>
+    apiClient.get<TransaccionDTO>(`/finanzas/${id}`),
+
+  /** Crear una transacción */
+  crear: (data: TransaccionCreateInput) =>
+    apiClient.post<TransaccionDTO>('/finanzas', data),
+
+  /** Actualizar una transacción */
+  actualizar: (id: string, data: Partial<TransaccionCreateInput>) =>
+    apiClient.patch<TransaccionDTO>(`/finanzas/${id}`, data),
+
+  /** Eliminar una transacción (soft delete) */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/finanzas/${id}`),
+
+  /** Estadísticas financieras */
+  stats: () =>
+    apiClient.get<FinanzasStats>('/finanzas/stats'),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Criba API
+// ────────────────────────────────────────────────────────────
+
+/** Enum de turno que espera el backend (Prisma `Turno`) — para crear/editar/filtrar. */
+export type TurnoCribaApi = 'MATUTINO' | 'VESPERTINO';
+
+/** Formato que devuelve el backend serializado (la UI muestra `turno` como etiqueta). */
+export interface RegistroCribaDTO {
+  id: string;
+  codigo: string | null;
+  fecha: string; // YYYY-MM-DD
+  turno: 'Matutino' | 'Vespertino';
+  operadorId: string | null;
+  operador: string | null;
+  tipoMaterial: string;
+  materialProducido: number;
+  horasTrabajadas: number;
+  materialAlBanco: number;
+  observaciones: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface CribaStats {
+  totalProducido: number;
+  totalAlBanco: number;
+  totalHoras: number;
+  eficiencia: number;
+  merma: number;
+  mermaPorcentaje: number;
+  porMaterial: {
+    tipo: string;
+    producido: number;
+    alBanco: number;
+    merma: number;
+    ef: number;
+  }[];
+}
+
+export interface CribaCatalogos {
+  trabajadores: { id: string; nombre: string }[];
+}
+
+export interface CribaCreateInput {
+  fecha: string;
+  turno: TurnoCribaApi;
+  operadorId?: string;
+  tipoMaterial: string;
+  materialProducido: number;
+  horasTrabajadas: number;
+  materialAlBanco: number;
+  observaciones?: string;
+}
+
+export const cribaApi = {
+  /** Listar registros con búsqueda, filtros y paginación (server-side) */
+  listar: (params?: {
+    search?: string;
+    turno?: TurnoCribaApi;
+    tipoMaterial?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.turno) searchParams.set('turno', params.turno);
+    if (params?.tipoMaterial) searchParams.set('tipoMaterial', params.tipoMaterial);
+    if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
+    if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<RegistroCribaDTO>>(
+      `/criba${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  /** Obtener un registro por ID */
+  obtener: (id: string) =>
+    apiClient.get<RegistroCribaDTO>(`/criba/${id}`),
+
+  /** Estadísticas para las tarjetas */
+  stats: () =>
+    apiClient.get<CribaStats>('/criba/stats'),
+
+  /** Catálogo de trabajadores (operadores) para el formulario */
+  catalogos: () =>
+    apiClient.get<CribaCatalogos>('/criba/catalogos'),
+
+  /** Crear un registro de turno */
+  crear: (data: CribaCreateInput) =>
+    apiClient.post<RegistroCribaDTO>('/criba', data),
+
+  /** Actualizar un registro de turno */
+  actualizar: (id: string, data: Partial<CribaCreateInput>) =>
+    apiClient.patch<RegistroCribaDTO>(`/criba/${id}`, data),
+
+  /** Eliminar (soft delete) un registro */
+  eliminar: (id: string) =>
+    apiClient.delete<{ message: string }>(`/criba/${id}`),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Ventas (Punto de Venta) API
+// ────────────────────────────────────────────────────────────
+
+export type MetodoPagoVentaApi = 'efectivo' | 'tarjeta' | 'transferencia';
+
+/** Catálogo de materiales del POS (viene de `materiales_venta` + `materiales_precio`). */
+export interface MaterialVentaDTO {
+  id: string;
+  sku: string;
+  nombre: string;
+  categoria: string | null;
+  unidadBase: string;
+  stock: number;
+  precios: { medida: string; precio: number }[];
+}
+
+export interface VentasCatalogos {
+  materiales: MaterialVentaDTO[];
+}
+
+export interface VentaItemInput {
+  materialId: string;
+  medida: string;
+  cantidad: number;
+  precioUnitario: number;
+  descuentoPct?: number;
+}
+
+export interface VentaPagoInput {
+  metodo: MetodoPagoVentaApi;
+  monto: number;
+}
+
+export interface CreateVentaInput {
+  cajero: string;
+  cliente?: string;
+  terminal?: string;
+  caja?: string;
+  items: VentaItemInput[];
+  pagos: VentaPagoInput[];
+  metodo: MetodoPagoVentaApi;
+  efectivoRecibido?: number;
+  cambio?: number;
+  descuentoPct?: number;
+  descuentoTotal?: number;
+  autorizadoPor?: string;
+}
+
+export interface VentaDTO {
+  id: string;
+  folio: string;
+  ticket: string;
+  ticketNumber: number;
+  terminal: string;
+  registerNumber: string;
+  customer: string;
+  cashier: string;
+  subtotal: number;
+  iva: number;
+  ieps: number;
+  total: number;
+  method: MetodoPagoVentaApi;
+  cashReceived?: number;
+  change?: number;
+  discountPct?: number;
+  discountTotal?: number;
+  authorizedBy?: string;
+  itemsSold: number;
+  createdAt: string;
+  items: {
+    id: string;
+    materialId: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    price: number;
+    subtotal: number;
+    discountPct?: number;
+  }[];
+  payments: { method: MetodoPagoVentaApi; amount: number }[];
+}
+
+export interface VentasHoy {
+  ventas: VentaDTO[];
+  stats: {
+    count: number;
+    total: number;
+    efectivo: number;
+    tarjeta: number;
+    transferencia: number;
+  };
+}
+
+export interface RetiroVentaDTO {
+  id: string;
+  concepto: string;
+  monto: number;
+  fecha: string;
+  hora: string;
+  autorizadoPor: string;
+}
+
+export interface CrearRetiroInput {
+  concepto: string;
+  monto: number;
+  autorizadoPor: string;
+}
+
+export interface CierreVentaDTO {
+  id: string;
+  fecha: string;
+  cajero: string;
+  ventasCount: number;
+  totalVentas: number;
+  efectivoInicial: number;
+  ventasEfectivo: number;
+  totalRetiros: number;
+  esperado: number;
+  contado: number;
+  diferencia: number;
+  fondoSiguiente: number;
+  notas?: string;
+  denominaciones: Record<string, number>;
+  estado?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+  aprobadorId?: string | null;
+  motivoRechazo?: string | null;
+}
+
+export interface CrearCierreInput {
+  denominaciones: Record<string, number>;
+  efectivoInicial?: number;
+  fondoSiguiente?: number;
+  notas?: string;
+}
+
+export interface QueryCierresDto {
+  search?: string;
+  estado?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+  fechaDesde?: string;
+  fechaHasta?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface TurnoConfig {
+  apertura: string;
+  cierre: string;
+  formato: string;
+}
+
+export interface AperturaDTO {
+  id: string;
+  fecha: string;
+  cajero: string;
+  fondoInicial: number;
+  abiertaEn: string;
+}
+
+export interface CrearAperturaInput {
+  fondoInicial: number;
+}
+
+export const ventasApi = {
+  /** Catálogo de materiales + medidas + precios (alimenta selects de Material / Medida). */
+  catalogos: () => apiClient.get<VentasCatalogos>('/ventas/catalogos'),
+
+  /** Ventas del día + estadísticas por método de pago. */
+  hoy: () => apiClient.get<VentasHoy>('/ventas/hoy'),
+
+  /** Registrar una venta (valida stock/medida y lo persiste). */
+  crear: (data: CreateVentaInput) => apiClient.post<VentaDTO>('/ventas', data),
+
+  /** Retiros de efectivo del día. */
+  retiros: () => apiClient.get<{ items: RetiroVentaDTO[] }>('/ventas/retiros'),
+
+  /** Registrar un retiro. */
+  crearRetiro: (data: CrearRetiroInput) =>
+    apiClient.post<RetiroVentaDTO>('/ventas/retiros', data),
+
+  /** Estado del cierre de caja del día (+ config del turno y apertura). */
+  cierreHoy: () =>
+    apiClient.get<{
+      existe: boolean;
+      registro: CierreVentaDTO | null;
+      config: TurnoConfig;
+      apertura: { existe: boolean; registro: AperturaDTO | null };
+    }>('/ventas/cierres/hoy'),
+
+  /** Registrar el cierre de caja del día (arqueo). */
+  crearCierre: (data: CrearCierreInput) =>
+    apiClient.post<CierreVentaDTO>('/ventas/cierres', data),
+
+  /** Aprobar un cierre de caja (solo Administrador). */
+  aprobarCierre: (id: string) =>
+    apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/aprobar`, {}),
+
+  /** Rechazar un cierre de caja con motivo (solo Administrador). */
+  rechazarCierre: (id: string, motivo: string) =>
+    apiClient.patch<CierreVentaDTO>(`/ventas/cierres/${id}/rechazar`, { motivo }),
+
+  /** Listar cierres de caja con filtros y paginación. */
+  listarCierres: (query: QueryCierresDto) => {
+    const searchParams = new URLSearchParams();
+    if (query.search) searchParams.set('search', query.search);
+    if (query.estado) searchParams.set('estado', query.estado);
+    if (query.fechaDesde) searchParams.set('fechaDesde', query.fechaDesde);
+    if (query.fechaHasta) searchParams.set('fechaHasta', query.fechaHasta);
+    if (query.page) searchParams.set('page', String(query.page));
+    if (query.limit) searchParams.set('limit', String(query.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<{ items: CierreVentaDTO[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/ventas/cierres${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Configuración del turno (apertura/cierre 24h). */
+  config: () => apiClient.get<TurnoConfig>('/ventas/config'),
+
+  /** Actualiza configuración del turno (solo Administrador). */
+  updateConfig: (data: Partial<TurnoConfig>) =>
+    apiClient.patch<TurnoConfig>('/ventas/config', data),
+
+  /** Estado de la apertura de turno del día. */
+  aperturaHoy: () =>
+    apiClient.get<{ existe: boolean; registro: AperturaDTO | null }>(
+      '/ventas/apertura/hoy',
+    ),
+
+  /** Registrar la apertura del turno (fondo inicial). */
+  crearApertura: (data: CrearAperturaInput) =>
+    apiClient.post<AperturaDTO>('/ventas/apertura', data),
+};
+
+/** Convierte un material del catálogo BD al shape `Product` que usa el POS. */
+export function materialToProduct(m: MaterialVentaDTO): Product {
+  const prices: Record<string, number> = {};
+  for (const p of m.precios) prices[p.medida] = p.precio;
+  const units = m.precios.map((p) => p.medida);
+  const defaultUnit = m.unidadBase || units[0] || 'm³';
+  return {
+    id: m.id,
+    sku: m.sku,
+    barcode: '',
+    name: m.nombre,
+    category: m.categoria ?? undefined,
+    condition: 'Nuevo',
+    stock: m.stock,
+    unit: defaultUnit,
+    units: units.length ? units : [defaultUnit],
+    prices,
+    priceMxn: prices[defaultUnit] ?? m.precios[0]?.precio ?? 0,
+  };
+}
+
+/** Convierte la respuesta del backend a la `POSSale` que renderiza el ticket. */
+export function ventaDtoToSale(v: VentaDTO, products: Product[]): POSSale {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const items: CartItem[] = v.items.map((i) => {
+    const product = byId.get(i.materialId);
+    return {
+      product: product ?? {
+        id: i.materialId,
+        sku: '',
+        barcode: '',
+        name: i.name,
+        condition: 'Nuevo',
+        stock: 0,
+        unit: i.unit,
+        priceMxn: i.price,
+      },
+      quantity: i.quantity,
+      unit: i.unit,
+    };
+  });
+
+  const subtotal = v.subtotal;
+  const iva = v.iva;
+  const ieps = v.ieps;
+  const taxBreakdown: TaxBreakdown = { subtotal, iva, ieps, totalTax: iva + ieps };
+
+  return {
+    id: v.id,
+    ticketNumber: v.ticket,
+    folio: v.folio,
+    terminal: v.terminal,
+    registerNumber: v.registerNumber,
+    customer: v.customer,
+    cashier: v.cashier,
+    items,
+    total: v.total,
+    method: v.method,
+    cashReceived: v.cashReceived,
+    change: v.change,
+    payments: v.payments.map((p) => ({ method: p.method, amount: p.amount })),
+    taxBreakdown,
+    paymentDetails: {},
+    discountPct: v.discountPct,
+    discountTotal: v.discountTotal,
+    authorizedBy: v.authorizedBy,
+    itemsSold: v.itemsSold,
+    createdAt: v.createdAt,
+  };
+}
+
+// ────────────────────────────────────────────────────────────
+//  Clientes API
+// ────────────────────────────────────────────────────────────
+
+export interface ClienteDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  empresa: string;
+  correo: string;
+  telefono: string;
+  rfc: string | null;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface ClientesStats {
+  totalClientes: number;
+  clientesActivos: number;
+  empresas: number;
+}
+
+export interface ClienteCreateInput {
+  nombre: string;
+  empresa: string;
+  correo: string;
+  telefono: string;
+  rfc?: string;
+  activo?: boolean;
+}
+
+export const clientesApi = {
+  /** Listar clientes con búsqueda y paginación */
+  listar: (params?: { search?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
     return apiClient.get<PaginatedResponse<ClienteDTO>>(
       `/clientes${qs ? `?${qs}` : ''}`,
     );
