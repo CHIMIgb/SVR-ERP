@@ -63,8 +63,6 @@ export default function VentasPage() {
 
   const vistaVentas = user?.vistas.find((v) => v.ruta === '/ventas');
   const puedeCrear = vistaVentas?.puedeCrear ?? false;
-  const isAdmin = user?.roles.some((r) => r.nombre.toLowerCase().includes('admin')) ?? false;
-
   const cashierName = user?.persona && user.persona.nombre
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
     : 'Cajero';
@@ -218,9 +216,6 @@ export default function VentasPage() {
     method: PaymentMethod,
     cashReceived: number | undefined,
     change: number | undefined,
-    discountPct: number,
-    discountTotal: number,
-    authorizedBy: string | undefined,
   ) => {
     if (cart.length === 0 || cobrando.current) return;
     if (!catalogoCargado) {
@@ -240,15 +235,11 @@ export default function VentasPage() {
         medida: i.unit ?? i.product.unit,
         cantidad: i.quantity,
         precioUnitario: i.priceOverride ?? productUnitPrice(i.product, i.unit ?? i.product.unit),
-        descuentoPct: i.discountPct,
       })),
       pagos: payments.map((p) => ({ metodo: p.method, monto: p.amount })),
       metodo: method,
       efectivoRecibido: cashReceived,
       cambio: change,
-      descuentoPct: discountPct || undefined,
-      descuentoTotal: discountTotal || undefined,
-      autorizadoPor: authorizedBy,
     };
 
     try {
@@ -482,7 +473,6 @@ export default function VentasPage() {
                 <div className="lg:col-span-2">
                   <PaymentPanel
                     total={total}
-                    isAdmin={isAdmin}
                     disabled={cart.length === 0 || !catalogoCargado}
                     onPay={handlePay}
                   />
