@@ -17,7 +17,7 @@ import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import Modal, { ModalField, inputClass } from '@/components/layout/Modal';
+import { FormModal, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -96,7 +96,21 @@ export default function VentasPage() {
         ventasApi.config(),
         ventasApi.catalogos(),
       ]);
-      if (resConfig.success) setTurnoConfig(resConfig.data);
+      if (resConfig.success) {
+        const config = resConfig.data;
+        setTurnoConfig(config);
+
+        // Verificar fuera de horario con el valor recién obtenido (evita closure obsoleto)
+        const now = new Date();
+        const { h: aH, m: aM } = parseHM(config.apertura);
+        const { h: cH, m: cM } = parseHM(config.cierre);
+        const apertura = new Date();
+        apertura.setHours(aH, aM, 0, 0);
+        const cierre = new Date();
+        cierre.setHours(cH, cM, 0, 0);
+        const fuera = now < apertura || now > cierre;
+        setFueraDeHorario(fuera);
+      }
 
       if (res.success && res.data.materiales.length > 0) {
         const productos = res.data.materiales.map(materialToProduct);
@@ -117,19 +131,6 @@ export default function VentasPage() {
     } catch {
       // sin catálogo BD: el POS queda bloqueado para no reenviar IDs mock inválidos
       setCatalogoError(true);
-    }
-
-    // Verificar si estamos fuera de horario de atención
-    if (turnoConfig) {
-      const now = new Date();
-      const { h: aH, m: aM } = parseHM(turnoConfig.apertura);
-      const { h: cH, m: cM } = parseHM(turnoConfig.cierre);
-      const apertura = new Date();
-      apertura.setHours(aH, aM, 0, 0);
-      const cierre = new Date();
-      cierre.setHours(cH, cM, 0, 0);
-      const fuera = now < apertura || now > cierre;
-      setFueraDeHorario(fuera);
     }
 
     try {
@@ -557,25 +558,25 @@ export default function VentasPage() {
         open={showHistory}
       />
 
-      <Modal
-        isOpen={modalRetiro}
+      <FormModal
+        open={modalRetiro}
         onClose={() => setModalRetiro(false)}
-        onConfirm={handleRetiro}
+        onSubmit={handleRetiro}
         title="Retiro de Efectivo"
-        confirmLabel="Registrar Retiro"
+        submitLabel="Registrar Retiro"
       >
-        <ModalField label="Concepto *">
+        <ModalField label="Concepto *" required>
           <input
-            className={inputClass}
+            className={modalInputClass}
             placeholder="Ej: Gasolina, refacción urgente..."
             value={formRetiro.concepto}
             onChange={(e) => setFormRetiro({ ...formRetiro, concepto: e.target.value })}
           />
         </ModalField>
-        <ModalField label="Monto (MXN) *">
+        <ModalField label="Monto (MXN) *" required>
           <input
             type="number"
-            className={inputClass}
+            className={modalInputClass}
             placeholder="0.00"
             value={formRetiro.monto}
             onChange={(e) => setFormRetiro({ ...formRetiro, monto: e.target.value })}
@@ -583,13 +584,13 @@ export default function VentasPage() {
         </ModalField>
         <ModalField label="Autorizado por">
           <input
-            className={inputClass}
+            className={modalInputClass}
             placeholder="Gerencia / Jefe de Patio"
             value={formRetiro.autorizadoPor}
             onChange={(e) => setFormRetiro({ ...formRetiro, autorizadoPor: e.target.value })}
           />
         </ModalField>
-      </Modal>
+      </FormModal>
     </div>
   );
 }
