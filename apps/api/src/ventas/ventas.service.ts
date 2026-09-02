@@ -92,6 +92,8 @@ async function estaEnHorarioAtencion(prisma: PrismaService): Promise<boolean> {
   const [cH, cM] = (await getCierreHora(prisma)).split(':').map(Number);
   const apertura = new Date(); apertura.setHours(aH, aM, 0, 0);
   const cierre = new Date(); cierre.setHours(cH, cM, 0, 0);
+  // Si es turno nocturno (apertura > cierre), no hay ventana de ventas
+  if (apertura > cierre) return false;
   return now >= apertura && now <= cierre;
 }
 

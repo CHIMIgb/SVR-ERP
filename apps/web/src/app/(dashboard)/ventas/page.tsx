@@ -99,6 +99,7 @@ export default function VentasPage() {
         setTurnoConfig(config);
 
         // Verificar fuera de horario con el valor recién obtenido (evita closure obsoleto)
+        // Diseño: turnos nocturnos (apertura > cierre) no tienen ventana de ventas
         const now = new Date();
         const { h: aH, m: aM } = parseHM(config.apertura);
         const { h: cH, m: cM } = parseHM(config.cierre);
@@ -106,7 +107,9 @@ export default function VentasPage() {
         apertura.setHours(aH, aM, 0, 0);
         const cierre = new Date();
         cierre.setHours(cH, cM, 0, 0);
-        const fuera = now < apertura || now > cierre;
+        // Nocturno: apertura > cierre → siempre fuera de ventana de ventas
+        const esNocturno = apertura > cierre;
+        const fuera = !esNocturno && (now < apertura || now > cierre);
         setFueraDeHorario(fuera);
       }
 
