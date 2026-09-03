@@ -536,3 +536,65 @@ describe('permiteCerrarCaja', () => {
     });
   });
 });
+
+  describe("fuera de horario de atencion (POS)", () => {
+    it("debe rechazar venta fuera de horario diurno", async () => {
+      const dto = {
+        cajero: "Cajero",
+        items: [
+          { materialId: mockMaterial.id, medida: "m3", cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: "efectivo" as const, monto: 350 }],
+        metodo: "efectivo" as const,
+      };
+      await expect(service.create(dto, "user-1")).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("idempotencia en creaciuxf3n de ventas", () => {
+    it("debe retornar la venta existente si ya existe con la misma key", async () => {
+      const dto = {
+        cajero: "Cajero",
+        idempotenciaKey: "test-idem-key-123",
+        items: [
+          { materialId: mockMaterial.id, medida: "m3", cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: "efectivo" as const, monto: 350 }],
+        metodo: "efectivo" as const,
+      };
+      const result1 = await service.create(dto, "user-1");
+      const result2 = await service.create(dto, "user-1");
+      expect(result1.id).toBe(result2.id);
+      const articulo = await prisma.articulos_inventario.findUnique({
+        where: { id: mockMaterial.id },
+      });
+      expect(articulo?.stock).toBe(mockMaterial.stock - 1);
+    });
+  });
+
+  describe("validación de precio contra catálogo", () => {
+    it("debe rechazar precio que no coincide con el catálogo", async () => {
+      const dto = {
+        cajero: "Cajero",
+        items: [
+          { materialId: mockMaterial.id, medida: "m3", cantidad: 1, precioUnitario: 9999 },
+        ],
+        pagos: [{ metodo: "efectivo" as const, monto: 9999 }],
+        metodo: "efectivo" as const,
+      };
+      await expect(service.create(dto, "user-1")).rejects.toThrow(BadRequestException);
+    });
+
+    it("debe aceptar precio que coincide con el catálogo", async () => {
+      const dto = {
+        cajero: "Cajero",
+        items: [
+          { materialId: mockMaterial.id, medida: "m3", cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: "efectivo" as const, monto: 350 }],
+        metodo: "efectivo" as const,
+      };
+      const result = await service.create(dto, "user-1");
+      expect(result.id).toBeDefined();
+    });
+  });
