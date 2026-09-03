@@ -40,12 +40,6 @@ export class VentaItemDto {
   @IsNumber()
   @Min(0)
   precioUnitario!: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  descuentoPct?: number;
 }
 
 /** Pago de la venta (una venta mixta tiene varias líneas). */
@@ -105,25 +99,7 @@ export class CreateVentaDto {
   @Min(0)
   cambio?: number;
 
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(100)
-  descuentoPct?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  descuentoTotal?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  autorizadoPor?: string;
-
   /** IVA/IEPS no se reciben; el backend calcula sobre el total (16%). */
-
-  /** Clave de idempotencia (UUID v4) para evitar ventas duplicadas por doble clic o reintento de red. */
   @IsOptional()
   @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
     message: 'idempotenciaKey debe ser un UUID válido',

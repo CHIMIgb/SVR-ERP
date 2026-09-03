@@ -334,19 +334,7 @@ export class VentasService {
       }
     }
 
-    // 3. Validar descuento: >10% requiere rol Administrador
-    const DESCUENTO_MAXIMO_SIN_AUTORIZACION = 10;
-    if ((dto.descuentoPct ?? 0) > DESCUENTO_MAXIMO_SIN_AUTORIZACION && !(await this.esAdmin(userId))) {
-      return this.fallir(
-        AuditAction.VENTA_CREADA,
-        null,
-        'DESCUENTO_NO_AUTORIZADO',
-        ForbiddenException,
-        `Los descuentos mayores al ${DESCUENTO_MAXIMO_SIN_AUTORIZACION}% requieren autorización de Administrador`,
-      );
-    }
-
-    // 4. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
+    // 3. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
     const metodosSoportados: string[] = ['efectivo', 'tarjeta', 'transferencia'];
     for (const pago of dto.pagos) {
       if (!metodosSoportados.includes(pago.metodo)) {
@@ -364,9 +352,8 @@ export class VentasService {
       (s, i) => s + i.precioUnitario * i.cantidad,
       0,
     );
-    const descuentoTotal = dto.descuentoTotal ?? 0;
-    const totalEsperado = Math.round((totalLineas - descuentoTotal) * 100) / 100;
     const totalCobrado = dto.pagos.reduce((s, p) => s + p.monto, 0);
+    const totalEsperado = Math.round(totalLineas * 100) / 100;
 
     if (Math.abs(totalCobrado - totalEsperado) > 0.01) {
       return this.fallir(
@@ -414,9 +401,6 @@ export class VentasService {
           metodo,
           efectivo_recibido: dto.efectivoRecibido ?? null,
           cambio: dto.cambio ?? null,
-          descuento_pct: dto.descuentoPct ?? null,
-          descuento_total: descuentoTotal,
-          autorizado_por: dto.autorizadoPor?.trim() || null,
           items_count: dto.items.length,
           idempotencia_key: dto.idempotenciaKey ?? null,
           creado_por: userId,
@@ -424,9 +408,8 @@ export class VentasService {
           items: {
             create: dto.items.map((i) => {
               const mat = byId.get(i.materialId)!;
-              const desc = (i.descuentoPct ?? 0) / 100;
               const subtotalLinea =
-                Math.round(i.precioUnitario * i.cantidad * (1 - desc) * 100) / 100;
+                Math.round(i.precioUnitario * i.cantidad * 100) / 100;
               return {
                 id: randomUUID(),
                 articulo_id: mat.id,
@@ -435,7 +418,6 @@ export class VentasService {
                 medida: i.medida,
                 precio_unitario: i.precioUnitario,
                 subtotal: subtotalLinea,
-                descuento_pct: i.descuentoPct ?? null,
               };
             }),
           },

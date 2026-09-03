@@ -283,42 +283,7 @@ describe('VentasService', () => {
       await expect(service.create(dto, 'user-1')).rejects.toThrow(BadRequestException);
     });
 
-    it('should reject discount >10% from non-admin user', async () => {
-      const dto = {
-        cajero: 'Cajero',
-        items: [
-          { materialId: mockMaterial.id, medida: 'm³', cantidad: 1, precioUnitario: 350 },
-        ],
-        pagos: [{ metodo: 'efectivo' as const, monto: 315 }],
-        metodo: 'efectivo' as const,
-        descuentoPct: 15,
-      };
-      await expect(service.create(dto, 'user-1')).rejects.toThrow(ForbiddenException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.VENTA_CREADA,
-          result: AuditResult.FAIL,
-          errorCode: 'DESCUENTO_NO_AUTORIZADO',
-        }),
-      );
-    });
 
-    it('should allow discount >10% from admin user', async () => {
-      prisma.users_roles.findFirst.mockResolvedValue({ id: 'ur-1' });
-      const dto = {
-        cajero: 'Cajero',
-        items: [
-          { materialId: mockMaterial.id, medida: 'm³', cantidad: 1, precioUnitario: 350 },
-        ],
-        pagos: [{ metodo: 'efectivo' as const, monto: 297.5 }],
-        metodo: 'efectivo' as const,
-        descuentoPct: 15,
-        descuentoTotal: 52.5,
-      };
-      const result = await service.create(dto, 'admin-1');
-      expect(result.total).toBe(297.5);
-    });
-  });
 
   describe('findRetiros', () => {
     it('should return retiros of the day', async () => {
