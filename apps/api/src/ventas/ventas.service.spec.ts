@@ -490,6 +490,12 @@ describe('VentasService', () => {
 
   describe("fuera de horario de atencion (POS)", () => {
     it("debe rechazar venta fuera de horario diurno", async () => {
+      // Configurar turno NOCTURNO (apertura > cierre): por diseño no tiene
+      // ventana de ventas => estaEnHorarioAtencion() siempre retorna false
+      // independientemente de la hora actual del test.
+      prisma._configs['turno_apertura'].valor = '23:00';
+      prisma._configs['turno_cierre'].valor = '05:00';
+      clearConfigCache(); // el cache TTL 30s podría tener el horario '00:00'-'23:59' del beforeEach
       const dto = {
         cajero: "Cajero",
         items: [
