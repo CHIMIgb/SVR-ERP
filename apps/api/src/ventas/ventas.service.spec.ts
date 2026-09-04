@@ -493,7 +493,7 @@ describe('VentasService', () => {
       const dto = {
         cajero: "Cajero",
         items: [
-          { materialId: mockMaterial.id, medida: "m3", cantidad: 1, precioUnitario: 350 },
+          { materialId: mockMaterial.id, medida: "m³", cantidad: 1, precioUnitario: 350 },
         ],
         pagos: [{ metodo: "efectivo" as const, monto: 350 }],
         metodo: "efectivo" as const,
@@ -528,7 +528,7 @@ describe('VentasService', () => {
       const dto = {
         cajero: "Cajero",
         items: [
-          { materialId: mockMaterial.id, medida: "m3", cantidad: 1, precioUnitario: 9999 },
+          { materialId: mockMaterial.id, medida: "m³", cantidad: 1, precioUnitario: 9999 },
         ],
         pagos: [{ metodo: "efectivo" as const, monto: 9999 }],
         metodo: "efectivo" as const,
