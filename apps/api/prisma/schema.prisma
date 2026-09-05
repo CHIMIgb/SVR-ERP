@@ -14,14 +14,14 @@ model alertas_gps {
   severidad      String
   lat            Decimal?  @db.Decimal(9, 6)
   lng            Decimal?  @db.Decimal(9, 6)
-  fecha_hora     DateTime @db.Timestamptz()
+  fecha_hora     DateTime  @db.Timestamptz()
   descripcion    String?
   atendida       Boolean   @default(false)
   atendida_por   String?   @db.Uuid
   atendida_en    DateTime? @db.Timestamptz()
   activo         Boolean   @default(true)
-  creado_en      DateTime @db.Timestamptz()  @default(now())
-  actualizado_en DateTime @db.Timestamptz()
+  creado_en      DateTime  @default(now()) @db.Timestamptz()
+  actualizado_en DateTime  @db.Timestamptz()
   maquinas       maquinas  @relation(fields: [maquina_id], references: [id], onDelete: Cascade)
   users          users?    @relation(fields: [atendida_por], references: [id], onUpdate: NoAction, map: "fk_alertas_gps_atendida_por")
 
@@ -37,11 +37,11 @@ model apu_items {
   cantidad                               Decimal          @db.Decimal(10, 4)
   costo_unitario                         Decimal          @db.Decimal(12, 2)
   activo                                 Boolean          @default(true)
-  actualizado_en                         DateTime @db.Timestamptz()
+  actualizado_en                         DateTime         @db.Timestamptz()
   actualizado_por                        String?          @db.Uuid
-  creado_en                              DateTime @db.Timestamptz()         @default(now())
+  creado_en                              DateTime         @default(now()) @db.Timestamptz()
   creado_por                             String?          @db.Uuid
-  eliminado_en                           DateTime? @db.Timestamptz()
+  eliminado_en                           DateTime?        @db.Timestamptz()
   unidad_id                              String           @db.Uuid
   apu_templates                          apu_templates    @relation(fields: [apu_template_id], references: [id], onDelete: Cascade)
   unidades_medida                        unidades_medida  @relation(fields: [unidad_id], references: [id])
@@ -56,11 +56,11 @@ model apu_templates {
   codigo                                     String?         @unique
   nombre                                     String
   activo                                     Boolean         @default(true)
-  creado_en                                  DateTime @db.Timestamptz()        @default(now())
-  actualizado_en                             DateTime @db.Timestamptz()
+  creado_en                                  DateTime        @default(now()) @db.Timestamptz()
+  actualizado_en                             DateTime        @db.Timestamptz()
   actualizado_por                            String?         @db.Uuid
   creado_por                                 String?         @db.Uuid
-  eliminado_en                               DateTime? @db.Timestamptz()
+  eliminado_en                               DateTime?       @db.Timestamptz()
   unidad_id                                  String          @db.Uuid
   apu_items                                  apu_items[]
   unidades_medida                            unidades_medida @relation(fields: [unidad_id], references: [id])
@@ -76,12 +76,12 @@ model articulos_inventario {
   stock_minimo                                      Decimal                  @db.Decimal(10, 2)
   precio_unitario                                   Decimal                  @db.Decimal(12, 2)
   activo                                            Boolean                  @default(true)
-  creado_en                                         DateTime @db.Timestamptz()                 @default(now())
-  actualizado_en                                    DateTime @db.Timestamptz()
+  creado_en                                         DateTime                 @default(now()) @db.Timestamptz()
+  actualizado_en                                    DateTime                 @db.Timestamptz()
   actualizado_por                                   String?                  @db.Uuid
   categoria_id                                      String                   @db.Uuid
   creado_por                                        String?                  @db.Uuid
-  eliminado_en                                      DateTime? @db.Timestamptz()
+  eliminado_en                                      DateTime?                @db.Timestamptz()
   proveedor_id                                      String                   @db.Uuid
   unidad_id                                         String                   @db.Uuid
   categorias_inventario                             categorias_inventario    @relation(fields: [categoria_id], references: [id])
@@ -106,12 +106,12 @@ model asistencias_semanales {
   total_retardos                                     Int
   total_horas_ordinarias                             Decimal                  @db.Decimal(6, 2)
   total_horas_extra                                  Decimal                  @db.Decimal(6, 2)
-  creado_en                                          DateTime @db.Timestamptz()                 @default(now())
-  actualizado_en                                     DateTime @db.Timestamptz()
+  creado_en                                          DateTime                 @default(now()) @db.Timestamptz()
+  actualizado_en                                     DateTime                 @db.Timestamptz()
   activo                                             Boolean                  @default(true)
   actualizado_por                                    String?                  @db.Uuid
   creado_por                                         String?                  @db.Uuid
-  eliminado_en                                       DateTime? @db.Timestamptz()
+  eliminado_en                                       DateTime?                @db.Timestamptz()
   trabajadores                                       trabajadores             @relation(fields: [trabajador_id], references: [id])
   users_asistencias_semanales_actualizado_porTousers users?                   @relation("asistencias_semanales_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_asistencias_semanales_actualizado_por")
   users_asistencias_semanales_creado_porTousers      users?                   @relation("asistencias_semanales_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_asistencias_semanales_creado_por")
@@ -127,8 +127,8 @@ model bitacoras_operacion {
   horas                                            Decimal   @db.Decimal(6, 2)
   fecha                                            DateTime  @db.Date
   activo                                           Boolean   @default(true)
-  creado_en                                        DateTime @db.Timestamptz()  @default(now())
-  actualizado_en                                   DateTime @db.Timestamptz()
+  creado_en                                        DateTime  @default(now()) @db.Timestamptz()
+  actualizado_en                                   DateTime  @db.Timestamptz()
   codigo                                           String?   @unique
   actualizado_por                                  String?   @db.Uuid
   creado_por                                       String?   @db.Uuid
@@ -161,11 +161,11 @@ model bitacoras_renta_diaria {
   tarifa_hora_renta                                   Decimal              @db.Decimal(10, 2)
   importe_total_renta                                 Decimal              @db.Decimal(12, 2)
   activo                                              Boolean              @default(true)
-  creado_en                                           DateTime @db.Timestamptz()             @default(now())
-  actualizado_en                                      DateTime @db.Timestamptz()
+  creado_en                                           DateTime             @default(now()) @db.Timestamptz()
+  actualizado_en                                      DateTime             @db.Timestamptz()
   actualizado_por                                     String?              @db.Uuid
   creado_por                                          String?              @db.Uuid
-  eliminado_en                                        DateTime? @db.Timestamptz()
+  eliminado_en                                        DateTime?            @db.Timestamptz()
   obra_id                                             String?              @db.Uuid
   hora_inicio                                         DateTime             @db.Time(0)
   hora_fin                                            DateTime             @db.Time(0)
@@ -200,11 +200,11 @@ model cargas_combustible {
   alerta_ordena                                   Boolean       @default(false)
   desviacion_porcentaje                           Decimal       @db.Decimal(6, 2)
   activo                                          Boolean       @default(true)
-  creado_en                                       DateTime @db.Timestamptz()      @default(now())
-  actualizado_en                                  DateTime @db.Timestamptz()
+  creado_en                                       DateTime      @default(now()) @db.Timestamptz()
+  actualizado_en                                  DateTime      @db.Timestamptz()
   actualizado_por                                 String?       @db.Uuid
   creado_por                                      String?       @db.Uuid
-  eliminado_en                                    DateTime? @db.Timestamptz()
+  eliminado_en                                    DateTime?     @db.Timestamptz()
   maquinas                                        maquinas      @relation(fields: [maquina_id], references: [id])
   trabajadores                                    trabajadores? @relation(fields: [operador_id], references: [id])
   users_cargas_combustible_actualizado_porTousers users?        @relation("cargas_combustible_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cargas_combustible_actualizado_por")
@@ -218,8 +218,8 @@ model categorias_inventario {
   nombre               String                 @unique
   descripcion          String?
   activo               Boolean                @default(true)
-  creado_en            DateTime @db.Timestamptz()               @default(now())
-  actualizado_en       DateTime @db.Timestamptz()
+  creado_en            DateTime               @default(now()) @db.Timestamptz()
+  actualizado_en       DateTime               @db.Timestamptz()
   articulos_inventario articulos_inventario[]
 }
 
@@ -229,8 +229,8 @@ model categorias_puesto {
   descripcion           String?
   salario_base_sugerido Decimal?       @db.Decimal(12, 2)
   activo                Boolean        @default(true)
-  creado_en             DateTime @db.Timestamptz()       @default(now())
-  actualizado_en        DateTime @db.Timestamptz()
+  creado_en             DateTime       @default(now()) @db.Timestamptz()
+  actualizado_en        DateTime       @db.Timestamptz()
   trabajadores          trabajadores[]
 }
 
@@ -250,11 +250,11 @@ model checklists_preoperacionales {
   estado                                                   EstadoChecklist
   observaciones                                            String?
   activo                                                   Boolean         @default(true)
-  creado_en                                                DateTime @db.Timestamptz()        @default(now())
-  actualizado_en                                           DateTime @db.Timestamptz()
+  creado_en                                                DateTime        @default(now()) @db.Timestamptz()
+  actualizado_en                                           DateTime        @db.Timestamptz()
   actualizado_por                                          String?         @db.Uuid
   creado_por                                               String?         @db.Uuid
-  eliminado_en                                             DateTime? @db.Timestamptz()
+  eliminado_en                                             DateTime?       @db.Timestamptz()
   hora                                                     DateTime        @db.Time(0)
   maquinas                                                 maquinas        @relation(fields: [maquina_id], references: [id])
   trabajadores                                             trabajadores?   @relation(fields: [operador_id], references: [id])
@@ -273,12 +273,12 @@ model clientes {
   correo                                String
   telefono                              String
   activo                                Boolean                  @default(true)
-  creado_en                             DateTime @db.Timestamptz()                 @default(now())
-  actualizado_en                        DateTime @db.Timestamptz()
+  creado_en                             DateTime                 @default(now()) @db.Timestamptz()
+  actualizado_en                        DateTime                 @db.Timestamptz()
   actualizado_por                       String?                  @db.Uuid
   creado_por                            String?                  @db.Uuid
   direccion_fiscal                      Json?
-  eliminado_en                          DateTime? @db.Timestamptz()
+  eliminado_en                          DateTime?                @db.Timestamptz()
   rfc                                   String?
   bitacoras_renta_diaria                bitacoras_renta_diaria[]
   users_clientes_actualizado_porTousers users?                   @relation("clientes_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_clientes_actualizado_por")
@@ -297,12 +297,12 @@ model contactos_emergencia {
   nombre                                            String
   telefono                                          String
   parentesco                                        String
-  creado_en                                         DateTime @db.Timestamptz()     @default(now())
-  actualizado_en                                    DateTime @db.Timestamptz()
+  creado_en                                         DateTime     @default(now()) @db.Timestamptz()
+  actualizado_en                                    DateTime     @db.Timestamptz()
   activo                                            Boolean      @default(true)
   actualizado_por                                   String?      @db.Uuid
   creado_por                                        String?      @db.Uuid
-  eliminado_en                                      DateTime? @db.Timestamptz()
+  eliminado_en                                      DateTime?    @db.Timestamptz()
   trabajadores                                      trabajadores @relation(fields: [trabajador_id], references: [id], onDelete: Cascade)
   users_contactos_emergencia_actualizado_porTousers users?       @relation("contactos_emergencia_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_contactos_emergencia_actualizado_por")
   users_contactos_emergencia_creado_porTousers      users?       @relation("contactos_emergencia_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_contactos_emergencia_creado_por")
@@ -318,11 +318,11 @@ model cotizaciones {
   estado                                    EstadoCotizacion @default(PENDIENTE)
   motivo_rechazo                            String?
   activo                                    Boolean          @default(true)
-  creado_en                                 DateTime @db.Timestamptz()         @default(now())
-  actualizado_en                            DateTime @db.Timestamptz()
+  creado_en                                 DateTime         @default(now()) @db.Timestamptz()
+  actualizado_en                            DateTime         @db.Timestamptz()
   actualizado_por                           String?          @db.Uuid
   creado_por                                String?          @db.Uuid
-  eliminado_en                              DateTime? @db.Timestamptz()
+  eliminado_en                              DateTime?        @db.Timestamptz()
   vendedor_id                               String?          @db.Uuid
   clientes                                  clientes         @relation(fields: [cliente_id], references: [id])
   users_cotizaciones_actualizado_porTousers users?           @relation("cotizaciones_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_actualizado_por")
@@ -343,13 +343,30 @@ model cuentas_por_cobrar {
   fecha_vencimiento      DateTime?               @db.Date
   estado                 String                  @default("PENDIENTE")
   activo                 Boolean                 @default(true)
-  creado_en              DateTime @db.Timestamptz()                @default(now())
-  actualizado_en         DateTime @db.Timestamptz()
+  creado_en              DateTime                @default(now()) @db.Timestamptz()
+  actualizado_en         DateTime                @db.Timestamptz()
   bitacoras_renta_diaria bitacoras_renta_diaria? @relation(fields: [bitacora_id], references: [id])
   clientes               clientes                @relation(fields: [cliente_id], references: [id])
   facturas               facturas?               @relation(fields: [factura_id], references: [id])
 
   @@index([cliente_id, estado])
+}
+
+model cuentas_por_pagar {
+  id                String         @id @db.Uuid
+  proveedor_id      String         @db.Uuid
+  orden_compra_id   String         @unique @db.Uuid
+  monto             Decimal        @db.Decimal(14, 2)
+  monto_pagado      Decimal        @default(0) @db.Decimal(14, 2)
+  fecha_vencimiento DateTime?      @db.Date
+  estado            String         @default("PENDIENTE")
+  activo            Boolean        @default(true)
+  creado_en         DateTime       @default(now()) @db.Timestamptz()
+  actualizado_en    DateTime       @db.Timestamptz()
+  ordenes_compra    ordenes_compra @relation(fields: [orden_compra_id], references: [id])
+  proveedores       proveedores    @relation(fields: [proveedor_id], references: [id])
+
+  @@index([proveedor_id, estado])
 }
 
 model deducciones_nomina {
@@ -359,7 +376,7 @@ model deducciones_nomina {
   tipo           String
   monto          Decimal  @db.Decimal(12, 2)
   activo         Boolean  @default(true)
-  creado_en      DateTime @db.Timestamptz() @default(now())
+  creado_en      DateTime @default(now()) @db.Timestamptz()
   actualizado_en DateTime @db.Timestamptz()
   nominas        nominas  @relation(fields: [nomina_id], references: [id], onDelete: Cascade)
 }
@@ -373,11 +390,11 @@ model despachos_maquina {
   fecha_inicio                                   DateTime      @db.Date
   fecha_fin                                      DateTime      @db.Date
   activo                                         Boolean       @default(true)
-  creado_en                                      DateTime @db.Timestamptz()      @default(now())
-  actualizado_en                                 DateTime @db.Timestamptz()
+  creado_en                                      DateTime      @default(now()) @db.Timestamptz()
+  actualizado_en                                 DateTime      @db.Timestamptz()
   actualizado_por                                String?       @db.Uuid
   creado_por                                     String?       @db.Uuid
-  eliminado_en                                   DateTime? @db.Timestamptz()
+  eliminado_en                                   DateTime?     @db.Timestamptz()
   operador_id                                    String?       @db.Uuid
   maquinas                                       maquinas      @relation(fields: [maquina_id], references: [id])
   trabajadores                                   trabajadores? @relation(fields: [operador_id], references: [id])
@@ -400,11 +417,11 @@ model dias_asistencia_semana {
   en_sitio_gps                                        Boolean
   motivo                                              String?
   activo                                              Boolean               @default(true)
-  actualizado_en                                      DateTime @db.Timestamptz()
+  actualizado_en                                      DateTime              @db.Timestamptz()
   actualizado_por                                     String?               @db.Uuid
-  creado_en                                           DateTime @db.Timestamptz()              @default(now())
+  creado_en                                           DateTime              @default(now()) @db.Timestamptz()
   creado_por                                          String?               @db.Uuid
-  eliminado_en                                        DateTime? @db.Timestamptz()
+  eliminado_en                                        DateTime?             @db.Timestamptz()
   fecha                                               DateTime              @db.Date
   hora_entrada                                        DateTime?             @db.Time(0)
   hora_salida                                         DateTime?             @db.Time(0)
@@ -435,7 +452,7 @@ model documento_versiones {
   cambios        String?
   subido_por     String?    @db.Uuid
   activo         Boolean    @default(true)
-  creado_en      DateTime @db.Timestamptz()   @default(now())
+  creado_en      DateTime   @default(now()) @db.Timestamptz()
   documentos     documentos @relation(fields: [documento_id], references: [id], onDelete: Cascade)
   users          users?     @relation(fields: [subido_por], references: [id], onUpdate: NoAction, map: "fk_documento_versiones_subido_por")
 
@@ -455,12 +472,12 @@ model documentos {
   trabajador_id                           String?               @db.Uuid
   url_archivo                             String
   activo                                  Boolean               @default(true)
-  creado_en                               DateTime @db.Timestamptz()              @default(now())
-  actualizado_en                          DateTime @db.Timestamptz()
+  creado_en                               DateTime              @default(now()) @db.Timestamptz()
+  actualizado_en                          DateTime              @db.Timestamptz()
   codigo                                  String?               @unique
   actualizado_por                         String?               @db.Uuid
   descripcion                             String?
-  eliminado_en                            DateTime? @db.Timestamptz()
+  eliminado_en                            DateTime?             @db.Timestamptz()
   es_publico                              Boolean               @default(false)
   estado                                  String                @default("PUBLICADO")
   extension                               String?
@@ -504,8 +521,8 @@ model etiquetas {
   color               String                @default("#64748b")
   entidad             String?
   activo              Boolean               @default(true)
-  creado_en           DateTime @db.Timestamptz()              @default(now())
-  actualizado_en      DateTime @db.Timestamptz()
+  creado_en           DateTime              @default(now()) @db.Timestamptz()
+  actualizado_en      DateTime              @db.Timestamptz()
   documento_etiquetas documento_etiquetas[]
 }
 
@@ -548,13 +565,13 @@ model facturas {
   estado                                String              @default("PENDIENTE")
   xml_url                               String?
   pdf_url                               String?
-  timbrado_en                           DateTime? @db.Timestamptz()
+  timbrado_en                           DateTime?           @db.Timestamptz()
   activo                                Boolean             @default(true)
-  creado_en                             DateTime @db.Timestamptz()            @default(now())
-  actualizado_en                        DateTime @db.Timestamptz()
+  creado_en                             DateTime            @default(now()) @db.Timestamptz()
+  actualizado_en                        DateTime            @db.Timestamptz()
   creado_por                            String?             @db.Uuid
   actualizado_por                       String?             @db.Uuid
-  eliminado_en                          DateTime? @db.Timestamptz()
+  eliminado_en                          DateTime?           @db.Timestamptz()
   cuentas_por_cobrar                    cuentas_por_cobrar?
   factura_conceptos                     factura_conceptos[]
   clientes                              clientes            @relation(fields: [cliente_id], references: [id])
@@ -576,17 +593,17 @@ model fallas_mecanicas {
   sistema_afectado                              String
   severidad                                     String
   estado                                        String                   @default("PENDIENTE")
-  fecha_reporte                                 DateTime @db.Timestamptz()
-  fecha_resolucion                              DateTime? @db.Timestamptz()
+  fecha_reporte                                 DateTime                 @db.Timestamptz()
+  fecha_resolucion                              DateTime?                @db.Timestamptz()
   costo_reparacion                              Decimal?                 @db.Decimal(12, 2)
   mantenimiento_id                              String?                  @db.Uuid
   imagenes                                      Json                     @default("[]")
   activo                                        Boolean                  @default(true)
-  creado_en                                     DateTime @db.Timestamptz()                 @default(now())
-  actualizado_en                                DateTime @db.Timestamptz()
+  creado_en                                     DateTime                 @default(now()) @db.Timestamptz()
+  actualizado_en                                DateTime                 @db.Timestamptz()
   creado_por                                    String?                  @db.Uuid
   actualizado_por                               String?                  @db.Uuid
-  eliminado_en                                  DateTime? @db.Timestamptz()
+  eliminado_en                                  DateTime?                @db.Timestamptz()
   registros_mantenimiento                       registros_mantenimiento? @relation(fields: [mantenimiento_id], references: [id])
   maquinas                                      maquinas                 @relation(fields: [maquina_id], references: [id])
   trabajadores                                  trabajadores?            @relation(fields: [reporto_id], references: [id])
@@ -604,13 +621,13 @@ model firmas_cliente {
   nombre_residente                            String?
   cargo_residente                             String?
   activo                                      Boolean                @default(true)
-  actualizado_en                              DateTime @db.Timestamptz()
+  actualizado_en                              DateTime               @db.Timestamptz()
   actualizado_por                             String?                @db.Uuid
   archivo_firma                               String?
-  creado_en                                   DateTime @db.Timestamptz()               @default(now())
+  creado_en                                   DateTime               @default(now()) @db.Timestamptz()
   creado_por                                  String?                @db.Uuid
-  eliminado_en                                DateTime? @db.Timestamptz()
-  fecha_firma                                 DateTime? @db.Timestamptz()
+  eliminado_en                                DateTime?              @db.Timestamptz()
+  fecha_firma                                 DateTime?              @db.Timestamptz()
   bitacoras_renta_diaria                      bitacoras_renta_diaria @relation(fields: [bitacora_id], references: [id], onDelete: Cascade)
   users_firmas_cliente_actualizado_porTousers users?                 @relation("firmas_cliente_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_firmas_cliente_actualizado_por")
   users_firmas_cliente_creado_porTousers      users?                 @relation("firmas_cliente_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_firmas_cliente_creado_por")
@@ -628,11 +645,11 @@ model firmas_digitales {
   hash_documento   String?
   datos_firma      Json?
   imagen_firma_url String?
-  fecha_firma      DateTime @db.Timestamptz()
+  fecha_firma      DateTime   @db.Timestamptz()
   ip_firma         String?
   activo           Boolean    @default(true)
-  creado_en        DateTime @db.Timestamptz()   @default(now())
-  actualizado_en   DateTime @db.Timestamptz()
+  creado_en        DateTime   @default(now()) @db.Timestamptz()
+  actualizado_en   DateTime   @db.Timestamptz()
   documentos       documentos @relation(fields: [documento_id], references: [id], onDelete: Cascade)
 
   @@index([documento_id])
@@ -661,11 +678,11 @@ model geocercas {
   centro_lng                             Decimal             @db.Decimal(9, 6)
   radio_metros                           Decimal             @db.Decimal(10, 2)
   activa                                 Boolean             @default(true)
-  creado_en                              DateTime @db.Timestamptz()            @default(now())
-  actualizado_en                         DateTime @db.Timestamptz()
+  creado_en                              DateTime            @default(now()) @db.Timestamptz()
+  actualizado_en                         DateTime            @db.Timestamptz()
   creado_por                             String?             @db.Uuid
   actualizado_por                        String?             @db.Uuid
-  eliminado_en                           DateTime? @db.Timestamptz()
+  eliminado_en                           DateTime?           @db.Timestamptz()
   geocerca_maquinas                      geocerca_maquinas[]
   users_geocercas_actualizado_porTousers users?              @relation("geocercas_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_geocercas_actualizado_por")
   users_geocercas_creado_porTousers      users?              @relation("geocercas_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_geocercas_creado_por")
@@ -677,9 +694,9 @@ model hitos_progreso {
   proyecto_id                                 String    @db.Uuid
   planificado                                 Decimal   @db.Decimal(5, 2)
   real                                        Decimal   @db.Decimal(5, 2)
-  creado_en                                   DateTime @db.Timestamptz()  @default(now())
+  creado_en                                   DateTime  @default(now()) @db.Timestamptz()
   activo                                      Boolean   @default(true)
-  actualizado_en                              DateTime @db.Timestamptz()
+  actualizado_en                              DateTime  @db.Timestamptz()
   actualizado_por                             String?   @db.Uuid
   creado_por                                  String?   @db.Uuid
   descripcion                                 String?
@@ -706,13 +723,13 @@ model horas_extra_asistencia {
   lng_inicio                                          Decimal?             @db.Decimal(9, 6)
   lat_fin                                             Decimal?             @db.Decimal(9, 6)
   lng_fin                                             Decimal?             @db.Decimal(9, 6)
-  creado_en                                           DateTime @db.Timestamptz()             @default(now())
-  actualizado_en                                      DateTime @db.Timestamptz()
+  creado_en                                           DateTime             @default(now()) @db.Timestamptz()
+  actualizado_en                                      DateTime             @db.Timestamptz()
   activo                                              Boolean              @default(true)
   actualizado_por                                     String?              @db.Uuid
   aprobador_id                                        String?              @db.Uuid
   creado_por                                          String?              @db.Uuid
-  eliminado_en                                        DateTime? @db.Timestamptz()
+  eliminado_en                                        DateTime?            @db.Timestamptz()
   inicio                                              DateTime             @db.Time(0)
   fin                                                 DateTime?            @db.Time(0)
   users_horas_extra_asistencia_aprobador_idTousers    users?               @relation("horas_extra_asistencia_aprobador_idTousers", fields: [aprobador_id], references: [id], onUpdate: NoAction, map: "fk_horas_extra_aprobador")
@@ -731,11 +748,11 @@ model incidentes {
   fecha                                   DateTime        @db.Timestamptz()
   maquina_id                              String?         @db.Uuid
   activo                                  Boolean         @default(true)
-  creado_en                               DateTime @db.Timestamptz()        @default(now())
-  actualizado_en                          DateTime @db.Timestamptz()
+  creado_en                               DateTime        @default(now()) @db.Timestamptz()
+  actualizado_en                          DateTime        @db.Timestamptz()
   actualizado_por                         String?         @db.Uuid
   creado_por                              String?         @db.Uuid
-  eliminado_en                            DateTime? @db.Timestamptz()
+  eliminado_en                            DateTime?       @db.Timestamptz()
   obra_id                                 String?         @db.Uuid
   obra_texto                              String
   reporto_id                              String?         @db.Uuid
@@ -760,7 +777,7 @@ model intentos_login {
   motivo_fallo    String?
   ip_address      String?
   user_agent      String?
-  creado_en       DateTime @db.Timestamptz() @default(now())
+  creado_en       DateTime @default(now()) @db.Timestamptz()
   users           users?   @relation(fields: [user_id], references: [id])
 
   @@index([email_intentado, creado_en(sort: Desc)])
@@ -776,12 +793,12 @@ model lecturas_horometro {
   lectura_final                                   Decimal       @db.Decimal(10, 2)
   horas_trabajadas                                Decimal       @db.Decimal(6, 2)
   activo                                          Boolean       @default(true)
-  creado_en                                       DateTime @db.Timestamptz()      @default(now())
-  actualizado_en                                  DateTime @db.Timestamptz()
+  creado_en                                       DateTime      @default(now()) @db.Timestamptz()
+  actualizado_en                                  DateTime      @db.Timestamptz()
   codigo                                          String?       @unique
   actualizado_por                                 String?       @db.Uuid
   creado_por                                      String?       @db.Uuid
-  eliminado_en                                    DateTime? @db.Timestamptz()
+  eliminado_en                                    DateTime?     @db.Timestamptz()
   operador_id                                     String?       @db.Uuid
   users_lecturas_horometro_actualizado_porTousers users?        @relation("lecturas_horometro_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_lecturas_horometro_actualizado_por")
   users_lecturas_horometro_creado_porTousers      users?        @relation("lecturas_horometro_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_lecturas_horometro_creado_por")
@@ -796,14 +813,14 @@ model licencias_trabajador {
   trabajador_id                                     String            @unique @db.Uuid
   tipo                                              String
   folio                                             String
-  creado_en                                         DateTime @db.Timestamptz()          @default(now())
-  actualizado_en                                    DateTime @db.Timestamptz()
+  creado_en                                         DateTime          @default(now()) @db.Timestamptz()
+  actualizado_en                                    DateTime          @db.Timestamptz()
   activo                                            Boolean           @default(true)
   actualizado_por                                   String?           @db.Uuid
   archivo_url                                       String?
   categoria                                         CategoriaLicencia
   creado_por                                        String?           @db.Uuid
-  eliminado_en                                      DateTime? @db.Timestamptz()
+  eliminado_en                                      DateTime?         @db.Timestamptz()
   vigencia_indefinida                               Boolean           @default(false)
   vigencia                                          DateTime?         @db.Date
   users_licencias_trabajador_actualizado_porTousers users?            @relation("licencias_trabajador_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_licencias_trabajador_actualizado_por")
@@ -824,8 +841,8 @@ model maquina_componentes {
   horas_acumuladas                                 Decimal   @default(0) @db.Decimal(10, 2)
   estado                                           String    @default("BUENO")
   activo                                           Boolean   @default(true)
-  creado_en                                        DateTime @db.Timestamptz()  @default(now())
-  actualizado_en                                   DateTime @db.Timestamptz()
+  creado_en                                        DateTime  @default(now()) @db.Timestamptz()
+  actualizado_en                                   DateTime  @db.Timestamptz()
   creado_por                                       String?   @db.Uuid
   actualizado_por                                  String?   @db.Uuid
   eliminado_en                                     DateTime? @db.Timestamptz()
@@ -842,11 +859,11 @@ model maquina_operadores {
   fecha_fin                                       DateTime?    @db.Date
   es_actual                                       Boolean      @default(true)
   activo                                          Boolean      @default(true)
-  creado_en                                       DateTime @db.Timestamptz()     @default(now())
-  actualizado_en                                  DateTime @db.Timestamptz()
+  creado_en                                       DateTime     @default(now()) @db.Timestamptz()
+  actualizado_en                                  DateTime     @db.Timestamptz()
   creado_por                                      String?      @db.Uuid
   actualizado_por                                 String?      @db.Uuid
-  eliminado_en                                    DateTime? @db.Timestamptz()
+  eliminado_en                                    DateTime?    @db.Timestamptz()
   users_maquina_operadores_actualizado_porTousers users?       @relation("maquina_operadores_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_maquina_operadores_actualizado_por")
   users_maquina_operadores_creado_porTousers      users?       @relation("maquina_operadores_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_maquina_operadores_creado_por")
   maquinas                                        maquinas     @relation(fields: [maquina_id], references: [id], onDelete: Cascade)
@@ -875,12 +892,12 @@ model maquinas {
   alerta_consumo_anormal                Boolean                       @default(false)
   horas_operadas_hoy                    Decimal?                      @db.Decimal(6, 2)
   activo                                Boolean                       @default(true)
-  creado_en                             DateTime @db.Timestamptz()                      @default(now())
-  actualizado_en                        DateTime @db.Timestamptz()
+  creado_en                             DateTime                      @default(now()) @db.Timestamptz()
+  actualizado_en                        DateTime                      @db.Timestamptz()
   actualizado_por                       String?                       @db.Uuid
   anio                                  Int?
   creado_por                            String?                       @db.Uuid
-  eliminado_en                          DateTime? @db.Timestamptz()
+  eliminado_en                          DateTime?                     @db.Timestamptz()
   modelo                                String?
   placas                                String?
   serie                                 String?
@@ -921,9 +938,9 @@ model movimientos_inventario {
   referencia_tipo      String?
   referencia_id        String?              @db.Uuid
   motivo               String?
-  fecha                DateTime @db.Timestamptz()
+  fecha                DateTime             @db.Timestamptz()
   activo               Boolean              @default(true)
-  creado_en            DateTime @db.Timestamptz()             @default(now())
+  creado_en            DateTime             @default(now()) @db.Timestamptz()
   creado_por           String?              @db.Uuid
   users                users?               @relation(fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_movimientos_inventario_creado_por")
   articulos_inventario articulos_inventario @relation(fields: [articulo_id], references: [id])
@@ -938,9 +955,35 @@ model niveles_bloqueo {
   duracion_minutos    Int
   descripcion         String?
   activo              Boolean               @default(true)
-  creado_en           DateTime @db.Timestamptz()              @default(now())
-  actualizado_en      DateTime @db.Timestamptz()
+  creado_en           DateTime              @default(now()) @db.Timestamptz()
+  actualizado_en      DateTime              @db.Timestamptz()
   usuarios_bloqueados usuarios_bloqueados[]
+}
+
+model ordenes_compra {
+  id                                          String              @id @db.Uuid
+  folio                                       String              @unique
+  proveedor_id                                String              @db.Uuid
+  descripcion                                 String
+  monto                                       Decimal             @db.Decimal(14, 2)
+  pagado                                      Decimal             @default(0) @db.Decimal(14, 2)
+  fecha                                       DateTime            @db.Date
+  estado                                      EstadoOrdenCompra   @default(PENDIENTE)
+  motivo_cancelacion                          String?
+  activo                                      Boolean             @default(true)
+  creado_en                                   DateTime            @default(now()) @db.Timestamptz()
+  actualizado_en                              DateTime            @db.Timestamptz()
+  creado_por                                  String?             @db.Uuid
+  actualizado_por                             String?             @db.Uuid
+  eliminado_en                                DateTime?           @db.Timestamptz()
+  cuentas_por_pagar                           cuentas_por_pagar[]
+  pagos_proveedor                             pagos_proveedor[]
+  proveedores                                 proveedores         @relation(fields: [proveedor_id], references: [id])
+  users_ordenes_compra_actualizado_porTousers users?              @relation("ordenes_compra_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_ordenes_compra_actualizado_por")
+  users_ordenes_compra_creado_porTousers      users?              @relation("ordenes_compra_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_ordenes_compra_creado_por")
+
+  @@index([proveedor_id, estado])
+  @@index([fecha])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -960,11 +1003,11 @@ model nominas {
   metodo_pago                          MetodoPago?
   estado                               String                @default("PENDIENTE")
   activo                               Boolean               @default(true)
-  creado_en                            DateTime @db.Timestamptz()              @default(now())
-  actualizado_en                       DateTime @db.Timestamptz()
+  creado_en                            DateTime              @default(now()) @db.Timestamptz()
+  actualizado_en                       DateTime              @db.Timestamptz()
   creado_por                           String?               @db.Uuid
   actualizado_por                      String?               @db.Uuid
-  eliminado_en                         DateTime? @db.Timestamptz()
+  eliminado_en                         DateTime?             @db.Timestamptz()
   deducciones_nomina                   deducciones_nomina[]
   users_nominas_actualizado_porTousers users?                @relation("nominas_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_nominas_actualizado_por")
   users_nominas_creado_porTousers      users?                @relation("nominas_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_nominas_creado_por")
@@ -987,11 +1030,11 @@ model obras {
   lng                                Decimal?                 @db.Decimal(9, 6)
   radio_permitido_metros             Decimal?                 @db.Decimal(10, 2)
   activo                             Boolean                  @default(true)
-  creado_en                          DateTime @db.Timestamptz()                 @default(now())
-  actualizado_en                     DateTime @db.Timestamptz()
+  creado_en                          DateTime                 @default(now()) @db.Timestamptz()
+  actualizado_en                     DateTime                 @db.Timestamptz()
   creado_por                         String?                  @db.Uuid
   actualizado_por                    String?                  @db.Uuid
-  eliminado_en                       DateTime? @db.Timestamptz()
+  eliminado_en                       DateTime?                @db.Timestamptz()
   bitacoras_operacion                bitacoras_operacion[]
   bitacoras_renta_diaria             bitacoras_renta_diaria[]
   incidentes                         incidentes[]
@@ -1019,8 +1062,8 @@ model pagos {
   comprobante_url                    String?
   estado                             String    @default("PENDIENTE")
   activo                             Boolean   @default(true)
-  creado_en                          DateTime @db.Timestamptz()  @default(now())
-  actualizado_en                     DateTime @db.Timestamptz()
+  creado_en                          DateTime  @default(now()) @db.Timestamptz()
+  actualizado_en                     DateTime  @db.Timestamptz()
   creado_por                         String?   @db.Uuid
   actualizado_por                    String?   @db.Uuid
   eliminado_en                       DateTime? @db.Timestamptz()
@@ -1032,6 +1075,26 @@ model pagos {
   @@index([cliente_id])
 }
 
+model pagos_proveedor {
+  id                                      String         @id @db.Uuid
+  codigo                                  String         @unique
+  proveedor_id                            String         @db.Uuid
+  orden_compra_id                         String         @db.Uuid
+  monto                                   Decimal        @db.Decimal(14, 2)
+  fecha_pago                              DateTime       @db.Date
+  metodo_pago                             String         @default("EFECTIVO")
+  referencia                              String?
+  activo                                  Boolean        @default(true)
+  creado_en                               DateTime       @default(now()) @db.Timestamptz()
+  creado_por                              String?        @db.Uuid
+  eliminado_en                            DateTime?      @db.Timestamptz()
+  ordenes_compra                          ordenes_compra @relation(fields: [orden_compra_id], references: [id])
+  proveedores                             proveedores    @relation(fields: [proveedor_id], references: [id])
+  users_pagos_proveedor_creado_porTousers users?         @relation("pagos_proveedor_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_pagos_proveedor_creado_por")
+
+  @@index([proveedor_id, fecha_pago])
+}
+
 model percepciones_nomina {
   id             String   @id @db.Uuid
   nomina_id      String   @db.Uuid
@@ -1039,7 +1102,7 @@ model percepciones_nomina {
   tipo           String
   monto          Decimal  @db.Decimal(12, 2)
   activo         Boolean  @default(true)
-  creado_en      DateTime @db.Timestamptz() @default(now())
+  creado_en      DateTime @default(now()) @db.Timestamptz()
   actualizado_en DateTime @db.Timestamptz()
   nominas        nominas  @relation(fields: [nomina_id], references: [id], onDelete: Cascade)
 }
@@ -1055,8 +1118,8 @@ model periodos_nomina {
   fecha_pago                                   DateTime? @db.Date
   estado                                       String    @default("ABIERTO")
   activo                                       Boolean   @default(true)
-  creado_en                                    DateTime @db.Timestamptz()  @default(now())
-  actualizado_en                               DateTime @db.Timestamptz()
+  creado_en                                    DateTime  @default(now()) @db.Timestamptz()
+  actualizado_en                               DateTime  @db.Timestamptz()
   creado_por                                   String?   @db.Uuid
   actualizado_por                              String?   @db.Uuid
   eliminado_en                                 DateTime? @db.Timestamptz()
@@ -1076,13 +1139,13 @@ model permisos {
   motivo                                String
   dias_solicitados                      Int
   activo                                Boolean       @default(true)
-  creado_en                             DateTime @db.Timestamptz()      @default(now())
-  actualizado_en                        DateTime @db.Timestamptz()
+  creado_en                             DateTime      @default(now()) @db.Timestamptz()
+  actualizado_en                        DateTime      @db.Timestamptz()
   codigo                                String?       @unique
   actualizado_por                       String?       @db.Uuid
   aprobador_id                          String?       @db.Uuid
   creado_por                            String?       @db.Uuid
-  eliminado_en                          DateTime? @db.Timestamptz()
+  eliminado_en                          DateTime?     @db.Timestamptz()
   users_permisos_actualizado_porTousers users?        @relation("permisos_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_permisos_actualizado_por")
   users_permisos_aprobador_idTousers    users?        @relation("permisos_aprobador_idTousers", fields: [aprobador_id], references: [id], onUpdate: NoAction, map: "fk_permisos_aprobador")
   users_permisos_creado_porTousers      users?        @relation("permisos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_permisos_creado_por")
@@ -1098,8 +1161,8 @@ model permissions {
   accion           String
   descripcion      String?
   activo           Boolean            @default(true)
-  creado_en        DateTime @db.Timestamptz()           @default(now())
-  actualizado_en   DateTime @db.Timestamptz()
+  creado_en        DateTime           @default(now()) @db.Timestamptz()
+  actualizado_en   DateTime           @db.Timestamptz()
   role_permissions role_permissions[]
 
   @@unique([modulo, recurso, accion])
@@ -1119,8 +1182,8 @@ model personas {
   direccion                             Json?
   avatar_url                            String?
   activo                                Boolean   @default(true)
-  creado_en                             DateTime @db.Timestamptz()  @default(now())
-  actualizado_en                        DateTime @db.Timestamptz()
+  creado_en                             DateTime  @default(now()) @db.Timestamptz()
+  actualizado_en                        DateTime  @db.Timestamptz()
   creado_por                            String?   @db.Uuid
   actualizado_por                       String?   @db.Uuid
   eliminado_en                          DateTime? @db.Timestamptz()
@@ -1136,15 +1199,19 @@ model proveedores {
   rfc                                      String?
   correo                                   String?
   telefono                                 String?
+  categoria                                String?                @default("Otros")
   direccion                                Json?
   activo                                   Boolean                @default(true)
-  creado_en                                DateTime @db.Timestamptz()               @default(now())
-  actualizado_en                           DateTime @db.Timestamptz()
+  creado_en                                DateTime               @default(now()) @db.Timestamptz()
+  actualizado_en                           DateTime               @db.Timestamptz()
   creado_por                               String?                @db.Uuid
   actualizado_por                          String?                @db.Uuid
-  eliminado_en                             DateTime? @db.Timestamptz()
+  eliminado_en                             DateTime?              @db.Timestamptz()
   articulos_inventario                     articulos_inventario[]
+  cuentas_por_pagar                        cuentas_por_pagar[]
   documentos                               documentos[]
+  ordenes_compra                           ordenes_compra[]
+  pagos_proveedor                          pagos_proveedor[]
   users_proveedores_actualizado_porTousers users?                 @relation("proveedores_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_proveedores_actualizado_por")
   users_proveedores_creado_porTousers      users?                 @relation("proveedores_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_proveedores_creado_por")
 }
@@ -1155,7 +1222,7 @@ model proyectos {
   id                                     String                   @id @db.Uuid
   codigo                                 String?                  @unique
   nombre                                 String
-  cliente_id                              String                   @db.Uuid
+  cliente_id                             String                   @db.Uuid
   presupuesto                            Decimal                  @db.Decimal(14, 2)
   progreso                               Decimal                  @default(0) @db.Decimal(5, 2)
   estado                                 EstadoProyecto           @default(EN_PROCESO)
@@ -1164,11 +1231,11 @@ model proyectos {
   fecha_inicio                           DateTime                 @db.Date
   fecha_fin                              DateTime                 @db.Date
   activo                                 Boolean                  @default(true)
-  creado_en                              DateTime @db.Timestamptz()                 @default(now())
-  actualizado_en                         DateTime @db.Timestamptz()
+  creado_en                              DateTime                 @default(now()) @db.Timestamptz()
+  actualizado_en                         DateTime                 @db.Timestamptz()
   actualizado_por                        String?                  @db.Uuid
   creado_por                             String?                  @db.Uuid
-  eliminado_en                           DateTime? @db.Timestamptz()
+  eliminado_en                           DateTime?                @db.Timestamptz()
   despachos_maquina                      despachos_maquina[]
   documentos                             documentos[]
   hitos_progreso                         hitos_progreso[]
@@ -1198,7 +1265,7 @@ model rastreo_gps {
   proveedor_gps    String   @default("SVR-GPS")
   dispositivo_id   String?
   activo           Boolean  @default(true)
-  creado_en        DateTime @db.Timestamptz() @default(now())
+  creado_en        DateTime @default(now()) @db.Timestamptz()
   creado_por       String?  @db.Uuid
   users            users?   @relation(fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_rastreo_gps_creado_por")
   maquinas         maquinas @relation(fields: [maquina_id], references: [id], onDelete: Cascade)
@@ -1212,11 +1279,11 @@ model refresh_tokens {
   session_id           String          @db.Uuid
   jti                  String          @unique @db.Uuid
   token_hash           String
-  emitido_en           DateTime @db.Timestamptz()        @default(now())
-  expira_en            DateTime @db.Timestamptz()
-  usado_en             DateTime? @db.Timestamptz()
+  emitido_en           DateTime        @default(now()) @db.Timestamptz()
+  expira_en            DateTime        @db.Timestamptz()
+  usado_en             DateTime?       @db.Timestamptz()
   reemplazado_por      String?         @unique @db.Uuid
-  revocado_en          DateTime? @db.Timestamptz()
+  revocado_en          DateTime?       @db.Timestamptz()
   motivo_revocado      String?
   activo               Boolean         @default(true)
   refresh_tokens       refresh_tokens? @relation("refresh_tokensTorefresh_tokens", fields: [reemplazado_por], references: [id])
@@ -1226,7 +1293,7 @@ model refresh_tokens {
 
 model registro_auditoria {
   event_id       String        @id @db.Uuid
-  timestamp      DateTime @db.Timestamptz()      @default(now())
+  timestamp      DateTime      @default(now()) @db.Timestamptz()
   actor_user_id  String?       @db.Uuid
   actor_role     String
   actor_type     ActorType
@@ -1244,7 +1311,7 @@ model registro_auditoria {
   previous_value Json?
   new_value      Json?
   metadata       Json?
-  created_at     DateTime @db.Timestamptz()      @default(now())
+  created_at     DateTime      @default(now()) @db.Timestamptz()
   users          users?        @relation(fields: [actor_user_id], references: [id])
 
   @@index([action])
@@ -1281,11 +1348,11 @@ model registros_asistencia {
   bateria                                           Int?
   notas                                             String?
   activo                                            Boolean                 @default(true)
-  creado_en                                         DateTime @db.Timestamptz()                @default(now())
-  actualizado_en                                    DateTime @db.Timestamptz()
+  creado_en                                         DateTime                @default(now()) @db.Timestamptz()
+  actualizado_en                                    DateTime                @db.Timestamptz()
   actualizado_por                                   String?                 @db.Uuid
   creado_por                                        String?                 @db.Uuid
-  eliminado_en                                      DateTime? @db.Timestamptz()
+  eliminado_en                                      DateTime?               @db.Timestamptz()
   obra_id                                           String?                 @db.Uuid
   hora_entrada                                      DateTime?               @db.Time(0)
   hora_salida                                       DateTime?               @db.Time(0)
@@ -1313,11 +1380,11 @@ model registros_criba {
   material_al_banco                            Decimal       @db.Decimal(10, 2)
   observaciones                                String?
   activo                                       Boolean       @default(true)
-  creado_en                                    DateTime @db.Timestamptz()      @default(now())
-  actualizado_en                               DateTime @db.Timestamptz()
+  creado_en                                    DateTime      @default(now()) @db.Timestamptz()
+  actualizado_en                               DateTime      @db.Timestamptz()
   actualizado_por                              String?       @db.Uuid
   creado_por                                   String?       @db.Uuid
-  eliminado_en                                 DateTime? @db.Timestamptz()
+  eliminado_en                                 DateTime?     @db.Timestamptz()
   users_registros_criba_actualizado_porTousers users?        @relation("registros_criba_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_registros_criba_actualizado_por")
   users_registros_criba_creado_porTousers      users?        @relation("registros_criba_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_registros_criba_creado_por")
   trabajadores                                 trabajadores? @relation(fields: [operador_id], references: [id])
@@ -1336,11 +1403,11 @@ model registros_mantenimiento {
   costo                                                Decimal            @db.Decimal(12, 2)
   proximo_servicio_horas                               Decimal            @db.Decimal(10, 2)
   activo                                               Boolean            @default(true)
-  creado_en                                            DateTime @db.Timestamptz()           @default(now())
-  actualizado_en                                       DateTime @db.Timestamptz()
+  creado_en                                            DateTime           @default(now()) @db.Timestamptz()
+  actualizado_en                                       DateTime           @db.Timestamptz()
   actualizado_por                                      String?            @db.Uuid
   creado_por                                           String?            @db.Uuid
-  eliminado_en                                         DateTime? @db.Timestamptz()
+  eliminado_en                                         DateTime?          @db.Timestamptz()
   mecanico_id                                          String?            @db.Uuid
   refacciones_usadas                                   Json?
   fallas_mecanicas                                     fallas_mecanicas[]
@@ -1364,11 +1431,11 @@ model reportes_campo {
   prioridad                                   Prioridad?
   detalles                                    Json?
   activo                                      Boolean            @default(true)
-  creado_en                                   DateTime @db.Timestamptz()           @default(now())
-  actualizado_en                              DateTime @db.Timestamptz()
+  creado_en                                   DateTime           @default(now()) @db.Timestamptz()
+  actualizado_en                              DateTime           @db.Timestamptz()
   actualizado_por                             String?            @db.Uuid
   creado_por                                  String?            @db.Uuid
-  eliminado_en                                DateTime? @db.Timestamptz()
+  eliminado_en                                DateTime?          @db.Timestamptz()
   obra_id                                     String?            @db.Uuid
   obra_texto                                  String
   usuario_id                                  String?            @db.Uuid
@@ -1387,7 +1454,7 @@ model reportes_campo {
 model role_permissions {
   rol_id      String      @db.Uuid
   permiso_id  String      @db.Uuid
-  creado_en   DateTime @db.Timestamptz()    @default(now())
+  creado_en   DateTime    @default(now()) @db.Timestamptz()
   permissions permissions @relation(fields: [permiso_id], references: [id], onDelete: Cascade)
   roles       roles       @relation(fields: [rol_id], references: [id], onDelete: Cascade)
 
@@ -1403,7 +1470,7 @@ model role_vistas {
   puede_editar   Boolean  @default(false)
   puede_eliminar Boolean  @default(false)
   puede_exportar Boolean  @default(false)
-  asignado_en    DateTime @db.Timestamptz() @default(now())
+  asignado_en    DateTime @default(now()) @db.Timestamptz()
   asignado_por   String?  @db.Uuid
   activo         Boolean  @default(true)
   users          users?   @relation(fields: [asignado_por], references: [id], onUpdate: NoAction, map: "fk_role_vistas_asignado_por")
@@ -1422,11 +1489,11 @@ model roles {
   nivel                              Int                @default(0)
   es_sistema                         Boolean            @default(false)
   activo                             Boolean            @default(true)
-  creado_en                          DateTime @db.Timestamptz()           @default(now())
-  actualizado_en                     DateTime @db.Timestamptz()
+  creado_en                          DateTime           @default(now()) @db.Timestamptz()
+  actualizado_en                     DateTime           @db.Timestamptz()
   creado_por                         String?            @db.Uuid
   actualizado_por                    String?            @db.Uuid
-  eliminado_en                       DateTime? @db.Timestamptz()
+  eliminado_en                       DateTime?          @db.Timestamptz()
   role_permissions                   role_permissions[]
   role_vistas                        role_vistas[]
   users_roles_actualizado_porTousers users?             @relation("roles_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_roles_actualizado_por")
@@ -1442,14 +1509,14 @@ model sessions {
   user_agent        String?
   dispositivo       String?
   ubicacion         String?
-  iniciada_en       DateTime @db.Timestamptz()         @default(now())
-  ultima_actividad  DateTime @db.Timestamptz()         @default(now())
-  expira_en         DateTime @db.Timestamptz()
-  cerrada_en        DateTime? @db.Timestamptz()
+  iniciada_en       DateTime         @default(now()) @db.Timestamptz()
+  ultima_actividad  DateTime         @default(now()) @db.Timestamptz()
+  expira_en         DateTime         @db.Timestamptz()
+  cerrada_en        DateTime?        @db.Timestamptz()
   motivo_cierre     String?
   activa            Boolean          @default(true)
-  creado_en         DateTime @db.Timestamptz()         @default(now())
-  actualizado_en    DateTime @db.Timestamptz()
+  creado_en         DateTime         @default(now()) @db.Timestamptz()
+  actualizado_en    DateTime         @db.Timestamptz()
   refresh_tokens    refresh_tokens[]
   users             users            @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
@@ -1459,8 +1526,8 @@ model tipos_maquina {
   nombre         String     @unique
   descripcion    String?
   activo         Boolean    @default(true)
-  creado_en      DateTime @db.Timestamptz()   @default(now())
-  actualizado_en DateTime @db.Timestamptz()
+  creado_en      DateTime   @default(now()) @db.Timestamptz()
+  actualizado_en DateTime   @db.Timestamptz()
   maquinas       maquinas[]
 }
 
@@ -1473,7 +1540,7 @@ model token_blacklist {
   user_id     String?  @db.Uuid
   razon       String
   expira_en   DateTime @db.Timestamptz()
-  agregado_en DateTime @db.Timestamptz() @default(now())
+  agregado_en DateTime @default(now()) @db.Timestamptz()
 
   @@index([expira_en])
   @@index([jti])
@@ -1501,12 +1568,12 @@ model trabajadores {
   descuentos_semana                         Decimal?                      @db.Decimal(10, 2)
   concepto_descuento                        String?
   activo                                    Boolean                       @default(true)
-  creado_en                                 DateTime @db.Timestamptz()                      @default(now())
-  actualizado_en                            DateTime @db.Timestamptz()
+  creado_en                                 DateTime                      @default(now()) @db.Timestamptz()
+  actualizado_en                            DateTime                      @db.Timestamptz()
   actualizado_por                           String?                       @db.Uuid
   categoria_puesto_id                       String                        @db.Uuid
   creado_por                                String?                       @db.Uuid
-  eliminado_en                              DateTime? @db.Timestamptz()
+  eliminado_en                              DateTime?                     @db.Timestamptz()
   entrada                                   DateTime                      @db.Time(0)
   asistencias_semanales                     asistencias_semanales[]
   bitacoras_renta_diaria                    bitacoras_renta_diaria[]
@@ -1538,11 +1605,11 @@ model trabajadores {
 model trabajadores_proyectos {
   trabajador_id                                       String       @db.Uuid
   proyecto_id                                         String       @db.Uuid
-  asignado_en                                         DateTime @db.Timestamptz()     @default(now())
+  asignado_en                                         DateTime     @default(now()) @db.Timestamptz()
   activo                                              Boolean      @default(true)
   actualizado_por                                     String?      @db.Uuid
   creado_por                                          String?      @db.Uuid
-  eliminado_en                                        DateTime? @db.Timestamptz()
+  eliminado_en                                        DateTime?    @db.Timestamptz()
   users_trabajadores_proyectos_actualizado_porTousers users?       @relation("trabajadores_proyectos_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_trabajadores_proyectos_actualizado_por")
   users_trabajadores_proyectos_creado_porTousers      users?       @relation("trabajadores_proyectos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_trabajadores_proyectos_creado_por")
   proyectos                                           proyectos    @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
@@ -1562,11 +1629,11 @@ model transacciones {
   fecha                                      DateTime        @db.Date
   descripcion                                String
   activo                                     Boolean         @default(true)
-  creado_en                                  DateTime @db.Timestamptz()        @default(now())
-  actualizado_en                             DateTime @db.Timestamptz()
+  creado_en                                  DateTime        @default(now()) @db.Timestamptz()
+  actualizado_en                             DateTime        @db.Timestamptz()
   actualizado_por                            String?         @db.Uuid
   creado_por                                 String?         @db.Uuid
-  eliminado_en                               DateTime? @db.Timestamptz()
+  eliminado_en                               DateTime?       @db.Timestamptz()
   entidad_id                                 String?         @db.Uuid
   entidad_tipo                               String?
   users_transacciones_actualizado_porTousers users?          @relation("transacciones_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_transacciones_actualizado_por")
@@ -1581,8 +1648,8 @@ model unidades_medida {
   nombre               String
   categoria            String?
   activo               Boolean                @default(true)
-  creado_en            DateTime @db.Timestamptz()               @default(now())
-  actualizado_en       DateTime @db.Timestamptz()
+  creado_en            DateTime               @default(now()) @db.Timestamptz()
+  actualizado_en       DateTime               @db.Timestamptz()
   apu_items            apu_items[]
   apu_templates        apu_templates[]
   articulos_inventario articulos_inventario[]
@@ -1596,11 +1663,11 @@ model unidades_medida {
 /// pieza...). Fuente única del catálogo es `articulos_inventario`; el POS y la
 /// vista de inventario comparten esta tabla.
 model articulos_precio {
-  id          String            @id @db.Uuid
-  articulo_id String            @db.Uuid
-  medida      String
-  precio      Decimal           @db.Decimal(12, 2)
-  creado_en   DateTime          @db.Timestamptz() @default(now())
+  id                   String               @id @db.Uuid
+  articulo_id          String               @db.Uuid
+  medida               String
+  precio               Decimal              @db.Decimal(12, 2)
+  creado_en            DateTime             @default(now()) @db.Timestamptz()
   articulos_inventario articulos_inventario @relation(fields: [articulo_id], references: [id], onDelete: Cascade)
 
   @@unique([articulo_id, medida])
@@ -1609,30 +1676,30 @@ model articulos_precio {
 
 /// Venta registrada en el punto de venta.
 model ventas {
-  id                String               @id @db.Uuid
-  folio             String               @unique
+  id                String         @id @db.Uuid
+  folio             String         @unique
   /// Folio secuencial del día (T-00001, T-00002...).
   ticket            Int
-  terminal          String               @default("TER-01")
-  caja              String               @default("CAJA-PV")
-  cliente           String               @default("Público en general")
+  terminal          String         @default("TER-01")
+  caja              String         @default("CAJA-PV")
+  cliente           String         @default("Público en general")
   cajero            String
-  subtotal          Decimal              @db.Decimal(12, 2)
-  iva               Decimal              @db.Decimal(12, 2)
-  ieps              Decimal              @db.Decimal(12, 2) @default(0)
-  total             Decimal              @db.Decimal(12, 2)
+  subtotal          Decimal        @db.Decimal(12, 2)
+  iva               Decimal        @db.Decimal(12, 2)
+  ieps              Decimal        @default(0) @db.Decimal(12, 2)
+  total             Decimal        @db.Decimal(12, 2)
   metodo            MetodoPago
-  efectivo_recibido Decimal?             @db.Decimal(12, 2)
-  cambio            Decimal?             @db.Decimal(12, 2)
-  descuento_pct     Decimal?             @db.Decimal(5, 2)
-  descuento_total   Decimal?             @db.Decimal(12, 2)
+  efectivo_recibido Decimal?       @db.Decimal(12, 2)
+  cambio            Decimal?       @db.Decimal(12, 2)
+  descuento_pct     Decimal?       @db.Decimal(5, 2)
+  descuento_total   Decimal?       @db.Decimal(12, 2)
   autorizado_por    String?
   items_count       Int
-  idempotencia_key  String?              @unique
-  creado_en         DateTime             @db.Timestamptz() @default(now())
-  actualizado_en    DateTime             @db.Timestamptz()
-  creado_por        String?              @db.Uuid
-  eliminado_en      DateTime?            @db.Timestamptz()
+  idempotencia_key  String?        @unique
+  creado_en         DateTime       @default(now()) @db.Timestamptz()
+  actualizado_en    DateTime       @db.Timestamptz()
+  creado_por        String?        @db.Uuid
+  eliminado_en      DateTime?      @db.Timestamptz()
   items             ventas_items[]
   pagos             ventas_pagos[]
 
@@ -1642,17 +1709,17 @@ model ventas {
 
 /// Línea de venta (artículo + medida + cantidades; snapshot de precios).
 model ventas_items {
-  id              String             @id @db.Uuid
-  venta_id        String             @db.Uuid
-  articulo_id     String             @db.Uuid
-  nombre          String
-  cantidad        Decimal            @db.Decimal(10, 2)
-  medida          String
-  precio_unitario Decimal            @db.Decimal(12, 2)
-  subtotal        Decimal            @db.Decimal(12, 2)
-  descuento_pct   Decimal?           @db.Decimal(5, 2)
-  creado_en       DateTime           @db.Timestamptz() @default(now())
-  ventas          ventas             @relation(fields: [venta_id], references: [id], onDelete: Cascade)
+  id                   String               @id @db.Uuid
+  venta_id             String               @db.Uuid
+  articulo_id          String               @db.Uuid
+  nombre               String
+  cantidad             Decimal              @db.Decimal(10, 2)
+  medida               String
+  precio_unitario      Decimal              @db.Decimal(12, 2)
+  subtotal             Decimal              @db.Decimal(12, 2)
+  descuento_pct        Decimal?             @db.Decimal(5, 2)
+  creado_en            DateTime             @default(now()) @db.Timestamptz()
+  ventas               ventas               @relation(fields: [venta_id], references: [id], onDelete: Cascade)
   articulos_inventario articulos_inventario @relation(fields: [articulo_id], references: [id])
 
   @@index([venta_id])
@@ -1661,12 +1728,12 @@ model ventas_items {
 
 /// Pagos de una venta (una venta mixta tiene varios).
 model ventas_pagos {
-  id       String     @id @db.Uuid
-  venta_id String     @db.Uuid
-  metodo   MetodoPago
-  monto    Decimal    @db.Decimal(12, 2)
-  creado_en DateTime  @db.Timestamptz() @default(now())
-  ventas   ventas     @relation(fields: [venta_id], references: [id], onDelete: Cascade)
+  id        String     @id @db.Uuid
+  venta_id  String     @db.Uuid
+  metodo    MetodoPago
+  monto     Decimal    @db.Decimal(12, 2)
+  creado_en DateTime   @default(now()) @db.Timestamptz()
+  ventas    ventas     @relation(fields: [venta_id], references: [id], onDelete: Cascade)
 
   @@index([venta_id])
 }
@@ -1680,7 +1747,7 @@ model retiros_caja {
   cajero         String
   fecha          DateTime  @db.Date
   hora           String
-  creado_en      DateTime  @db.Timestamptz() @default(now())
+  creado_en      DateTime  @default(now()) @db.Timestamptz()
   actualizado_en DateTime  @db.Timestamptz()
   creado_por     String?   @db.Uuid
   eliminado_en   DateTime? @db.Timestamptz()
@@ -1691,7 +1758,7 @@ model retiros_caja {
 /// Cierre de caja del día (únicamente uno por fecha).
 model cierres_caja {
   id               String   @id @db.Uuid
-  fecha            DateTime @db.Date @unique
+  fecha            DateTime @unique @db.Date
   cajero           String
   ventas_count     Int
   total_ventas     Decimal  @db.Decimal(12, 2)
@@ -1704,16 +1771,16 @@ model cierres_caja {
   fondo_siguiente  Decimal  @db.Decimal(12, 2)
   notas            String?
   /// Conteo por denominación: { "1000": 1, "500": 3, ... }
-  denominaciones  Json
+  denominaciones   Json
   /// Estado de aprobación del cierre por el Administrador.
-  estado          String   @default("PENDIENTE")
+  estado           String   @default("PENDIENTE")
   /// Usuario (Administrador) que aprobó o rechazó el cierre.
-  aprobador_id    String?  @db.Uuid
+  aprobador_id     String?  @db.Uuid
   /// Motivo del rechazo (obligatorio al rechazar).
-  motivo_rechazo  String?
-  creado_en       DateTime @db.Timestamptz() @default(now())
-  actualizado_en  DateTime @db.Timestamptz()
-  creado_por      String?  @db.Uuid
+  motivo_rechazo   String?
+  creado_en        DateTime @default(now()) @db.Timestamptz()
+  actualizado_en   DateTime @db.Timestamptz()
+  creado_por       String?  @db.Uuid
 
   @@index([fecha])
 }
@@ -1721,12 +1788,12 @@ model cierres_caja {
 /// Apertura del turno de caja (únicamente una por fecha).
 model aperturas_caja {
   id             String   @id @db.Uuid
-  fecha          DateTime @db.Date @unique
+  fecha          DateTime @unique @db.Date
   cajero         String
   /// Fondo inicial con el que se abre la caja del turno.
   fondo_inicial  Decimal  @db.Decimal(12, 2)
-  abierta_en     DateTime @db.Timestamptz() @default(now())
-  creado_en      DateTime @db.Timestamptz() @default(now())
+  abierta_en     DateTime @default(now()) @db.Timestamptz()
+  creado_en      DateTime @default(now()) @db.Timestamptz()
   actualizado_en DateTime @db.Timestamptz()
   creado_por     String?  @db.Uuid
 
@@ -1741,14 +1808,14 @@ model users {
   email_verificado                                                               Boolean                       @default(false)
   telefono_verificado                                                            Boolean                       @default(false)
   factor_doble_habilitado                                                        Boolean                       @default(false)
-  ultimo_login                                                                   DateTime? @db.Timestamptz()
+  ultimo_login                                                                   DateTime?                     @db.Timestamptz()
   preferencias                                                                   Json                          @default("{}")
   activo                                                                         Boolean                       @default(true)
-  creado_en                                                                      DateTime @db.Timestamptz()                      @default(now())
-  actualizado_en                                                                 DateTime @db.Timestamptz()
+  creado_en                                                                      DateTime                      @default(now()) @db.Timestamptz()
+  actualizado_en                                                                 DateTime                      @db.Timestamptz()
   creado_por                                                                     String?                       @db.Uuid
   actualizado_por                                                                String?                       @db.Uuid
-  eliminado_en                                                                   DateTime? @db.Timestamptz()
+  eliminado_en                                                                   DateTime?                     @db.Timestamptz()
   alertas_gps                                                                    alertas_gps[]
   apu_items_apu_items_actualizado_porTousers                                     apu_items[]                   @relation("apu_items_actualizado_porTousers")
   apu_items_apu_items_creado_porTousers                                          apu_items[]                   @relation("apu_items_creado_porTousers")
@@ -1857,6 +1924,9 @@ model users {
   usuarios_bloqueados_usuarios_bloqueados_user_idTousers                         usuarios_bloqueados[]         @relation("usuarios_bloqueados_user_idTousers")
   vistas_vistas_actualizado_porTousers                                           vistas[]                      @relation("vistas_actualizado_porTousers")
   vistas_vistas_creado_porTousers                                                vistas[]                      @relation("vistas_creado_porTousers")
+  ordenes_compra_ordenes_compra_creado_porTousers                                ordenes_compra[]              @relation("ordenes_compra_creado_porTousers")
+  ordenes_compra_ordenes_compra_actualizado_porTousers                           ordenes_compra[]              @relation("ordenes_compra_actualizado_porTousers")
+  pagos_proveedor_pagos_proveedor_creado_porTousers                              pagos_proveedor[]             @relation("pagos_proveedor_creado_porTousers")
 }
 
 model users_roles {
@@ -1864,7 +1934,7 @@ model users_roles {
   user_id                               String   @db.Uuid
   rol_id                                String   @db.Uuid
   es_principal                          Boolean  @default(false)
-  asignado_en                           DateTime @db.Timestamptz() @default(now())
+  asignado_en                           DateTime @default(now()) @db.Timestamptz()
   asignado_por                          String?  @db.Uuid
   activo                                Boolean  @default(true)
   users_users_roles_asignado_porTousers users?   @relation("users_roles_asignado_porTousers", fields: [asignado_por], references: [id], onUpdate: NoAction, map: "fk_users_roles_asignado_por")
@@ -1882,14 +1952,14 @@ model usuarios_bloqueados {
   nivel_id                                                      String?          @db.Uuid
   nivel_numero                                                  Int
   intentos_fallidos_consecutivos                                Int
-  bloqueado_desde                                               DateTime @db.Timestamptz()
-  bloqueado_hasta                                               DateTime @db.Timestamptz()
-  desbloqueado_en                                               DateTime? @db.Timestamptz()
+  bloqueado_desde                                               DateTime         @db.Timestamptz()
+  bloqueado_hasta                                               DateTime         @db.Timestamptz()
+  desbloqueado_en                                               DateTime?        @db.Timestamptz()
   desbloqueado_manualmente_por                                  String?          @db.Uuid
   motivo                                                        String?
   activo                                                        Boolean          @default(true)
-  creado_en                                                     DateTime @db.Timestamptz()         @default(now())
-  actualizado_en                                                DateTime @db.Timestamptz()
+  creado_en                                                     DateTime         @default(now()) @db.Timestamptz()
+  actualizado_en                                                DateTime         @db.Timestamptz()
   users_usuarios_bloqueados_desbloqueado_manualmente_porTousers users?           @relation("usuarios_bloqueados_desbloqueado_manualmente_porTousers", fields: [desbloqueado_manualmente_por], references: [id], onUpdate: NoAction, map: "fk_usuarios_bloqueados_desbloqueado_por")
   niveles_bloqueo                                               niveles_bloqueo? @relation(fields: [nivel_id], references: [id])
   users_usuarios_bloqueados_user_idTousers                      users?           @relation("usuarios_bloqueados_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
@@ -1899,15 +1969,15 @@ model usuarios_bloqueados {
 }
 
 model configuracion_sistema {
-  clave        String   @id @db.VarChar(100)
-  valor        String   @db.Text
-  descripcion  String?  @db.Text
-  tipo         String   @default("string") @db.VarChar(20)  // string, number, boolean, json
-  categoria    String   @default("general") @db.VarChar(50)
-  creado_en    DateTime @db.Timestamptz() @default(now())
-  actualizado_en DateTime @db.Timestamptz() @default(now()) @updatedAt
-  creado_por   String?  @db.Uuid
-  actualizado_por String? @db.Uuid
+  clave           String   @id @db.VarChar(100)
+  valor           String   @db.Text
+  descripcion     String?  @db.Text
+  tipo            String   @default("string") @db.VarChar(20) // string, number, boolean, json
+  categoria       String   @default("general") @db.VarChar(50)
+  creado_en       DateTime @default(now()) @db.Timestamptz()
+  actualizado_en  DateTime @default(now()) @updatedAt @db.Timestamptz()
+  creado_por      String?  @db.Uuid
+  actualizado_por String?  @db.Uuid
 
   @@index([categoria], map: "idx_configuracion_categoria")
   @@map("configuracion_sistema")
@@ -1928,11 +1998,11 @@ model vistas {
   badges                              Json          @default("[]")
   metadata                            Json          @default("{}")
   activo                              Boolean       @default(true)
-  creado_en                           DateTime @db.Timestamptz()      @default(now())
-  actualizado_en                      DateTime @db.Timestamptz()
+  creado_en                           DateTime      @default(now()) @db.Timestamptz()
+  actualizado_en                      DateTime      @db.Timestamptz()
   creado_por                          String?       @db.Uuid
   actualizado_por                     String?       @db.Uuid
-  eliminado_en                        DateTime? @db.Timestamptz()
+  eliminado_en                        DateTime?     @db.Timestamptz()
   role_vistas                         role_vistas[]
   users_vistas_actualizado_porTousers users?        @relation("vistas_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_vistas_actualizado_por")
   users_vistas_creado_porTousers      users?        @relation("vistas_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_vistas_creado_por")
@@ -2043,6 +2113,14 @@ enum AuditAction {
   CIERRE_CAJA_RECHAZADO
   CONFIG_TURNO_ACTUALIZADA
   ERROR_SISTEMA
+  PROVEEDOR_CREADO
+  PROVEEDOR_ACTUALIZADO
+  PROVEEDOR_ELIMINADO
+  ORDEN_COMPRA_CREADA
+  ORDEN_COMPRA_ACTUALIZADA
+  ORDEN_COMPRA_ELIMINADA
+  ORDEN_COMPRA_ESTADO_CAMBIADO
+  PAGO_PROVEEDOR_REGISTRADO
 }
 
 enum AuditResult {
@@ -2255,4 +2333,11 @@ enum EstadoObra {
   RECIEN_INICIADA
   EN_PROCESO
   FINALIZADA
+}
+
+enum EstadoOrdenCompra {
+  PENDIENTE
+  APROBADA
+  RECIBIDA
+  CANCELADA
 }
