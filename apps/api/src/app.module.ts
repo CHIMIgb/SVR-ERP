@@ -11,6 +11,7 @@ import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { MantenimientoModule } from './modules/mantenimiento/mantenimiento.module';
 import { CombustibleModule } from './modules/combustible/combustible.module';
 import { CribaModule } from './criba/criba.module';
+import { ClientesModule } from './clientes/clientes.module';
 import { ReportesCampoModule } from './reportes-campo/reportes-campo.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
@@ -20,6 +21,8 @@ import { TrabajadoresModule } from './trabajadores/trabajadores.module';
 import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
 import { AsistenciaModule } from './asistencia/asistencia.module';
 import { NominaModule } from './nomina/nomina.module';
+import { FinanzasModule } from './finanzas/finanzas.module';
+import { VentasModule } from './ventas/ventas.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -55,6 +58,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     MantenimientoModule,
     CombustibleModule,
     CribaModule,
+    ClientesModule,
     ReportesCampoModule,
     InventarioModule,
     BitacoraModule,
@@ -64,6 +68,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     BitacorasRentaModule,
     AsistenciaModule,
     NominaModule,
+    FinanzasModule,
+    VentasModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController

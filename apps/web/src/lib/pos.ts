@@ -1,0 +1,696 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// lib/pos.ts — Lógica del Punto de Venta (SVR-ERP)
+//
+// Adaptado del prototipo mobile (PROTOTIPO/apps/mobile/src/lib/pos.ts) al
+// contexto SVR: materiales de construcción, moneda MXN únicamente, sin
+// dependencias externas (código de barras y QR simulados determinísticos).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PaymentMethod = 'efectivo' | 'tarjeta' | 'transferencia';
+export type CardType = 'debito' | 'credito';
+
+export interface Payment {
+  method: PaymentMethod;
+  amount: number;
+}
+
+export interface TaxBreakdown {
+  subtotal: number;
+  iva: number;
+  ieps: number;
+  totalTax: number;
+}
+
+export interface PaymentDetails {
+  cardType?: CardType;
+  lastFour?: string;
+  authCode?: string;
+  affiliation?: string;
+  reference?: string;
+  speiAccount?: string;
+}
+
+export interface Product {
+  id: string;
+  sku: string;
+  barcode: string;
+  name: string;
+  category?: string;
+  condition: string;
+  stock: number;
+  /** Unidad de venta por defecto del material (m³, pieza, bulto, etc.). */
+  unit: string;
+  /** Medidas en las que se puede vender el material (default = primera). */
+  units?: string[];
+  /** Precio por medida (clave = unidad). Si la medida no está, cae a priceMxn. */
+  prices?: Record<string, number>;
+  priceMxn: number;
+}
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+  /** Unidad de medida elegida por el cajero (default = product.unit). */
+  unit?: string;
+  /** Descuento porcentual por producto (0-100) — reservado para overrides futuros. */
+  discountPct?: number;
+  /** Precio manual sobreescrito por el cajero (autorizado). */
+  priceOverride?: number;
+}
+
+/** Identificador único de la línea de carrito (producto + medida elegida). */
+export function cartLineKey(item: CartItem): string {
+  return `${item.product.id}:${item.unit ?? item.product.unit}`;
+}
+
+/** "HH:mm" -> minutos desde medianoche. */
+export function parseHM(s: string): { h: number; m: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+}
+
+/** Redondea un número a 2 decimales (pesos MXN). Evita errores de float. */
+export function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Regla general de cuándo se puede cerrar la caja, según el tipo de turno.
+ * - DIURNO (cierre > apertura): cerrar tras el cierre y hasta la apertura del día sig.
+ * - NOCTURNO (apertura > cierre): cerrar tras el cierre y hasta la próxima apertura.
+ * - Continuo (apertura === cierre): siempre.
+ */
+export function permiteCerrarCaja(
+  nowMin: number,
+  aperturaMin: number,
+  cierreMin: number,
+): boolean {
+  if (cierreMin > aperturaMin) return nowMin >= cierreMin || nowMin < aperturaMin;
+  if (cierreMin < aperturaMin) return nowMin >= cierreMin && nowMin < aperturaMin;
+  return true;
+}
+
+/** Unidad de medida efectiva de una línea (la elegida o la del producto). */
+export function itemUnitName(item: CartItem): string {
+  return item.unit ?? item.product.unit;
+}
+
+export interface POSSale {
+  id: string;
+  ticketNumber: string;
+  folio: string;
+  terminal: string;
+  registerNumber: string;
+  customer: string;
+  cashier: string;
+  items: CartItem[];
+  total: number;
+  method: PaymentMethod;
+  cashReceived?: number;
+  change?: number;
+  payments?: Payment[];
+  taxBreakdown: TaxBreakdown;
+  paymentDetails: PaymentDetails;
+  discountPct?: number;
+  discountTotal?: number;
+  authorizedBy?: string;
+  itemsSold: number;
+  createdAt: string;
+}
+
+export interface BusinessInfo {
+  name: string;
+  address: string;
+  branch: string;
+  branchCode: string;
+  rfc: string;
+  phone: string;
+}
+
+export const BUSINESS_INFO: BusinessInfo = {
+  name: 'SVR Constructora',
+  address: 'Av. del Mar 123, Col. Centro, Compostela, Nay.',
+  branch: 'Compostela, Nay.',
+  branchCode: 'SUC-CMP-001',
+  rfc: 'SVR220101XXX',
+  phone: '(327) 123-4567',
+};
+
+export const SPEI_ACCOUNT = '0123 4567 8910 1122';
+
+/** Terminal y caja por defecto del punto de venta web. */
+export const POS_TERMINAL = 'TER-01';
+export const POS_REGISTER = 'CAJA-PV';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Denominaciones de efectivo (billetes y monedas MXN)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CASH_BILLS = [1000, 500, 200, 100, 50, 20];
+export const CASH_COINS = [10, 5, 2, 1];
+export const CASH_DENOMINATIONS = [...CASH_BILLS, ...CASH_COINS];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cálculo del carrito
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Precio del producto según la medida elegida (cae a priceMxn si no tiene tabla). */
+export function productUnitPrice(product: Product, unit: string): number {
+  return product.prices?.[unit] ?? product.priceMxn;
+}
+
+export function itemUnitPrice(item: CartItem): number {
+  return item.priceOverride ?? productUnitPrice(item.product, itemUnitName(item));
+}
+
+export function itemSubtotal(item: CartItem): number {
+  const discountFactor = 1 - (item.discountPct ?? 0) / 100;
+  return round2(itemUnitPrice(item) * item.quantity * discountFactor);
+}
+
+export function calculateTotal(items: CartItem[]): number {
+  return round2(items.reduce((sum, item) => sum + itemSubtotal(item), 0));
+}
+
+export function discountAmount(total: number, pct: number): number {
+  return round2((total * pct) / 100);
+}
+
+export function applyDiscount(total: number, pct: number): number {
+  return round2(Math.max(0, total - discountAmount(total, pct)));
+}
+
+export function getChange(received: number, total: number): number {
+  return round2(Math.max(0, received - total));
+}
+
+/** Desglose de impuestos fijo al 16% IVA (subtotal = total / 1.16). */
+export function calculateTaxBreakdown(total: number): TaxBreakdown {
+  const subtotal = round2(total / 1.16);
+  const iva = round2(total - subtotal);
+  return {
+    subtotal,
+    iva,
+    ieps: 0,
+    totalTax: iva,
+  };
+}
+
+/** Detalles de pago simulados para el ticket. */
+export function buildPaymentDetails(method: PaymentMethod): PaymentDetails {
+  if (method === 'tarjeta') {
+    return {
+      cardType: 'debito',
+      lastFour: '2845',
+      authCode: String(Math.floor(100000 + Math.random() * 900000)),
+      affiliation: '4091403',
+    };
+  }
+  if (method === 'transferencia') {
+    return {
+      reference: String(Math.floor(1000000000 + Math.random() * 9000000000)),
+      speiAccount: SPEI_ACCOUNT,
+    };
+  }
+  return {};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Folios y fechas
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Folio único escaneable de 16 caracteres alfanuméricos. */
+export function generateSaleFolio(): string {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let folio = '';
+  let seed = Date.now() + Math.floor(Math.random() * 1000);
+  for (let i = 0; i < 16; i++) {
+    seed = (seed * 9301 + 49297) % 233280;
+    folio += chars[Math.floor((seed / 233280) * chars.length)];
+  }
+  return folio;
+}
+
+export function generateTicketNumber(salesCount: number): string {
+  return `T-${String(salesCount + 1).padStart(5, '0')}`;
+}
+
+export function formatTicketDate(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  return {
+    date: d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }),
+    time: d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+  };
+}
+
+export function isToday(iso: string, now = new Date()): boolean {
+  const d = new Date(iso);
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Código de barras del ticket (Code 39)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CODE39_PATTERNS: Record<string, string> = {
+  '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
+  '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
+  '8': '100100100', '9': '001100100', '*': '010010100',
+};
+
+export interface BarcodeBar {
+  x: number;
+  width: number;
+}
+
+/** Barras Code 39 de un código (para renderizar el código de barras del ticket). */
+export function barcodeBars(code: string): BarcodeBar[] {
+  const NARROW = 2;
+  const WIDE = 4;
+  const QUIET = 10;
+
+  const bars: BarcodeBar[] = [];
+  let x = QUIET;
+  for (const ch of `*${code}*`) {
+    const pattern = CODE39_PATTERNS[ch];
+    if (!pattern) continue;
+    for (let i = 0; i < pattern.length; i++) {
+      const width = pattern[i] === '1' ? WIDE : NARROW;
+      if (i % 2 === 0) bars.push({ x, width });
+      x += width;
+    }
+    x += NARROW;
+  }
+  return bars;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QR simulado (determinista: patrón pseudoaleatorio + finder patterns)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const QR_SIZE = 21;
+
+export function buildQrMatrix(seed: string): boolean[][] {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  const rand = () => {
+    hash = (hash * 1103515245 + 12345) >>> 0;
+    return hash / 4294967296;
+  };
+
+  const grid: boolean[][] = [];
+  for (let y = 0; y < QR_SIZE; y++) {
+    const row: boolean[] = [];
+    for (let x = 0; x < QR_SIZE; x++) row.push(rand() > 0.5);
+    grid.push(row);
+  }
+
+  const finder: [number, number][] = [
+    [0, 0],
+    [QR_SIZE - 7, 0],
+    [0, QR_SIZE - 7],
+  ];
+  for (const [fx, fy] of finder) {
+    for (let y = 0; y < 7; y++) {
+      for (let x = 0; x < 7; x++) {
+        const inRing = x === 0 || y === 0 || x === 6 || y === 6;
+        const inCore = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+        grid[fy + y][fx + x] = inRing || inCore;
+      }
+    }
+  }
+  return grid;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Monto en letras (formato ticket mexicano)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const UNIDADES = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+const DIEZ_A_VEINTE = ['diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve'];
+const DECENAS = ['', 'diez', 'veinte', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+const CENTENAS = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+
+function enteroALetras(n: number): string {
+  if (n === 0) return 'cero';
+  if (n < 10) return UNIDADES[n];
+  if (n < 20) return DIEZ_A_VEINTE[n - 10];
+  if (n < 30) return n === 20 ? 'veinte' : `veinti${UNIDADES[n - 20]}`;
+  if (n < 100) {
+    const decena = Math.floor(n / 10);
+    const unidad = n % 10;
+    return unidad === 0 ? DECENAS[decena] : `${DECENAS[decena]} y ${UNIDADES[unidad]}`;
+  }
+  if (n < 1000) {
+    const centena = Math.floor(n / 100);
+    const resto = n % 100;
+    if (n === 100) return 'cien';
+    return resto === 0 ? CENTENAS[centena] : `${CENTENAS[centena]} ${enteroALetras(resto)}`;
+  }
+  if (n < 1000000) {
+    const miles = Math.floor(n / 1000);
+    const resto = n % 1000;
+    const milesTexto = miles === 1 ? 'mil' : `${enteroALetras(miles)} mil`;
+    return resto === 0 ? milesTexto : `${milesTexto} ${enteroALetras(resto)}`;
+  }
+  if (n < 10000000) {
+    const millones = Math.floor(n / 1000000);
+    const resto = n % 1000000;
+    const millonesTexto = millones === 1 ? 'un millón' : `${enteroALetras(millones)} millones`;
+    return resto === 0 ? millonesTexto : `${millonesTexto} ${enteroALetras(resto)}`;
+  }
+  return String(n);
+}
+
+export function numberToWords(amount: number): string {
+  const entero = Math.floor(amount);
+  const centavos = Math.round((amount - entero) * 100);
+  return `${enteroALetras(entero)} pesos ${String(centavos).padStart(2, '0')}/100 M.N.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Impresión del ticket (web: abre ventana de impresión con HTML)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function methodLabel(method: PaymentMethod): string {
+  switch (method) {
+    case 'efectivo':
+      return 'Efectivo';
+    case 'tarjeta':
+      return 'Tarjeta';
+    case 'transferencia':
+      return 'Transferencia';
+  }
+}
+
+export function printTicket(sale: POSSale, businessInfo: BusinessInfo): void {
+  const { date, time } = formatTicketDate(sale.createdAt);
+  const initials =
+    businessInfo.name
+      .split(' ')
+      .filter((w) => w.length > 2 && w[0] !== '[')
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'SVR';
+
+  const itemsHtml = sale.items
+    .map((item) => {
+      const unit = itemUnitPrice(item);
+      const lineTotal = itemSubtotal(item);
+      const hasOverride = (item.priceOverride ?? item.product.priceMxn) !== item.product.priceMxn;
+      const name = item.product.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return `
+        <tr>
+          <td style="vertical-align:top; padding:3px 0;">
+            <div style="font-weight:bold;">${name}${hasOverride ? ' (PM)' : ''}${item.discountPct ? ` -${item.discountPct}%` : ''}</div>
+            <div style="font-size:10px; color:#6b7280;">SKU: ${item.product.sku} · ${itemUnitName(item)}</div>
+          </td>
+          <td style="text-align:center; vertical-align:top; padding:3px 0; width:36px;">x${item.quantity}</td>
+          <td style="text-align:right; vertical-align:top; padding:3px 0; width:56px;">$${unit.toFixed(2)}</td>
+          <td style="text-align:right; vertical-align:top; padding:3px 0; width:56px; font-weight:bold;">$${lineTotal.toFixed(2)}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const payments = sale.payments?.length ? sale.payments : [{ method: sale.method, amount: sale.total }];
+  const tax = sale.taxBreakdown;
+  const pieces = sale.items.reduce((sum, i) => sum + i.quantity, 0);
+
+  const paymentDetailsHtml = (() => {
+    const d = sale.paymentDetails;
+    if (sale.method === 'tarjeta' || (payments.length > 1 && payments.some((p) => p.method === 'tarjeta'))) {
+      return `
+        <div class="row"><span>Tipo</span><span>${d.cardType === 'credito' ? 'Crédito' : 'Débito'}</span></div>
+        <div class="row"><span>Tarjeta</span><span>**** ${d.lastFour ?? '****'}</span></div>
+        <div class="row"><span>Aut#</span><span>${d.authCode ?? ''}</span></div>
+        <div class="row"><span>Afiliación</span><span>${d.affiliation ?? ''}</span></div>
+      `;
+    }
+    if (sale.method === 'transferencia') {
+      return `
+        <div class="row"><span>Cuenta SPEI</span><span>${d.speiAccount ?? ''}</span></div>
+        <div class="row"><span>Referencia</span><span>${d.reference ?? ''}</span></div>
+      `;
+    }
+    return '';
+  })();
+
+  const cashHtml =
+    sale.method === 'efectivo' && sale.cashReceived != null
+      ? `
+        <div class="row"><span>Recibido</span><span>$${sale.cashReceived.toFixed(2)}</span></div>
+        <div class="row"><span>Cambio</span><span>$${(sale.change ?? 0).toFixed(2)}</span></div>
+      `
+      : '';
+
+  const discountHtml = sale.discountPct
+    ? `<div class="row"><span>Descuento (${sale.discountPct}%)</span><span>−$${(sale.discountTotal ?? 0).toFixed(2)}</span></div>`
+    : '';
+
+  const html = `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+          @page { margin: 0; }
+          body { font-family: 'Courier New', Courier, monospace; padding: 8px; color: #111827; background: #fff; margin: 0 auto; max-width: 302px; font-size: 12px; line-height: 1.3; }
+          .center { text-align: center; }
+          .logo { width: 48px; height: 48px; line-height: 48px; border-radius: 50%; background: #111827; color: #fff; font-weight: bold; font-size: 16px; margin: 0 auto 8px; text-align: center; }
+          .business-name { font-size: 14px; font-weight: bold; }
+          .business-line { font-size: 10px; color: #374151; }
+          .divider { border-top: 1px dashed #9ca3af; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; padding: 1px 0; }
+          .section-title { font-weight: bold; margin-top: 6px; margin-bottom: 2px; text-align: center; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { text-align: left; border-bottom: 1px dashed #9ca3af; padding: 3px 0; font-size: 10px; }
+          .total { font-weight: bold; font-size: 14px; border-top: 1px dashed #9ca3af; padding-top: 4px; margin-top: 4px; }
+          .letters { font-size: 10px; text-align: center; margin: 6px 0; font-style: italic; }
+          .footer { font-size: 9px; color: #4b5563; text-align: center; margin-top: 8px; }
+          .legal { font-size: 8px; color: #6b7280; text-align: center; margin-top: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="logo">${initials}</div>
+          <div class="business-name">${businessInfo.name}</div>
+          <div class="business-line">R.F.C. ${businessInfo.rfc}</div>
+          <div class="business-line">${businessInfo.address}</div>
+          <div class="business-line">${businessInfo.branch} · ${businessInfo.branchCode}</div>
+          <div class="business-line">Tel. ${businessInfo.phone}</div>
+        </div>
+        <div class="divider"></div>
+        <div class="section-title">TICKET DE VENTA</div>
+        <div class="row"><span>Folio</span><span>${sale.folio}</span></div>
+        <div class="row"><span>Ticket</span><span>${sale.ticketNumber}</span></div>
+        <div class="row"><span>Fecha</span><span>${date}</span></div>
+        <div class="row"><span>Hora</span><span>${time}</span></div>
+        <div class="row"><span>Terminal</span><span>${sale.terminal}</span></div>
+        <div class="row"><span>Caja</span><span>${sale.registerNumber}</span></div>
+        <div class="row"><span>Cajero</span><span>${sale.cashier}</span></div>
+        <div class="row"><span>Cliente</span><span>${sale.customer || 'Público en general'}</span></div>
+        <div class="divider"></div>
+        <table>
+          <thead><tr><th>ARTÍCULO</th><th style="text-align:center">CANT</th><th style="text-align:right">P.UNIT</th><th style="text-align:right">TOTAL</th></tr></thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+        <div class="divider"></div>
+        <div class="row"><span>Subtotal</span><span>$${tax.subtotal.toFixed(2)}</span></div>
+        <div class="row"><span>IVA 16%</span><span>$${tax.iva.toFixed(2)}</span></div>
+        <div class="row"><span>IEPS</span><span>$${tax.ieps.toFixed(2)}</span></div>
+        ${discountHtml}
+        ${payments.map((p) => `<div class="row"><span>${methodLabel(p.method)}</span><span>$${p.amount.toFixed(2)}</span></div>`).join('')}
+        ${paymentDetailsHtml}
+        ${cashHtml}
+        <div class="row total"><span>TOTAL</span><span>$${sale.total.toFixed(2)}</span></div>
+        ${sale.authorizedBy ? `<div style="font-size:10px; color:#6b7280; margin-top:4px; text-align:center;">Autorizado por: ${sale.authorizedBy}</div>` : ''}
+        <div class="letters">${numberToWords(sale.total)}</div>
+        <div class="center" style="font-size:10px;">
+          ${sale.itemsSold} artículo${sale.itemsSold !== 1 ? 's' : ''} vendido${sale.itemsSold !== 1 ? 's' : ''} · ${pieces} piezas
+        </div>
+        <div class="divider"></div>
+        <div class="footer">Gracias por su compra</div>
+        <div class="legal">Política de devoluciones: presente este ticket. Devoluciones dentro de los 30 días naturales en el mismo punto de venta.</div>
+        <div class="legal">Régimen General de Personas Morales. Este comprobante no es un comprobante fiscal digital.</div>
+      </body>
+    </html>
+  `;
+
+  const win = window.open('', '_blank', 'width=400,height=1000,resizable=yes,scrollbars=yes');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cierre de caja (ticket imprimible)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CashDenomination {
+  value: number;
+  count: number;
+}
+
+export interface CashRetirement {
+  id: string;
+  date: string;
+  amount: number;
+  reason: string;
+  authorizedBy: string;
+}
+
+export interface ClosureTicketGroup {
+  name: string;
+  count: number;
+  subtotal: number;
+}
+
+export interface ClosureTicketData {
+  businessInfo: BusinessInfo;
+  registerName: string;
+  time: string;
+  cashierName: string;
+  salesCount: number;
+  totalSales: number;
+  groups: ClosureTicketGroup[];
+  retirements: { amount: number; reason: string; authorizedBy: string }[];
+  initial: number;
+  cashSales: number;
+  totalRetirements: number;
+  expectedCash: number;
+  counted: number;
+  difference: number;
+  denominations: CashDenomination[];
+  nextTurnCash: number;
+  notes?: string;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** HTML del ticket de cierre (papel térmico 58mm). */
+export function generateClosureHtml(data: ClosureTicketData): void {
+  const { date } = formatTicketDate(new Date().toISOString());
+  const { businessInfo } = data;
+
+  const initials =
+    businessInfo.name
+      .split(' ')
+      .filter((w) => w.length > 2 && w[0] !== '[')
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'SVR';
+
+  const groupsHtml = data.groups
+    .map(
+      (g) => `
+        <div class="row"><span>${escapeHtml(g.name)} (${g.count})</span><span>$${g.subtotal.toFixed(2)}</span></div>
+      `,
+    )
+    .join('');
+
+  const retirementsHtml = data.retirements.length
+    ? data.retirements
+        .map(
+          (r) => `
+            <div class="row"><span>−${escapeHtml(r.reason)} (${escapeHtml(r.authorizedBy)})</span><span>−$${r.amount.toFixed(2)}</span></div>
+          `,
+        )
+        .join('')
+    : '<div style="font-size:12px;color:#6b7280;">Sin retiros registrados.</div>';
+
+  const denominationsHtml = data.denominations.length
+    ? data.denominations
+        .map(
+          (d) => `
+            <div class="row"><span>${d.count} × $${d.value.toLocaleString('es-MX')}</span><span>$${round2(d.count * d.value).toFixed(2)}</span></div>
+          `,
+        )
+        .join('')
+    : '<div style="font-size:12px;color:#6b7280;">Sin denominaciones registradas.</div>';
+
+  const diffClass = data.difference < 0 ? 'diff-negative' : 'diff-positive';
+  const diffSign = data.difference > 0 ? '+' : '';
+
+  const html = `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; padding: 8px; color: #111827; background: #fff; margin: 0 auto; max-width: 302px; font-size: 12px; line-height: 1.3; }
+          .center { text-align: center; }
+          .logo { width: 48px; height: 48px; line-height: 48px; border-radius: 50%; background: #111827; color: #fff; font-weight: bold; font-size: 16px; margin: 0 auto 8px; text-align: center; }
+          .business-name { font-size: 14px; font-weight: bold; }
+          .business-line { font-size: 10px; color: #374151; }
+          .divider { border-top: 1px dashed #9ca3af; margin: 8px 0; }
+          .section { font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center; margin-top: 10px; }
+          .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+          .total { font-weight: bold; font-size: 14px; border-top: 1px dashed #9ca3af; padding-top: 4px; margin-top: 4px; }
+          .diff-positive { color: #16a34a; font-weight: bold; }
+          .diff-negative { color: #dc2626; font-weight: bold; }
+          .footer { margin-top: 16px; font-size: 10px; color: #4b5563; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="logo">${initials}</div>
+          <div class="business-name">${escapeHtml(businessInfo.name)}</div>
+          <div class="business-line">R.F.C. ${escapeHtml(businessInfo.rfc)}</div>
+          <div class="business-line">${escapeHtml(businessInfo.address)}</div>
+          <div class="business-line">${escapeHtml(businessInfo.branch)} · ${escapeHtml(businessInfo.branchCode)}</div>
+          <div class="business-line">Tel. ${escapeHtml(businessInfo.phone)}</div>
+        </div>
+        <div class="divider"></div>
+        <div class="section">Cierre de caja</div>
+        <div class="row"><span>Sucursal</span><span>${escapeHtml(data.registerName)}</span></div>
+        <div class="row"><span>Fecha</span><span>${date}</span></div>
+        <div class="row"><span>Hora</span><span>${data.time} hrs</span></div>
+        <div class="row"><span>Cajero</span><span>${escapeHtml(data.cashierName)}</span></div>
+        <div class="row"><span>Transacciones</span><span>${data.salesCount}</span></div>
+        <div class="row"><span>Total de ventas</span><span>$${data.totalSales.toFixed(2)}</span></div>
+        <div style="font-size:12px;color:#b45309;">Pendiente de aprobación del Administrador.</div>
+        <div class="section">Ventas del día</div>
+        ${groupsHtml}
+        <div class="section">Retiros del turno</div>
+        ${retirementsHtml}
+        <div class="section">Arqueo de efectivo</div>
+        <div class="row"><span>Efectivo inicial</span><span>$${data.initial.toFixed(2)}</span></div>
+        <div class="row"><span>Ventas en efectivo</span><span>$${data.cashSales.toFixed(2)}</span></div>
+        <div class="row"><span>Retiros (−)</span><span>−$${data.totalRetirements.toFixed(2)}</span></div>
+        <div class="row"><span>Efectivo esperado</span><span>$${data.expectedCash.toFixed(2)}</span></div>
+        <div class="row"><span>Efectivo contado</span><span>$${data.counted.toFixed(2)}</span></div>
+        <div class="row"><span>Diferencia</span><span class="${diffClass}">${diffSign}$${data.difference.toFixed(2)}</span></div>
+        <div class="section">Billetes y monedas contados</div>
+        ${denominationsHtml}
+        <div class="row"><span>Fondo para el siguiente turno</span><span>$${data.nextTurnCash.toFixed(2)}</span></div>
+        ${data.notes ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;"><strong>Observaciones:</strong> ${escapeHtml(data.notes)}</div>` : ''}
+        <div class="row total"><span>Total de ventas</span><span>$${data.totalSales.toFixed(2)}</span></div>
+        <div class="footer">Gracias por su trabajo</div>
+      </body>
+    </html>
+  `;
+
+  const win = window.open('', '_blank', 'width=400,height=1000,resizable=yes,scrollbars=yes');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  }
+}

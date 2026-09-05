@@ -1,0 +1,4 @@
+-- Acciones de auditoría para el CRUD de clientes
+ALTER TYPE "AuditAction" ADD VALUE 'CLIENTE_CREADO';
+ALTER TYPE "AuditAction" ADD VALUE 'CLIENTE_ACTUALIZADO';
+ALTER TYPE "AuditAction" ADD VALUE 'CLIENTE_ELIMINADO';
