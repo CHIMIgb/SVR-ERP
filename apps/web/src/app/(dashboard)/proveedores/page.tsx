@@ -646,18 +646,16 @@ export default function ProveedoresPage() {
                 Recibir
               </Button>
             )}
-            {puedeEditar && (
+            {activa && puedeEditar && (
               <Button
                 variant="danger"
                 size="sm"
                 icon={<XCircle className="w-3.5 h-3.5" />}
-                disabled={o.pagado > 0 || !activa}
+                disabled={o.pagado > 0}
                 title={
                   o.pagado > 0
                     ? 'No se puede cancelar: la orden ya tiene abonos registrados.'
-                    : !activa
-                      ? 'No se puede cancelar: la orden ya fue recibida o cancelada.'
-                      : 'Cancelar orden de compra'
+                    : 'Cancelar orden de compra'
                 }
                 onClick={() => {
                   setMotivoCancelacion('');
@@ -667,17 +665,12 @@ export default function ProveedoresPage() {
                 Cancelar
               </Button>
             )}
-            {puedeEliminar && (
+            {o.pagado === 0 && puedeEliminar && (
               <Button
                 variant="danger"
                 size="sm"
                 icon={<Trash2 className="w-3.5 h-3.5" />}
-                disabled={o.pagado > 0}
-                title={
-                  o.pagado > 0
-                    ? 'No se puede eliminar: la orden ya tiene abonos registrados.'
-                    : 'Eliminar orden de compra'
-                }
+                title="Eliminar orden de compra"
                 onClick={() => setDeleteOC(o)}
               >
                 Eliminar
