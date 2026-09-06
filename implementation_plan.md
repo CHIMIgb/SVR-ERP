@@ -1,250 +1,199 @@
-# Plan de Implementación — Backend /proveedores (órdenes de compra, abonos, CxP)
+# Plan de Implementación — Backend /cobranza (cuentas por cobrar, cobros, integración finanzas)
 
 ## 1. Resumen del Requerimiento
 
-La vista `/proveedores` quedó reconstruida en el frontend (commit `17961e45`) con 3 tabs:
-Proveedores, Órdenes de Compra y Estados de Cuenta (tabla resumen + modal ledger con
-saldo corrido). Actualmente es **fase 1 mock**: no existe módulo NestJS ni tablas para
-órdenes de compra, abonos ni cuentas por pagar. Este plan cubre el backend completo para
-persistir todo: CRUD proveedores, CRUD órdenes de compra, registro de abonos y el
-estado de cuenta (ledger) por proveedor.
+La vista `/cobranza` quedó reconstruida en el frontend (commit `e192e61c`) con 3 tabs
+(Cuentas por cobrar, Movimientos de cobro, Vencimientos), stats, filtros, paginación,
+modal de registrar cobro y ledger por cuenta. Actualmente es **fase 1 mock**: no existe
+módulo NestJS ni endpoints para `cuentas_por_cobrar` ni `pagos`. Este plan cubre el
+backend completo para persistir la cartera y los cobros, cerrar el círculo con
+`/finanzas` (transacciones de ingreso) y dejar contratos listos para los flujos futuros
+de Operaciones y Comercial.
+
+Cadena de valor objetivo: **cliente → cotización → venta/factura → cuenta por cobrar →
+cobro (pago) → ingreso en finanzas**, más el cargo por renta de maquinaria vía
+`bitacora_id`.
 
 ## 2. Impacto Backend
 
-### 2.1 Schema Prisma (`apps/api/prisma/schema.prisma`) — migración aditiva
-
-**Enums nuevos:**
+### 2.1 Schema Prisma — migración aditiva `cobranza_pagos_y_auditoria`
 
 ```prisma
-enum EstadoOrdenCompra {
-  PENDIENTE
-  APROBADA
-  RECIBIDA
-  CANCELADA
-}
-```
-
-**AuditAction nuevos** (aditivos al enum existente):
-`PROVEEDOR_CREADO`, `PROVEEDOR_ACTUALIZADO`, `PROVEEDOR_ELIMINADO`,
-`ORDEN_COMPRA_CREADA`, `ORDEN_COMPRA_ACTUALIZADA`, `ORDEN_COMPRA_ELIMINADA`,
-`ORDEN_COMPRA_ESTADO_CAMBIADO`, `PAGO_PROVEEDOR_REGISTRADO`.
-
-**Modelo `proveedores` existente — agregar 1 campo (aditivo):**
-
-```prisma
-categoria  String?  @default("Otros")
-// + relations: ordenes_compra[], cuentas_por_pagar[], pagos_proveedor[]
-```
-
-**Modelos nuevos:**
-
-```prisma
-model ordenes_compra {
-  id                 String             @id @db.Uuid
-  folio              String             @unique            // OC-YYYY-NNN auto
-  proveedor_id       String             @db.Uuid
-  descripcion        String
-  monto              Decimal            @db.Decimal(14, 2)
-  pagado             Decimal            @default(0) @db.Decimal(14, 2)
-  fecha              DateTime           @db.Date
-  estado             EstadoOrdenCompra  @default(PENDIENTE)
-  motivo_cancelacion String?
-  activo             Boolean            @default(true)
-  creado_en          DateTime @db.Timestamptz() @default(now())
-  actualizado_en     DateTime @db.Timestamptz()
-  creado_por         String? @db.Uuid
-  actualizado_por    String? @db.Uuid
-  eliminado_en       DateTime? @db.Timestamptz()
-  proveedores        proveedores        @relation(fields: [proveedor_id], references: [id])
-  cuentas_por_pagar  cuentas_por_pagar[]
-  pagos_proveedor    pagos_proveedor[]
-  @@index([proveedor_id, estado])
-  @@index([fecha])
+// 1. pagos → vínculo directo a la CxC (hoy solo tiene factura_id)
+model pagos {
+  cuenta_por_cobrar_id String?              @db.Uuid
+  cuentas_por_cobrar   cuentas_por_cobrar?  @relation(fields: [cuenta_por_cobrar_id], references: [id])
+  @@index([cuenta_por_cobrar_id])
+  @@index([cliente_id, fecha_pago])
 }
 
-model cuentas_por_pagar {
-  id                String         @id @db.Uuid
-  proveedor_id      String         @db.Uuid
-  orden_compra_id   String         @unique @db.Uuid     // 1:1 con OC
-  monto             Decimal        @db.Decimal(14, 2)
-  monto_pagado      Decimal        @default(0) @db.Decimal(14, 2)
-  fecha_vencimiento DateTime?      @db.Date
-  estado            String         @default("PENDIENTE") // PENDIENTE | PARCIAL | PAGADA
-  activo            Boolean        @default(true)
-  creado_en         DateTime @db.Timestamptz() @default(now())
-  actualizado_en    DateTime @db.Timestamptz()
-  proveedores       proveedores    @relation(fields: [proveedor_id], references: [id])
-  ordenes_compra    ordenes_compra @relation(fields: [orden_compra_id], references: [id])
-  pagos_proveedor   pagos_proveedor[]
-  @@index([proveedor_id, estado])
-}
-
-model pagos_proveedor {
-  id              String         @id @db.Uuid
-  codigo          String         @unique                // PAG-PROV-YYYY-NNN auto
-  proveedor_id    String         @db.Uuid
-  orden_compra_id String         @db.Uuid
-  monto           Decimal        @db.Decimal(14, 2)
-  fecha_pago      DateTime       @db.Date
-  metodo_pago     String         @default("EFECTIVO")
-  referencia      String?
-  activo          Boolean        @default(true)
-  creado_en       DateTime @db.Timestamptz() @default(now())
-  creado_por      String? @db.Uuid
-  eliminado_en    DateTime? @db.Timestamptz()
-  proveedores     proveedores    @relation(fields: [proveedor_id], references: [id])
-  ordenes_compra  ordenes_compra @relation(fields: [orden_compra_id], references: [id])
-  @@index([proveedor_id, fecha_pago])
-}
+// 2. Enum AuditAction — acciones nuevas
+//    CXC_CREADA, CXC_ACTUALIZADA, CXC_CONSULTADA, CXC_CON_PAGOS (FAIL),
+//    COBRO_EXCEDE_SALDO (FAIL), COBRO_REGISTRADO, COBRO_REVERTIDO
 ```
 
-> Nota: `pagos_proveedor` NO lleva `cuentas_por_pagar_id` (redundante: CxP es 1:1 con la OC).
-> La cuenta se deriva vía `orden_compra_id`.
+- Severidades en `audit.constants.ts`: INFO para consultas/creación, WARNING para
+  reversiones, ERROR no aplica (los FAIL usan `error_code`).
+- ✋ **Entorno**: `prisma migrate dev` no funciona (shadow DB falla aplicando el seed
+  RBAC). Flujo manual probado en proveedores: `prisma migrate diff --from-config-datasource
+  --to-schema prisma/schema.prisma --script` → `prisma db execute --file <migración.sql>`
+  → INSERT en `_prisma_migrations` (checksum sha256, `applied_steps_count` 1) →
+  `prisma generate`.
 
-**Migración:** `npx prisma migrate dev --name proveedores_ordenes_compra`
-(aditiva; ALTER TYPE ... ADD VALUE para enums; CREATE TABLE sin tocar tablas existentes).
-
-### 2.2 Módulos NestJS nuevos
+### 2.2 Módulo NestJS `apps/api/src/cobranza/`
 
 ```
-apps/api/src/proveedores/
-  proveedores.module.ts
-  proveedores.controller.ts
-  proveedores.service.ts
-  proveedores.service.spec.ts
-  proveedores.controller.spec.ts
-  proveedores.integration.spec.ts
-  ordenes-compra.controller.ts      (o endpoints dentro del mismo controller)
+cobranza/
   dto/
-    create-proveedor.dto.ts
-    update-proveedor.dto.ts
-    query-proveedores.dto.ts
-    create-orden-compra.dto.ts
-    update-orden-compra.dto.ts
-    cambiar-estado-orden.dto.ts
-    registrar-abono.dto.ts
-    query-ordenes-compra.dto.ts
+    crear-cuenta.dto.ts        # clienteId, facturaId?, bitacoraId?, monto, fechaVencimiento?
+    actualizar-cuenta.dto.ts   # monto?, fechaVencimiento?
+    registrar-cobro.dto.ts     # monto, fechaPago?, metodoPago, referencia?
+    listar-cuentas.query.ts    # estado?, situacion?, clienteId?, search?, page?, limit?
+  cobranza.module.ts
+  cobranza.controller.ts
+  cobranza.service.ts
+  cobranza.service.spec.ts
+  cobranza.controller.spec.ts
+  cobranza.integration.spec.ts
 ```
 
-Registrar `ProveedoresModule` en `app.module.ts`.
+### 2.3 Endpoints (referencia viva: módulo `proveedores`)
 
-### 2.3 Endpoints
+| Método | Ruta | Permiso (módulo `cobranza`) | Acción |
+|--------|------|------------------------------|--------|
+| GET | `/api/cobranza` | `ver` | Lista paginada con filtros (estado, situación, cliente, búsqueda) |
+| GET | `/api/cobranza/stats` | `ver` | totalPorCobrar, vencido, cobradoMes, clientesConSaldo |
+| GET | `/api/cobranza/:id` | `ver` | Detalle CxC (cliente + factura + últimos pagos) |
+| POST | `/api/cobranza` | `crear` | Crear CxC (manual, o desde `factura_id`/`bitacora_id`) |
+| PATCH | `/api/cobranza/:id` | `editar` | Editar monto/vencimiento (prohibido si hay pagos → `fallir()` CXC_CON_PAGOS) |
+| POST | `/api/cobranza/:id/cobros` | `crear` | **Registrar cobro** (transacción multi-tabla) |
+| GET | `/api/cobranza/:id/cobros` | `ver` | Ledger de movimientos por cuenta |
+| GET | `/api/cobranza/exportar` | `exportar` | CSV de la cartera (mismo shape que el frontend) |
 
-| Método | Ruta | Permiso | Descripción |
-|---|---|---|---|
-| GET | `/proveedores` | comercial·proveedores·ver | Listar con search, categoría, paginación |
-| GET | `/proveedores/:id` | ver | Detalle |
-| POST | `/proveedores` | crear | Alta |
-| PATCH | `/proveedores/:id` | editar | Actualización |
-| DELETE | `/proveedores/:id` | eliminar | Soft delete (no elimina si tiene CxP pendiente) |
-| GET | `/proveedores/estados-cuenta` | ver | Resumen: proveedor, #ops, total, pagado, saldo |
-| GET | `/proveedores/:id/estado-cuenta` | ver | Ledger: fecha, folio, concepto, cargo, abono, saldo corrido |
-| GET | `/ordenes-compra` | ver | Listar con search, estado, proveedorId, paginación |
-| GET | `/ordenes-compra/:id` | ver | Detalle + abonos |
-| POST | `/ordenes-compra` | crear | Crear OC + CxP en `$transaction` |
-| PATCH | `/ordenes-compra/:id` | editar | Editar descripción/monto (solo PENDIENTE/APROBADA) |
-| DELETE | `/ordenes-compra/:id` | eliminar | Soft delete (solo sin pagos) |
-| POST | `/ordenes-compra/:id/cambiar-estado` | editar | Aprobar / Recibir / Cancelar (motivo obligatorio en cancelar) |
-| POST | `/proveedores/:id/abonos` | editar | Registrar abono (ver 2.4) |
+**No hay DELETE**: en contabilidad no se borran cobros y el RBAC de `cobranza` no
+incluye permiso de eliminar. La reversión futura usa `editar`.
 
-Los 4 requisitos obligatorios (AGENTS.md): `JwtAuthGuard` + `PermissionsGuard`,
-blacklist automática vía `JwtStrategy`, auditoría SUCCESS en operaciones y auditoría
-FAIL + `fallir()` en fallos de negocio (patrón `criba.service.ts`).
+### 2.4 Registrar cobro — transacción crítica
 
-**Validaciones DTO (class-validator):**
-- `CreateProveedorDto`: `@IsString() @IsNotEmpty()` nombre; rfc/correo/teléfono opcionales (`@IsEmail()`, `@IsRFC()` custom o regex), `categoria` opcional `@IsIn(['Refacciones','Combustible','Materiales','Servicios','Otros'])`.
-- `CreateOrdenCompraDto`: `proveedorId @IsUUID()`, `descripcion @IsString()`, `monto @IsNumber() @Min(0.01)`, `fecha @IsDateString()` opcional.
-- `RegistrarAbonoDto`: `ordenCompraId @IsUUID()`, `monto @IsNumber() @Min(0.01)`, `metodoPago` opcional, `referencia` opcional.
-- `CambiarEstadoOrdenDto`: `estado @IsEnum(EstadoOrdenCompra)`, `motivo` requerido si CANCELADA.
-- `QueryProveedoresDto` / `QueryOrdenesCompraDto`: `search`, `page @Min(1)`, `limit @Max(100)`, filtros.
+```
+prisma.$transaction([
+  1. Validar saldo: monto ≤ (monto - monto_pagado) → si no: fallir() COBRO_EXCEDE_SALDO
+  2. Crear pagos (código secuencial PAG-XXXX, metodoPago, referencia, cuenta_por_cobrar_id)
+  3. Actualizar cuentas_por_cobrar: monto_pagado += monto
+     estado: PENDIENTE → PARCIAL → SALDADO (saldo 0)
+  4. Crear transacciones (finanzas): tipo INGRESO, categoria "COBRANZA",
+     entidad_tipo = 'COBRO', entidad_id = pago.id   ← cierra el círculo en /finanzas
+  5. AuditService.log(SUCCESS, COBRO_REGISTRADO, metadata con monto)
+])
+```
 
-### 2.4 Reglas de negocio en Services
+La tabla `transacciones` ya tiene `entidad_id`/`entidad_tipo` genéricos (vista previa
+de `finanzas`) — no requiere migración.
 
-**Crear OC** (`$transaction`):
-1. Validar proveedor existe y `activo` + `eliminado_en: null`.
-2. Generar folio `OC-YYYY-NNN` (contador del año + `findFirst` por creado_en desc) con
-   reintento si choca con el unique (1 retry).
-3. `ordenes_compra.create` + `cuentas_por_pagar.create` (monto, estado PENDIENTE).
-4. Auditoría `ORDEN_COMPRA_CREADA` (SUCCESS). Fallos → `fallir()` FAIL.
+### 2.5 Estándar obligatorio (AGENTS.md) en cada endpoint
 
-**Cambiar estado**:
-- `PENDIENTE → APROBADA → RECIBIDA`: transición forward validada.
-- `→ CANCELADA`: requiere `motivo_cancelacion`, solo si `pagado === 0` (si ya se abonó
-  no se puede cancelar); marca `cuentas_por_pagar.estado = 'CANCELADA'` (o elimina la
-  cuenta activa).
-- Actualiza `actualizado_en`/`actualizado_por`.
+1. `JwtAuthGuard` + `PermissionsGuard` con `@RequirePermission('cobranza', 'ver'|'crear'|'editar'|'exportar')`.
+2. Blacklist de token automática (JwtStrategy → `token_blacklist` por `jti`).
+3. Auditoría SUCCESS en todas las mutaciones (`AuditService.log`).
+4. Patrón `fallir()` en fallos de negocio con `result: 'FAIL'` + `error_code`
+   (COBRO_EXCEDE_SALDO, CXC_CERRADA, CXC_CON_PAGOS) antes de lanzar la excepción.
+5. Soft deletes: `activo = false`, nunca `delete` físico.
+6. DTOs estrictos `class-validator` (`@IsUUID()`, `@IsPositive()`, `@Max(…)`).
+7. `AuditContextInterceptor` ya captura metadata/IP/session por HTTP (blindaje commiteado).
 
-**Registrar abono** (`$transaction`):
-1. Validar OC existe, no CANCELADA, y `pagado + monto <= monto`.
-2. `pagos_proveedor.create` (codigo `PAG-PROV-YYYY-NNN`).
-3. `ordenes_compra.update` (`pagado += monto`; `estado = RECIBIDA` si quedó pagada).
-4. `cuentas_por_pagar.update` (`monto_pagado += monto`; estado `PAGADA` si
-   `monto_pagado >= monto`, `PARCIAL` si no).
-5. `transacciones.create` (egreso: tipo `EGRESO`, categoria `PROVEEDORES`,
-   `entidad_tipo: 'PROVEEDOR'`, `entidad_id: proveedor_id`) → alimenta finanzas.
-6. Auditoría `PAGO_PROVEEDOR_REGISTRADO` (SUCCESS).
+### 2.6 Stats (para las 4 StatsCard del frontend)
 
-**Estado de cuenta (ledger):**
-- Resumen: `proveedores.findMany` con `_count` de OC + `aggregate _sum` monto/pagado,
-  saldo = monto − pagado.
-- Detalle: OC del proveedor ordenadas por fecha asc, saldo corrido acumulado en
-  el serializer; incluir `pagos_proveedor` si se quiere mostrar abonos
-  individuales (fase 1: cargo=OC, abono=pagado por OC).
+```
+totalPorCobrar   = SUM(saldo) de CxC activas
+vencido          = SUM(saldo) donde fecha_vencimiento < hoy
+cobradoMes       = SUM(pagos.fecha_pago) dentro del mes actual
+clientesConSaldo = COUNT(DISTINCT cliente_id con saldo > 0)
+```
 
-**Soft deletes:**
-- `proveedores`: solo si no tiene CxP con saldo pendiente (`monto_pagado < monto`).
-- `ordenes_compra`: solo si `pagado === 0`.
-- Nunca `delete` físico; usar `eliminado_en`.
+### 2.7 Seed `apps/api/scripts/seed-cobranza.ts`
 
-### 2.5 Tests (obligatorio — AGENTS.md)
+- ~8 cuentas por cobrar ligadas a clientes del seed (variedad PENDIENTE/PARCIAL/SALDADO,
+  vencidas y al corriente).
+- ~15 pagos con `cuenta_por_cobrar_id` correcto + transacciones INGRESO espejo
+  (para que `/finanzas` ya las vea).
+- Idempotente (upsert por folio/código), fuente `SYSTEM` en auditoría
+  (patrón `scripts/seed-proveedores.ts`).
 
-- `proveedores.service.spec.ts`: cada método público ≥ 1 test (Crear valida nombre,
-  listar filtra por categoría, fallir en proveedor inexistente para OC, saldo leder...).
-- `proveedores.controller.spec.ts`: cada endpoint ≥ 1 test.
-- DTO specs con `class-validator`.
-- Guards: JWT/permisos true/false.
-- `proveedores.integration.spec.ts` (DB real, `npm run test:integration`):
-  - crear proveedor → `registro_auditoria` con `PROVEEDOR_CREADO` SUCCESS.
-  - crear OC + CxP → auditoría `ORDEN_COMPRA_CREADA`.
-  - abono → `PAGO_PROVEEDOR_REGISTRADO` SUCCESS + `pagos_proveedor` persistido.
-  - Cleanup FK-safe; `registro_auditoria` inmutable se deja.
+## 3. Impacto Frontend (conexión final)
 
-## 3. Impacto Frontend (fase 2 — posterior al backend)
+Cuando el backend exista, en `apps/web/src/lib/api.ts` se sustituye el bloque de tipos
+por el cliente real:
 
-- `apps/web/src/lib/api.ts`: `proveedoresApi` (listar/crear/actualizar/eliminar/estadosCuenta)
-  + `ordenesCompraApi` (listar/crear/actualizar/cambiarEstado/abonos) con
-  `apiClient` y tipos `ProveedorDTO`, `OrdenCompraDTO`, `EstadoCuentaResumenDTO`,
-  `LedgerRowDTO`.
-- `apps/web/src/app/(dashboard)/proveedores/page.tsx`: reemplazar mock por
-  `useEffect` fetch + `Pagination` server-side + `initialLoading`/`refreshing`
-  (patrón /inventario). Mantener tabs y botones. Quitar `uid()`/mock data.
-- `formatCurrency` ya compartido — sin cambios.
+```ts
+const cobranzaApi = {
+  listar: (params) => apiClient.get<Paginated<CuentaPorCobrarDTO>>('/cobranza', { params }),
+  stats: () => apiClient.get<CobranzaStats>('/cobranza/stats'),
+  registrarCobro: (id, data: CobroCreateInput) => apiClient.post<CobroDTO>(`/cobranza/${id}/cobros`, data),
+  cobros: (id) => apiClient.get<CobroDTO[]>(`/cobranza/${id}/cobros`),
+  exportar: () => apiClient.get<Blob>('/cobranza/exportar'),
+};
+```
 
-## 4. Validación y Riesgos
+En `page.tsx`: fetches con `useEffect` (patrón proveedores), quitar mocks, paginación
+server-side, `initialLoading`. La estructura de UI NO cambia (el contrato ya está).
 
-- **Enum Prisma**: agregar valores a `AuditAction` y enum nuevo requieren
-  `ALTER TYPE ... ADD VALUE` — aditivo, seguro. La migración NO debe tocar tablas
-  existentes.
-- **Folios concurrentes**: unique constraint + 1 reintento. Si persiste el choque,
-  error controlado con `fallir()` (no 500 crudo).
-- **Doble clic en abono**: `$transaction` serializable + validación
-  `pagado + monto <= monto` dentro de la transacción. Idempotencia_key en
-  `pagos_proveedor` se difiere a fase 2 (riesgo bajo, mismo análisis que ventas).
-- **Regla de no-cancelar OC con pagos**: dato sensible — testeado con unidad
-  (rechazo) e integración (auditoría FAIL).
-- **Consistencia CxP ↔ OC**: mantenida atomáticamente en `$transaction`; el saldo del
-  frontend (ledger) debe calcularse SIEMPRE desde `ordenes_compra` (monto − pagado),
-  nunca confiar en `cuentas_por_pagar` como fuente primaria de saldo corrido en UI.
-- **Permisos RBAC**: se reutilizan los 4 existentes (`comercial.proveedores.*`) —
-  no se agregan permisos nuevos (YAGNI); órdenes/abonos usan crear/editar.
+## 4. Roadmap a largo plazo — módulos OPERACIONES y COMERCIAL
 
-## 5. Orden de ejecución sugerido
+### COMERCIAL (ciclo de dinero completo)
 
-1. Schema + migración (`npx prisma migrate dev`) + `prisma generate`.
-2. DTOs (con specs de validación).
-3. `ProveedoresService` (CRUD + estados de cuenta) + specs.
-4. `ProveedoresController` (RBAC) + specs.
-5. Lógica abonos + transacciones + specs.
-6. `ProveedoresModule` + `app.module.ts`.
-7. Integration specs (`npm run test:integration`).
-8. Fase 2 frontend (conectar API).
+| # | Flujo | Depende de | Valor |
+|---|-------|-----------|-------|
+| C1 | Cotización Aceptada → Factura + CxC (P1 de IMPLEMENTACIONES-A-FUTURO) | módulo `facturas` | El negocio mismo genera la deuda |
+| C2 | Módulo `facturas` (CFDI: timbrado, xml/pdf, factura_conceptos) | — | Facturar es requisito legal |
+| C3 | Venta POS a crédito → factura → CxC | C2 | Hoy el POS es solo contado |
+| C4 | Ledger por cliente (tabs consolidados en `/clientes`) | backend cobranza | Historial completo del cliente en un lugar |
+| C5 | Reporte cruzado CxC vs CxP (finanzas: flujo neto proyectado) | cobranza + proveedores | Tesorería predictiva |
+| C6 | Reversión de cobro (nota de crédito, motivo, auditoría WARNING) | permiso cobranza.editar | Corrección contable rastreable |
+| C7 | Conciliación bancaria (pagos ↔ transacciones ↔ estado de cuenta) | finanzas | Cierra el dinero real |
+
+### OPERACIONES (contexto que enriquece la cartera)
+
+| # | Flujo | Depende de | Valor |
+|---|-------|-----------|-------|
+| O1 | `proyecto_id` en `cuentas_por_cobrar` → cartera por obra | migración + módulo proyectos | Saber qué obra debe dinero |
+| O2 | Reporte de cartera por obra/proyecto (export agrupado) | O1 | Dirección ve morosos por obra |
+| O3 | Bitácora de renta cerrada → CxC automática (`bitacora_id`) | módulo bitacoras-renta (solo se consume) | El cargo nace sin digitación |
+| O4 | Costo de venta → utilidad por proyecto (inventario ↔ facturas ↔ proyectos, flujo 6.8) | C2 + inventario | Margen real por obra |
+| O5 | Cobranza del reporte de campo (reportes-campo → transacciones → CxC) | módulo reportes-campo | Cobrar trabajo ejecutado en campo |
+
+### Orden de ejecución
+
+```
+Fase 1 (2-3 días): migración + módulo cobranza + seed + tests        ← PRÓXIMO PASO
+Fase 2:            conectar frontend a API real (cobranza.page.tsx)
+Fase 3 (C2 → C1):  módulo facturas → cotización aceptada → CxC
+Fase 4 (O1, O2, O3): proyecto en CxC + bitácora → CxC
+Fase 5 (C4-C7, O4-O5): reportes consolidados y conciliación
+```
+
+## 5. Testing — obligatorio (AGENTS.md)
+
+- **Unit (Jest, `*.spec.ts`)**: servicio (cada método público ≥ 1 test), controller
+  (cada endpoint ≥ 1), DTOs validados con `class-validator`, guards (casos true/false).
+  Mocks de PrismaService con `@nestjs/testing`.
+- **Integración (`*.integration.spec.ts`, `npm run test:integration`)**: flujo real de
+  auditoría en PostgreSQL — crear CxC registra `CXC_CREADA`; cobro registra
+  `COBRO_REGISTRADO` + transacción en `transacciones`; FAIL registra `COBRO_EXCEDE_SALDO`.
+  Limpieza en orden FK-safe; `registro_auditoria` es inmutable (se deja).
+- Ejecutar `npx tsc --noEmit` y eslint tras cada cambio.
+
+## 6. Validación y Riesgos
+
+1. **`facturas` sin módulo NestJS**: C1/C3 no pueden ejecutarse hasta construir
+   facturación; el POST `/cobranza` manual cubre el interín.
+2. **`cuentas_por_cobrar` sin `proyecto_id`**: O1 requiere migración adicional
+   (recomendado) o derivar obra vía factura → cotización → proyecto (frágil).
+3. **Dos mundos de venta**: POS (contado, cliente string) vs facturación CFDI
+   (crédito). El plan los une solo en C3.
+4. **Reversión (C6)**: nunca `delete` de `pagos`; crear transacción de reversión
+   (INGRESO negativo / nota de crédito) y auditar.
+5. **Plantilla `proveedores`**: el módulo `cobranza` replica endpoint por endpoint el
+   patrón ya probado (auditoría, DTOs, tests) — minimiza riesgo de implementación.
+6. **Monorepo**: no hay paquete compartido de tipos en uso; los DTOs viven en el
+   backend y los contratos espejo en `apps/web/src/lib/api.ts` (consistente con
+   `proveedores`). Validar la fuente en el backend siempre.
