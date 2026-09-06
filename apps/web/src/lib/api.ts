@@ -2174,3 +2174,70 @@ export const ordenesCompraApi = {
   cambiarEstado: (id: string, data: CambiarEstadoOrdenInput) =>
     apiClient.post<OrdenCompraDTO>(`/ordenes-compra/${id}/cambiar-estado`, data),
 };
+
+// ─── Cobranza (cuentas por cobrar) ───────────────────────────────────────────
+// Contrato de la fase mock local. Fuente real: modelo `cuentas_por_cobrar` y
+// `pagos_cobranza` del backend — el módulo NestJS `cobranza` aún no existe.
+// Cuando esté listo, estos tipos se consumen vía apiClient sin tocar la UI.
+
+export type EstadoCuentaCobranza = 'PENDIENTE' | 'PARCIAL' | 'SALDADO';
+export type MetodoPagoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE';
+export type SituacionCobranza = 'AL_CORRIENTE' | 'ATRASO_LEVE' | 'ATRASO_GRAVE' | 'SALDADO';
+
+export interface CuentaPorCobrarDTO {
+  id: string;
+  clienteId: string;
+  clienteNombre: string;
+  empresa: string;
+  obra: string;
+  facturaFolio: string;
+  monto: number;
+  montoPagado: number;
+  /** Saldo restante (monto - montoPagado) */
+  saldo: number;
+  /** Fecha emisión ISO (YYYY-MM-DD) */
+  fechaEmision: string;
+  /** Fecha vencimiento ISO (YYYY-MM-DD) */
+  fechaVencimiento: string;
+  /** Días de atraso (0 si está al corriente o sin vencer) */
+  diasAtraso: number;
+  estado: EstadoCuentaCobranza;
+  situacion: SituacionCobranza;
+  ultimoCobroFecha?: string;
+}
+
+export interface CobroDTO {
+  id: string;
+  cuentaId: string;
+  clienteNombre: string;
+  monto: number;
+  /** Fecha del cobro ISO (YYYY-MM-DD) */
+  fecha: string;
+  referencia: string;
+  metodoPago: MetodoPagoCobro;
+}
+
+export interface VencimientoDTO {
+  id: string;
+  cuentaId: string;
+  clienteNombre: string;
+  obra: string;
+  monto: number;
+  fechaVencimiento: string;
+  diasAtraso: number;
+}
+
+export interface CobranzaStats {
+  totalPorCobrar: number;
+  vencido: number;
+  cobradoMes: number;
+  clientesConSaldo: number;
+}
+
+export interface CobroCreateInput {
+  cuentaId: string;
+  monto: number;
+  fecha?: string;
+  metodoPago?: MetodoPagoCobro;
+  referencia?: string;
+}

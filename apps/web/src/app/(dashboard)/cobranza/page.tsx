@@ -1,439 +1,861 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Search, DollarSign, AlertTriangle, CheckCircle2,
-  TrendingUp, Clock, ChevronRight, Plus, CreditCard,
-  Building2, CalendarDays, ReceiptText, FileText
+  Wallet, AlertTriangle, HandCoins, Building2, CreditCard, Eye,
+  SlidersHorizontal, Download, CalendarClock, ReceiptText,
 } from 'lucide-react';
-import Modal, { ModalField, inputClass } from '@/components/layout/Modal';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { FormModal, Modal, ModalHeader, ModalBody, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import {
+  type CuentaPorCobrarDTO, type CobroDTO, type VencimientoDTO, type CobranzaStats,
+  type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
+} from '@/lib/api';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type EstadoCuenta = 'Al corriente' | 'Atraso leve' | 'Atraso grave' | 'Saldado';
+// ─── Constantes ───────────────────────────────────────────────────────────────
+const PAGE_SIZE = 8;
 
-interface CuentaCliente {
-  id: string;
-  cliente: string;
-  empresa: string;
-  obra: string;
-  totalObra: number;
-  totalCobrado: number;
-  fechaUltimoAbono: string;
-  diasCredito: number;
-  estado: EstadoCuenta;
-}
-
-interface Abono {
-  id: string;
-  cuentaId: string;
-  clienteNombre: string;
-  monto: number;
-  fecha: string;
-  referencia: string;
-  formaPago: 'Transferencia' | 'Cheque' | 'Efectivo';
-}
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const cuentasIniciales: CuentaCliente[] = [
-  {
-    id: 'CC001', cliente: 'Ing. Alberto Ruiz', empresa: 'Inmobiliaria ARCO', obra: 'Fraccionamiento Valle Sur',
-    totalObra: 1200000, totalCobrado: 950000, fechaUltimoAbono: '2026-08-10', diasCredito: 30, estado: 'Al corriente',
-  },
-  {
-    id: 'CC002', cliente: 'Lic. Martha Silva', empresa: 'Gobierno CDMX', obra: 'Remodelación Centro Histórico',
-    totalObra: 4500000, totalCobrado: 1200000, fechaUltimoAbono: '2026-07-15', diasCredito: 60, estado: 'Atraso leve',
-  },
-  {
-    id: 'CC003', cliente: 'Arq. Fernanda Torres', empresa: 'Desarrollos Costa', obra: 'Residencial Lomas Norte',
-    totalObra: 850000, totalCobrado: 850000, fechaUltimoAbono: '2026-08-01', diasCredito: 30, estado: 'Saldado',
-  },
-  {
-    id: 'CC004', cliente: 'Ing. Marcos Linares', empresa: 'Constructora Omega', obra: 'Bodega Industrial Km 45',
-    totalObra: 620000, totalCobrado: 80000, fechaUltimoAbono: '2026-06-20', diasCredito: 30, estado: 'Atraso grave',
-  },
-];
-
-const abonosIniciales: Abono[] = [
-  { id: 'AB001', cuentaId: 'CC001', clienteNombre: 'Inmobiliaria ARCO', monto: 200000, fecha: '2026-08-10', referencia: 'TRF-882211', formaPago: 'Transferencia' },
-  { id: 'AB002', cuentaId: 'CC002', clienteNombre: 'Gobierno CDMX', monto: 500000, fecha: '2026-07-15', referencia: 'CHQ-004412', formaPago: 'Cheque' },
-  { id: 'AB003', cuentaId: 'CC001', clienteNombre: 'Inmobiliaria ARCO', monto: 350000, fecha: '2026-07-01', referencia: 'TRF-774400', formaPago: 'Transferencia' },
-  { id: 'AB004', cuentaId: 'CC004', clienteNombre: 'Constructora Omega', monto: 80000, fecha: '2026-06-20', referencia: 'EFE', formaPago: 'Efectivo' },
-];
-
-const estadoConfig: Record<EstadoCuenta, { color: string; bg: string; dot: string }> = {
-  'Al corriente': { color: 'text-green-700', bg: 'bg-green-100', dot: 'bg-green-500' },
-  'Atraso leve': { color: 'text-yellow-700', bg: 'bg-yellow-100', dot: 'bg-yellow-500' },
-  'Atraso grave': { color: 'text-red-700', bg: 'bg-red-100', dot: 'bg-red-500' },
-  'Saldado': { color: 'text-slate-500', bg: 'bg-slate-100', dot: 'bg-slate-400' },
+const ESTADO_LABEL: Record<EstadoCuentaCobranza, string> = {
+  PENDIENTE: 'Pendiente',
+  PARCIAL: 'Parcial',
+  SALDADO: 'Saldado',
 };
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n);
+const SITUACION_LABEL: Record<SituacionCobranza, string> = {
+  AL_CORRIENTE: 'Al corriente',
+  ATRASO_LEVE: 'Atraso leve',
+  ATRASO_GRAVE: 'Atraso grave',
+  SALDADO: 'Saldado',
+};
 
-// ─── Page ──────────────────────────────────────────────────────────────────────
+const situacionVariant: Record<SituacionCobranza, 'success' | 'warning' | 'error' | 'neutral'> = {
+  AL_CORRIENTE: 'success',
+  ATRASO_LEVE: 'warning',
+  ATRASO_GRAVE: 'error',
+  SALDADO: 'neutral',
+};
+
+const METODOS_PAGO: MetodoPagoCobro[] = ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'];
+
+const metodoLabel: Record<MetodoPagoCobro, string> = {
+  EFECTIVO: 'Efectivo',
+  TRANSFERENCIA: 'Transferencia',
+  CHEQUE: 'Cheque',
+};
+
+/** Genera un id local para el mock (el backend dará UUIDs reales). */
+const generarIdCobro = () => `cbr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+// ─── Mock data (fase 1: contrato listo, sin backend) ──────────────────────────
+const cuentasMock: CuentaPorCobrarDTO[] = [
+  {
+    id: 'cxc-0001', clienteId: 'cli-001', clienteNombre: 'Ing. Alberto Ruiz', empresa: 'Inmobiliaria ARCO',
+    obra: 'Fraccionamiento Valle Sur', facturaFolio: 'FAC-1024', monto: 1200000, montoPagado: 950000, saldo: 250000,
+    fechaEmision: '2026-07-10', fechaVencimiento: '2026-09-10', diasAtraso: 0,
+    estado: 'PARCIAL', situacion: 'AL_CORRIENTE', ultimoCobroFecha: '2026-08-10',
+  },
+  {
+    id: 'cxc-0002', clienteId: 'cli-002', clienteNombre: 'Lic. Martha Silva', empresa: 'Gobierno CDMX',
+    obra: 'Remodelación Centro Histórico', facturaFolio: 'FAC-1076', monto: 4500000, montoPagado: 1200000, saldo: 3300000,
+    fechaEmision: '2026-05-15', fechaVencimiento: '2026-07-15', diasAtraso: 52,
+    estado: 'PARCIAL', situacion: 'ATRASO_GRAVE', ultimoCobroFecha: '2026-07-15',
+  },
+  {
+    id: 'cxc-0003', clienteId: 'cli-003', clienteNombre: 'Arq. Fernanda Torres', empresa: 'Desarrollos Costa',
+    obra: 'Residencial Lomas Norte', facturaFolio: 'FAC-0991', monto: 850000, montoPagado: 850000, saldo: 0,
+    fechaEmision: '2026-06-01', fechaVencimiento: '2026-08-01', diasAtraso: 0,
+    estado: 'SALDADO', situacion: 'SALDADO', ultimoCobroFecha: '2026-08-01',
+  },
+  {
+    id: 'cxc-0004', clienteId: 'cli-004', clienteNombre: 'Ing. Marcos Linares', empresa: 'Constructora Omega',
+    obra: 'Bodega Industrial Km 45', facturaFolio: 'FAC-1102', monto: 620000, montoPagado: 80000, saldo: 540000,
+    fechaEmision: '2026-05-20', fechaVencimiento: '2026-06-20', diasAtraso: 77,
+    estado: 'PARCIAL', situacion: 'ATRASO_GRAVE', ultimoCobroFecha: '2026-06-20',
+  },
+  {
+    id: 'cxc-0005', clienteId: 'cli-005', clienteNombre: 'Ing. Rafael Beltrán', empresa: 'Consorcio Vía',
+    obra: 'Puente Los Robles', facturaFolio: 'FAC-1048', monto: 2000000, montoPagado: 1500000, saldo: 500000,
+    fechaEmision: '2026-07-28', fechaVencimiento: '2026-08-28', diasAtraso: 8,
+    estado: 'PARCIAL', situacion: 'ATRASO_LEVE', ultimoCobroFecha: '2026-08-20',
+  },
+  {
+    id: 'cxc-0006', clienteId: 'cli-006', clienteNombre: 'Lic. Sofía Herrera', empresa: 'Hotel Punta Mita',
+    obra: 'Torreón de la Playa', facturaFolio: 'FAC-1115', monto: 980000, montoPagado: 0, saldo: 980000,
+    fechaEmision: '2026-08-25', fechaVencimiento: '2026-09-25', diasAtraso: 0,
+    estado: 'PENDIENTE', situacion: 'AL_CORRIENTE',
+  },
+  {
+    id: 'cxc-0007', clienteId: 'cli-007', clienteNombre: 'Arq. Diego Núñez', empresa: 'Municipalidad de Compostela',
+    obra: 'Plaza Cívica', facturaFolio: 'FAC-0967', monto: 300000, montoPagado: 300000, saldo: 0,
+    fechaEmision: '2026-04-10', fechaVencimiento: '2026-06-10', diasAtraso: 0,
+    estado: 'SALDADO', situacion: 'SALDADO', ultimoCobroFecha: '2026-06-08',
+  },
+];
+
+const cobrosMock: CobroDTO[] = [
+  { id: 'cbr-001', cuentaId: 'cxc-0001', clienteNombre: 'Inmobiliaria ARCO', monto: 350000, fecha: '2026-07-01', referencia: 'TRF-774400', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-002', cuentaId: 'cxc-0001', clienteNombre: 'Inmobiliaria ARCO', monto: 200000, fecha: '2026-07-20', referencia: 'TRF-882211', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-003', cuentaId: 'cxc-0001', clienteNombre: 'Inmobiliaria ARCO', monto: 400000, fecha: '2026-08-10', referencia: 'TRF-901299', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-004', cuentaId: 'cxc-0002', clienteNombre: 'Gobierno CDMX', monto: 500000, fecha: '2026-06-15', referencia: 'CHQ-004412', metodoPago: 'CHEQUE' },
+  { id: 'cbr-005', cuentaId: 'cxc-0002', clienteNombre: 'Gobierno CDMX', monto: 700000, fecha: '2026-07-15', referencia: 'CHQ-005033', metodoPago: 'CHEQUE' },
+  { id: 'cbr-006', cuentaId: 'cxc-0003', clienteNombre: 'Desarrollos Costa', monto: 500000, fecha: '2026-07-10', referencia: 'TRF-654321', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-007', cuentaId: 'cxc-0003', clienteNombre: 'Desarrollos Costa', monto: 350000, fecha: '2026-08-01', referencia: 'TRF-660011', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-008', cuentaId: 'cxc-0004', clienteNombre: 'Constructora Omega', monto: 80000, fecha: '2026-06-20', referencia: 'EFE-0001', metodoPago: 'EFECTIVO' },
+  { id: 'cbr-009', cuentaId: 'cxc-0005', clienteNombre: 'Consorcio Vía', monto: 900000, fecha: '2026-08-10', referencia: 'TRF-102933', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-010', cuentaId: 'cxc-0005', clienteNombre: 'Consorcio Vía', monto: 600000, fecha: '2026-08-20', referencia: 'TRF-112244', metodoPago: 'TRANSFERENCIA' },
+  { id: 'cbr-011', cuentaId: 'cxc-0007', clienteNombre: 'Municipalidad de Compostela', monto: 300000, fecha: '2026-06-08', referencia: 'CHQ-003377', metodoPago: 'CHEQUE' },
+];
+
+const hoyISO = new Date().toISOString().split('T')[0];
+const mesActual = hoyISO.slice(0, 7); // YYYY-MM
+
+// ─── Página ───────────────────────────────────────────────────────────────────
 export default function CobranzaPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
-  const [tab, setTab] = useState<'cuentas' | 'abonos' | 'vencimientos'>('cuentas');
-  const [cuentas, setCuentas] = useState<CuentaCliente[]>(cuentasIniciales);
-  const [abonos, setAbonos] = useState<Abono[]>(abonosIniciales);
+
+  // ── Permisos RBAC (seed: comercial.cobranza) ──
+  const vista = user?.vistas?.find((v) => v.ruta === '/cobranza');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeExportar = vista?.puedeExportar ?? false;
+
+  // ── Datos (fase mock local) ──
+  const [cuentas, setCuentas] = useState<CuentaPorCobrarDTO[]>(cuentasMock);
+  const [cobros, setCobros] = useState<CobroDTO[]>(cobrosMock);
+
+  // ── UI state ──
+  const [tab, setTab] = useState<'cuentas' | 'cobros' | 'vencimientos'>('cuentas');
   const [search, setSearch] = useState('');
-  const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null);
-  const [modalAbono, setModalAbono] = useState(false);
-  const [formAbono, setFormAbono] = useState({ monto: '', referencia: '', formaPago: 'Transferencia' });
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [pageCuentas, setPageCuentas] = useState(1);
+  const [pageCobros, setPageCobros] = useState(1);
+  const [pageVenc, setPageVenc] = useState(1);
 
-  // Stats
-  const totalPorCobrar = cuentas.reduce((a, c) => a + Math.max(0, c.totalObra - c.totalCobrado), 0);
-  const enAtraso = cuentas.filter(c => c.estado === 'Atraso grave' || c.estado === 'Atraso leve').length;
-  const totalCobrado = cuentas.reduce((a, c) => a + c.totalCobrado, 0);
-  const totalObras = cuentas.reduce((a, c) => a + c.totalObra, 0);
+  // ── Modal registrar cobro ──
+  const [cobroModal, setCobroModal] = useState(false);
+  const [cobroForm, setCobroForm] = useState({ cuentaId: '', monto: '', fecha: hoyISO, metodoPago: 'TRANSFERENCIA' as MetodoPagoCobro, referencia: '' });
 
-  const cuentasFiltradas = cuentas.filter(c =>
-    c.cliente.toLowerCase().includes(search.toLowerCase()) ||
-    c.empresa.toLowerCase().includes(search.toLowerCase()) ||
-    c.obra.toLowerCase().includes(search.toLowerCase())
+  // ── Modal estado de cuenta (ledger) ──
+  const [ledgerCuenta, setLedgerCuenta] = useState<CuentaPorCobrarDTO | null>(null);
+
+  // ── Derivados: stats ──
+  const stats: CobranzaStats = useMemo(() => {
+    const totalPorCobrar = cuentas.reduce((acc, c) => acc + c.saldo, 0);
+    const vencido = cuentas
+      .filter((c) => c.diasAtraso > 0)
+      .reduce((acc, c) => acc + c.saldo, 0);
+    const cobradoMes = cobros
+      .filter((c) => c.fecha.startsWith(mesActual))
+      .reduce((acc, c) => acc + c.monto, 0);
+    const clientesConSaldo = cuentas.filter((c) => c.saldo > 0).length;
+    return { totalPorCobrar, vencido, cobradoMes, clientesConSaldo };
+  }, [cuentas, cobros]);
+
+  // ── Derivados: vencimientos ──
+  const vencimientos: VencimientoDTO[] = useMemo(
+    () =>
+      cuentas
+        .filter((c) => c.saldo > 0)
+        .map((c) => ({
+          id: `venc-${c.id}`,
+          cuentaId: c.id,
+          clienteNombre: c.empresa,
+          obra: c.obra,
+          monto: c.saldo,
+          fechaVencimiento: c.fechaVencimiento,
+          diasAtraso: c.diasAtraso,
+        })),
+    [cuentas],
   );
 
-  const handleAbono = () => {
-    if (!selectedCuenta) return;
-    const monto = parseFloat(formAbono.monto);
-    if (!monto || monto <= 0) { showToast('Ingresa un monto válido.', 'error'); return; }
-    const pendiente = selectedCuenta.totalObra - selectedCuenta.totalCobrado;
-    if (monto > pendiente) { showToast(`El abono no puede superar el saldo (${fmt(pendiente)}).`, 'error'); return; }
+  // ── Búsqueda y filtros ──
+  const activeFilters: ActiveFilter[] = useMemo(
+    () =>
+      Object.entries(filterValues)
+        .filter(([, v]) => v)
+        .map(([key, value]) => ({
+          key,
+          label:
+            key === 'estado' ? 'Estado'
+            : key === 'situacion' ? 'Situación'
+            : key === 'metodo' ? 'Método'
+            : 'Rango',
+          value:
+            key === 'estado' ? (ESTADO_LABEL[value as EstadoCuentaCobranza] ?? value)
+            : key === 'situacion' ? (SITUACION_LABEL[value as SituacionCobranza] ?? value)
+            : key === 'metodo' ? (metodoLabel[value as MetodoPagoCobro] ?? value)
+            : value === 'vencido' ? 'Vencido' : 'Por vencer',
+        })),
+    [filterValues],
+  );
 
-    const nuevo: Abono = {
-      id: `AB${Date.now()}`,
-      cuentaId: selectedCuenta.id,
-      clienteNombre: selectedCuenta.empresa,
-      monto,
-      fecha: new Date().toISOString().split('T')[0],
-      referencia: formAbono.referencia || 'Sin referencia',
-      formaPago: formAbono.formaPago as Abono['formaPago'],
-    };
+  const filterFields: FilterField[] =
+    tab === 'cuentas'
+      ? [
+          { key: 'estado', label: 'Estado', type: 'select', options: (Object.keys(ESTADO_LABEL) as EstadoCuentaCobranza[]).map((e) => ({ value: e, label: ESTADO_LABEL[e] })) },
+          { key: 'situacion', label: 'Situación', type: 'select', options: (Object.keys(SITUACION_LABEL) as SituacionCobranza[]).map((s) => ({ value: s, label: SITUACION_LABEL[s] })) },
+        ]
+      : tab === 'cobros'
+        ? [{ key: 'metodo', label: 'Método', type: 'select', options: METODOS_PAGO.map((m) => ({ value: m, label: metodoLabel[m] })) }]
+        : [{ key: 'rango', label: 'Rango', type: 'select', options: [{ value: 'vencido', label: 'Vencido' }, { value: 'por_vencer', label: 'Por vencer' }] }];
 
-    const nuevoTotalCobrado = selectedCuenta.totalCobrado + monto;
-    const nuevoEstado: EstadoCuenta = nuevoTotalCobrado >= selectedCuenta.totalObra ? 'Saldado' : 'Al corriente';
+  const filtraCuenta = useMemo(
+    () =>
+      cuentas.filter((c) => {
+        // Búsqueda
+        const q = search.toLowerCase();
+        const matchQ =
+          !q ||
+          c.clienteNombre.toLowerCase().includes(q) ||
+          c.empresa.toLowerCase().includes(q) ||
+          c.obra.toLowerCase().includes(q) ||
+          c.facturaFolio.toLowerCase().includes(q);
+        // Filtros
+        const matchEstado = !filterValues.estado || c.estado === filterValues.estado;
+        const matchSituacion = !filterValues.situacion || c.situacion === filterValues.situacion;
+        return matchQ && matchEstado && matchSituacion;
+      }),
+    [cuentas, search, filterValues],
+  );
 
-    setCuentas(prev => prev.map(c =>
-      c.id === selectedCuenta.id
-        ? { ...c, totalCobrado: nuevoTotalCobrado, fechaUltimoAbono: nuevo.fecha, estado: nuevoEstado }
-        : c
-    ));
-    setAbonos(prev => [nuevo, ...prev]);
-    setModalAbono(false);
-    setFormAbono({ monto: '', referencia: '', formaPago: 'Transferencia' });
-    setSelectedCuenta(null);
-    showToast(`✅ Abono de ${fmt(monto)} registrado para ${selectedCuenta.empresa}.`, 'success');
+  const filtraCobro = useMemo(
+    () =>
+      cobros.filter((c) => {
+        const q = search.toLowerCase();
+        const matchQ =
+          !q ||
+          c.clienteNombre.toLowerCase().includes(q) ||
+          c.referencia.toLowerCase().includes(q);
+        const matchMetodo = !filterValues.metodo || c.metodoPago === filterValues.metodo;
+        return matchQ && matchMetodo;
+      }),
+    [cobros, search, filterValues],
+  );
+
+  const filtraVenc = useMemo(
+    () =>
+      vencimientos.filter((v) => {
+        const q = search.toLowerCase();
+        const matchQ =
+          !q ||
+          v.clienteNombre.toLowerCase().includes(q) ||
+          v.obra.toLowerCase().includes(q);
+        const matchRango =
+          !filterValues.rango ||
+          (filterValues.rango === 'vencido' ? v.diasAtraso > 0 : v.diasAtraso === 0);
+        return matchQ && matchRango;
+      }),
+    [vencimientos, search, filterValues],
+  );
+
+  // Paginación client-side (fase mock)
+  const pagina = (lista: unknown[]) => Math.max(1, Math.ceil(lista.length / PAGE_SIZE));
+
+  const cuentasPagina = useMemo(
+    () => filtraCuenta.slice((pageCuentas - 1) * PAGE_SIZE, pageCuentas * PAGE_SIZE),
+    [filtraCuenta, pageCuentas],
+  );
+  const cobrosPagina = useMemo(
+    () => filtraCobro.slice((pageCobros - 1) * PAGE_SIZE, pageCobros * PAGE_SIZE),
+    [filtraCobro, pageCobros],
+  );
+  const vencPagina = useMemo(
+    () => filtraVenc.slice((pageVenc - 1) * PAGE_SIZE, pageVenc * PAGE_SIZE),
+    [filtraVenc, pageVenc],
+  );
+
+  const handleSearch = (val?: string) => {
+    const q = val ?? search;
+    setSearch(q);
+    setPageCuentas(1);
+    setPageCobros(1);
+    setPageVenc(1);
   };
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+  const handleFilterChange = (key: string, value: string) => {
+    const next = { ...filterValues };
+    if (value) next[key] = value;
+    else delete next[key];
+    setFilterValues(next);
+    setPageCuentas(1);
+    setPageCobros(1);
+    setPageVenc(1);
+  };
+
+  const handleClearFilters = () => {
+    setFilterValues({});
+    setPageCuentas(1);
+    setPageCobros(1);
+    setPageVenc(1);
+  };
+
+  const handleRemoveFilter = (key: string) => handleFilterChange(key, '');
+
+  // ── Handlers: cobros ──
+  const openRegistrarCobro = (cuenta?: CuentaPorCobrarDTO) => {
+    setCobroForm({
+      cuentaId: cuenta?.id ?? '',
+      monto: '',
+      fecha: hoyISO,
+      metodoPago: 'TRANSFERENCIA',
+      referencia: '',
+    });
+    setCobroModal(true);
+  };
+
+  const cuentaSeleccionada = cuentas.find((c) => c.id === cobroForm.cuentaId);
+
+  const handleRegistrarCobro = () => {
+    const cuenta = cuentaSeleccionada;
+    if (!cuenta) {
+      showToast('Selecciona una cuenta por cobrar.', 'error');
+      return;
+    }
+    const monto = parseFloat(cobroForm.monto);
+    if (!monto || monto <= 0) {
+      showToast('Ingresa un monto válido.', 'error');
+      return;
+    }
+    if (monto > cuenta.saldo) {
+      showToast(`El cobro no puede superar el saldo (${formatCurrency(cuenta.saldo)}).`, 'error');
+      return;
+    }
+
+    const nuevo: CobroDTO = {
+      id: generarIdCobro(),
+      cuentaId: cuenta.id,
+      clienteNombre: cuenta.empresa,
+      monto,
+      fecha: cobroForm.fecha || hoyISO,
+      referencia: cobroForm.referencia.trim() || 'Sin referencia',
+      metodoPago: cobroForm.metodoPago,
+    };
+
+    const nuevoPagado = cuenta.montoPagado + monto;
+    const nuevoSaldo = Math.max(0, cuenta.saldo - monto);
+    const nuevoEstado: EstadoCuentaCobranza = nuevoSaldo === 0 ? 'SALDADO' : cuenta.estado === 'PENDIENTE' ? 'PARCIAL' : 'PARCIAL';
+
+    setCuentas((prev) =>
+      prev.map((c) =>
+        c.id === cuenta.id
+          ? {
+              ...c,
+              montoPagado: nuevoPagado,
+              saldo: nuevoSaldo,
+              estado: nuevoEstado,
+              situacion: nuevoSaldo === 0 ? 'SALDADO' : c.situacion,
+              ultimoCobroFecha: nuevo.fecha,
+            }
+          : c,
+      ),
+    );
+    setCobros((prev) => [nuevo, ...prev]);
+    setCobroModal(false);
+    showToast(`✅ Cobro de ${formatCurrency(monto)} registrado para ${cuenta.empresa}.`, 'success');
+  };
+
+  // ── Exportar CSV del tab activo (RBAC: exportar) ──
+  const handleExportar = () => {
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines: (string | number)[][] =
+      tab === 'cuentas'
+        ? [['Cliente', 'Obra', 'Factura', 'Total', 'Pagado', 'Saldo', 'Vencimiento', 'Estado'],
+           ...filtraCuenta.map((c) => [c.empresa, c.obra, c.facturaFolio, c.monto, c.montoPagado, c.saldo, c.fechaVencimiento, ESTADO_LABEL[c.estado]])]
+        : tab === 'cobros'
+          ? [['Fecha', 'Cliente', 'Referencia', 'Método', 'Monto'],
+             ...filtraCobro.map((c) => [c.fecha, c.clienteNombre, c.referencia, metodoLabel[c.metodoPago], c.monto])]
+          : [['Cliente', 'Obra', 'Vencimiento', 'Días atraso', 'Monto'],
+             ...filtraVenc.map((v) => [v.clienteNombre, v.obra, v.fechaVencimiento, v.diasAtraso, v.monto])];
+
+    const csv = lines.map((row) => row.map(esc).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cobranza-${tab}-${hoyISO}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('✅ Reporte exportado a CSV.', 'success');
+  };
+
+  // ── Columnas: cuentas por cobrar ──
+  const cuentaColumns: Column<CuentaPorCobrarDTO>[] = [
+    {
+      key: 'cliente',
+      header: 'Cliente',
+      minWidth: '220px',
+      nowrap: true,
+      render: (c) => (
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Crédito y Cobranza</h1>
-          <p className="text-slate-500 font-medium">Saldos por cliente · Estados de cuenta · Control de abonos</p>
+          <p className="font-semibold text-slate-800 truncate">{c.empresa}</p>
+          <p className="text-xs text-slate-400 truncate">{c.clienteNombre} · {c.obra}</p>
         </div>
-      </div>
+      ),
+    },
+    { key: 'factura', header: 'Factura', minWidth: '110px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs font-semibold">{c.facturaFolio}</span> },
+    { key: 'monto', header: 'Total', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{formatCurrency(c.monto)}</span> },
+    { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-green-600 font-medium">{formatCurrency(c.montoPagado)}</span> },
+    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-slate-900">{formatCurrency(c.saldo)}</span> },
+    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-500 text-sm">{c.fechaVencimiento}</span> },
+    {
+      key: 'situacion',
+      header: 'Situación',
+      minWidth: '130px',
+      nowrap: true,
+      render: (c) => <Badge variant={situacionVariant[c.situacion]} dot>{SITUACION_LABEL[c.situacion]}</Badge>,
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'center',
+      minWidth: '240px',
+      nowrap: true,
+      render: (c) => (
+        <div className="flex items-center justify-center gap-1">
+          {c.saldo > 0 && puedeCrear && (
+            <Button variant="primary" size="sm" icon={<CreditCard className="w-3.5 h-3.5" />} onClick={() => openRegistrarCobro(c)}>
+              Registrar cobro
+            </Button>
+          )}
+          <Button variant="outline" size="sm" icon={<Eye className="w-3.5 h-3.5" />} onClick={() => setLedgerCuenta(c)}>
+            Ver estado de cuenta
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  // ── Columnas: movimientos de cobro ──
+  const cobroColumns: Column<CobroDTO>[] = [
+    { key: 'fecha', header: 'Fecha', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{c.fecha}</span> },
+    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (c) => <span className="font-semibold text-slate-800 truncate">{c.clienteNombre}</span> },
+    { key: 'referencia', header: 'Referencia', minWidth: '130px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs">{c.referencia}</span> },
+    {
+      key: 'metodo',
+      header: 'Método',
+      minWidth: '130px',
+      nowrap: true,
+      render: (c) => (
+        <Badge variant={c.metodoPago === 'CHEQUE' ? 'info' : c.metodoPago === 'EFECTIVO' ? 'warning' : 'success'}>{metodoLabel[c.metodoPago]}</Badge>
+      ),
+    },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-green-600">{formatCurrency(c.monto)}</span> },
+  ];
+
+  // ── Columnas: vencimientos ──
+  const vencColumns: Column<VencimientoDTO>[] = [
+    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (v) => <span className="font-semibold text-slate-800 truncate">{v.clienteNombre}</span> },
+    { key: 'obra', header: 'Obra', minWidth: '220px', nowrap: true, render: (v) => <span className="text-slate-500 truncate">{v.obra}</span> },
+    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (v) => <span className="text-slate-600 font-medium">{v.fechaVencimiento}</span> },
+    {
+      key: 'dias',
+      header: 'Días atraso',
+      minWidth: '110px',
+      align: 'right',
+      nowrap: true,
+      render: (v) =>
+        v.diasAtraso > 0 ? (
+          <span className="inline-flex items-center gap-1 text-red-600 font-bold">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {v.diasAtraso} días
+          </span>
+        ) : (
+          <span className="text-green-600 font-semibold">Al corriente</span>
+        ),
+    },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (v) => <span className="font-black text-slate-900">{formatCurrency(v.monto)}</span> },
+  ];
+
+  // ── Ledger (movimientos por cuenta) ──
+  const ledgerMovimientos = useMemo(
+    () => (ledgerCuenta ? cobros.filter((c) => c.cuentaId === ledgerCuenta.id) : []),
+    [ledgerCuenta, cobros],
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Crédito y Cobranza"
+        subtitle="Saldos por cliente · Estados de cuenta · Control de cobros"
+        action={
+          puedeExportar && (
+            <Button variant="secondary" size="md" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+              Exportar
+            </Button>
+          )
+        }
+      />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card border-l-4 border-l-red-500 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Por Cobrar</p>
-              <h4 className="text-lg font-black text-red-600">{fmt(totalPorCobrar)}</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-yellow-400 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-yellow-50 text-yellow-500 rounded-xl flex items-center justify-center shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">En Atraso</p>
-              <h4 className="text-lg font-black text-yellow-600">{enAtraso} clientes</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-green-500 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cobrado</p>
-              <h4 className="text-lg font-black text-green-600">{fmt(totalCobrado)}</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-primary py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-50 text-primary rounded-xl flex items-center justify-center shrink-0">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">% Cobrado</p>
-              <h4 className="text-lg font-black text-slate-900">{totalObras > 0 ? Math.round((totalCobrado / totalObras) * 100) : 0}%</h4>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatsCard icon={<Wallet className="w-5 h-5" />} label="Por cobrar" value={formatCurrency(stats.totalPorCobrar)} color="error" />
+        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" />
+        <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" />
+        <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" />
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-        {(['cuentas', 'abonos', 'vencimientos'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${tab === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            {t === 'cuentas' ? 'Cuentas por Cobrar' : t === 'abonos' ? 'Historial de Abonos' : 'Vencimientos'}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      {tab === 'cuentas' && (
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cliente, empresa u obra..."
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-primary/50 transition-all text-sm font-medium"
-          />
-        </div>
-      )}
-
-      {/* ─── CUENTAS TAB ─────────────────────────────────────────────────────── */}
-      {tab === 'cuentas' && (
-        <div className="space-y-4">
-          {cuentasFiltradas.map(c => {
-            const saldo = c.totalObra - c.totalCobrado;
-            const pct = Math.round((c.totalCobrado / c.totalObra) * 100);
-            const cfg = estadoConfig[c.estado];
-            return (
-              <div key={c.id} className="card group hover:border-primary/30">
-                <div className="flex flex-col md:flex-row md:items-center gap-4">
-                  {/* Left info */}
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
-                      {c.empresa[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-black text-slate-900 text-sm">{c.empresa}</h3>
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${cfg.bg} ${cfg.color}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                          {c.estado}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 font-medium truncate">{c.obra}</p>
-                      <p className="text-[10px] text-slate-400">Último abono: {c.fechaUltimoAbono} · {c.diasCredito} días crédito</p>
-                    </div>
-                  </div>
-
-                  {/* Progress */}
-                  <div className="flex-1 min-w-48">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-500 font-medium">Cobrado</span>
-                      <span className="font-bold text-slate-700">{pct}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between mt-1 text-[10px]">
-                      <span className="text-green-600 font-bold">{fmt(c.totalCobrado)}</span>
-                      <span className="text-slate-400">de {fmt(c.totalObra)}</span>
-                    </div>
-                  </div>
-
-                  {/* Right: saldo + action */}
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo</p>
-                      <p className={`font-black text-lg ${saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(saldo)}</p>
-                    </div>
-                    {saldo > 0 && (
-                      <button
-                        onClick={() => { setSelectedCuenta(c); setModalAbono(true); }}
-                        className="btn-primary flex items-center gap-2 text-xs py-2 px-4 whitespace-nowrap"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Abonar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {cuentasFiltradas.length === 0 && (
-            <div className="text-center py-16 text-slate-400 font-medium">No se encontraron cuentas.</div>
-          )}
-        </div>
-      )}
-
-      {/* ─── ABONOS TAB ──────────────────────────────────────────────────────── */}
-      {tab === 'abonos' && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia</th>
-                  <th className="text-center px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Forma</th>
-                  <th className="text-right px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {abonos.map(a => (
-                  <tr key={a.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-slate-500 font-medium text-xs">{a.fecha}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs shrink-0">
-                          {a.clienteNombre[0]}
-                        </div>
-                        <span className="font-bold text-slate-700 text-xs">{a.clienteNombre}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 text-xs font-medium">{a.referencia}</td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                        a.formaPago === 'Transferencia' ? 'bg-blue-100 text-blue-700' :
-                        a.formaPago === 'Cheque' ? 'bg-purple-100 text-purple-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {a.formaPago}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-black text-green-600 text-base">{fmt(a.monto)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ─── VENCIMIENTOS TAB ────────────────────────────────────────────────── */}
-      {tab === 'vencimientos' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {cuentas
-              .filter(c => c.estado !== 'Saldado')
-              .sort((a, b) => {
-                const order: Record<EstadoCuenta, number> = { 'Atraso grave': 0, 'Atraso leve': 1, 'Al corriente': 2, 'Saldado': 3 };
-                return order[a.estado] - order[b.estado];
-              })
-              .map(c => {
-                const saldo = c.totalObra - c.totalCobrado;
-                const cfg = estadoConfig[c.estado];
-                const diasDesdeAbono = Math.floor(
-                  (new Date().getTime() - new Date(c.fechaUltimoAbono).getTime()) / (1000 * 60 * 60 * 24)
-                );
-                return (
-                  <div key={c.id} className={`card border-l-4 ${c.estado === 'Atraso grave' ? 'border-l-red-500' : c.estado === 'Atraso leve' ? 'border-l-yellow-400' : 'border-l-green-400'}`}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-black text-slate-900 text-sm">{c.empresa}</h3>
-                        <p className="text-xs text-slate-500">{c.obra}</p>
-                      </div>
-                      <span className={`text-[10px] font-black px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
-                        {c.estado}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 text-center bg-slate-50 rounded-xl p-3">
-                      <div>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">Saldo</p>
-                        <p className="font-black text-red-600 text-sm">{fmt(saldo)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">Días sin abono</p>
-                        <p className={`font-black text-sm ${diasDesdeAbono > c.diasCredito ? 'text-red-600' : 'text-slate-700'}`}>{diasDesdeAbono}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">Límite crédito</p>
-                        <p className="font-black text-slate-700 text-sm">{c.diasCredito} días</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => { setSelectedCuenta(c); setModalAbono(true); }}
-                      className="mt-3 w-full py-2 bg-primary/10 text-primary font-bold text-xs rounded-lg hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
-                    >
-                      <CreditCard className="w-3.5 h-3.5" /> Registrar Abono
-                    </button>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
-
-      {/* ─── Modal Abono ─────────────────────────────────────────────────────── */}
-      {selectedCuenta && (
-        <Modal
-          isOpen={modalAbono}
-          onClose={() => { setModalAbono(false); setSelectedCuenta(null); setFormAbono({ monto: '', referencia: '', formaPago: 'Transferencia' }); }}
-          onConfirm={handleAbono}
-          title="Registrar Abono"
-          confirmLabel="Confirmar Abono"
-        >
-          <div className="bg-slate-50 rounded-xl p-4 space-y-1">
-            <p className="font-black text-slate-700">{selectedCuenta.empresa}</p>
-            <p className="text-xs text-slate-500">{selectedCuenta.obra}</p>
-            <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-200">
-              <div>
-                <p className="text-[10px] text-slate-400">Total obra</p>
-                <p className="font-black text-slate-700">{fmt(selectedCuenta.totalObra)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-slate-400">Saldo pendiente</p>
-                <p className="font-black text-red-600">{fmt(selectedCuenta.totalObra - selectedCuenta.totalCobrado)}</p>
-              </div>
+      <Tabs
+        tabs={[
+          { key: 'cuentas', label: 'Cuentas por cobrar', icon: <ReceiptText className="w-4 h-4" />, count: filtraCuenta.length },
+          { key: 'cobros', label: 'Movimientos de cobro', icon: <HandCoins className="w-4 h-4" />, count: filtraCobro.length },
+          { key: 'vencimientos', label: 'Vencimientos', icon: <CalendarClock className="w-4 h-4" />, count: filtraVenc.length },
+        ]}
+        onChange={(key) => {
+          setTab(key as 'cuentas' | 'cobros' | 'vencimientos');
+          setSearch('');
+          setFilterValues({});
+          setShowFilters(false);
+          setPageCuentas(1);
+          setPageCobros(1);
+          setPageVenc(1);
+        }}
+      >
+        {/* ─── CUENTAS POR COBRAR ─────────────────────────────────────── */}
+        <TabPanel tabKey="cuentas">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar cliente, empresa, obra o factura..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
             </div>
+
+            <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
+
+            {cuentasPagina.length === 0 ? (
+              <EmptyState
+                title="Sin cuentas por cobrar"
+                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={cuentaColumns}
+                  data={cuentasPagina}
+                  keyExtractor={(c) => c.id}
+                  emptyText="No se encontraron cuentas."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={pageCuentas}
+                  totalPages={pagina(filtraCuenta)}
+                  totalRecords={filtraCuenta.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPageCuentas}
+                />
+              </>
+            )}
           </div>
-          <ModalField label="Monto del Abono (MXN) *">
+        </TabPanel>
+
+        {/* ─── MOVIMIENTOS DE COBRO ───────────────────────────────────── */}
+        <TabPanel tabKey="cobros">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar cliente o referencia..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
+
+            {cobrosPagina.length === 0 ? (
+              <EmptyState
+                title="Sin movimientos de cobro"
+                subtitle="No se encontraron cobros para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={cobroColumns}
+                  data={cobrosPagina}
+                  keyExtractor={(c) => c.id}
+                  emptyText="No se encontraron cobros."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={pageCobros}
+                  totalPages={pagina(filtraCobro)}
+                  totalRecords={filtraCobro.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPageCobros}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+
+        {/* ─── VENCIMIENTOS ───────────────────────────────────────────── */}
+        <TabPanel tabKey="vencimientos">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar cliente u obra..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
+
+            {vencPagina.length === 0 ? (
+              <EmptyState
+                title="Sin vencimientos pendientes"
+                subtitle="No hay saldos por cobrar con vencimientos para este rango."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={vencColumns}
+                  data={vencPagina}
+                  keyExtractor={(v) => v.id}
+                  emptyText="No se encontraron vencimientos."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={pageVenc}
+                  totalPages={pagina(filtraVenc)}
+                  totalRecords={filtraVenc.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPageVenc}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+      </Tabs>
+
+      {/* ─── Modal: Registrar cobro ────────────────────────────────────── */}
+      <FormModal
+        open={cobroModal}
+        onClose={() => setCobroModal(false)}
+        onCancel={() => setCobroModal(false)}
+        title="Registrar cobro"
+        subtitle="Registra un pago parcial o total contra una cuenta por cobrar."
+        submitLabel="Registrar Cobro"
+        cancelLabel="Cancelar"
+        onSubmit={handleRegistrarCobro}
+      >
+        <ModalField label="Cuenta por cobrar" required>
+          <select
+            className={modalSelectClass}
+            value={cobroForm.cuentaId}
+            onChange={(e) => setCobroForm({ ...cobroForm, cuentaId: e.target.value })}
+          >
+            <option value="">Selecciona la cuenta...</option>
+            {cuentas
+              .filter((c) => c.saldo > 0)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.empresa} — {c.obra} (saldo {formatCurrency(c.saldo)})
+                </option>
+              ))}
+          </select>
+        </ModalField>
+
+        {cuentaSeleccionada && (
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+            Factura <span className="font-bold text-slate-700">{cuentaSeleccionada.facturaFolio}</span> · Saldo actual{' '}
+            <span className="font-bold text-slate-700">{formatCurrency(cuentaSeleccionada.saldo)}</span>
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Monto" required>
             <input
               type="number"
-              className={inputClass}
+              min={0}
+              step="0.01"
+              className={modalInputClass}
               placeholder="0.00"
-              value={formAbono.monto}
-              onChange={e => setFormAbono({ ...formAbono, monto: e.target.value })}
+              value={cobroForm.monto}
+              onChange={(e) => setCobroForm({ ...cobroForm, monto: e.target.value })}
             />
           </ModalField>
-          <ModalField label="Forma de Pago">
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={cobroForm.fecha}
+              onChange={(e) => setCobroForm({ ...cobroForm, fecha: e.target.value })}
+            />
+          </ModalField>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Método de pago" required>
             <select
-              className={inputClass}
-              value={formAbono.formaPago}
-              onChange={e => setFormAbono({ ...formAbono, formaPago: e.target.value })}
+              className={modalSelectClass}
+              value={cobroForm.metodoPago}
+              onChange={(e) => setCobroForm({ ...cobroForm, metodoPago: e.target.value as MetodoPagoCobro })}
             >
-              <option value="Transferencia">Transferencia bancaria</option>
-              <option value="Cheque">Cheque</option>
-              <option value="Efectivo">Efectivo</option>
+              {METODOS_PAGO.map((m) => (
+                <option key={m} value={m}>
+                  {metodoLabel[m]}
+                </option>
+              ))}
             </select>
           </ModalField>
-          <ModalField label="Referencia / Folio de pago">
+          <ModalField label="Referencia" hint="Folio de transferencia, cheque o efectivo.">
             <input
-              className={inputClass}
-              placeholder="TRF-000000 / CHQ-0000"
-              value={formAbono.referencia}
-              onChange={e => setFormAbono({ ...formAbono, referencia: e.target.value })}
+              type="text"
+              className={modalInputClass}
+              placeholder="TRF-000000"
+              value={cobroForm.referencia}
+              onChange={(e) => setCobroForm({ ...cobroForm, referencia: e.target.value })}
             />
           </ModalField>
-        </Modal>
-      )}
+        </div>
+      </FormModal>
+
+      {/* ─── Modal: Estado de cuenta (ledger) ──────────────────────────── */}
+      <Modal open={!!ledgerCuenta} onClose={() => setLedgerCuenta(null)} size="lg">
+        <ModalHeader
+          title={`Estado de cuenta — ${ledgerCuenta?.empresa ?? ''}`}
+          subtitle={
+            ledgerCuenta
+              ? `${ledgerCuenta.obra} · Factura ${ledgerCuenta.facturaFolio}`
+              : undefined
+          }
+          onClose={() => setLedgerCuenta(null)}
+        />
+        <ModalBody>
+          {ledgerCuenta && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Facturado</p>
+                  <p className="text-lg font-black text-slate-900">{formatCurrency(ledgerCuenta.monto)}</p>
+                </div>
+                <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
+                  <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Pagado</p>
+                  <p className="text-lg font-black text-green-700">{formatCurrency(ledgerCuenta.montoPagado)}</p>
+                </div>
+                <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                  <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Saldo</p>
+                  <p className="text-lg font-black text-red-600">{formatCurrency(ledgerCuenta.saldo)}</p>
+                </div>
+              </div>
+
+              {ledgerMovimientos.length === 0 ? (
+                <EmptyState
+                  title="Sin cobros registrados"
+                  subtitle="Esta cuenta aún no tiene movimientos de cobro."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {ledgerMovimientos.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800">{metodoLabel[m.metodoPago]}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {m.fecha} · {m.referencia}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-black text-green-600 shrink-0">{formatCurrency(m.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }

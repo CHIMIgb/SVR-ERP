@@ -566,3 +566,91 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 > comparten el cruce con `transacciones` y el inventario. **P7** (precios por medida de
 > venta) puede ejecutarse en paralelo con cualquiera de ellos: es independiente del
 > módulo destino y desbloquea el catálogo de precios del POS.
+
+---
+
+## 8. Flujo completo de /cobranza — mapa de vistas relacionadas
+
+> **Contexto:** /cobranza es la vista **central del ciclo de tesorería comercial**: gestiona
+> los saldos de `cuentas_por_cobrar`, registra los cobros (`pagos`) y alimenta la caja.
+> Esta sección documenta con qué vistas convive y cómo fluye la información, para
+> ejecutar el backend de cobranza sin acoplar módulos equivocados.
+
+### 8.1 El ciclo de la información
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────────────────┐
+│ /cotizaciones│ ──►  │   /ventas    │ ──►  │     facturas (CFDI)     │
+│ (apruebas)   │      │ (POS/crédito)│      │  tabla `facturas`       │
+└─────────────┘      └─────────────┘      └───────────┬─────────────┘
+                                                      │ crea la deuda
+                                                      ▼
+┌─────────────┐                              ┌─────────────────────────┐
+│ /maquinaria │                              │  cuentas_por_cobrar     │ ◄──── /cobranza
+│ (flota/gps/ │ ────►  bitacoras_renta_      │  (tabla central: monto, │      (la vista que
+│  renta)     │          diaria              │   pagado, vencimiento,  │       gestiona todo)
+└─────────────┘                              │   estado)               │
+                                             └───────────┬─────────────┘
+                                                         │ Registrar cobro
+                                                         ▼
+┌─────────────┐                              ┌─────────────────────────┐
+│  /finanzas  │ ◄─────────────  pagos         │  /reportes + /documentos│
+│ (ingresos,  │   (tabla `pagos`: monto,      │  (CFDI timbrado,        │
+│  caja)      │    método, referencia)        │   comprobante CSV/PDF)  │
+└─────────────┘                              └─────────────────────────┘
+```
+
+### 8.2 Clasificación por módulos del sidebar
+
+**Módulo COMERCIAL — concentra TODO el ciclo de cobranza:**
+
+| Vista | Rol en el ciclo |
+|-------|-----------------|
+| `/clientes` | El deudor (toda CxC apunta a `cliente_id`) |
+| `/cotizaciones` | Origen: se aprueba → se convierte en venta |
+| `/ventas` (+ `/ventas/corte`) | Genera la factura; venta a crédito → nace la CxC |
+| `/finanzas` | Destino: el cobro entra como ingreso/caja |
+| `/proveedores` | Espejo inverso: cuentas por pagar |
+| `/cobranza` | La vista central del ciclo |
+
+**Módulo OPERACIONES — no gestiona cobranza, solo aporta contexto:**
+
+| Vista | Relación indirecta |
+|-------|--------------------|
+| `/proyectos` | Las obras/contratos que después se facturan y se cobran (la vista de cobranza muestra `obra`) |
+| `/inventario` | Los materiales vendidos = el costo detrás de cada factura |
+| `/operaciones`, `/reportes-campo`, `/criba`, `/incidentes` | Producción diaria — sin vínculo directo con CxC |
+
+**Grupo MAQUINARIA — origen del cargo por renta (ni Operaciones ni Comercial):**
+
+| Vista | Relación |
+|-------|----------|
+| `/maquinaria`, `/horometro`, `/mantenimiento`, `/combustible`, `/gps` | Las `bitacoras_renta_diaria` (cerradas) generan `cuentas_por_cobrar` vía `bitacora_id` — es el único origen del ciclo que no nace en Comercial |
+
+**Grupo SISTEMA — consumidores/registro:**
+
+| Vista | Relación |
+|-------|----------|
+| `/reportes` | Reportes de cartera, antigüedad de saldos (export CSV del tab activo) |
+| `/documentos` | CFDI de la factura/cobro (`facturas.xml_url / pdf_url`) |
+| `/configuracion` | Días de crédito, métodos de pago, condiciones |
+
+### 8.3 Flujo típico completo (crédito a cliente)
+
+1. `/cotizaciones` → se aprueba y se convierte en orden/venta.
+2. `/ventas` registra la venta a crédito → **factura** timbrada (CFDI).
+3. La factura crea `cuentas_por_cobrar` (monto = total, vencimiento = días de crédito).
+4. `/cobranza` la muestra con saldo y situación (al corriente / atraso leve / grave).
+5. El cliente paga → `/cobranza` → "Registrar cobro" → crea `pagos` y liquida `monto_pagado` (estado → SALDADO).
+6. `/finanzas` refleja el ingreso del cobro.
+7. `/documentos` guarda el comprobante/CFDI; `/reportes` lo agrega a cartera.
+
+### 8.4 Estado actual vs. pendiente
+
+- **Con API ya:** `/clientes`, `/ventas`, `/finanzas`, `/proveedores` (módulos NestJS).
+- **En Prisma pero sin endpoints aún:** `facturas`, `pagos`, `cuentas_por_cobrar`, `bitacoras_renta_diaria`.
+- **Eslabones faltantes del ciclo (backend de cobranza):**
+  1. **`ventas` → factura → `cuentas_por_cobrar`** (creación automática al facturar; hoy la factura no dispara CxC).
+  2. **`/cobranza` → `pagos`** (el "Registrar cobro" escribe en `pagos` y actualiza `cuentas_por_cobrar.monto_pagado/estado` en la misma transacción).
+  3. **Cierre del círculo en `/finanzas`**: el cobro alimenta la caja como ingreso.
+- **Frontend:** `/cobranza` reconstruida en **fase 1 (mock local)** con contrato DTO listo en `src/lib/api.ts` (`CuentaPorCobrarDTO`, `CobroDTO`, `VencimientoDTO`, `CobranzaStats`, `CobroCreateInput`) — listo para consumir el API real sin tocar la UI.
