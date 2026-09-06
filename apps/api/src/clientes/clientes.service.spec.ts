@@ -77,6 +77,12 @@ describe('ClientesService', () => {
       expect(callArgs.where.OR).toHaveLength(5);
     });
 
+    it('should filter by activo flag', async () => {
+      await service.findAll({ activo: 'true' });
+      const callArgs = prisma.clientes.findMany.mock.calls[0][0];
+      expect(callArgs.where.activo).toBe(true);
+    });
+
     it('should paginate correctly', async () => {
       await service.findAll({ page: 2, limit: 10 });
       const callArgs = prisma.clientes.findMany.mock.calls[0][0];

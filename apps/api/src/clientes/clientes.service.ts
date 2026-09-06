@@ -68,6 +68,10 @@ export class ClientesService {
       ];
     }
 
+    if (query.activo !== undefined) {
+      where.activo = query.activo === 'true';
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.clientes.findMany({
         where,

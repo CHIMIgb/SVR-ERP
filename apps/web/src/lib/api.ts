@@ -1869,10 +1869,11 @@ export interface ClienteCreateInput {
 }
 
 export const clientesApi = {
-  /** Listar clientes con búsqueda y paginación */
-  listar: (params?: { search?: string; page?: number; limit?: number }) => {
+  /** Listar clientes con búsqueda, filtro de estado y paginación */
+  listar: (params?: { search?: string; activo?: 'true' | 'false'; page?: number; limit?: number }) => {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set('search', params.search);
+    if (params?.activo) searchParams.set('activo', params.activo);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();
