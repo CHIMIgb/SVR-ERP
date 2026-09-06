@@ -16,14 +16,14 @@ export const searchBarClasses = {
   filterBtnActive: 'border-primary/30 bg-primary/5 text-primary',
 
   /* ── Filter Panel ── */
-  filterPanel: 'w-full bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4',
-  filterRow: 'flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3',
-  filterGroup: 'flex-1 space-y-1.5',
-  filterLabel: 'text-xs font-semibold text-slate-500 uppercase tracking-wider',
+  filterPanel: 'w-full bg-slate-50 border border-slate-200 rounded-xl p-4',
+  filterRow: 'flex flex-col sm:flex-row items-start sm:items-end gap-3',
+  filterGroup: 'flex flex-col gap-1 w-full sm:w-auto',
+  filterLabel: 'text-[10px] font-black text-slate-500 uppercase tracking-widest',
   filterSelect:
-    'w-full h-9 sm:h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-900 appearance-none focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200',
+    'h-10 px-3 rounded-lg border border-slate-200 text-xs font-medium bg-white focus:outline-none focus:border-primary/50 transition-all duration-200',
   filterDate:
-    'w-full h-9 sm:h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200',
+    'h-10 px-3 rounded-lg border border-slate-200 text-xs font-medium bg-white focus:outline-none focus:border-primary/50 transition-all duration-200',
 
   /* ── Active Filters Chips ── */
   chipContainer: 'flex flex-wrap items-center gap-2',

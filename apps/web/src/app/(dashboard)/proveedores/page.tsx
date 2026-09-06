@@ -3,19 +3,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, FileText, Pencil, Trash2, CreditCard, AlertCircle, XCircle, Eye, CheckCircle2,
-  Truck, ClipboardList, Wallet, ShoppingCart,
+  Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
-import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { FormModal, Modal, ModalHeader, ModalBody, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
@@ -96,6 +96,7 @@ export default function ProveedoresPage() {
   const [tab, setTab] = useState<'proveedores' | 'ordenes' | 'estados'>('proveedores');
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
   const [pageEstados, setPageEstados] = useState(1);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -796,6 +797,7 @@ export default function ProveedoresPage() {
           setTab(key as 'proveedores' | 'ordenes' | 'estados');
           setSearch('');
           setFilterValues({});
+          setShowFilters(false);
           setPageEstados(1);
         }}
       >
@@ -809,12 +811,37 @@ export default function ProveedoresPage() {
                 onSearch={handleSearch}
                 placeholder="Buscar proveedor por nombre o RFC..."
                 className="flex-1"
-                filters={filterFields}
-                activeFilters={activeFilters}
-                onFilterChange={handleFilterChange}
-                onClearFilters={handleClearFilters}
               />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
             </div>
+
+            <ActiveFilters
+              filters={activeFilters}
+              onRemove={(key) => handleFilterChange(key, '')}
+              onClearAll={handleClearFilters}
+            />
+
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
 
             {initialLoading ? (
               <EmptyState title="Cargando proveedores..." subtitle="Espera un momento." />
@@ -854,12 +881,37 @@ export default function ProveedoresPage() {
                 onSearch={handleSearch}
                 placeholder="Buscar folio, proveedor o descripción..."
                 className="flex-1"
-                filters={filterFields}
-                activeFilters={activeFilters}
-                onFilterChange={handleFilterChange}
-                onClearFilters={handleClearFilters}
               />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
             </div>
+
+            <ActiveFilters
+              filters={activeFilters}
+              onRemove={(key) => handleFilterChange(key, '')}
+              onClearAll={handleClearFilters}
+            />
+
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
 
             {initialLoading ? (
               <EmptyState title="Cargando órdenes..." subtitle="Espera un momento." />
@@ -899,12 +951,37 @@ export default function ProveedoresPage() {
                 onSearch={handleSearch}
                 placeholder="Buscar proveedor..."
                 className="flex-1"
-                filters={filterFields}
-                activeFilters={activeFilters}
-                onFilterChange={handleFilterChange}
-                onClearFilters={handleClearFilters}
               />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
             </div>
+
+            <ActiveFilters
+              filters={activeFilters}
+              onRemove={(key) => handleFilterChange(key, '')}
+              onClearAll={handleClearFilters}
+            />
+
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
 
             {resumenFiltrado.length === 0 ? (
               <EmptyState
@@ -1288,6 +1365,11 @@ export default function ProveedoresPage() {
                 ) : null}
               </div>
             </ModalBody>
+            <ModalFooter>
+              <Button variant="primary" onClick={() => setDetalleProv(null)}>
+                Cerrar
+              </Button>
+            </ModalFooter>
           </>
         )}
       </Modal>

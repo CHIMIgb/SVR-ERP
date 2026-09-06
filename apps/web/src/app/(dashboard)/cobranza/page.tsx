@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { FormModal, Modal, ModalHeader, ModalBody, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
@@ -171,7 +171,6 @@ export default function CobranzaPage() {
   const [ledgerCuenta, setLedgerCuenta] = useState<CuentaPorCobrarDTO | null>(null);
   const [ledgerMovs, setLedgerMovs] = useState<CobroDTO[]>([]);
   const [ledgerSaldo, setLedgerSaldo] = useState(0);
-  const [ledgerLoading, setLedgerLoading] = useState(false);
 
   // ── Carga de datos (patrón /proveedores: fetch + initialLoading) ──
   const fetchCuentas = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
@@ -366,31 +365,28 @@ export default function CobranzaPage() {
     });
     if (res.success && res.data) {
       setCobroModal(false);
-      showToast(`✅ Cobro de ${formatCurrency(monto)} registrado para ${cuenta.empresa}.`, 'success');
+      showToast(`Cobro de ${formatCurrency(monto)} registrado para ${cuenta.empresa}.`, 'success');
       await refetchAll();
     } else {
       showToast('No se pudo registrar el cobro.', 'error');
     }
   };
 
-  /** Abre el ledger de la cuenta y carga sus movimientos desde la API. */
+  /** Abre el ledger de la cuenta y carga sus movimientos desde la API.
+   *  La modal se abre SOLO cuando el ledger ya fue cargado: evita el
+   *  parpadeo de "Cargando..." — mismo patrón que /proveedores. */
   const openLedger = async (cuenta: CuentaPorCobrarDTO) => {
-    setLedgerCuenta(cuenta);
-    setLedgerLoading(true);
-    setLedgerMovs([]);
-    setLedgerSaldo(0);
     try {
       const res = await cobranzaApi.cobrosDeCuenta(cuenta.id);
       if (res.success && res.data) {
         setLedgerMovs(res.data.cobros);
         setLedgerSaldo(res.data.saldo);
+        setLedgerCuenta(cuenta);
       } else {
         showToast('Error al cargar el estado de cuenta.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
-    } finally {
-      setLedgerLoading(false);
     }
   };
 
@@ -415,7 +411,7 @@ export default function CobranzaPage() {
     a.download = `cobranza-${tab}-${hoyISO}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('✅ Reporte exportado a CSV.', 'success');
+    showToast('Reporte exportado a CSV.', 'success');
   };
 
   // ── Columnas: cuentas por cobrar ──
@@ -849,9 +845,7 @@ export default function CobranzaPage() {
                 </div>
               </div>
 
-              {ledgerLoading ? (
-                <EmptyState title="Cargando movimientos..." subtitle="Espera un momento." />
-              ) : ledgerMovs.length === 0 ? (
+              {ledgerMovs.length === 0 ? (
                 <EmptyState
                   title="Sin cobros registrados"
                   subtitle="Esta cuenta aún no tiene movimientos de cobro."
@@ -880,6 +874,11 @@ export default function CobranzaPage() {
             </div>
           )}
         </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setLedgerCuenta(null)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
       </Modal>
     </div>
   );
