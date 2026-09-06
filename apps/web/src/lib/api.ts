@@ -2176,9 +2176,8 @@ export const ordenesCompraApi = {
 };
 
 // ─── Cobranza (cuentas por cobrar) ───────────────────────────────────────────
-// Contrato de la fase mock local. Fuente real: modelo `cuentas_por_cobrar` y
-// `pagos_cobranza` del backend — el módulo NestJS `cobranza` aún no existe.
-// Cuando esté listo, estos tipos se consumen vía apiClient sin tocar la UI.
+// Contrato consumido por la UI. Fuente real: módulo NestJS `cobranza`
+// (modelos `cuentas_por_cobrar` y `pagos`).
 
 export type EstadoCuentaCobranza = 'PENDIENTE' | 'PARCIAL' | 'SALDADO';
 export type MetodoPagoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE';
@@ -2235,9 +2234,89 @@ export interface CobranzaStats {
 }
 
 export interface CobroCreateInput {
-  cuentaId: string;
   monto: number;
   fecha?: string;
   metodoPago?: MetodoPagoCobro;
   referencia?: string;
 }
+
+/** Ledger de cobros de una cuenta (endpoint /cobranza/:id/cobros). */
+export interface LedgerCobranzaDTO {
+  cuentaId: string;
+  saldo: number;
+  cobros: CobroDTO[];
+}
+
+export interface CobranzaCuentaCreateInput {
+  clienteId: string;
+  facturaId?: string;
+  monto: number;
+  fechaVencimiento?: string;
+}
+
+export interface CobranzaCuentaUpdateInput {
+  monto?: number;
+  fechaVencimiento?: string;
+}
+
+export const cobranzaApi = {
+  /** Listar cuentas por cobrar con búsqueda, filtros y paginación. */
+  listar: (params?: {
+    estado?: EstadoCuentaCobranza;
+    situacion?: SituacionCobranza;
+    clienteId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.situacion) searchParams.set('situacion', params.situacion);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CuentaPorCobrarDTO>>(`/cobranza${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Estadísticas globales de la cartera. */
+  stats: () => apiClient.get<CobranzaStats>('/cobranza/stats'),
+
+  /** Listar cobros (movimientos) globales con búsqueda, filtro y paginación. */
+  cobros: (params?: { metodoPago?: MetodoPagoCobro; search?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.metodoPago) searchParams.set('metodoPago', params.metodoPago);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CobroDTO>>(`/cobranza/cobros${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Listar vencimientos (cuentas con saldo pendiente). */
+  vencimientos: (params?: { search?: string; rango?: 'vencido' | 'por_vencer'; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.rango) searchParams.set('rango', params.rango);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<VencimientoDTO>>(`/cobranza/vencimientos${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<CuentaPorCobrarDTO>(`/cobranza/${id}`),
+
+  crearCuenta: (data: CobranzaCuentaCreateInput) =>
+    apiClient.post<CuentaPorCobrarDTO>('/cobranza', data),
+
+  actualizarCuenta: (id: string, data: CobranzaCuentaUpdateInput) =>
+    apiClient.patch<CuentaPorCobrarDTO>(`/cobranza/${id}`, data),
+
+  /** Ledger de movimientos de una cuenta. */
+  cobrosDeCuenta: (id: string) => apiClient.get<LedgerCobranzaDTO>(`/cobranza/${id}/cobros`),
+
+  /** Registrar cobro contra una cuenta; crea pago + ingreso en finanzas. */
+  registrarCobro: (id: string, data: CobroCreateInput) =>
+    apiClient.post<{ cobro: CobroDTO; cuenta: CuentaPorCobrarDTO }>(`/cobranza/${id}/cobros`, data),
+};

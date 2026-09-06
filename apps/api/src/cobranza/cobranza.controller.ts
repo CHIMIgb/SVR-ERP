@@ -19,6 +19,7 @@ import { CrearCuentaDto } from './dto/crear-cuenta.dto';
 import { ActualizarCuentaDto } from './dto/actualizar-cuenta.dto';
 import { RegistrarCobroDto } from './dto/registrar-cobro.dto';
 import { ListarCuentasQuery } from './dto/listar-cuentas.query';
+import { ListarCobrosQuery } from './dto/listar-cobros.query';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -61,6 +62,29 @@ export class CobranzaController {
   @Get('cobranza/exportar')
   async exportar(@Query() query: ListarCuentasQuery): Promise<string> {
     return this.cobranzaService.exportar(query);
+  }
+
+  /**
+   * GET /api/cobranza/cobros
+   * Listado global paginado de cobros registrados (tab "Cobros").
+   * Permiso: comercial.cobranza.ver
+   */
+  @RequirePermission('comercial', 'cobranza', 'ver')
+  @Get('cobranza/cobros')
+  async cobrosAll(@Query() query: ListarCobrosQuery) {
+    return this.cobranzaService.cobrosAll(query);
+  }
+
+  /**
+   * GET /api/cobranza/vencimientos
+   * Listado global paginado de cuentas con saldo pendiente,
+   * ordenadas por fecha de vencimiento (tab "Vencimientos").
+   * Permiso: comercial.cobranza.ver
+   */
+  @RequirePermission('comercial', 'cobranza', 'ver')
+  @Get('cobranza/vencimientos')
+  async vencimientos(@Query() query: ListarCuentasQuery) {
+    return this.cobranzaService.vencimientos(query);
   }
 
   /**

@@ -12,6 +12,7 @@ import { CrearCuentaDto } from './dto/crear-cuenta.dto';
 import { ActualizarCuentaDto } from './dto/actualizar-cuenta.dto';
 import { RegistrarCobroDto } from './dto/registrar-cobro.dto';
 import { ListarCuentasQuery } from './dto/listar-cuentas.query';
+import { ListarCobrosQuery } from './dto/listar-cobros.query';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -461,22 +462,120 @@ export class CobranzaService {
       where: { cuenta_por_cobrar_id: id, activo: true },
       orderBy: { fecha_pago: 'desc' },
       include: {
-        clientes: { select: { nombre: true } },
+        clientes: { select: { empresa: true } },
       },
     });
 
     return {
       cuentaId: id,
       saldo: Number(cuenta.monto) - Number(cuenta.monto_pagado),
-      cobros: cobros.map((cobro) => ({
-        id: cobro.id,
-        cuentaId: cobro.cuenta_por_cobrar_id,
-        clienteNombre: cobro.clientes?.nombre ?? '',
-        monto: Number(cobro.monto),
-        fecha: cobro.fecha_pago.toISOString(),
-        referencia: cobro.referencia ?? '—',
-        metodoPago: cobro.metodo_pago,
-      })),
+      cobros: cobros.map((cobro) => this.serializeCobro(cobro)),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  COBROS — LISTADO GLOBAL (tab "Cobros")
+  // ────────────────────────────────────────────
+  async cobrosAll(query: ListarCobrosQuery) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+    const where: Prisma.pagosWhereInput = {
+      activo: true,
+      cuenta_por_cobrar_id: { not: null },
+    };
+
+    if (query.metodoPago) {
+      where.metodo_pago = query.metodoPago;
+    }
+
+    if (query.search) {
+      where.clientes = {
+        OR: [
+          { nombre: { contains: query.search, mode: 'insensitive' } },
+          { empresa: { contains: query.search, mode: 'insensitive' } },
+        ],
+      };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.pagos.findMany({
+        where,
+        include: {
+          clientes: { select: { empresa: true } },
+        },
+        orderBy: { fecha_pago: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.pagos.count({ where }),
+    ]);
+
+    return {
+      items: items.map((cobro) => this.serializeCobro(cobro)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  VENCIMIENTOS — cartera por vencer (tab)
+  // ────────────────────────────────────────────
+  async vencimientos(query: ListarCuentasQuery) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+    const where = this.construirWhere(query);
+    // Los vencimientos solo muestran cuentas con saldo pendiente y fecha definida.
+    where.estado = { not: 'PAGADO' };
+    where.fecha_vencimiento = { not: null };
+
+    if (query.rango) {
+      const hoyLocal = inicioDeHoy();
+      where.fecha_vencimiento =
+        query.rango === 'vencido' ? { lt: hoyLocal } : { gte: hoyLocal };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.cuentas_por_cobrar.findMany({
+        where,
+        include: {
+          clientes: { select: { id: true, nombre: true, empresa: true } },
+        },
+        orderBy: [{ fecha_vencimiento: 'asc' }, { creado_en: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.cuentas_por_cobrar.count({ where }),
+    ]);
+
+    const hoy = inicioDeHoy();
+    return {
+      items: items.map((cuenta) => {
+        const saldo = Number(cuenta.monto) - Number(cuenta.monto_pagado);
+        const vencimiento = new Date(cuenta.fecha_vencimiento!);
+        const diasAtraso = Math.max(
+          0,
+          Math.floor((hoy.getTime() - vencimiento.getTime()) / 86400000),
+        );
+        return {
+          id: cuenta.id,
+          cuentaId: cuenta.id,
+          clienteNombre: cuenta.clientes.empresa,
+          obra: '',
+          monto: saldo,
+          fechaVencimiento: vencimiento.toISOString().slice(0, 10),
+          diasAtraso,
+        };
+      }),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
     };
   }
 
@@ -662,6 +761,19 @@ export class CobranzaService {
       },
     });
     return `PAG-CXC-${anio}-${String(totalAnio + 1).padStart(3, '0')}`;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private serializeCobro(cobro: any) {
+    return {
+      id: cobro.id,
+      cuentaId: cobro.cuenta_por_cobrar_id,
+      clienteNombre: cobro.clientes?.empresa ?? '',
+      monto: Number(cobro.monto),
+      fecha: cobro.fecha_pago.toISOString().slice(0, 10),
+      referencia: cobro.referencia ?? '—',
+      metodoPago: cobro.metodo_pago,
+    };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

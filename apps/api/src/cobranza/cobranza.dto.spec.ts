@@ -65,6 +65,7 @@ describe('Cobranza DTOs', () => {
       const valida = new ListarCuentasQuery();
       valida.estado = 'PARCIAL';
       valida.situacion = 'ATRASO_GRAVE';
+      valida.rango = 'vencido';
       valida.search = 'Constructora';
       valida.page = 2;
       valida.limit = 25;
@@ -75,6 +76,13 @@ describe('Cobranza DTOs', () => {
     it('rechaza estado fuera del catálogo', async () => {
       const dto = new ListarCuentasQuery();
       dto.estado = 'CANCELADA';
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('rechaza rango fuera del catálogo de vencimientos', async () => {
+      const dto = new ListarCuentasQuery();
+      dto.rango = 'proximo_mes';
       const errors = await validate(dto);
       expect(errors.length).toBeGreaterThan(0);
     });

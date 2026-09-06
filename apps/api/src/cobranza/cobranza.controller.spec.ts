@@ -11,6 +11,8 @@ describe('CobranzaController', () => {
     exportar: jest.fn(),
     findOne: jest.fn(),
     cobrosDeCuenta: jest.fn(),
+    cobrosAll: jest.fn(),
+    vencimientos: jest.fn(),
     crearCuenta: jest.fn(),
     actualizarCuenta: jest.fn(),
     registrarCobro: jest.fn(),
@@ -78,6 +80,24 @@ describe('CobranzaController', () => {
       const result = await controller.cobrosDeCuenta(ID);
       expect(service.cobrosDeCuenta).toHaveBeenCalledWith(ID);
       expect(result).toEqual({ cuentaId: ID, cobros: [] });
+    });
+  });
+
+  describe('GET /cobranza/cobros', () => {
+    it('debe listar cobros globales con filtros', async () => {
+      service.cobrosAll.mockResolvedValue({ items: [], pagination: {} });
+      const result = await controller.cobrosAll({ metodoPago: 'EFECTIVO' } as never);
+      expect(service.cobrosAll).toHaveBeenCalledWith({ metodoPago: 'EFECTIVO' });
+      expect(result).toEqual({ items: [], pagination: {} });
+    });
+  });
+
+  describe('GET /cobranza/vencimientos', () => {
+    it('debe listar vencimientos pendientes', async () => {
+      service.vencimientos.mockResolvedValue({ items: [], pagination: {} });
+      const result = await controller.vencimientos({ search: 'ARCO' } as never);
+      expect(service.vencimientos).toHaveBeenCalledWith({ search: 'ARCO' });
+      expect(result).toEqual({ items: [], pagination: {} });
     });
   });
 

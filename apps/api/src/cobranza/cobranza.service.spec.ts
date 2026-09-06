@@ -52,7 +52,7 @@ describe('CobranzaService', () => {
     referencia: 'REF-001',
     estado: 'CONFIRMADO',
     activo: true,
-    clientes: { nombre: 'Constructora Beta' },
+    clientes: { empresa: 'Beta SA de CV' },
     creado_en: new Date(),
     creado_por: USER_ID,
   };
@@ -322,6 +322,100 @@ describe('CobranzaService', () => {
       expect(result.cobros).toHaveLength(1);
       expect(result.cobros[0]).toEqual(expect.objectContaining({ monto: 400, metodoPago: 'TRANSFERENCIA' }));
       expect(result.saldo).toBe(1000);
+    });
+  });
+
+  describe('cobrosAll', () => {
+    it('devuelve cobros globales paginados y serializados', async () => {
+      prisma.pagos.findMany.mockResolvedValue([mockPago]);
+      prisma.pagos.count.mockResolvedValue(1);
+
+      const result = await service.cobrosAll({ metodoPago: 'TRANSFERENCIA', page: 1, limit: 10 });
+
+      expect(prisma.pagos.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            activo: true,
+            cuenta_por_cobrar_id: { not: null },
+            metodo_pago: 'TRANSFERENCIA',
+          }),
+        }),
+      );
+      expect(result.pagination).toEqual({ page: 1, limit: 10, total: 1, totalPages: 1 });
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          id: PAGO_ID,
+          cuentaId: CUENTA_ID,
+          clienteNombre: 'Beta SA de CV',
+          monto: 400,
+          metodoPago: 'TRANSFERENCIA',
+        }),
+      );
+      expect(result.items[0].fecha).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('filtra por búsqueda sobre el cliente', async () => {
+      prisma.pagos.findMany.mockResolvedValue([]);
+      prisma.pagos.count.mockResolvedValue(0);
+
+      await service.cobrosAll({ search: 'Beta' });
+
+      expect(prisma.pagos.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            clientes: { OR: expect.any(Array) },
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('vencimientos', () => {
+    it('devuelve solo cuentas con saldo pendiente ordenadas por vencimiento', async () => {
+      const vencida = {
+        ...mockCuenta,
+        fecha_vencimiento: new Date('2026-08-15'),
+        monto_pagado: 200,
+        clientes: { id: CLIENTE_ID, nombre: 'Constructora Beta', empresa: 'Beta SA de CV' },
+      };
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([vencida]);
+      prisma.cuentas_por_cobrar.count.mockResolvedValue(1);
+
+      const result = await service.vencimientos({ page: 1, limit: 10 });
+
+      expect(prisma.cuentas_por_cobrar.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: { not: 'PAGADO' } }),
+          orderBy: expect.arrayContaining([{ fecha_vencimiento: 'asc' }]),
+        }),
+      );
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          id: CUENTA_ID,
+          cuentaId: CUENTA_ID,
+          clienteNombre: 'Beta SA de CV',
+          monto: 800,
+          fechaVencimiento: '2026-08-15',
+        }),
+      );
+      expect(result.pagination.total).toBe(1);
+    });
+
+    it('aplica rango vencido (fecha < hoy) y por vencer (fecha >= hoy)', async () => {
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([]);
+      prisma.cuentas_por_cobrar.count.mockResolvedValue(0);
+
+      await service.vencimientos({ rango: 'vencido', page: 1, limit: 10 });
+      const callVencido = prisma.cuentas_por_cobrar.findMany.mock.calls.at(-1)[0];
+      expect(callVencido.where.fecha_vencimiento).toEqual(
+        expect.objectContaining({ lt: expect.any(Date) }),
+      );
+
+      await service.vencimientos({ rango: 'por_vencer', page: 1, limit: 10 });
+      const callPorVencer = prisma.cuentas_por_cobrar.findMany.mock.calls.at(-1)[0];
+      expect(callPorVencer.where.fecha_vencimiento).toEqual(
+        expect.objectContaining({ gte: expect.any(Date) }),
+      );
     });
   });
 

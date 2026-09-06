@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Wallet, AlertTriangle, HandCoins, Building2, CreditCard, Eye,
-  SlidersHorizontal, Download, CalendarClock, ReceiptText,
+  SlidersHorizontal, Download, CalendarClock, ReceiptText, X,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
-import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -19,6 +19,7 @@ import { FormModal, Modal, ModalHeader, ModalBody, ModalField, modalInputClass, 
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
+  cobranzaApi,
   type CuentaPorCobrarDTO, type CobroDTO, type VencimientoDTO, type CobranzaStats,
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
@@ -54,71 +55,85 @@ const metodoLabel: Record<MetodoPagoCobro, string> = {
   CHEQUE: 'Cheque',
 };
 
-/** Genera un id local para el mock (el backend dará UUIDs reales). */
-const generarIdCobro = () => `cbr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-// ─── Mock data (fase 1: contrato listo, sin backend) ──────────────────────────
-const cuentasMock: CuentaPorCobrarDTO[] = [
-  {
-    id: 'cxc-0001', clienteId: 'cli-001', clienteNombre: 'Ing. Alberto Ruiz', empresa: 'Inmobiliaria ARCO',
-    obra: 'Fraccionamiento Valle Sur', facturaFolio: 'FAC-1024', monto: 1200000, montoPagado: 950000, saldo: 250000,
-    fechaEmision: '2026-07-10', fechaVencimiento: '2026-09-10', diasAtraso: 0,
-    estado: 'PARCIAL', situacion: 'AL_CORRIENTE', ultimoCobroFecha: '2026-08-10',
-  },
-  {
-    id: 'cxc-0002', clienteId: 'cli-002', clienteNombre: 'Lic. Martha Silva', empresa: 'Gobierno CDMX',
-    obra: 'Remodelación Centro Histórico', facturaFolio: 'FAC-1076', monto: 4500000, montoPagado: 1200000, saldo: 3300000,
-    fechaEmision: '2026-05-15', fechaVencimiento: '2026-07-15', diasAtraso: 52,
-    estado: 'PARCIAL', situacion: 'ATRASO_GRAVE', ultimoCobroFecha: '2026-07-15',
-  },
-  {
-    id: 'cxc-0003', clienteId: 'cli-003', clienteNombre: 'Arq. Fernanda Torres', empresa: 'Desarrollos Costa',
-    obra: 'Residencial Lomas Norte', facturaFolio: 'FAC-0991', monto: 850000, montoPagado: 850000, saldo: 0,
-    fechaEmision: '2026-06-01', fechaVencimiento: '2026-08-01', diasAtraso: 0,
-    estado: 'SALDADO', situacion: 'SALDADO', ultimoCobroFecha: '2026-08-01',
-  },
-  {
-    id: 'cxc-0004', clienteId: 'cli-004', clienteNombre: 'Ing. Marcos Linares', empresa: 'Constructora Omega',
-    obra: 'Bodega Industrial Km 45', facturaFolio: 'FAC-1102', monto: 620000, montoPagado: 80000, saldo: 540000,
-    fechaEmision: '2026-05-20', fechaVencimiento: '2026-06-20', diasAtraso: 77,
-    estado: 'PARCIAL', situacion: 'ATRASO_GRAVE', ultimoCobroFecha: '2026-06-20',
-  },
-  {
-    id: 'cxc-0005', clienteId: 'cli-005', clienteNombre: 'Ing. Rafael Beltrán', empresa: 'Consorcio Vía',
-    obra: 'Puente Los Robles', facturaFolio: 'FAC-1048', monto: 2000000, montoPagado: 1500000, saldo: 500000,
-    fechaEmision: '2026-07-28', fechaVencimiento: '2026-08-28', diasAtraso: 8,
-    estado: 'PARCIAL', situacion: 'ATRASO_LEVE', ultimoCobroFecha: '2026-08-20',
-  },
-  {
-    id: 'cxc-0006', clienteId: 'cli-006', clienteNombre: 'Lic. Sofía Herrera', empresa: 'Hotel Punta Mita',
-    obra: 'Torreón de la Playa', facturaFolio: 'FAC-1115', monto: 980000, montoPagado: 0, saldo: 980000,
-    fechaEmision: '2026-08-25', fechaVencimiento: '2026-09-25', diasAtraso: 0,
-    estado: 'PENDIENTE', situacion: 'AL_CORRIENTE',
-  },
-  {
-    id: 'cxc-0007', clienteId: 'cli-007', clienteNombre: 'Arq. Diego Núñez', empresa: 'Municipalidad de Compostela',
-    obra: 'Plaza Cívica', facturaFolio: 'FAC-0967', monto: 300000, montoPagado: 300000, saldo: 0,
-    fechaEmision: '2026-04-10', fechaVencimiento: '2026-06-10', diasAtraso: 0,
-    estado: 'SALDADO', situacion: 'SALDADO', ultimoCobroFecha: '2026-06-08',
-  },
-];
-
-const cobrosMock: CobroDTO[] = [
-  { id: 'cbr-001', cuentaId: 'cxc-0001', clienteNombre: 'Inmobiliaria ARCO', monto: 350000, fecha: '2026-07-01', referencia: 'TRF-774400', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-002', cuentaId: 'cxc-0001', clienteNombre: 'Inmobiliaria ARCO', monto: 200000, fecha: '2026-07-20', referencia: 'TRF-882211', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-003', cuentaId: 'cxc-0001', clienteNombre: 'Inmobiliaria ARCO', monto: 400000, fecha: '2026-08-10', referencia: 'TRF-901299', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-004', cuentaId: 'cxc-0002', clienteNombre: 'Gobierno CDMX', monto: 500000, fecha: '2026-06-15', referencia: 'CHQ-004412', metodoPago: 'CHEQUE' },
-  { id: 'cbr-005', cuentaId: 'cxc-0002', clienteNombre: 'Gobierno CDMX', monto: 700000, fecha: '2026-07-15', referencia: 'CHQ-005033', metodoPago: 'CHEQUE' },
-  { id: 'cbr-006', cuentaId: 'cxc-0003', clienteNombre: 'Desarrollos Costa', monto: 500000, fecha: '2026-07-10', referencia: 'TRF-654321', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-007', cuentaId: 'cxc-0003', clienteNombre: 'Desarrollos Costa', monto: 350000, fecha: '2026-08-01', referencia: 'TRF-660011', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-008', cuentaId: 'cxc-0004', clienteNombre: 'Constructora Omega', monto: 80000, fecha: '2026-06-20', referencia: 'EFE-0001', metodoPago: 'EFECTIVO' },
-  { id: 'cbr-009', cuentaId: 'cxc-0005', clienteNombre: 'Consorcio Vía', monto: 900000, fecha: '2026-08-10', referencia: 'TRF-102933', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-010', cuentaId: 'cxc-0005', clienteNombre: 'Consorcio Vía', monto: 600000, fecha: '2026-08-20', referencia: 'TRF-112244', metodoPago: 'TRANSFERENCIA' },
-  { id: 'cbr-011', cuentaId: 'cxc-0007', clienteNombre: 'Municipalidad de Compostela', monto: 300000, fecha: '2026-06-08', referencia: 'CHQ-003377', metodoPago: 'CHEQUE' },
-];
-
 const hoyISO = new Date().toISOString().split('T')[0];
-const mesActual = hoyISO.slice(0, 7); // YYYY-MM
+
+// ─── Filtros (chips + panel de selects, mismo diseño que /inventario) ─────────
+function FiltrosCobranza({
+  fields,
+  values,
+  active,
+  show,
+  onChange,
+  onRemove,
+  onClear,
+}: {
+  fields: FilterField[];
+  values: Record<string, string>;
+  active: ActiveFilter[];
+  show: boolean;
+  onChange: (key: string, value: string) => void;
+  onRemove: (key: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <>
+      {active.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {active.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+            >
+              <span className="font-normal text-primary/70">{filter.label}:</span>
+              <span>{filter.value}</span>
+              <button
+                onClick={() => onRemove(filter.key)}
+                className="ml-0.5 hover:text-primary-dark transition-colors"
+                aria-label={`Eliminar filtro ${filter.label}`}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          {active.length > 1 && (
+            <button
+              onClick={onClear}
+              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+            >
+              Limpiar todo
+            </button>
+          )}
+        </div>
+      )}
+
+      {show && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            {fields.map((filter) => (
+              <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  {filter.label}
+                </label>
+                <select
+                  value={values[filter.key] || ''}
+                  onChange={(e) => onChange(filter.key, e.target.value)}
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                >
+                  <option value="">{filter.placeholder || 'Todos'}</option>
+                  {filter.options?.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 // ─── Página ───────────────────────────────────────────────────────────────────
 export default function CobranzaPage() {
@@ -130,18 +145,23 @@ export default function CobranzaPage() {
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeExportar = vista?.puedeExportar ?? false;
 
-  // ── Datos (fase mock local) ──
-  const [cuentas, setCuentas] = useState<CuentaPorCobrarDTO[]>(cuentasMock);
-  const [cobros, setCobros] = useState<CobroDTO[]>(cobrosMock);
+  // ── Datos ──
+  const [cuentas, setCuentas] = useState<CuentaPorCobrarDTO[]>([]);
+  const [paginationCuentas, setPaginationCuentas] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [cobros, setCobros] = useState<CobroDTO[]>([]);
+  const [paginationCobros, setPaginationCobros] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [vencimientos, setVencimientos] = useState<VencimientoDTO[]>([]);
+  const [paginationVenc, setPaginationVenc] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [cuentasCatalogo, setCuentasCatalogo] = useState<CuentaPorCobrarDTO[]>([]);
+  const [stats, setStats] = useState<CobranzaStats>({ totalPorCobrar: 0, vencido: 0, cobradoMes: 0, clientesConSaldo: 0 });
 
   // ── UI state ──
   const [tab, setTab] = useState<'cuentas' | 'cobros' | 'vencimientos'>('cuentas');
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [pageCuentas, setPageCuentas] = useState(1);
-  const [pageCobros, setPageCobros] = useState(1);
-  const [pageVenc, setPageVenc] = useState(1);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // ── Modal registrar cobro ──
   const [cobroModal, setCobroModal] = useState(false);
@@ -149,36 +169,106 @@ export default function CobranzaPage() {
 
   // ── Modal estado de cuenta (ledger) ──
   const [ledgerCuenta, setLedgerCuenta] = useState<CuentaPorCobrarDTO | null>(null);
+  const [ledgerMovs, setLedgerMovs] = useState<CobroDTO[]>([]);
+  const [ledgerSaldo, setLedgerSaldo] = useState(0);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
 
-  // ── Derivados: stats ──
-  const stats: CobranzaStats = useMemo(() => {
-    const totalPorCobrar = cuentas.reduce((acc, c) => acc + c.saldo, 0);
-    const vencido = cuentas
-      .filter((c) => c.diasAtraso > 0)
-      .reduce((acc, c) => acc + c.saldo, 0);
-    const cobradoMes = cobros
-      .filter((c) => c.fecha.startsWith(mesActual))
-      .reduce((acc, c) => acc + c.monto, 0);
-    const clientesConSaldo = cuentas.filter((c) => c.saldo > 0).length;
-    return { totalPorCobrar, vencido, cobradoMes, clientesConSaldo };
-  }, [cuentas, cobros]);
+  // ── Carga de datos (patrón /proveedores: fetch + initialLoading) ──
+  const fetchCuentas = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.listar({
+      search: searchVal || undefined,
+      estado: filters?.estado as EstadoCuentaCobranza | undefined,
+      situacion: filters?.situacion as SituacionCobranza | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setCuentas(res.data.items);
+      setPaginationCuentas(res.data.pagination);
+    } else {
+      showToast('Error al cargar cuentas por cobrar.', 'error');
+    }
+  }, [showToast]);
 
-  // ── Derivados: vencimientos ──
-  const vencimientos: VencimientoDTO[] = useMemo(
-    () =>
-      cuentas
-        .filter((c) => c.saldo > 0)
-        .map((c) => ({
-          id: `venc-${c.id}`,
-          cuentaId: c.id,
-          clienteNombre: c.empresa,
-          obra: c.obra,
-          monto: c.saldo,
-          fechaVencimiento: c.fechaVencimiento,
-          diasAtraso: c.diasAtraso,
-        })),
-    [cuentas],
-  );
+  const fetchCobros = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.cobros({
+      search: searchVal || undefined,
+      metodoPago: filters?.metodo as MetodoPagoCobro | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setCobros(res.data.items);
+      setPaginationCobros(res.data.pagination);
+    } else {
+      showToast('Error al cargar los movimientos de cobro.', 'error');
+    }
+  }, [showToast]);
+
+  const fetchVenc = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.vencimientos({
+      search: searchVal || undefined,
+      rango: filters?.rango as 'vencido' | 'por_vencer' | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setVencimientos(res.data.items);
+      setPaginationVenc(res.data.pagination);
+    } else {
+      showToast('Error al cargar los vencimientos.', 'error');
+    }
+  }, [showToast]);
+
+  const fetchStats = useCallback(async () => {
+    const res = await cobranzaApi.stats();
+    if (res.success && res.data) setStats(res.data);
+  }, []);
+
+  /** Catálogo de cuentas con saldo para el select del modal de cobro. */
+  const fetchCatalogo = useCallback(async () => {
+    const res = await cobranzaApi.listar({ limit: 100 });
+    if (res.success && res.data) setCuentasCatalogo(res.data.items.filter((c) => c.saldo > 0));
+  }, []);
+
+  useEffect(() => {
+    const inicial = async () => {
+      setInitialLoading(true);
+      try {
+        await Promise.all([
+          fetchCuentas(1),
+          fetchCobros(1),
+          fetchVenc(1),
+          fetchStats(),
+          fetchCatalogo(),
+        ]);
+      } catch {
+        showToast('No se pudo conectar con el servidor.', 'error');
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    inicial();
+  }, [fetchCuentas, fetchCobros, fetchVenc, fetchStats, fetchCatalogo, showToast]);
+
+  /** Refetch tras una mutación: tab visible + stats + catálogo. */
+  const refetchAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchCuentas(paginationCuentas.page, search, filterValues),
+        fetchCobros(paginationCobros.page, search, filterValues),
+        fetchVenc(paginationVenc.page, search, filterValues),
+        fetchStats(),
+        fetchCatalogo(),
+      ]);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchCuentas, fetchCobros, fetchVenc, fetchStats, fetchCatalogo,
+    paginationCuentas.page, paginationCobros.page, paginationVenc.page, search, filterValues, showToast]);
 
   // ── Búsqueda y filtros ──
   const activeFilters: ActiveFilter[] = useMemo(
@@ -211,77 +301,12 @@ export default function CobranzaPage() {
         ? [{ key: 'metodo', label: 'Método', type: 'select', options: METODOS_PAGO.map((m) => ({ value: m, label: metodoLabel[m] })) }]
         : [{ key: 'rango', label: 'Rango', type: 'select', options: [{ value: 'vencido', label: 'Vencido' }, { value: 'por_vencer', label: 'Por vencer' }] }];
 
-  const filtraCuenta = useMemo(
-    () =>
-      cuentas.filter((c) => {
-        // Búsqueda
-        const q = search.toLowerCase();
-        const matchQ =
-          !q ||
-          c.clienteNombre.toLowerCase().includes(q) ||
-          c.empresa.toLowerCase().includes(q) ||
-          c.obra.toLowerCase().includes(q) ||
-          c.facturaFolio.toLowerCase().includes(q);
-        // Filtros
-        const matchEstado = !filterValues.estado || c.estado === filterValues.estado;
-        const matchSituacion = !filterValues.situacion || c.situacion === filterValues.situacion;
-        return matchQ && matchEstado && matchSituacion;
-      }),
-    [cuentas, search, filterValues],
-  );
-
-  const filtraCobro = useMemo(
-    () =>
-      cobros.filter((c) => {
-        const q = search.toLowerCase();
-        const matchQ =
-          !q ||
-          c.clienteNombre.toLowerCase().includes(q) ||
-          c.referencia.toLowerCase().includes(q);
-        const matchMetodo = !filterValues.metodo || c.metodoPago === filterValues.metodo;
-        return matchQ && matchMetodo;
-      }),
-    [cobros, search, filterValues],
-  );
-
-  const filtraVenc = useMemo(
-    () =>
-      vencimientos.filter((v) => {
-        const q = search.toLowerCase();
-        const matchQ =
-          !q ||
-          v.clienteNombre.toLowerCase().includes(q) ||
-          v.obra.toLowerCase().includes(q);
-        const matchRango =
-          !filterValues.rango ||
-          (filterValues.rango === 'vencido' ? v.diasAtraso > 0 : v.diasAtraso === 0);
-        return matchQ && matchRango;
-      }),
-    [vencimientos, search, filterValues],
-  );
-
-  // Paginación client-side (fase mock)
-  const pagina = (lista: unknown[]) => Math.max(1, Math.ceil(lista.length / PAGE_SIZE));
-
-  const cuentasPagina = useMemo(
-    () => filtraCuenta.slice((pageCuentas - 1) * PAGE_SIZE, pageCuentas * PAGE_SIZE),
-    [filtraCuenta, pageCuentas],
-  );
-  const cobrosPagina = useMemo(
-    () => filtraCobro.slice((pageCobros - 1) * PAGE_SIZE, pageCobros * PAGE_SIZE),
-    [filtraCobro, pageCobros],
-  );
-  const vencPagina = useMemo(
-    () => filtraVenc.slice((pageVenc - 1) * PAGE_SIZE, pageVenc * PAGE_SIZE),
-    [filtraVenc, pageVenc],
-  );
-
   const handleSearch = (val?: string) => {
     const q = val ?? search;
     setSearch(q);
-    setPageCuentas(1);
-    setPageCobros(1);
-    setPageVenc(1);
+    if (tab === 'cuentas') fetchCuentas(1, q, filterValues);
+    else if (tab === 'cobros') fetchCobros(1, q, filterValues);
+    else fetchVenc(1, q, filterValues);
   };
 
   const handleFilterChange = (key: string, value: string) => {
@@ -289,16 +314,16 @@ export default function CobranzaPage() {
     if (value) next[key] = value;
     else delete next[key];
     setFilterValues(next);
-    setPageCuentas(1);
-    setPageCobros(1);
-    setPageVenc(1);
+    if (tab === 'cuentas') fetchCuentas(1, search, next);
+    else if (tab === 'cobros') fetchCobros(1, search, next);
+    else fetchVenc(1, search, next);
   };
 
   const handleClearFilters = () => {
     setFilterValues({});
-    setPageCuentas(1);
-    setPageCobros(1);
-    setPageVenc(1);
+    if (tab === 'cuentas') fetchCuentas(1, search, {});
+    else if (tab === 'cobros') fetchCobros(1, search, {});
+    else fetchVenc(1, search, {});
   };
 
   const handleRemoveFilter = (key: string) => handleFilterChange(key, '');
@@ -315,9 +340,9 @@ export default function CobranzaPage() {
     setCobroModal(true);
   };
 
-  const cuentaSeleccionada = cuentas.find((c) => c.id === cobroForm.cuentaId);
+  const cuentaSeleccionada = cuentasCatalogo.find((c) => c.id === cobroForm.cuentaId);
 
-  const handleRegistrarCobro = () => {
+  const handleRegistrarCobro = async () => {
     const cuenta = cuentaSeleccionada;
     if (!cuenta) {
       showToast('Selecciona una cuenta por cobrar.', 'error');
@@ -333,37 +358,40 @@ export default function CobranzaPage() {
       return;
     }
 
-    const nuevo: CobroDTO = {
-      id: generarIdCobro(),
-      cuentaId: cuenta.id,
-      clienteNombre: cuenta.empresa,
+    const res = await cobranzaApi.registrarCobro(cuenta.id, {
       monto,
       fecha: cobroForm.fecha || hoyISO,
-      referencia: cobroForm.referencia.trim() || 'Sin referencia',
       metodoPago: cobroForm.metodoPago,
-    };
+      referencia: cobroForm.referencia.trim() || undefined,
+    });
+    if (res.success && res.data) {
+      setCobroModal(false);
+      showToast(`✅ Cobro de ${formatCurrency(monto)} registrado para ${cuenta.empresa}.`, 'success');
+      await refetchAll();
+    } else {
+      showToast('No se pudo registrar el cobro.', 'error');
+    }
+  };
 
-    const nuevoPagado = cuenta.montoPagado + monto;
-    const nuevoSaldo = Math.max(0, cuenta.saldo - monto);
-    const nuevoEstado: EstadoCuentaCobranza = nuevoSaldo === 0 ? 'SALDADO' : cuenta.estado === 'PENDIENTE' ? 'PARCIAL' : 'PARCIAL';
-
-    setCuentas((prev) =>
-      prev.map((c) =>
-        c.id === cuenta.id
-          ? {
-              ...c,
-              montoPagado: nuevoPagado,
-              saldo: nuevoSaldo,
-              estado: nuevoEstado,
-              situacion: nuevoSaldo === 0 ? 'SALDADO' : c.situacion,
-              ultimoCobroFecha: nuevo.fecha,
-            }
-          : c,
-      ),
-    );
-    setCobros((prev) => [nuevo, ...prev]);
-    setCobroModal(false);
-    showToast(`✅ Cobro de ${formatCurrency(monto)} registrado para ${cuenta.empresa}.`, 'success');
+  /** Abre el ledger de la cuenta y carga sus movimientos desde la API. */
+  const openLedger = async (cuenta: CuentaPorCobrarDTO) => {
+    setLedgerCuenta(cuenta);
+    setLedgerLoading(true);
+    setLedgerMovs([]);
+    setLedgerSaldo(0);
+    try {
+      const res = await cobranzaApi.cobrosDeCuenta(cuenta.id);
+      if (res.success && res.data) {
+        setLedgerMovs(res.data.cobros);
+        setLedgerSaldo(res.data.saldo);
+      } else {
+        showToast('Error al cargar el estado de cuenta.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setLedgerLoading(false);
+    }
   };
 
   // ── Exportar CSV del tab activo (RBAC: exportar) ──
@@ -372,12 +400,12 @@ export default function CobranzaPage() {
     const lines: (string | number)[][] =
       tab === 'cuentas'
         ? [['Cliente', 'Obra', 'Factura', 'Total', 'Pagado', 'Saldo', 'Vencimiento', 'Estado'],
-           ...filtraCuenta.map((c) => [c.empresa, c.obra, c.facturaFolio, c.monto, c.montoPagado, c.saldo, c.fechaVencimiento, ESTADO_LABEL[c.estado]])]
+           ...cuentas.map((c) => [c.empresa, c.obra, c.facturaFolio, c.monto, c.montoPagado, c.saldo, c.fechaVencimiento, ESTADO_LABEL[c.estado]])]
         : tab === 'cobros'
           ? [['Fecha', 'Cliente', 'Referencia', 'Método', 'Monto'],
-             ...filtraCobro.map((c) => [c.fecha, c.clienteNombre, c.referencia, metodoLabel[c.metodoPago], c.monto])]
+             ...cobros.map((c) => [c.fecha, c.clienteNombre, c.referencia, metodoLabel[c.metodoPago], c.monto])]
           : [['Cliente', 'Obra', 'Vencimiento', 'Días atraso', 'Monto'],
-             ...filtraVenc.map((v) => [v.clienteNombre, v.obra, v.fechaVencimiento, v.diasAtraso, v.monto])];
+             ...vencimientos.map((v) => [v.clienteNombre, v.obra, v.fechaVencimiento, v.diasAtraso, v.monto])];
 
     const csv = lines.map((row) => row.map(esc).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -429,7 +457,7 @@ export default function CobranzaPage() {
               Registrar cobro
             </Button>
           )}
-          <Button variant="outline" size="sm" icon={<Eye className="w-3.5 h-3.5" />} onClick={() => setLedgerCuenta(c)}>
+          <Button variant="outline" size="sm" icon={<Eye className="w-3.5 h-3.5" />} onClick={() => openLedger(c)}>
             Ver estado de cuenta
           </Button>
         </div>
@@ -478,12 +506,6 @@ export default function CobranzaPage() {
     { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (v) => <span className="font-black text-slate-900">{formatCurrency(v.monto)}</span> },
   ];
 
-  // ── Ledger (movimientos por cuenta) ──
-  const ledgerMovimientos = useMemo(
-    () => (ledgerCuenta ? cobros.filter((c) => c.cuentaId === ledgerCuenta.id) : []),
-    [ledgerCuenta, cobros],
-  );
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -510,18 +532,15 @@ export default function CobranzaPage() {
       {/* Tabs */}
       <Tabs
         tabs={[
-          { key: 'cuentas', label: 'Cuentas por cobrar', icon: <ReceiptText className="w-4 h-4" />, count: filtraCuenta.length },
-          { key: 'cobros', label: 'Movimientos de cobro', icon: <HandCoins className="w-4 h-4" />, count: filtraCobro.length },
-          { key: 'vencimientos', label: 'Vencimientos', icon: <CalendarClock className="w-4 h-4" />, count: filtraVenc.length },
+          { key: 'cuentas', label: 'Cuentas por cobrar', icon: <ReceiptText className="w-4 h-4" />, count: paginationCuentas.total },
+          { key: 'cobros', label: 'Movimientos de cobro', icon: <HandCoins className="w-4 h-4" />, count: paginationCobros.total },
+          { key: 'vencimientos', label: 'Vencimientos', icon: <CalendarClock className="w-4 h-4" />, count: paginationVenc.total },
         ]}
         onChange={(key) => {
           setTab(key as 'cuentas' | 'cobros' | 'vencimientos');
           setSearch('');
           setFilterValues({});
           setShowFilters(false);
-          setPageCuentas(1);
-          setPageCobros(1);
-          setPageVenc(1);
         }}
       >
         {/* ─── CUENTAS POR COBRAR ─────────────────────────────────────── */}
@@ -551,17 +570,19 @@ export default function CobranzaPage() {
               </Button>
             </div>
 
-            <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
-            {showFilters && (
-              <FilterPanel
-                filters={filterFields}
-                values={filterValues}
-                onChange={handleFilterChange}
-                onClear={handleClearFilters}
-              />
-            )}
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
 
-            {cuentasPagina.length === 0 ? (
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando cuentas por cobrar..." subtitle="Espera un momento." />
+            ) : cuentas.length === 0 ? (
               <EmptyState
                 title="Sin cuentas por cobrar"
                 subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
@@ -570,17 +591,17 @@ export default function CobranzaPage() {
               <>
                 <DataTable
                   columns={cuentaColumns}
-                  data={cuentasPagina}
+                  data={cuentas}
                   keyExtractor={(c) => c.id}
                   emptyText="No se encontraron cuentas."
                   maxBodyHeight="500px"
                 />
                 <Pagination
-                  currentPage={pageCuentas}
-                  totalPages={pagina(filtraCuenta)}
-                  totalRecords={filtraCuenta.length}
+                  currentPage={paginationCuentas.page}
+                  totalPages={paginationCuentas.totalPages}
+                  totalRecords={paginationCuentas.total}
                   pageSize={PAGE_SIZE}
-                  onPageChange={setPageCuentas}
+                  onPageChange={(page) => fetchCuentas(page, search, filterValues)}
                 />
               </>
             )}
@@ -614,17 +635,19 @@ export default function CobranzaPage() {
               </Button>
             </div>
 
-            <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
-            {showFilters && (
-              <FilterPanel
-                filters={filterFields}
-                values={filterValues}
-                onChange={handleFilterChange}
-                onClear={handleClearFilters}
-              />
-            )}
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
 
-            {cobrosPagina.length === 0 ? (
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando movimientos de cobro..." subtitle="Espera un momento." />
+            ) : cobros.length === 0 ? (
               <EmptyState
                 title="Sin movimientos de cobro"
                 subtitle="No se encontraron cobros para la búsqueda o filtros aplicados."
@@ -633,17 +656,17 @@ export default function CobranzaPage() {
               <>
                 <DataTable
                   columns={cobroColumns}
-                  data={cobrosPagina}
+                  data={cobros}
                   keyExtractor={(c) => c.id}
                   emptyText="No se encontraron cobros."
                   maxBodyHeight="500px"
                 />
                 <Pagination
-                  currentPage={pageCobros}
-                  totalPages={pagina(filtraCobro)}
-                  totalRecords={filtraCobro.length}
+                  currentPage={paginationCobros.page}
+                  totalPages={paginationCobros.totalPages}
+                  totalRecords={paginationCobros.total}
                   pageSize={PAGE_SIZE}
-                  onPageChange={setPageCobros}
+                  onPageChange={(page) => fetchCobros(page, search, filterValues)}
                 />
               </>
             )}
@@ -677,17 +700,19 @@ export default function CobranzaPage() {
               </Button>
             </div>
 
-            <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
-            {showFilters && (
-              <FilterPanel
-                filters={filterFields}
-                values={filterValues}
-                onChange={handleFilterChange}
-                onClear={handleClearFilters}
-              />
-            )}
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
 
-            {vencPagina.length === 0 ? (
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando vencimientos..." subtitle="Espera un momento." />
+            ) : vencimientos.length === 0 ? (
               <EmptyState
                 title="Sin vencimientos pendientes"
                 subtitle="No hay saldos por cobrar con vencimientos para este rango."
@@ -696,17 +721,17 @@ export default function CobranzaPage() {
               <>
                 <DataTable
                   columns={vencColumns}
-                  data={vencPagina}
+                  data={vencimientos}
                   keyExtractor={(v) => v.id}
                   emptyText="No se encontraron vencimientos."
                   maxBodyHeight="500px"
                 />
                 <Pagination
-                  currentPage={pageVenc}
-                  totalPages={pagina(filtraVenc)}
-                  totalRecords={filtraVenc.length}
+                  currentPage={paginationVenc.page}
+                  totalPages={paginationVenc.totalPages}
+                  totalRecords={paginationVenc.total}
                   pageSize={PAGE_SIZE}
-                  onPageChange={setPageVenc}
+                  onPageChange={(page) => fetchVenc(page, search, filterValues)}
                 />
               </>
             )}
@@ -732,13 +757,11 @@ export default function CobranzaPage() {
             onChange={(e) => setCobroForm({ ...cobroForm, cuentaId: e.target.value })}
           >
             <option value="">Selecciona la cuenta...</option>
-            {cuentas
-              .filter((c) => c.saldo > 0)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.empresa} — {c.obra} (saldo {formatCurrency(c.saldo)})
-                </option>
-              ))}
+            {cuentasCatalogo.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.empresa} — {c.obra} (saldo {formatCurrency(c.saldo)})
+              </option>
+            ))}
           </select>
         </ModalField>
 
@@ -822,18 +845,20 @@ export default function CobranzaPage() {
                 </div>
                 <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
                   <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Saldo</p>
-                  <p className="text-lg font-black text-red-600">{formatCurrency(ledgerCuenta.saldo)}</p>
+                  <p className="text-lg font-black text-red-600">{formatCurrency(ledgerSaldo)}</p>
                 </div>
               </div>
 
-              {ledgerMovimientos.length === 0 ? (
+              {ledgerLoading ? (
+                <EmptyState title="Cargando movimientos..." subtitle="Espera un momento." />
+              ) : ledgerMovs.length === 0 ? (
                 <EmptyState
                   title="Sin cobros registrados"
                   subtitle="Esta cuenta aún no tiene movimientos de cobro."
                 />
               ) : (
                 <div className="space-y-2">
-                  {ledgerMovimientos.map((m) => (
+                  {ledgerMovs.map((m) => (
                     <div
                       key={m.id}
                       className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3"
