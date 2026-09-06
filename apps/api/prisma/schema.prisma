@@ -348,6 +348,7 @@ model cuentas_por_cobrar {
   bitacoras_renta_diaria bitacoras_renta_diaria? @relation(fields: [bitacora_id], references: [id])
   clientes               clientes                @relation(fields: [cliente_id], references: [id])
   facturas               facturas?               @relation(fields: [factura_id], references: [id])
+  pagos                  pagos[]
 
   @@index([cliente_id, estado])
 }
@@ -1053,6 +1054,7 @@ model pagos {
   codigo                             String    @unique
   cliente_id                         String    @db.Uuid
   factura_id                         String?   @db.Uuid
+  cuenta_por_cobrar_id               String?   @db.Uuid
   monto                              Decimal   @db.Decimal(14, 2)
   fecha_pago                         DateTime  @db.Date
   metodo_pago                        String
@@ -1071,8 +1073,10 @@ model pagos {
   users_pagos_creado_porTousers      users?    @relation("pagos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_pagos_creado_por")
   clientes                           clientes  @relation(fields: [cliente_id], references: [id])
   facturas                           facturas? @relation(fields: [factura_id], references: [id])
+  cuentas_por_cobrar                 cuentas_por_cobrar? @relation(fields: [cuenta_por_cobrar_id], references: [id])
 
   @@index([cliente_id])
+  @@index([cuenta_por_cobrar_id])
 }
 
 model pagos_proveedor {
@@ -2122,6 +2126,10 @@ enum AuditAction {
   ORDEN_COMPRA_ELIMINADA
   ORDEN_COMPRA_ESTADO_CAMBIADO
   PAGO_PROVEEDOR_REGISTRADO
+  CXC_CREADA
+  CXC_ACTUALIZADA
+  CXC_CONSULTADA
+  COBRO_REGISTRADO
 }
 
 enum AuditResult {

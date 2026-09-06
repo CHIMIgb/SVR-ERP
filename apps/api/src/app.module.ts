@@ -24,6 +24,7 @@ import { NominaModule } from './nomina/nomina.module';
 import { FinanzasModule } from './finanzas/finanzas.module';
 import { VentasModule } from './ventas/ventas.module';
 import { ProveedoresModule } from './proveedores/proveedores.module';
+import { CobranzaModule } from './cobranza/cobranza.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -72,6 +73,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     FinanzasModule,
     VentasModule,
     ProveedoresModule,
+    CobranzaModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController
