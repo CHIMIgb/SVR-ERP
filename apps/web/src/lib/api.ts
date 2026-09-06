@@ -1998,3 +1998,179 @@ export const cotizacionesApi = {
   actualizar: (id: string, data: CotizacionUpdateInput) =>
     apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}`, data),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Proveedores API (módulo proveedores: OC, abonos y CxP)
+//  Backend: apps/api/src/proveedores/
+// ────────────────────────────────────────────────────────────
+
+/** Estados de orden de compra serializados por el backend (enum API). */
+export type EstadoOrdenApi = 'PENDIENTE' | 'APROBADA' | 'RECIBIDA' | 'CANCELADA';
+
+export interface ProveedorDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  rfc: string | null;
+  correo: string | null;
+  telefono: string | null;
+  categoria: string;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface OrdenCompraDTO {
+  id: string;
+  folio: string;
+  proveedorId: string;
+  proveedor: string | null;
+  descripcion: string;
+  monto: number;
+  pagado: number;
+  saldo: number;
+  fecha: string; // ISO
+  estado: EstadoOrdenApi;
+  motivoCancelacion: string | null;
+  activo: boolean;
+}
+
+export interface AbonoDTO {
+  id: string;
+  codigo: string;
+  monto: number;
+  fechaPago: string; // ISO
+  metodoPago: string | null;
+  referencia: string | null;
+}
+
+export interface OrdenCompraDetalleDTO extends OrdenCompraDTO {
+  abonos: AbonoDTO[];
+}
+
+export interface EstadoCuentaResumenDTO {
+  proveedorId: string;
+  proveedor: string;
+  operaciones: number;
+  total: number;
+  pagado: number;
+  saldo: number;
+}
+
+export interface LedgerMovimientoDTO {
+  fecha: string; // ISO
+  folio: string;
+  concepto: string;
+  cargo: number;
+  abono: number;
+  saldo: number;
+  estado: string;
+}
+
+export interface LedgerDetalleDTO {
+  proveedorId: string;
+  proveedor: string;
+  movimientos: LedgerMovimientoDTO[];
+  totales: {
+    cargo: number;
+    abono: number;
+    saldo: number;
+  };
+}
+
+export interface AbonoResultDTO {
+  abono: AbonoDTO;
+  orden: OrdenCompraDTO;
+}
+
+export interface ProveedorCreateInput {
+  nombre: string;
+  rfc?: string;
+  correo?: string;
+  telefono?: string;
+  categoria: string;
+}
+
+export type ProveedorUpdateInput = Partial<ProveedorCreateInput>;
+
+export interface OrdenCompraCreateInput {
+  proveedorId: string;
+  descripcion: string;
+  monto: number;
+  fecha?: string; // YYYY-MM-DD
+}
+
+export type OrdenCompraUpdateInput = Partial<
+  Pick<OrdenCompraCreateInput, 'descripcion' | 'monto'>
+>;
+
+export interface RegistrarAbonoInput {
+  ordenCompraId: string;
+  monto: number;
+  metodoPago?: string; // EFECTIVO | TARJETA | TRANSFERENCIA | MIXTO
+}
+
+export interface CambiarEstadoOrdenInput {
+  estado: EstadoOrdenApi;
+  /** Obligatorio al cancelar (campo `motivo` del DTO backend). */
+  motivo?: string;
+}
+
+export const proveedoresApi = {
+  /** Listar proveedores con búsqueda, filtros y paginación. */
+  listar: (params?: { search?: string; categoria?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.categoria) searchParams.set('categoria', params.categoria);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ProveedorDTO>>(`/proveedores${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<ProveedorDTO>(`/proveedores/${id}`),
+
+  crear: (data: ProveedorCreateInput) => apiClient.post<ProveedorDTO>('/proveedores', data),
+
+  actualizar: (id: string, data: ProveedorUpdateInput) =>
+    apiClient.patch<ProveedorDTO>(`/proveedores/${id}`, data),
+
+  eliminar: (id: string) => apiClient.delete<void>(`/proveedores/${id}`),
+
+  /** Resumen de estados de cuenta (proveedores con operaciones). */
+  estadosCuenta: () => apiClient.get<EstadoCuentaResumenDTO[]>('/proveedores/estados-cuenta'),
+
+  /** Ledger detalle de un proveedor: movimientos con saldo corrido + totales. */
+  ledger: (id: string) => apiClient.get<LedgerDetalleDTO>(`/proveedores/${id}/estado-cuenta`),
+
+  /** Registrar abono (pago) contra una orden; crea transacción EGRESO. */
+  abonar: (proveedorId: string, data: RegistrarAbonoInput) =>
+    apiClient.post<AbonoResultDTO>(`/proveedores/${proveedorId}/abonos`, data),
+};
+
+export const ordenesCompraApi = {
+  /** Listar órdenes de compra con búsqueda, filtros y paginación. */
+  listar: (params?: { search?: string; estado?: EstadoOrdenApi; proveedorId?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.proveedorId) searchParams.set('proveedorId', params.proveedorId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<OrdenCompraDTO>>(`/ordenes-compra${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<OrdenCompraDetalleDTO>(`/ordenes-compra/${id}`),
+
+  crear: (data: OrdenCompraCreateInput) => apiClient.post<OrdenCompraDTO>('/ordenes-compra', data),
+
+  actualizar: (id: string, data: OrdenCompraUpdateInput) =>
+    apiClient.patch<OrdenCompraDTO>(`/ordenes-compra/${id}`, data),
+
+  eliminar: (id: string) => apiClient.delete<void>(`/ordenes-compra/${id}`),
+
+  /** Aprobar / Recibir / Cancelar (cancelar requiere motivo). */
+  cambiarEstado: (id: string, data: CambiarEstadoOrdenInput) =>
+    apiClient.post<OrdenCompraDTO>(`/ordenes-compra/${id}/cambiar-estado`, data),
+};

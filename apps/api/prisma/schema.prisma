@@ -1196,7 +1196,7 @@ model proveedores {
   id                                       String                 @id @db.Uuid
   codigo                                   String?                @unique
   nombre                                   String
-  rfc                                      String?
+  rfc                                      String?                @unique
   correo                                   String?
   telefono                                 String?
   categoria                                String?                @default("Otros")
@@ -2114,6 +2114,7 @@ enum AuditAction {
   CONFIG_TURNO_ACTUALIZADA
   ERROR_SISTEMA
   PROVEEDOR_CREADO
+  PROVEEDOR_CONSULTADO
   PROVEEDOR_ACTUALIZADO
   PROVEEDOR_ELIMINADO
   ORDEN_COMPRA_CREADA

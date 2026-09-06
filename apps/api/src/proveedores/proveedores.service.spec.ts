@@ -193,6 +193,20 @@ describe('ProveedoresService', () => {
         }),
       );
     });
+
+    it('should map RFC duplicate (P2002) to ConflictException with fallir', async () => {
+      const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+      });
+      prisma.proveedores.create.mockRejectedValue(p2002);
+      await expect(service.create({ nombre: 'Duplicado', rfc: 'TOR890101ABC' }, USER_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'PROVEEDOR_RFC_DUPLICADO' }),
+      );
+    });
   });
 
   describe('update', () => {
@@ -209,6 +223,21 @@ describe('ProveedoresService', () => {
       prisma.proveedores.findFirst.mockResolvedValue(null);
       await expect(service.update('non-existent', { nombre: 'X' }, USER_ID)).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it('should map RFC duplicate (P2002) to ConflictException with fallir', async () => {
+      const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+      });
+      prisma.proveedores.findFirst.mockResolvedValue(mockProveedor);
+      prisma.proveedores.update.mockRejectedValue(p2002);
+      await expect(service.update(mockProveedor.id, { rfc: 'TOR890101ABC' }, USER_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'PROVEEDOR_RFC_DUPLICADO' }),
       );
     });
   });

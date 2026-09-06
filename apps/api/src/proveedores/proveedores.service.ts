@@ -11,6 +11,7 @@ import {
   AuditResult,
   EstadoOrdenCompra,
 } from '@prisma/client';
+import type { proveedores as Proveedor } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateProveedorDto } from './dto/create-proveedor.dto';
@@ -130,7 +131,7 @@ export class ProveedoresService {
 
     if (!proveedor) {
       return this.fallir(
-        AuditAction.PROVEEDOR_ACTUALIZADO,
+        AuditAction.PROVEEDOR_CONSULTADO,
         id,
         'PROVEEDOR_NO_ENCONTRADO',
         NotFoundException,
@@ -145,20 +146,34 @@ export class ProveedoresService {
   //  PROVEEDORES — CREAR
   // ────────────────────────────────────────────
   async create(dto: CreateProveedorDto, userId: string) {
-    const proveedor = await this.prisma.proveedores.create({
-      data: {
-        id: randomUUID(),
-        nombre: dto.nombre.trim(),
-        rfc: dto.rfc?.trim() || null,
-        correo: dto.correo?.trim() || null,
-        telefono: dto.telefono?.trim() || null,
-        categoria: dto.categoria ?? 'Otros',
-        activo: dto.activo ?? true,
-        creado_por: userId,
-        actualizado_por: userId,
-        actualizado_en: new Date(),
-      },
-    });
+    let proveedor: Proveedor;
+    try {
+      proveedor = await this.prisma.proveedores.create({
+        data: {
+          id: randomUUID(),
+          nombre: dto.nombre.trim(),
+          rfc: dto.rfc?.trim() || null,
+          correo: dto.correo?.trim() || null,
+          telefono: dto.telefono?.trim() || null,
+          categoria: dto.categoria ?? 'Otros',
+          activo: dto.activo ?? true,
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return this.fallir(
+          AuditAction.PROVEEDOR_CREADO,
+          null,
+          'PROVEEDOR_RFC_DUPLICADO',
+          ConflictException,
+          'Ya existe un proveedor con ese RFC',
+        );
+      }
+      throw error;
+    }
 
     const serialized = this.serializeProveedor(proveedor);
 
@@ -194,19 +209,33 @@ export class ProveedoresService {
       );
     }
 
-    const proveedor = await this.prisma.proveedores.update({
-      where: { id },
-      data: {
-        ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
-        ...(dto.rfc !== undefined && { rfc: dto.rfc?.trim() || null }),
-        ...(dto.correo !== undefined && { correo: dto.correo?.trim() || null }),
-        ...(dto.telefono !== undefined && { telefono: dto.telefono?.trim() || null }),
-        ...(dto.categoria !== undefined && { categoria: dto.categoria }),
-        ...(dto.activo !== undefined && { activo: dto.activo }),
-        actualizado_por: userId,
-        actualizado_en: new Date(),
-      },
-    });
+    let proveedor: Proveedor;
+    try {
+      proveedor = await this.prisma.proveedores.update({
+        where: { id },
+        data: {
+          ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
+          ...(dto.rfc !== undefined && { rfc: dto.rfc?.trim() || null }),
+          ...(dto.correo !== undefined && { correo: dto.correo?.trim() || null }),
+          ...(dto.telefono !== undefined && { telefono: dto.telefono?.trim() || null }),
+          ...(dto.categoria !== undefined && { categoria: dto.categoria }),
+          ...(dto.activo !== undefined && { activo: dto.activo }),
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return this.fallir(
+          AuditAction.PROVEEDOR_ACTUALIZADO,
+          id,
+          'PROVEEDOR_RFC_DUPLICADO',
+          ConflictException,
+          'Ya existe un proveedor con ese RFC',
+        );
+      }
+      throw error;
+    }
 
     const serialized = this.serializeProveedor(proveedor);
 
