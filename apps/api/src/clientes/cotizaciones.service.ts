@@ -442,6 +442,173 @@ export class CotizacionesService {
   }
 
   // ────────────────────────────────────────────
+  //  FACTURAR (Cotización → Factura + CxC)
+  // ────────────────────────────────────────────
+  /**
+   * Acepta una cotización PENDIENTE y crea en una sola transacción:
+   * la factura (estado PENDIENTE) + su concepto + la CxC (vencimiento +30 días).
+   * Emite los audits COTIZACION_FACTURADA + FACTURA_CREADA.
+   * Permiso: comercial.cotizaciones.editar
+   */
+  async facturar(id: string, userId: string) {
+    const cotizacion = await this.prisma.cotizaciones.findFirst({
+      where: { id, eliminado_en: null },
+      include: { facturas: { select: { id: true } } },
+    });
+
+    if (!cotizacion) {
+      return this.fallir(
+        AuditAction.COTIZACION_FACTURADA,
+        id,
+        'COTIZACION_NO_ENCONTRADA',
+        NotFoundException,
+        `Cotización con id "${id}" no encontrada`,
+        userId,
+      );
+    }
+
+    if (cotizacion.estado !== EstadoCotizacion.PENDIENTE) {
+      return this.fallir(
+        AuditAction.COTIZACION_FACTURADA,
+        id,
+        'COTIZACION_NO_PENDIENTE',
+        BadRequestException,
+        `Solo se pueden facturar cotizaciones PENDIENTES (estado actual: ${ESTADO_LABELS[cotizacion.estado]})`,
+        userId,
+      );
+    }
+
+    if (cotizacion.facturas.length > 0) {
+      return this.fallir(
+        AuditAction.COTIZACION_FACTURADA,
+        id,
+        'COTIZACION_YA_FACTURADA',
+        BadRequestException,
+        'La cotización ya tiene una factura asociada',
+        userId,
+      );
+    }
+
+    // Cliente debe existir y estar activo.
+    const cliente = await this.prisma.clientes.findFirst({
+      where: { id: cotizacion.cliente_id, activo: true, eliminado_en: null },
+      select: { id: true },
+    });
+    if (!cliente) {
+      return this.fallir(
+        AuditAction.COTIZACION_FACTURADA,
+        cotizacion.cliente_id,
+        'CLIENTE_NO_ENCONTRADO',
+        BadRequestException,
+        `Cliente de la cotización no encontrado o inactivo`,
+        userId,
+      );
+    }
+
+    const monto = Number(cotizacion.monto);
+
+    const { factura, cxc } = await this.prisma.$transaction(async (tx) => {
+      // 1. La cotización queda ACEPTADA (se facturó).
+      await tx.cotizaciones.update({
+        where: { id },
+        data: {
+          estado: EstadoCotizacion.ACEPTADA,
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+      });
+
+      // 2. Factura con folio secuencial FAC-YYYY-NNNN.
+      const anio = new Date().getFullYear();
+      const base = `FAC-${anio}`;
+      const conteo = await tx.facturas.count({ where: { codigo: { startsWith: base } } });
+      const codigo = `${base}-${String(conteo + 1).padStart(4, '0')}`;
+      const facturaId = randomUUID();
+      const factura = await tx.facturas.create({
+        data: {
+          id: facturaId,
+          codigo,
+          serie: 'F',
+          folio: String(conteo + 1).padStart(6, '0'),
+          cliente_id: cotizacion.cliente_id,
+          cotizacion_id: id,
+          subtotal: monto,
+          impuestos: 0,
+          total: monto,
+          moneda: 'MXN',
+          tipo_cambio: 1,
+          estado: 'PENDIENTE',
+          activo: true,
+          creado_en: new Date(),
+          actualizado_en: new Date(),
+          creado_por: userId,
+          actualizado_por: userId,
+          factura_conceptos: {
+            create: [
+              {
+                id: randomUUID(),
+                cantidad: 1,
+                unidad: 'Servicio',
+                descripcion: cotizacion.descripcion,
+                valor_unitario: monto,
+                importe: monto,
+                descuento: 0,
+                objeto_impuesto: '04',
+                impuesto_tasa: 0.16,
+                impuesto_importe: 0,
+                activo: true,
+              },
+            ],
+          },
+        },
+      });
+
+      // 3. CxC por el total, vence en 30 días.
+      const vencimiento = new Date();
+      vencimiento.setDate(vencimiento.getDate() + 30);
+      const cxc = await tx.cuentas_por_cobrar.create({
+        data: {
+          id: randomUUID(),
+          cliente_id: cotizacion.cliente_id,
+          factura_id: facturaId,
+          monto,
+          monto_pagado: 0,
+          fecha_vencimiento: vencimiento,
+          estado: 'PENDIENTE',
+          activo: true,
+          creado_en: new Date(),
+          actualizado_en: new Date(),
+        },
+      });
+
+      return { factura, cxc };
+    });
+
+    await this.auditService.log({
+      action: AuditAction.COTIZACION_FACTURADA,
+      entityType: 'cotizaciones',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: { estado: 'Pendiente' },
+      newValue: {
+        estado: 'Aceptada',
+        facturaId: factura.id,
+        facturaCodigo: factura.codigo,
+        cxcId: cxc.id,
+      },
+    });
+
+    return {
+      cotizacionId: id,
+      factura: { id: factura.id, codigo: factura.codigo, total: Number(factura.total), estado: factura.estado },
+      cxc: { id: cxc.id, monto: Number(cxc.monto), fechaVencimiento: cxc.fecha_vencimiento },
+    };
+  }
+
+  // ────────────────────────────────────────────
   //  PRIVADOS
   // ────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

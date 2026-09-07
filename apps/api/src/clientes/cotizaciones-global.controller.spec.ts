@@ -30,6 +30,11 @@ describe('CotizacionesGlobalController', () => {
     findOne: jest.fn().mockResolvedValue(mockCotizacion),
     update: jest.fn().mockResolvedValue({ ...mockCotizacion, monto: 130000 }),
     cambiarEstado: jest.fn().mockResolvedValue({ ...mockCotizacion, estado: 'Aceptada' }),
+    facturar: jest.fn().mockResolvedValue({
+      cotizacionId: mockCotizacion.id,
+      factura: { id: 'fac-1', codigo: 'FAC-2026-0001', total: 125000, estado: 'PENDIENTE' },
+      cxc: { id: 'cxc-1', monto: 125000 },
+    }),
     findStats: jest.fn().mockResolvedValue({
       total: 10,
       pendientes: 4,
@@ -99,6 +104,15 @@ describe('CotizacionesGlobalController', () => {
       const result = await controller.cambiarEstado(mockCotizacion.id, dto as never, req as never);
       expect(result.estado).toBe('Aceptada');
       expect(service.cambiarEstado).toHaveBeenCalledWith(mockCotizacion.id, dto, 'user-1');
+    });
+  });
+
+  describe('facturar', () => {
+    it('should facturar passing userId', async () => {
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.facturar(mockCotizacion.id, req as never);
+      expect(result.factura.codigo).toBe('FAC-2026-0001');
+      expect(service.facturar).toHaveBeenCalledWith(mockCotizacion.id, 'user-1');
     });
   });
 });

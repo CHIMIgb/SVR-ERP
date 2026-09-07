@@ -28,6 +28,7 @@ describe('Cotizaciones Audit (Real DB)', () => {
   let service: CotizacionesService;
 
   const createdClienteIds: string[] = [];
+  const createdFacturaIds: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -51,8 +52,14 @@ describe('Cotizaciones Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
+    // FK-safe: conceptos de factura → CxC → facturas → cotizaciones → clientes.
+    for (const facturaId of createdFacturaIds) {
+      await prisma.factura_conceptos.deleteMany({ where: { factura_id: facturaId } });
+      await prisma.cuentas_por_cobrar.deleteMany({ where: { factura_id: facturaId } });
+      await prisma.facturas.deleteMany({ where: { id: facturaId } });
+    }
     if (createdClienteIds.length > 0) {
-      // FK-safe: primer las cotizaciones, luego los clientes
+      // primer las cotizaciones, luego los clientes
       await prisma.cotizaciones.deleteMany({
         where: { cliente_id: { in: createdClienteIds } },
       });
@@ -303,6 +310,90 @@ describe('Cotizaciones Audit (Real DB)', () => {
       expect(stats).toHaveProperty('rechazadas');
       expect(stats).toHaveProperty('montoAceptado');
       expect(typeof stats.total).toBe('number');
+    });
+  });
+
+  describe('FACTURAR', () => {
+    it('debe facturar cotización y crear factura + CxC + audits', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `A facturar ${TEST_ID}`, monto: 75000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+
+      const resultado = await service.facturar(cotizacion.id, ACTOR_USER_ID);
+
+      // 1. Factura creada y ligada a la cotización
+      expect(resultado.factura.codigo).toMatch(/^FAC-\d{4}-\d{4}$/);
+      createdFacturaIds.push(resultado.factura.id);
+
+      const factura = await prisma.facturas.findUnique({
+        where: { id: resultado.factura.id },
+        include: { factura_conceptos: true, cuentas_por_cobrar: true },
+      });
+      expect(factura).not.toBeNull();
+      expect(factura!.cotizacion_id).toBe(cotizacion.id);
+      expect(factura!.cliente_id).toBe(cliente.id);
+      expect(Number(factura!.total)).toBe(75000);
+      expect(factura!.estado).toBe('PENDIENTE');
+      expect(factura!.factura_conceptos).toHaveLength(1);
+      expect(factura!.factura_conceptos[0].descripcion).toBe(`A facturar ${TEST_ID}`);
+
+      // 2. CxC creada por el total con vencimiento +30 días
+      const cxc = factura!.cuentas_por_cobrar;
+      expect(cxc).not.toBeNull();
+      expect(Number(cxc!.monto)).toBe(75000);
+      expect(Number(cxc!.monto_pagado)).toBe(0);
+      expect(cxc!.estado).toBe('PENDIENTE');
+      const vencimientoEsperado = new Date();
+      vencimientoEsperado.setDate(vencimientoEsperado.getDate() + 30);
+      expect(cxc!.fecha_vencimiento!.toISOString().split('T')[0]).toBe(
+        vencimientoEsperado.toISOString().split('T')[0],
+      );
+
+      // 3. Cotización quedó ACEPTADA
+      const cotizacionBd = await prisma.cotizaciones.findUnique({
+        where: { id: cotizacion.id },
+      });
+      expect(cotizacionBd!.estado).toBe(EstadoCotizacion.ACEPTADA);
+
+      // 4. Audit COTIZACION_FACTURADA SUCCESS
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.COTIZACION_FACTURADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+      expect(audit!.result).toBe('SUCCESS');
+      const newValue = audit!.new_value as Record<string, unknown> | null;
+      expect(newValue?.facturaId).toBe(resultado.factura.id);
+    });
+
+    it('debe fallar COTIZACION_NO_PENDIENTE y auditar FAIL', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `No facturable ${TEST_ID}`, monto: 1000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+      await service.cambiarEstado(
+        cotizacion.id,
+        { estado: EstadoCotizacion.RECHAZADA, motivoRechazo: 'Prueba integración' },
+        ACTOR_USER_ID,
+      );
+
+      await expect(service.facturar(cotizacion.id, ACTOR_USER_ID)).rejects.toThrow();
+
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.COTIZACION_FACTURADA,
+          entity_id: cotizacion.id,
+          result: 'FAIL',
+          error_code: 'COTIZACION_NO_PENDIENTE',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
     });
   });
 });
