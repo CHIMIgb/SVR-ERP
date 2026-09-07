@@ -2453,7 +2453,7 @@ export const facturasApi = {
   actualizarConcepto: (
     id: string,
     conceptoId: string,
-    data: { cantidad?: number; unidad?: string; descripcion?: string; valorUnitario?: number; objetoImpuesto?: string },
+    data: { cantidad?: number; unidad?: string; descripcion?: string; valorUnitario?: number; objetoImpuesto?: string; impuestoTasa?: number | null },
   ) => apiClient.patch<FacturaDTO>(`/facturas/${id}/conceptos/${conceptoId}`, data),
 
   /** Eliminar concepto y recalcular totales. */

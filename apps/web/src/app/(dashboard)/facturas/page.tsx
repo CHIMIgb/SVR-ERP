@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Receipt, Clock, BadgeCheck, Ban, Banknote,
-  Trash2, SlidersHorizontal, X, Loader2, Eye,
+  Trash2, SlidersHorizontal, X, Loader2, Eye, Check, Pencil,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -52,6 +52,74 @@ const emptyForm = {
 
 const emptyStateForm = { estado: 'TIMBRADA', motivoCancelacion: '' };
 
+// Form para agregar/editar conceptos dentro del detalle (factura PENDIENTE).
+const emptyConceptoForm = {
+  editId: null as string | null,
+  cantidad: '1',
+  unidad: 'Servicio',
+  descripcion: '',
+  valorUnitario: '',
+  objetoImpuesto: '04',
+};
+
+/** Campos reutilizados para agregar y editar un concepto en el detalle. */
+function ConceptoCampos({ form, onChange }: {
+  form: typeof emptyConceptoForm;
+  onChange: (field: string, value: string) => void;
+}) {
+  return (
+    <>
+      <ModalField label="Descripción" required className="sm:col-span-2">
+        <input
+          type="text"
+          className={modalInputClass}
+          placeholder="Descripción del servicio / producto"
+          value={form.descripcion}
+          onChange={(e) => onChange('descripcion', e.target.value)}
+        />
+      </ModalField>
+      <ModalField label="Cant.">
+        <input
+          type="number"
+          min="0"
+          step="any"
+          className={modalInputClass}
+          value={form.cantidad}
+          onChange={(e) => onChange('cantidad', e.target.value)}
+        />
+      </ModalField>
+      <ModalField label="Unidad">
+        <input
+          type="text"
+          className={modalInputClass}
+          value={form.unidad}
+          onChange={(e) => onChange('unidad', e.target.value)}
+        />
+      </ModalField>
+      <ModalField label="P. unitario">
+        <input
+          type="number"
+          min="0"
+          step="any"
+          className={modalInputClass}
+          value={form.valorUnitario}
+          onChange={(e) => onChange('valorUnitario', e.target.value)}
+        />
+      </ModalField>
+      <ModalField label="Impuesto">
+        <select
+          className={modalSelectClass}
+          value={form.objetoImpuesto}
+          onChange={(e) => onChange('objetoImpuesto', e.target.value)}
+        >
+          <option value="04">IVA 16%</option>
+          <option value="02">Exento</option>
+        </select>
+      </ModalField>
+    </>
+  );
+}
+
 export default function FacturasPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -77,6 +145,7 @@ export default function FacturasPage() {
   const [selected, setSelected] = useState<FacturaDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [stateForm, setStateForm] = useState(emptyStateForm);
+  const [conceptoForm, setConceptoForm] = useState(emptyConceptoForm);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Permisos RBAC ──
@@ -286,6 +355,90 @@ export default function FacturasPage() {
       } else {
         showToast(res.error?.message ?? 'Error al eliminar.', 'error');
       }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Conceptos del detalle (solo factura PENDIENTE) ──
+  const cambiarConcepto = (field: string, value: string) =>
+    setConceptoForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleAgregarConcepto = async () => {
+    if (!selected || conceptoForm.editId) return;
+    if (!conceptoForm.descripcion.trim()) {
+      showToast('Ingresa la descripción del concepto.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await facturasApi.agregarConcepto(selected.id, {
+        cantidad: Number(conceptoForm.cantidad) || 1,
+        unidad: conceptoForm.unidad || 'Servicio',
+        descripcion: conceptoForm.descripcion.trim(),
+        valorUnitario: Number(conceptoForm.valorUnitario) || 0,
+        objetoImpuesto: conceptoForm.objetoImpuesto,
+      });
+      if (!res.success) {
+        showToast(res.error?.message ?? 'Error al agregar el concepto.', 'error');
+        return;
+      }
+      showToast('Concepto agregado.', 'success');
+      setSelected(res.data);
+      setConceptoForm(emptyConceptoForm);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGuardarConcepto = async () => {
+    if (!selected || !conceptoForm.editId) return;
+    if (!conceptoForm.descripcion.trim()) {
+      showToast('Ingresa la descripción del concepto.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const esExento = conceptoForm.objetoImpuesto !== '04';
+      const res = await facturasApi.actualizarConcepto(selected.id, conceptoForm.editId, {
+        cantidad: Number(conceptoForm.cantidad) || 1,
+        unidad: conceptoForm.unidad || 'Servicio',
+        descripcion: conceptoForm.descripcion.trim(),
+        valorUnitario: Number(conceptoForm.valorUnitario) || 0,
+        objetoImpuesto: conceptoForm.objetoImpuesto,
+        impuestoTasa: esExento ? null : 0.16,
+      });
+      if (!res.success) {
+        showToast(res.error?.message ?? 'Error al guardar el concepto.', 'error');
+        return;
+      }
+      showToast('Concepto actualizado.', 'success');
+      setSelected(res.data);
+      setConceptoForm(emptyConceptoForm);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEliminarConcepto = async (c: FacturaConceptoDTO) => {
+    if (!selected) return;
+    if (!window.confirm(`¿Eliminar el concepto "${c.descripcion}"?`)) return;
+    setSubmitting(true);
+    try {
+      const res = await facturasApi.eliminarConcepto(selected.id, c.id);
+      if (!res.success) {
+        showToast(res.error?.message ?? 'Error al eliminar el concepto.', 'error');
+        return;
+      }
+      showToast('Concepto eliminado.', 'success');
+      setSelected(res.data);
+      setConceptoForm(emptyConceptoForm);
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
     } finally {
@@ -577,19 +730,102 @@ export default function FacturasPage() {
             <div className="border-t border-slate-100 pt-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Conceptos</p>
               <div className="space-y-2">
-                {selected.conceptos.map((c: FacturaConceptoDTO) => (
-                  <div key={c.id} className="flex items-start justify-between gap-4 text-sm">
-                    <div>
-                      <p className="font-semibold text-slate-900">{c.descripcion}</p>
-                      <p className="text-xs text-slate-400">
-                        {c.cantidad} × {formatCurrency(c.valorUnitario)} {c.unidad}
-                        {c.objetoImpuesto === '04' ? ' · IVA 16%' : ' · Exento'}
-                      </p>
+                {selected.conceptos.map((c: FacturaConceptoDTO) => {
+                  const esEditable = selected.estado === 'PENDIENTE' && puedeEditar;
+                  const enEdicion = esEditable && conceptoForm.editId === c.id;
+                  return enEdicion ? (
+                    <div key={c.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <ConceptoCampos
+                          form={conceptoForm}
+                          onChange={cambiarConcepto}
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 mt-3">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={<X className="w-3.5 h-3.5" />}
+                          onClick={() => setConceptoForm(emptyConceptoForm)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          variant="success"
+                          size="sm"
+                          icon={<Check className="w-3.5 h-3.5" />}
+                          loading={submitting}
+                          onClick={handleGuardarConcepto}
+                        >
+                          Guardar
+                        </Button>
+                      </div>
                     </div>
-                    <p className="font-bold text-slate-900">{formatCurrency(c.importe)}</p>
-                  </div>
-                ))}
+                  ) : (
+                    <div key={c.id} className="flex items-start justify-between gap-4 text-sm">
+                      <div>
+                        <p className="font-semibold text-slate-900">{c.descripcion}</p>
+                        <p className="text-xs text-slate-400">
+                          {c.cantidad} × {formatCurrency(c.valorUnitario)} {c.unidad}
+                          {c.objetoImpuesto === '04' ? ' · IVA 16%' : ' · Exento'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <p className="font-bold text-slate-900">{formatCurrency(c.importe)}</p>
+                        {esEditable && (
+                          <div className="flex gap-1">
+                            <button
+                              className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                              title="Editar concepto"
+                              onClick={() =>
+                                setConceptoForm({
+                                  editId: c.id,
+                                  cantidad: String(c.cantidad),
+                                  unidad: c.unidad,
+                                  descripcion: c.descripcion,
+                                  valorUnitario: String(c.valorUnitario),
+                                  objetoImpuesto: c.objetoImpuesto ?? '04',
+                                })
+                              }
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                              title="Eliminar concepto"
+                              onClick={() => handleEliminarConcepto(c)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+
+              {selected.estado === 'PENDIENTE' && puedeEditar && conceptoForm.editId === null && (
+                <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Agregar concepto
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <ConceptoCampos form={conceptoForm} onChange={cambiarConcepto} />
+                  </div>
+                  <div className="flex justify-end mt-3">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<Plus className="w-3.5 h-3.5" />}
+                      loading={submitting}
+                      onClick={handleAgregarConcepto}
+                    >
+                      Agregar
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-slate-100 pt-3 space-y-1 text-sm">
