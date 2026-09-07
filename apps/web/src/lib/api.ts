@@ -1998,6 +1998,14 @@ export const cotizacionesApi = {
   /** Editar campos de la cotización (descripción, monto, fecha, cliente). */
   actualizar: (id: string, data: CotizacionUpdateInput) =>
     apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}`, data),
+
+  /** Facturar: acepta la cotización y crea factura + CxC en una transacción. */
+  facturar: (id: string) =>
+    apiClient.post<{
+      cotizacionId: string;
+      factura: { id: string; codigo: string; total: number; estado: string };
+      cxc: { id: string; monto: number; fechaVencimiento: string };
+    }>(`/cotizaciones/${id}/facturar`, {}),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -2320,4 +2328,135 @@ export const cobranzaApi = {
   /** Registrar cobro contra una cuenta; crea pago + ingreso en finanzas. */
   registrarCobro: (id: string, data: CobroCreateInput) =>
     apiClient.post<{ cobro: CobroDTO; cuenta: CuentaPorCobrarDTO }>(`/cobranza/${id}/cobros`, data),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Facturas API (módulo facturas)
+//  Backend: apps/api/src/facturas/
+// ────────────────────────────────────────────────────────────
+
+/** Estados de factura serializados por el backend (string del modelo `facturas`). */
+export type EstadoFacturaApi = 'PENDIENTE' | 'TIMBRADA' | 'PAGADA' | 'CANCELADA';
+
+export interface FacturaDTO {
+  id: string;
+  codigo: string;
+  serie: string;
+  folio: string;
+  clienteId: string;
+  clienteNombre: string;
+  empresa: string;
+  rfc: string;
+  cotizacionId: string | null;
+  cotizacionCodigo: string | null;
+  subtotal: number;
+  impuestos: number;
+  total: number;
+  moneda: string;
+  tipoCambio: number;
+  formaPago: string;
+  metodoPago: string;
+  usoCfdi: string;
+  estado: string;
+  timbradoEn: string | null;
+  fechaEmision: string;
+  periodoInicio: string | null;
+  periodoFin: string | null;
+  conceptos: FacturaConceptoDTO[];
+  cuentaPorCobrar: { id: string; estado: string; montoPagado: number } | null;
+}
+
+export interface FacturaConceptoDTO {
+  id: string;
+  cantidad: number;
+  unidad: string;
+  descripcion: string;
+  valorUnitario: number;
+  importe: number;
+  descuento: number;
+  objetoImpuesto: string;
+  impuestoTasa: number;
+  impuestoImporte: number;
+}
+
+export interface FacturasStats {
+  total: number;
+  pendientes: number;
+  timbradas: number;
+  canceladas: number;
+  montoTotal: number;
+}
+
+export interface FacturaCreateInput {
+  clienteId: string;
+  serie?: string;
+  formaPago?: string;
+  metodoPago?: string;
+  usoCfdi?: string;
+  conceptos: {
+    cantidad: number;
+    unidad: string;
+    descripcion: string;
+    valorUnitario: number;
+    objetoImpuesto?: string;
+  }[];
+}
+
+export interface FacturaEstadoInput {
+  estado: 'TIMBRADA' | 'CANCELADA';
+  motivoCancelacion?: string;
+}
+
+export const facturasApi = {
+  /** Listar facturas con búsqueda, filtros y paginación. */
+  listar: (params?: {
+    search?: string;
+    estado?: string;
+    clienteId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<FacturaDTO>>(`/facturas${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Detalle de una factura. */
+  obtener: (id: string) => apiClient.get<FacturaDTO>(`/facturas/${id}`),
+
+  /** Crear una factura en estado PENDIENTE. */
+  crear: (data: FacturaCreateInput) => apiClient.post<FacturaDTO>('/facturas', data),
+
+  /** Actualizar datos fiscales de una factura PENDIENTE. */
+  actualizar: (id: string, data: Partial<FacturaCreateInput>) =>
+    apiClient.patch<FacturaDTO>(`/facturas/${id}`, data),
+
+  /** Cambiar estado (PENDIENTE→TIMBRADA, PENDIENTE→CANCELADA). */
+  cambiarEstado: (id: string, data: FacturaEstadoInput) =>
+    apiClient.patch<FacturaDTO>(`/facturas/${id}/estado`, data),
+
+  /** Eliminar (soft delete) una factura PENDIENTE sin CxC. */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/facturas/${id}`),
+
+  /** Agregar concepto a una factura PENDIENTE. */
+  agregarConcepto: (
+    id: string,
+    data: { cantidad: number; unidad: string; descripcion: string; valorUnitario: number; objetoImpuesto?: string },
+  ) => apiClient.post<FacturaDTO>(`/facturas/${id}/conceptos`, data),
+
+  /** Actualizar concepto y recalcular totales. */
+  actualizarConcepto: (
+    id: string,
+    conceptoId: string,
+    data: { cantidad?: number; unidad?: string; descripcion?: string; valorUnitario?: number; objetoImpuesto?: string },
+  ) => apiClient.patch<FacturaDTO>(`/facturas/${id}/conceptos/${conceptoId}`, data),
+
+  /** Eliminar concepto y recalcular totales. */
+  eliminarConcepto: (id: string, conceptoId: string) =>
+    apiClient.delete<FacturaDTO>(`/facturas/${id}/conceptos/${conceptoId}`),
 };
