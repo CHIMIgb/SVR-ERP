@@ -324,6 +324,7 @@ model cotizaciones {
   creado_por                                String?          @db.Uuid
   eliminado_en                              DateTime?        @db.Timestamptz()
   vendedor_id                               String?          @db.Uuid
+  facturas                                  facturas[]
   clientes                                  clientes         @relation(fields: [cliente_id], references: [id])
   users_cotizaciones_actualizado_porTousers users?           @relation("cotizaciones_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_actualizado_por")
   users_cotizaciones_creado_porTousers      users?           @relation("cotizaciones_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_creado_por")
@@ -553,6 +554,7 @@ model facturas {
   folio                                 String?
   uuid_cfdi                             String?             @unique
   cliente_id                            String              @db.Uuid
+  cotizacion_id                         String?             @db.Uuid
   periodo_inicio                        DateTime?           @db.Date
   periodo_fin                           DateTime?           @db.Date
   subtotal                              Decimal             @default(0) @db.Decimal(14, 2)
@@ -573,6 +575,7 @@ model facturas {
   creado_por                            String?             @db.Uuid
   actualizado_por                       String?             @db.Uuid
   eliminado_en                          DateTime?           @db.Timestamptz()
+  cotizaciones                          cotizaciones?       @relation(fields: [cotizacion_id], references: [id])
   cuentas_por_cobrar                    cuentas_por_cobrar?
   factura_conceptos                     factura_conceptos[]
   clientes                              clientes            @relation(fields: [cliente_id], references: [id])
@@ -582,6 +585,7 @@ model facturas {
 
   @@index([cliente_id])
   @@index([estado])
+  @@index([cotizacion_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2130,6 +2134,11 @@ enum AuditAction {
   CXC_ACTUALIZADA
   CXC_CONSULTADA
   COBRO_REGISTRADO
+  FACTURA_CREADA
+  FACTURA_ACTUALIZADA
+  FACTURA_TIMBRADA
+  FACTURA_CANCELADA
+  COTIZACION_FACTURADA
 }
 
 enum AuditResult {
