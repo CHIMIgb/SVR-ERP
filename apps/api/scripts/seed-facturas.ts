@@ -86,6 +86,96 @@ function diasDesdeHoy(dias: number): Date {
   return d;
 }
 
+/**
+ * Modo `--pendientes=N`: crea N facturas PENDIENTE simples (1-3 conceptos,
+ * sin CxC) para poblar la vista /facturas y probar timbrado/cancelación.
+ * Códigos `PEND-0001...` para no chocar con SEED-FAC-* (limpieza idempotente
+ * del modo normal). Idempotente: continúa la numeración de corridas previas.
+ */
+async function crearFacturasPendientes(prisma: PrismaService, auditService: AuditService, n: number) {
+  const clientes = await prisma.clientes.findMany({
+    where: { activo: true, eliminado_en: null },
+    select: { id: true },
+  });
+  if (clientes.length === 0) {
+    throw new Error('No hay clientes activos. Corre antes scripts/seed-clientes.ts o seed-cobranza.ts');
+  }
+
+  const prefijo = 'PEND-';
+  const base = await prisma.facturas.count({ where: { codigo: { startsWith: prefijo } } });
+  const sets = conceptoSets();
+  const catalogo = [sets['1-concepto'], sets['renta-maq'], sets['obra-civil'], sets['concepto-simple'], sets['3-conceptos']];
+  const descripciones = [
+    'Servicios de construcción civil (seed prueba)',
+    'Renta de maquinaria con operador (seed prueba)',
+    'Trabajos de excavación y acarreo (seed prueba)',
+    'Elaboración de proyecto estructural (seed prueba)',
+    'Cimentación y obra gris (seed prueba)',
+  ];
+
+  for (let i = 0; i < n; i++) {
+    const idx = i % catalogo.length;
+    const facturaIdx = base + i + 1;
+    const { lineas, subtotal, impuestos, total } = calcularTotales(catalogo[idx]);
+    const haceDias = (i % 30) + 1;
+
+    const factura = await prisma.facturas.create({
+      data: {
+        id: randomUUID(),
+        codigo: `${prefijo}${String(facturaIdx).padStart(4, '0')}`,
+        serie: 'F',
+        folio: String(900000 + facturaIdx),
+        cliente_id: clientes[i % clientes.length].id,
+        subtotal,
+        impuestos,
+        total,
+        moneda: 'MXN',
+        tipo_cambio: 1,
+        forma_pago: 'PAGO_EN_UNA_SOLA_EXHIBICION',
+        metodo_pago: 'PPD',
+        uso_cfdi: 'G03',
+        estado: 'PENDIENTE',
+        activo: true,
+        creado_en: diasDesdeHoy(-haceDias),
+        actualizado_en: diasDesdeHoy(-haceDias),
+        creado_por: USER_ID,
+      },
+    });
+
+    for (const [j, c] of catalogo[idx].entries()) {
+      await prisma.factura_conceptos.create({
+        data: {
+          id: randomUUID(),
+          factura_id: factura.id,
+          cantidad: c.cantidad,
+          unidad: c.unidad,
+          descripcion: c.descripcion,
+          valor_unitario: c.valorUnitario,
+          importe: r(c.cantidad * c.valorUnitario),
+          descuento: 0,
+          objeto_impuesto: c.iva ? '04' : '02',
+          impuesto_tasa: lineas[j].tasa,
+          impuesto_importe: lineas[j].impuestoImporte > 0 ? lineas[j].impuestoImporte : null,
+          activo: true,
+        },
+      });
+    }
+
+    await auditService.log({
+      action: AuditAction.FACTURA_CREADA,
+      entityType: 'facturas',
+      entityId: factura.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: USER_ID,
+      actorType: 'SYSTEM',
+      actorRole: 'seed',
+      newValue: { codigo: factura.codigo, clienteId: factura.cliente_id, subtotal, impuestos, total, descripcion: descripciones[i % descripciones.length] },
+    });
+  }
+
+  console.log(`Facturas PENDIENTE creadas: ${n} (códigos ${prefijo}${String(base + 1).padStart(4, '0')} … ${prefijo}${String(base + n).padStart(4, '0')})`);
+}
+
 function calcularTotales(conceptos: ConceptoSeed[]) {
   const lineas = conceptos.map((c) => {
     const importe = r(c.cantidad * c.valorUnitario);
@@ -106,6 +196,19 @@ async function main() {
   await prisma.$connect();
   const auditContext = new AuditContextService();
   const auditService = new AuditService(prisma, auditContext);
+
+  // ── Modo ligero: N facturas PENDIENTE para pruebas de la vista ──
+  const pendientesArg = process.argv.find((a) => a.startsWith('--pendientes='));
+  if (pendientesArg) {
+    const n = Number(pendientesArg.split('=')[1]);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new Error('--pendientes=N requiere N entero mayor a 0');
+    }
+    await crearFacturasPendientes(prisma, auditService, n);
+    await prisma.$disconnect();
+    return;
+  }
+
   const cobranza = new CobranzaService(prisma, auditService);
 
   const sets = conceptoSets();
