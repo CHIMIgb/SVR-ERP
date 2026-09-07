@@ -336,7 +336,7 @@ export class CobranzaService {
     const idPago = randomUUID();
     const now = new Date();
 
-    const pago = await this.prisma.$transaction(async (tx) => {
+    const { pago, facturaSaldada } = await this.prisma.$transaction(async (tx) => {
       const nuevoPagado = Number(cuenta.monto_pagado) + dto.monto;
       // Dominio legacy de CxC: PENDIENTE → PARCIAL → PAGADO (el API expone
       // 'SALDADO' a la UI; el mapeo vive en serializeCuenta).
@@ -374,6 +374,17 @@ export class CobranzaService {
         },
       });
 
+      // Integridad del ciclo venta→cobro: al saldar la cuenta, la factura
+      // timbrada ligada pasa a PAGADA (misma transacción, sin audit extra).
+      let facturaSaldada = false;
+      if (estadoCxc === 'PAGADO' && cuenta.factura_id) {
+        const updated = await tx.facturas.updateMany({
+          where: { id: cuenta.factura_id, estado: 'TIMBRADA', activo: true },
+          data: { estado: 'PAGADA', actualizado_en: now },
+        });
+        facturaSaldada = updated.count > 0;
+      }
+
       await tx.transacciones.create({
         data: {
           id: randomUUID(),
@@ -391,7 +402,7 @@ export class CobranzaService {
         },
       });
 
-      return nuevo;
+      return { pago: nuevo, facturaSaldada };
     });
 
     const cuentaActualizada = await this.prisma.cuentas_por_cobrar.findFirst({

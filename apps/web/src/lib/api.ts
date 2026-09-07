@@ -2459,4 +2459,27 @@ export const facturasApi = {
   /** Eliminar concepto y recalcular totales. */
   eliminarConcepto: (id: string, conceptoId: string) =>
     apiClient.delete<FacturaDTO>(`/facturas/${id}/conceptos/${conceptoId}`),
+
+  /** Estadísticas globales para las StatsCards. */
+  stats: () => apiClient.get<FacturasStats>('/facturas/stats'),
+
+  /** Descarga un CSV de las facturas (descarga directa del navegador). */
+  exportar: async (params?: { search?: string; estado?: string; clienteId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    const qs = searchParams.toString();
+    const res = await fetch(`${API_BASE_URL}/facturas/exportar${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    if (!res.ok) throw new Error('No se pudo exportar el CSV');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `facturas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };

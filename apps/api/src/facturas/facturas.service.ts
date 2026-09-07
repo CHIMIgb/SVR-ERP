@@ -149,9 +149,7 @@ export class FacturasService {
   // ────────────────────────────────────────────
   //  FACTURAS — LISTAR
   // ────────────────────────────────────────────
-  async findAll(query: ListarFacturasQuery) {
-    const page = query.page || 1;
-    const limit = Math.min(query.limit || 10, 100);
+  private buildWhere(query: ListarFacturasQuery): Prisma.facturasWhereInput {
     const where: Prisma.facturasWhereInput = { activo: true, eliminado_en: null };
 
     if (query.estado) where.estado = query.estado;
@@ -163,6 +161,13 @@ export class FacturasService {
         { clientes: { nombre: { contains: query.search, mode: 'insensitive' } } },
       ];
     }
+    return where;
+  }
+
+  async findAll(query: ListarFacturasQuery) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+    const where = this.buildWhere(query);
 
     const [items, total] = await Promise.all([
       this.prisma.facturas.findMany({
@@ -183,6 +188,73 @@ export class FacturasService {
       items: items.map((f) => this.serialize(f)),
       pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
     };
+  }
+
+  // ────────────────────────────────────────────
+  //  FACTURAS — ESTADÍSTICAS GLOBALES
+  // ────────────────────────────────────────────
+  async stats() {
+    const [total, porEstado, facturado] = await Promise.all([
+      this.prisma.facturas.count({ where: { activo: true, eliminado_en: null } }),
+      this.prisma.facturas.groupBy({
+        by: ['estado'],
+        where: { activo: true, eliminado_en: null },
+        _count: { _all: true },
+      }),
+      this.prisma.facturas.aggregate({
+        where: { activo: true, eliminado_en: null, estado: { in: ['TIMBRADA', 'PAGADA'] } },
+        _sum: { total: true },
+      }),
+    ]);
+
+    const c = Object.fromEntries(porEstado.map((r) => [r.estado, r._count._all]));
+    return {
+      total,
+      pendientes: c['PENDIENTE'] ?? 0,
+      timbradas: c['TIMBRADA'] ?? 0,
+      canceladas: c['CANCELADA'] ?? 0,
+      montoTotal: Number(facturado._sum.total ?? 0),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  FACTURAS — EXPORTAR CSV
+  // ────────────────────────────────────────────
+  async exportar(query: ListarFacturasQuery) {
+    const facturas = await this.prisma.facturas.findMany({
+      where: this.buildWhere(query),
+      orderBy: { creado_en: 'desc' },
+      include: {
+        clientes: { select: { id: true, nombre: true, empresa: true, rfc: true } },
+      },
+    });
+
+    const escape = (v: unknown) => {
+      const s = String(v ?? '');
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const lineas = facturas.map((f) =>
+      [
+        f.codigo,
+        f.serie ?? '',
+        f.folio ?? '',
+        f.clientes?.empresa || f.clientes?.nombre || '',
+        f.clientes?.rfc ?? '',
+        f.creado_en.toISOString().slice(0, 10),
+        Number(f.subtotal),
+        Number(f.impuestos),
+        Number(f.total),
+        f.estado,
+      ]
+        .map(escape)
+        .join(','),
+    );
+
+    return [
+      '\ufeffCodigo,Serie,Folio,Cliente,RFC,FechaEmision,Subtotal,Impuestos,Total,Estado',
+      ...lineas,
+    ].join('\n');
   }
 
   // ────────────────────────────────────────────

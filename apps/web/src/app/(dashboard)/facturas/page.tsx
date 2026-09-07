@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus, Receipt, Clock, BadgeCheck, Ban, Banknote,
+  Plus, Receipt, Clock, BadgeCheck, Ban, Banknote, Download,
   Trash2, SlidersHorizontal, X, Loader2, Eye, Check, Pencil,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatters';
@@ -21,6 +21,7 @@ import {
   clientesApi,
   type FacturaDTO,
   type FacturaConceptoDTO,
+  type FacturasStats,
 } from '@/lib/api';
 
 // ── Constantes ──
@@ -147,12 +148,14 @@ export default function FacturasPage() {
   const [stateForm, setStateForm] = useState(emptyStateForm);
   const [conceptoForm, setConceptoForm] = useState(emptyConceptoForm);
   const [submitting, setSubmitting] = useState(false);
+  const [facturasStats, setFacturasStats] = useState<FacturasStats | null>(null);
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/facturas');
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
+  const puedeExportar = vista?.puedeExportar ?? false;
 
   // ── Cargar catálogo de clientes (una sola vez) ──
   useEffect(() => {
@@ -198,6 +201,27 @@ export default function FacturasPage() {
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Estadísticas globales (una sola vez al montar) ──
+  useEffect(() => {
+    facturasApi.stats().then((res) => {
+      if (res.success && res.data) setFacturasStats(res.data);
+    });
+  }, []);
+
+  // ── Exportar CSV con los filtros actuales ──
+  const handleExportar = useCallback(async () => {
+    try {
+      await facturasApi.exportar({
+        search: search || undefined,
+        estado: filterValues.estado || undefined,
+        clienteId: filterValues.clienteId || undefined,
+      });
+      showToast('Exportación completada.', 'success');
+    } catch {
+      showToast('No se pudo exportar el CSV.', 'error');
+    }
+  }, [search, filterValues, showToast]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
@@ -552,12 +576,8 @@ export default function FacturasPage() {
     },
   ];
 
-  // ── Stats (computados de la página actual) ──
-  const stats = {
-    total: pagination.total,
-    pendientes: facturas.filter(f => f.estado === 'PENDIENTE').length,
-    montoTotal: facturas.reduce((acc, f) => acc + f.total, 0),
-  };
+  // ── Stats (globales del API) ──
+  const stats = facturasStats ?? { total: 0, pendientes: 0, timbradas: 0, canceladas: 0, montoTotal: 0 };
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -565,18 +585,28 @@ export default function FacturasPage() {
         title="Facturas"
         subtitle="Emite, timbra y administra las facturas de tus clientes."
         action={
-          puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={() => setCreateOpen(true)}>
-              Nueva factura
-            </Button>
+          (puedeCrear || puedeExportar) ? (
+            <div className="flex flex-wrap gap-3">
+              {puedeExportar && (
+                <Button variant="outline" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+                  Exportar
+                </Button>
+              )}
+              {puedeCrear && (
+                <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={() => setCreateOpen(true)}>
+                  Nueva factura
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         <StatsCard icon={<Receipt className="w-6 h-6" />} value={`${stats.total}`} label="Total Facturas" color="info" />
-        <StatsCard icon={<Clock className="w-6 h-6" />} value={`${stats.pendientes}`} label="Pendientes (página)" color="warning" />
-        <StatsCard icon={<Banknote className="w-6 h-6" />} value={formatCurrency(stats.montoTotal)} label="Monto (página)" color="success" />
+        <StatsCard icon={<Clock className="w-6 h-6" />} value={`${stats.pendientes}`} label="Pendientes" color="warning" />
+        <StatsCard icon={<BadgeCheck className="w-6 h-6" />} value={`${stats.timbradas}`} label="Timbradas" color="success" />
+        <StatsCard icon={<Banknote className="w-6 h-6" />} value={formatCurrency(stats.montoTotal)} label="Total facturado" color="primary" />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

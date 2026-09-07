@@ -9,11 +9,12 @@ import {
   Query,
   UseGuards,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { FacturasService } from './facturas.service';
 import { CrearFacturaDto } from './dto/crear-factura.dto';
 import { ActualizarFacturaDto } from './dto/actualizar-factura.dto';
@@ -36,6 +37,32 @@ export class FacturasController {
   @Get('facturas')
   async findAll(@Query() query: ListarFacturasQuery) {
     return this.facturasService.findAll(query);
+  }
+
+  /**
+   * GET /api/facturas/stats — totales globales para las StatsCards
+   * Permiso: comercial.facturas.ver
+   */
+  @RequirePermission('comercial', 'facturas', 'ver')
+  @Get('facturas/stats')
+  async stats() {
+    return this.facturasService.stats();
+  }
+
+  /**
+   * GET /api/facturas/exportar — CSV con BOM (debe declararse antes de :id)
+   * Permiso: comercial.facturas.exportar
+   */
+  @RequirePermission('comercial', 'facturas', 'exportar')
+  @Get('facturas/exportar')
+  async exportar(@Query() query: ListarFacturasQuery, @Res() res: Response) {
+    const csv = await this.facturasService.exportar(query);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="facturas-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    res.send(csv);
   }
 
   /**

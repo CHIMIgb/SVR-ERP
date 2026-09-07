@@ -27,6 +27,8 @@ describe('Cobranza Audit (Real DB)', () => {
 
   let clienteId: string;
   let cuentaId: string;
+  let cuentaFacturaId: string | undefined;
+  let facturaId: string | undefined;
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -58,10 +60,10 @@ describe('Cobranza Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
-    if (cuentaId) {
+    const limpiarCuenta = async (id: string) => {
       // FK-safe: transacciones de cobros → pagos → cuenta → cliente.
       const pagos = await prisma.pagos.findMany({
-        where: { cuenta_por_cobrar_id: cuentaId },
+        where: { cuenta_por_cobrar_id: id },
         select: { id: true },
       });
       const pagoIds = pagos.map((p) => p.id);
@@ -69,9 +71,15 @@ describe('Cobranza Audit (Real DB)', () => {
         where: { entidad_tipo: 'COBRO', entidad_id: { in: pagoIds } },
       });
       await prisma.pagos.deleteMany({
-        where: { cuenta_por_cobrar_id: cuentaId },
+        where: { cuenta_por_cobrar_id: id },
       });
-      await prisma.cuentas_por_cobrar.deleteMany({ where: { id: cuentaId } });
+      await prisma.cuentas_por_cobrar.deleteMany({ where: { id } });
+    };
+
+    if (cuentaFacturaId) await limpiarCuenta(cuentaFacturaId);
+    if (cuentaId) await limpiarCuenta(cuentaId);
+    if (facturaId) {
+      await prisma.facturas.deleteMany({ where: { id: facturaId } });
     }
     if (clienteId) {
       await prisma.clientes.deleteMany({ where: { id: clienteId } });
@@ -179,5 +187,45 @@ describe('Cobranza Audit (Real DB)', () => {
       orderBy: { timestamp: 'desc' },
     });
     expect(audit).not.toBeNull();
+  });
+
+  it('salda la factura TIMBRADA a PAGADA al liquidar la CxC ligada', async () => {
+    // Factura TIMBRADA temporal ligada al cliente de integración.
+    const factura = await prisma.facturas.create({
+      data: {
+        id: randomUUID(),
+        codigo: `IT-FAC-${TEST_ID}`,
+        serie: 'X',
+        folio: '000001',
+        cliente_id: clienteId,
+        subtotal: 1000,
+        impuestos: 160,
+        total: 1160,
+        moneda: 'MXN',
+        tipo_cambio: 1,
+        forma_pago: 'PAGO_EN_UNA_SOLA_EXHIBICION',
+        metodo_pago: 'PPD',
+        uso_cfdi: 'G03',
+        estado: 'TIMBRADA',
+        activo: true,
+        actualizado_en: new Date(),
+      },
+    });
+    facturaId = factura.id;
+
+    const cuenta = await service.crearCuenta(
+      { clienteId, facturaId: factura.id, monto: 1160, fechaVencimiento: '2026-11-30' },
+      ACTOR_USER_ID,
+    );
+    cuentaFacturaId = cuenta.id;
+
+    await service.registrarCobro(
+      cuentaFacturaId!,
+      { monto: 1160, metodoPago: 'TRANSFERENCIA', referencia: `IT-PAGO-${TEST_ID}` },
+      ACTOR_USER_ID,
+    );
+
+    const facturaDb = await prisma.facturas.findUnique({ where: { id: factura.id } });
+    expect(facturaDb!.estado).toBe('PAGADA');
   });
 });

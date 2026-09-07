@@ -72,7 +72,7 @@ describe('CobranzaService', () => {
         aggregate: jest.fn(),
       },
       clientes: { findFirst: jest.fn() },
-      facturas: { findFirst: jest.fn() },
+      facturas: { findFirst: jest.fn(), updateMany: jest.fn() },
       pagos: {
         findMany: jest.fn(),
         count: jest.fn(),
@@ -301,6 +301,37 @@ describe('CobranzaService', () => {
       );
       expect(result.cobro.monto).toBe(400);
       expect(result.cuenta.estado).toBe('PARCIAL');
+    });
+
+    it('salda la factura asociada a PAGADA cuando la CxC queda liquidada', async () => {
+      const FACTURA_ID = 'e0000000-0000-0000-0000-000000000001';
+      const cuentaConFactura = { ...mockCuenta, factura_id: FACTURA_ID };
+      prisma.cuentas_por_cobrar.findFirst
+        .mockResolvedValueOnce(cuentaConFactura) // validación
+        .mockResolvedValueOnce({
+          ...cuentaConFactura,
+          monto_pagado: 1000,
+          estado: 'PAGADO',
+          pagos: [{ fecha_pago: new Date('2026-09-02') }],
+        });
+      prisma.pagos.create.mockResolvedValue(mockPago);
+      prisma.transacciones.create.mockResolvedValue({});
+      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+      prisma.facturas.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.registrarCobro(
+        CUENTA_ID,
+        { monto: 1000, metodoPago: 'TRANSFERENCIA' },
+        USER_ID,
+      );
+
+      expect(prisma.facturas.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: FACTURA_ID, estado: 'TIMBRADA' }),
+          data: expect.objectContaining({ estado: 'PAGADA' }),
+        }),
+      );
+      expect(result.cuenta.estado).toBe('SALDADO');
     });
   });
 

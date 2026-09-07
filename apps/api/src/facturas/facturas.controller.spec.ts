@@ -7,6 +7,8 @@ describe('FacturasController', () => {
   let controller: FacturasController;
   const service = {
     findAll: jest.fn(),
+    stats: jest.fn(),
+    exportar: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -44,6 +46,34 @@ describe('FacturasController', () => {
       const result = await controller.findAll({ estado: 'PENDIENTE' } as never);
       expect(service.findAll).toHaveBeenCalledWith({ estado: 'PENDIENTE' });
       expect(result).toEqual({ items: [], pagination: {} });
+    });
+  });
+
+  describe('GET /facturas/stats', () => {
+    it('debe devolver las estadísticas globales', async () => {
+      service.stats.mockResolvedValue({ total: 30, pendientes: 30 });
+      const result = await controller.stats();
+      expect(service.stats).toHaveBeenCalledWith();
+      expect(result).toEqual({ total: 30, pendientes: 30 });
+    });
+  });
+
+  describe('GET /facturas/exportar', () => {
+    it('debe enviar el CSV con encabezados de descarga', async () => {
+      service.exportar.mockResolvedValue('\ufeffCodigo,Serie,Folio,Cliente');
+      const setHeader = jest.fn();
+      const send = jest.fn();
+      const res = { setHeader, send } as never;
+
+      await controller.exportar({ estado: 'PENDIENTE' } as never, res);
+
+      expect(service.exportar).toHaveBeenCalledWith({ estado: 'PENDIENTE' });
+      expect(setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+      expect(setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        expect.stringMatching(/^attachment; filename="facturas-\d{4}-\d{2}-\d{2}\.csv"$/),
+      );
+      expect(send).toHaveBeenCalledWith('\ufeffCodigo,Serie,Folio,Cliente');
     });
   });
 

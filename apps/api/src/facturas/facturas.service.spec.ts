@@ -70,6 +70,8 @@ describe('FacturasService', () => {
         count: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        groupBy: jest.fn(),
+        aggregate: jest.fn(),
       },
       factura_conceptos: {
         findMany: jest.fn(),
@@ -338,6 +340,48 @@ describe('FacturasService', () => {
         expect.objectContaining({ data: expect.objectContaining({ activo: false }) }),
       );
       expect(result).toBeDefined();
+    });
+  });
+
+  describe('stats', () => {
+    it('devuelve totales por estado y total facturado', async () => {
+      prisma.facturas.count.mockResolvedValue(10);
+      prisma.facturas.groupBy.mockResolvedValue([
+        { estado: 'PENDIENTE', _count: { _all: 6 } },
+        { estado: 'TIMBRADA', _count: { _all: 3 } },
+        { estado: 'CANCELADA', _count: { _all: 1 } },
+      ]);
+      prisma.facturas.aggregate.mockResolvedValue({ _sum: { total: 50000 } });
+
+      const result = await service.stats();
+
+      expect(result).toEqual({
+        total: 10,
+        pendientes: 6,
+        timbradas: 3,
+        canceladas: 1,
+        montoTotal: 50000,
+      });
+      expect(prisma.facturas.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: { in: ['TIMBRADA', 'PAGADA'] } }),
+        }),
+      );
+    });
+  });
+
+  describe('exportar', () => {
+    it('genera CSV con BOM y encabezados aplicando filtros', async () => {
+      prisma.facturas.findMany.mockResolvedValue([mockFactura]);
+
+      const csv = await service.exportar({ search: 'Beta' });
+
+      expect(csv.startsWith('\ufeffCodigo,Serie,Folio,Cliente,RFC,FechaEmision,Subtotal,Impuestos,Total,Estado')).toBe(true);
+      expect(csv).toContain('FAC-2026-0001');
+      expect(csv).toContain(',1160,PENDIENTE');
+      expect(prisma.facturas.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ OR: expect.any(Array) }) }),
+      );
     });
   });
 });
