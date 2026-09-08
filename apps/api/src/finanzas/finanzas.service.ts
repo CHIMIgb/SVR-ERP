@@ -28,6 +28,46 @@ function generarCodigo(): string {
   return `TRA-${ymd}-${sufijo}`;
 }
 
+/** Inicio del día de hoy (00:00:00 local) para comparar vencimientos. */
+function inicioDeHoy(): Date {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  return hoy;
+}
+
+/** Suma días a una fecha local sin mutar la original. */
+function sumarDias(fecha: Date, dias: number): Date {
+  const copia = new Date(fecha);
+  copia.setDate(copia.getDate() + dias);
+  return copia;
+}
+
+type VentanaFlujo =
+  | 'vencido'
+  | '0-30d'
+  | '31-60d'
+  | '61-90d'
+  | '+90d'
+  | 'sin_vencimiento';
+
+const VENTANA_LABEL: Record<VentanaFlujo, string> = {
+  vencido: 'Vencido',
+  '0-30d': '0-30 días',
+  '31-60d': '31-60 días',
+  '61-90d': '61-90 días',
+  '+90d': '+90 días',
+  sin_vencimiento: 'Sin vencimiento',
+};
+
+const VENTANA_ORDEN: VentanaFlujo[] = [
+  'vencido',
+  '0-30d',
+  '31-60d',
+  '61-90d',
+  '+90d',
+  'sin_vencimiento',
+];
+
 @Injectable()
 export class FinanzasService {
   constructor(
@@ -300,10 +340,89 @@ export class FinanzasService {
     };
   }
 
+// ────────────────────────────────────────────
+//  FLUJO NETO PROYECTADO (C5)
+// ────────────────────────────────────────────
+  async flujoNeto() {
+    const hoy = inicioDeHoy();
+    const fin30 = sumarDias(hoy, 30);
+    const fin60 = sumarDias(hoy, 60);
+    const fin90 = sumarDias(hoy, 90);
+
+    // Saldos vivos de ambas carteras (activas). Todo en paralelo.
+    const [cxc, cxp] = await Promise.all([
+      this.prisma.cuentas_por_cobrar.findMany({
+        where: { activo: true },
+        select: { monto: true, monto_pagado: true, fecha_vencimiento: true },
+      }),
+      this.prisma.cuentas_por_pagar.findMany({
+        where: { activo: true },
+        select: { monto: true, monto_pagado: true, fecha_vencimiento: true },
+      }),
+    ]);
+
+    const clasificar = (vencimiento: Date | null): VentanaFlujo => {
+      if (!vencimiento) return 'sin_vencimiento';
+      const venc = new Date(vencimiento);
+      if (venc.getTime() < hoy.getTime()) return 'vencido';
+      if (venc.getTime() <= fin30.getTime()) return '0-30d';
+      if (venc.getTime() <= fin60.getTime()) return '31-60d';
+      if (venc.getTime() <= fin90.getTime()) return '61-90d';
+      return '+90d';
+    };
+
+    const vacio = () => ({ porCobrar: 0, porPagar: 0 });
+    const ventanas: Record<VentanaFlujo, ReturnType<typeof vacio>> = {
+      vencido: vacio(),
+      '0-30d': vacio(),
+      '31-60d': vacio(),
+      '61-90d': vacio(),
+      '+90d': vacio(),
+      sin_vencimiento: vacio(),
+    };
+
+    // Las saldadas (saldo <= 0) no aportan al flujo.
+    for (const cuenta of cxc) {
+      const saldo = Number(cuenta.monto) - Number(cuenta.monto_pagado);
+      if (saldo <= 0.0001) continue;
+      ventanas[clasificar(cuenta.fecha_vencimiento)].porCobrar += saldo;
+    }
+    for (const cuenta of cxp) {
+      const saldo = Number(cuenta.monto) - Number(cuenta.monto_pagado);
+      if (saldo <= 0.0001) continue;
+      ventanas[clasificar(cuenta.fecha_vencimiento)].porPagar += saldo;
+    }
+
+    const redondear = (n: number) => Math.round(n * 100) / 100;
+    const items = VENTANA_ORDEN.map((ventana) => {
+      const { porCobrar, porPagar } = ventanas[ventana];
+      return {
+        ventana,
+        label: VENTANA_LABEL[ventana],
+        porCobrar: redondear(porCobrar),
+        porPagar: redondear(porPagar),
+        neto: redondear(porCobrar - porPagar),
+      };
+    });
+
+    const totales = items.reduce(
+      (acc, item) => ({
+        porCobrar: acc.porCobrar + item.porCobrar,
+        porPagar: acc.porPagar + item.porPagar,
+        neto: acc.neto + item.neto,
+      }),
+      { porCobrar: 0, porPagar: 0, neto: 0 },
+    );
+    totales.neto = redondear(totales.neto);
+    totales.porCobrar = redondear(totales.porCobrar);
+    totales.porPagar = redondear(totales.porPagar);
+
+    return { items, totales };
+  }
+
   // ────────────────────────────────────────────
   //  PRIVADOS
   // ────────────────────────────────────────────
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(transaccion: any) {
     const otraCategoria = transaccion.otra_categoria ?? null;

@@ -1373,6 +1373,27 @@ export interface FinanzasStats {
   cantidad: number;
 }
 
+export type VentanaFlujoDTO =
+  | 'vencido'
+  | '0-30d'
+  | '31-60d'
+  | '61-90d'
+  | '+90d'
+  | 'sin_vencimiento';
+
+export interface VentanaFlujoItem {
+  ventana: VentanaFlujoDTO;
+  label: string;
+  porCobrar: number;
+  porPagar: number;
+  neto: number;
+}
+
+export interface FlujoNetoDTO {
+  items: VentanaFlujoItem[];
+  totales: { porCobrar: number; porPagar: number; neto: number };
+}
+
 export interface TransaccionCreateInput {
   tipo: TipoTransaccionApi;
   categoria: string;
@@ -1438,6 +1459,10 @@ export const finanzasApi = {
   /** Estadísticas financieras */
   stats: () =>
     apiClient.get<FinanzasStats>('/finanzas/stats'),
+
+  /** Flujo neto proyectado CxC vs CxP por ventana de vencimiento */
+  flujoNeto: () =>
+    apiClient.get<FlujoNetoDTO>('/finanzas/flujo-neto'),
 };
 
 // ────────────────────────────────────────────────────────────

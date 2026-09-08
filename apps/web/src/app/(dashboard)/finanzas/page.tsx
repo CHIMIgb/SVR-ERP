@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus, Wallet, ArrowUpCircle, ArrowDownCircle,
+  Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
@@ -23,6 +23,7 @@ import {
   FinanzasCategorias,
   type TransaccionDTO,
   type TipoTransaccionApi,
+  type FlujoNetoDTO,
 } from '@/lib/api';
 
 // ── Constantes ──
@@ -45,6 +46,10 @@ export default function FinanzasPage() {
   // ── Estado de datos ──
   const [transacciones, setTransacciones] = useState<TransaccionDTO[]>([]);
   const [stats, setStats] = useState({ balance: 0, totalIngresos: 0, totalEgresos: 0, cantidad: 0 });
+  const [flujo, setFlujo] = useState<FlujoNetoDTO>({
+    items: [],
+    totales: { porCobrar: 0, porPagar: 0, neto: 0 },
+  });
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -106,10 +111,23 @@ export default function FinanzasPage() {
     }
   }, []);
 
+  const fetchFlujo = useCallback(async () => {
+    const res = await finanzasApi.flujoNeto();
+    if (res.success && res.data) {
+      setFlujo(res.data);
+    }
+  }, []);
+
   useEffect(() => {
-    fetchData(1);
-    fetchStats();
-  }, [fetchData, fetchStats]);
+    const inicial = async () => {
+      try {
+        await Promise.all([fetchData(1), fetchStats(), fetchFlujo()]);
+      } catch {
+        /* manejo de error delegado a cada fetch */
+      }
+    };
+    inicial();
+  }, [fetchData, fetchStats, fetchFlujo]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
@@ -407,6 +425,80 @@ export default function FinanzasPage() {
           label="Egresos"
           color="error"
         />
+      </div>
+
+      {/* Flujo neto proyectado CxC vs CxP */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-slate-900">Flujo Neto Proyectado</h2>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              Por cobrar: <strong>{formatCurrency(flujo.totales.porCobrar)}</strong>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+              Por pagar: <strong>{formatCurrency(flujo.totales.porPagar)}</strong>
+            </span>
+            <span className="hidden sm:inline-flex items-center gap-1.5">
+              Neto:{' '}
+              <strong className={flujo.totales.neto >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                {formatCurrency(flujo.totales.neto)}
+              </strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-100">
+                <th className="py-2.5 pr-4 font-semibold">Ventana</th>
+                <th className="py-2.5 pr-4 font-semibold text-right">Por cobrar</th>
+                <th className="py-2.5 pr-4 font-semibold text-right">Por pagar</th>
+                <th className="py-2.5 font-semibold text-right">Neto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flujo.items.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-slate-400">
+                    Sin cuentas por cobrar ni por pagar activas.
+                  </td>
+                </tr>
+              )}
+              {flujo.items.map((item) => (
+                <tr key={item.ventana} className="border-b border-slate-50 last:border-0">
+                  <td className="py-2.5 pr-4 font-medium text-slate-700">{item.label}</td>
+                  <td className="py-2.5 pr-4 text-right text-emerald-600">
+                    {formatCurrency(item.porCobrar)}
+                  </td>
+                  <td className="py-2.5 pr-4 text-right text-rose-600">
+                    {formatCurrency(item.porPagar)}
+                  </td>
+                  <td className="py-2.5 text-right font-semibold text-slate-800">
+                    {formatCurrency(item.neto)}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-slate-50/60">
+                <td className="py-3 pr-4 font-bold text-slate-900">Total</td>
+                <td className="py-3 pr-4 text-right font-bold text-emerald-700">
+                  {formatCurrency(flujo.totales.porCobrar)}
+                </td>
+                <td className="py-3 pr-4 text-right font-bold text-rose-700">
+                  {formatCurrency(flujo.totales.porPagar)}
+                </td>
+                <td className="py-3 text-right font-bold text-slate-900">
+                  {formatCurrency(flujo.totales.neto)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

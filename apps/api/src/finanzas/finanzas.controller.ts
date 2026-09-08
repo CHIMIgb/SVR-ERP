@@ -39,6 +39,12 @@ export class FinanzasController {
     return this.finanzasService.findStats();
   }
 
+  @Get('flujo-neto')
+  @RequirePermission('comercial', 'finanzas', 'ver')
+  async flujoNeto() {
+    return this.finanzasService.flujoNeto();
+  }
+
   @Get(':id')
   @RequirePermission('comercial', 'finanzas', 'ver')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
