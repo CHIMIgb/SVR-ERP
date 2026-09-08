@@ -6,6 +6,7 @@ import {
   Plus, Building2, Mail, Phone, FilePlus2, Pencil,
   Trash2, SlidersHorizontal, AlertCircle, Users, FolderKanban, Eye,
   FileText, Loader2, Clock, CheckCircle2, XCircle, CalendarDays, ExternalLink,
+  Wallet, HandCoins, ClipboardList, Receipt,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -13,8 +14,10 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass } from '@/components/ui/Modal';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@/lib/formatters';
@@ -23,6 +26,7 @@ import {
   type ClienteDTO,
   type ClientesStats,
   type CotizacionDTO,
+  type ConsolidadoClienteDTO,
 } from '@/lib/api';
 
 // ── Constantes ──
@@ -83,6 +87,11 @@ export default function ClientesPage() {
   const [cotizacionCliente, setCotizacionCliente] = useState<ClienteDTO | null>(null);
   const [cotizacionForm, setCotizacionForm] = useState(emptyCotizacionForm);
   const [cotizacionSubmitting, setCotizacionSubmitting] = useState(false);
+  const [consolidadoOpen, setConsolidadoOpen] = useState(false);
+  const [consolidadoCliente, setConsolidadoCliente] = useState<ClienteDTO | null>(null);
+  const [consolidadoData, setConsolidadoData] = useState<ConsolidadoClienteDTO | null>(null);
+  const [consolidadoLoading, setConsolidadoLoading] = useState(false);
+  const [consolidadoTab, setConsolidadoTab] = useState<'cuentas' | 'facturas' | 'cobros' | 'cotizaciones'>('cuentas');
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/clientes');
@@ -321,6 +330,28 @@ export default function ClientesPage() {
   }, [selected, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Handlers de acciones por fila (cotizaciones) ──
+  const openConsolidado = useCallback(async (item: ClienteDTO) => {
+    setConsolidadoCliente(item);
+    setConsolidadoData(null);
+    setConsolidadoTab('cuentas');
+    setConsolidadoOpen(true);
+    setConsolidadoLoading(true);
+    try {
+      const res = await clientesApi.consolidado(item.id);
+      if (res.success) {
+        setConsolidadoData(res.data);
+      } else {
+        setConsolidadoData(null);
+        showToast(res.error?.message || 'Error al obtener el estado de cuenta.', 'error');
+      }
+    } catch {
+      setConsolidadoData(null);
+      showToast('Error de conexión al obtener el estado de cuenta.', 'error');
+    } finally {
+      setConsolidadoLoading(false);
+    }
+  }, [showToast]);
+
   const handleNuevaCotizacion = useCallback((item: ClienteDTO) => {
     setCotizacionCliente(item);
     setCotizacionForm(emptyCotizacionForm);
@@ -435,6 +466,14 @@ export default function ClientesPage() {
             onClick={(e) => { e.stopPropagation(); openView(item); }}
           >
             Ver
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Wallet className="w-3.5 h-3.5" />}
+            onClick={(e) => { e.stopPropagation(); openConsolidado(item); }}
+          >
+            Cuenta
           </Button>
           <Button
             variant="info"
@@ -910,6 +949,195 @@ export default function ClientesPage() {
           </div>
         )}
       </FormModal>
+
+      {/* Estado de cuenta (C4) */}
+      <Modal open={consolidadoOpen} onClose={() => setConsolidadoOpen(false)} size="xl">
+        <ModalHeader
+          title={`Estado de cuenta — ${consolidadoCliente?.empresa ?? ''}`}
+          subtitle={consolidadoCliente ? `${consolidadoCliente.nombre} · ${consolidadoCliente.correo}` : ''}
+        />
+        <ModalBody>
+          {consolidadoLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+          ) : consolidadoData ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
+                <StatsCard
+                  icon={<Wallet className="w-5 h-5" />}
+                  value={formatCurrency(consolidadoData.saldoTotal)}
+                  label="Saldo total"
+                  color="primary"
+                />
+                <StatsCard
+                  icon={<Receipt className="w-5 h-5" />}
+                  value={`${consolidadoData.cuentasPorCobrar.length}`}
+                  label="Cuentas por cobrar"
+                  color="info"
+                />
+                <StatsCard
+                  icon={<FileText className="w-5 h-5" />}
+                  value={`${consolidadoData.facturas.length}`}
+                  label="Facturas recientes"
+                  color="neutral"
+                />
+                <StatsCard
+                  icon={<HandCoins className="w-5 h-5" />}
+                  value={`${consolidadoData.cobros.length}`}
+                  label="Cobros recientes"
+                  color="success"
+                />
+              </div>
+
+              <Tabs
+                tabs={[
+                  { key: 'cuentas', label: 'Cuentas', icon: <Receipt className="w-4 h-4" />, count: consolidadoData.cuentasPorCobrar.length },
+                  { key: 'facturas', label: 'Facturas', icon: <FileText className="w-4 h-4" />, count: consolidadoData.facturas.length },
+                  { key: 'cobros', label: 'Cobros', icon: <HandCoins className="w-4 h-4" />, count: consolidadoData.cobros.length },
+                  { key: 'cotizaciones', label: 'Cotizaciones', icon: <ClipboardList className="w-4 h-4" />, count: consolidadoData.cotizaciones.length },
+                ]}
+                value={consolidadoTab}
+                onChange={(key) => setConsolidadoTab(key as 'cuentas' | 'facturas' | 'cobros' | 'cotizaciones')}
+              >
+                <TabPanel tabKey="cuentas">
+                  {consolidadoData.cuentasPorCobrar.length === 0 ? (
+                    <EmptyState title="Sin cuentas por cobrar" subtitle="Este cliente no tiene cuentas abiertas." />
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                          <th className="py-2 pr-3">Vencimiento</th>
+                          <th className="py-2 pr-3">Proyecto</th>
+                          <th className="py-2 pr-3 text-right">Monto</th>
+                          <th className="py-2 pr-3 text-right">Pagado</th>
+                          <th className="py-2 pr-3 text-right">Saldo</th>
+                          <th className="py-2">Situación</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {consolidadoData.cuentasPorCobrar.map((c) => (
+                          <tr key={c.id} className="border-b border-slate-100">
+                            <td className="py-2.5 pr-3 text-slate-600">{c.fechaVencimiento ?? '—'}</td>
+                            <td className="py-2.5 pr-3 text-slate-600">
+                              {c.proyecto ? `${c.proyecto.codigo} — ${c.proyecto.nombre}` : 'Sin proyecto'}
+                            </td>
+                            <td className="py-2.5 pr-3 text-right font-semibold text-slate-800">{formatCurrency(c.monto)}</td>
+                            <td className="py-2.5 pr-3 text-right text-slate-600">{formatCurrency(c.montoPagado)}</td>
+                            <td className="py-2.5 pr-3 text-right font-bold text-slate-900">{formatCurrency(c.saldo)}</td>
+                            <td className="py-2.5">
+                              {c.situacion === 'SALDADO' && <Badge variant="success" size="sm">Saldado</Badge>}
+                              {c.situacion === 'AL_CORRIENTE' && <Badge variant="info" size="sm">Al corriente</Badge>}
+                              {c.situacion === 'ATRASO_LEVE' && <Badge variant="warning" size="sm">Atraso {c.diasAtraso} días</Badge>}
+                              {c.situacion === 'ATRASO_GRAVE' && <Badge variant="error" size="sm">Atraso grave {c.diasAtraso} días</Badge>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </TabPanel>
+
+                <TabPanel tabKey="facturas">
+                  {consolidadoData.facturas.length === 0 ? (
+                    <EmptyState title="Sin facturas" subtitle="Este cliente no tiene facturas recientes." />
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                          <th className="py-2 pr-3">Folio</th>
+                          <th className="py-2 pr-3">Emisión</th>
+                          <th className="py-2 pr-3 text-right">Total</th>
+                          <th className="py-2">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {consolidadoData.facturas.map((f) => (
+                          <tr key={f.id} className="border-b border-slate-100">
+                            <td className="py-2.5 pr-3 font-semibold text-slate-800">{f.folio || f.codigo || '—'}</td>
+                            <td className="py-2.5 pr-3 text-slate-600">{f.fechaEmision ?? '—'}</td>
+                            <td className="py-2.5 pr-3 text-right font-semibold text-slate-800">{formatCurrency(f.total)}</td>
+                            <td className="py-2.5"><Badge variant="neutral" size="sm">{f.estado}</Badge></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </TabPanel>
+
+                <TabPanel tabKey="cobros">
+                  {consolidadoData.cobros.length === 0 ? (
+                    <EmptyState title="Sin cobros" subtitle="Este cliente no tiene cobros registrados." />
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                          <th className="py-2 pr-3">Fecha</th>
+                          <th className="py-2 pr-3 text-right">Monto</th>
+                          <th className="py-2 pr-3">Método</th>
+                          <th className="py-2 pr-3">Referencia</th>
+                          <th className="py-2">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {consolidadoData.cobros.map((c) => (
+                          <tr key={c.id} className="border-b border-slate-100">
+                            <td className="py-2.5 pr-3 text-slate-600">{c.fecha ?? '—'}</td>
+                            <td className="py-2.5 pr-3 text-right font-semibold text-slate-800">{formatCurrency(c.monto)}</td>
+                            <td className="py-2.5 pr-3 text-slate-600">{c.metodoPago}</td>
+                            <td className="py-2.5 pr-3 text-slate-600">{c.referencia ?? '—'}</td>
+                            <td className="py-2.5">
+                              {c.revertido ? (
+                                <Badge variant="error" size="sm">Revertido</Badge>
+                              ) : (
+                                <Badge variant="success" size="sm">Confirmado</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </TabPanel>
+
+                <TabPanel tabKey="cotizaciones">
+                  {consolidadoData.cotizaciones.length === 0 ? (
+                    <EmptyState title="Sin cotizaciones" subtitle="Este cliente no tiene cotizaciones activas." />
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                          <th className="py-2 pr-3">Fecha</th>
+                          <th className="py-2 pr-3">Descripción</th>
+                          <th className="py-2 pr-3 text-right">Monto</th>
+                          <th className="py-2">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {consolidadoData.cotizaciones.map((c) => (
+                          <tr key={c.id} className="border-b border-slate-100">
+                            <td className="py-2.5 pr-3 text-slate-600">{c.fecha ?? '—'}</td>
+                            <td className="py-2.5 pr-3 text-slate-700">{c.descripcion}</td>
+                            <td className="py-2.5 pr-3 text-right font-semibold text-slate-800">{formatCurrency(c.monto)}</td>
+                            <td className="py-2.5">{estadoBadge(c.estado as CotizacionDTO['estado'])}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </TabPanel>
+              </Tabs>
+            </>
+          ) : (
+            <EmptyState title="No hay datos" subtitle="No se pudo cargar el estado de cuenta." />
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setConsolidadoOpen(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 }

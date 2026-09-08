@@ -1886,6 +1886,50 @@ export interface ClienteCreateInput {
   activo?: boolean;
 }
 
+export interface ConsolidadoClienteDTO {
+  cliente: ClienteDTO;
+  saldoTotal: number;
+  cuentasPorCobrar: Array<{
+    id: string;
+    facturaFolio: string | null;
+    proyecto: { id: string; codigo: string; nombre: string } | null;
+    monto: number;
+    montoPagado: number;
+    saldo: number;
+    fechaVencimiento: string | null;
+    estado: string;
+    situacion: string;
+    diasAtraso: number;
+  }>;
+  facturas: Array<{
+    id: string;
+    codigo: string | null;
+    folio: string;
+    total: number;
+    estado: string;
+    fechaEmision: string | null;
+  }>;
+  cobros: Array<{
+    id: string;
+    codigo: string | null;
+    monto: number;
+    fecha: string | null;
+    metodoPago: string;
+    referencia: string | null;
+    estado: string;
+    revertido: boolean;
+    cuentaMonto: number | null;
+  }>;
+  cotizaciones: Array<{
+    id: string;
+    codigo: string | null;
+    descripcion: string;
+    monto: number;
+    fecha: string | null;
+    estado: string;
+  }>;
+}
+
 export const clientesApi = {
   /** Listar clientes con búsqueda, filtro de estado y paginación */
   listar: (params?: { search?: string; activo?: 'true' | 'false'; page?: number; limit?: number }) => {
@@ -1902,6 +1946,10 @@ export const clientesApi = {
 
   /** Obtener un cliente por ID */
   obtener: (id: string) => apiClient.get<ClienteDTO>(`/clientes/${id}`),
+
+  /** Estado de cuenta: saldo, CxC, facturas, cobros y cotizaciones */
+  consolidado: (id: string) =>
+    apiClient.get<ConsolidadoClienteDTO>(`/clientes/${id}/consolidado`),
 
   /** Crear un cliente */
   crear: (data: ClienteCreateInput) =>
