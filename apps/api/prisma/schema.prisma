@@ -339,6 +339,7 @@ model cuentas_por_cobrar {
   cliente_id             String                  @db.Uuid
   factura_id             String?                 @unique @db.Uuid
   bitacora_id            String?                 @db.Uuid
+  proyecto_id            String?                 @db.Uuid
   monto                  Decimal                 @db.Decimal(14, 2)
   monto_pagado           Decimal                 @default(0) @db.Decimal(14, 2)
   fecha_vencimiento      DateTime?               @db.Date
@@ -349,9 +350,11 @@ model cuentas_por_cobrar {
   bitacoras_renta_diaria bitacoras_renta_diaria? @relation(fields: [bitacora_id], references: [id])
   clientes               clientes                @relation(fields: [cliente_id], references: [id])
   facturas               facturas?               @relation(fields: [factura_id], references: [id])
+  proyectos              proyectos?              @relation(fields: [proyecto_id], references: [id])
   pagos                  pagos[]
 
   @@index([cliente_id, estado])
+  @@index([proyecto_id, estado])
 }
 
 model cuentas_por_pagar {
@@ -1252,6 +1255,7 @@ model proyectos {
   users_proyectos_creado_porTousers      users?                   @relation("proyectos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_proyectos_creado_por")
   clientes                               clientes                 @relation(fields: [cliente_id], references: [id])
   trabajadores_proyectos                 trabajadores_proyectos[]
+  cuentas_por_cobrar                     cuentas_por_cobrar[]
 
   @@index([estado], map: "idx_proyectos_estado")
   @@index([cliente_id])
@@ -2139,6 +2143,7 @@ enum AuditAction {
   FACTURA_TIMBRADA
   FACTURA_CANCELADA
   COTIZACION_FACTURADA
+  BITACORA_FACTURADA
 }
 
 enum AuditResult {
