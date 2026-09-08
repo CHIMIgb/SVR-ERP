@@ -288,6 +288,7 @@ model clientes {
   facturas                              facturas[]
   pagos                                 pagos[]
   proyectos                             proyectos[]
+  reportes_campo                        reportes_campo[]
   trabajadores                          trabajadores[]
 }
 
@@ -1057,29 +1058,29 @@ model obras {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model pagos {
-  id                                 String    @id @db.Uuid
-  codigo                             String    @unique
-  cliente_id                         String    @db.Uuid
-  factura_id                         String?   @db.Uuid
-  cuenta_por_cobrar_id               String?   @db.Uuid
-  monto                              Decimal   @db.Decimal(14, 2)
-  fecha_pago                         DateTime  @db.Date
+  id                                 String              @id @db.Uuid
+  codigo                             String              @unique
+  cliente_id                         String              @db.Uuid
+  factura_id                         String?             @db.Uuid
+  cuenta_por_cobrar_id               String?             @db.Uuid
+  monto                              Decimal             @db.Decimal(14, 2)
+  fecha_pago                         DateTime            @db.Date
   metodo_pago                        String
   referencia                         String?
   banco                              String?
   cuenta_destino                     String?
   comprobante_url                    String?
-  estado                             String    @default("PENDIENTE")
-  activo                             Boolean   @default(true)
-  creado_en                          DateTime  @default(now()) @db.Timestamptz()
-  actualizado_en                     DateTime  @db.Timestamptz()
-  creado_por                         String?   @db.Uuid
-  actualizado_por                    String?   @db.Uuid
-  eliminado_en                       DateTime? @db.Timestamptz()
-  users_pagos_actualizado_porTousers users?    @relation("pagos_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_pagos_actualizado_por")
-  users_pagos_creado_porTousers      users?    @relation("pagos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_pagos_creado_por")
-  clientes                           clientes  @relation(fields: [cliente_id], references: [id])
-  facturas                           facturas? @relation(fields: [factura_id], references: [id])
+  estado                             String              @default("PENDIENTE")
+  activo                             Boolean             @default(true)
+  creado_en                          DateTime            @default(now()) @db.Timestamptz()
+  actualizado_en                     DateTime            @db.Timestamptz()
+  creado_por                         String?             @db.Uuid
+  actualizado_por                    String?             @db.Uuid
+  eliminado_en                       DateTime?           @db.Timestamptz()
+  users_pagos_actualizado_porTousers users?              @relation("pagos_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_pagos_actualizado_por")
+  users_pagos_creado_porTousers      users?              @relation("pagos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_pagos_creado_por")
+  clientes                           clientes            @relation(fields: [cliente_id], references: [id])
+  facturas                           facturas?           @relation(fields: [factura_id], references: [id])
   cuentas_por_cobrar                 cuentas_por_cobrar? @relation(fields: [cuenta_por_cobrar_id], references: [id])
 
   @@index([cliente_id])
@@ -1256,6 +1257,7 @@ model proyectos {
   clientes                               clientes                 @relation(fields: [cliente_id], references: [id])
   trabajadores_proyectos                 trabajadores_proyectos[]
   cuentas_por_cobrar                     cuentas_por_cobrar[]
+  reportes_campo                         reportes_campo[]
 
   @@index([estado], map: "idx_proyectos_estado")
   @@index([cliente_id])
@@ -1452,15 +1454,22 @@ model reportes_campo {
   obra_texto                                  String
   usuario_id                                  String?            @db.Uuid
   hora                                        DateTime           @db.Time(0)
+  cliente_id                                  String?            @db.Uuid
+  proyecto_id                                 String?            @db.Uuid
+  monto_servicio                              Decimal?           @db.Decimal(14, 2)
   users_reportes_campo_actualizado_porTousers users?             @relation("reportes_campo_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_actualizado_por")
   users_reportes_campo_creado_porTousers      users?             @relation("reportes_campo_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_creado_por")
   users_reportes_campo_usuario_idTousers      users?             @relation("reportes_campo_usuario_idTousers", fields: [usuario_id], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_usuario")
   maquinas                                    maquinas?          @relation(fields: [maquina_id], references: [id])
   obras                                       obras?             @relation(fields: [obra_id], references: [id])
+  clientes                                    clientes?          @relation(fields: [cliente_id], references: [id], onDelete: SetNull, map: "fk_reportes_campo_cliente")
+  proyectos                                   proyectos?         @relation(fields: [proyecto_id], references: [id], onDelete: SetNull, map: "fk_reportes_campo_proyecto")
 
   @@index([detalles], map: "idx_reportes_campo_detalles", type: Gin)
   @@index([fecha])
   @@index([maquina_id])
+  @@index([cliente_id])
+  @@index([proyecto_id])
 }
 
 model role_permissions {
@@ -2054,6 +2063,7 @@ enum AuditAction {
   REPORTE_CREADO
   REPORTE_ACTUALIZADO
   REPORTE_ELIMINADO
+  REPORTE_CAMPO_FACTURADO
   ESTATUS_CAMBIADO
   PAGO_REGISTRADO
   PAGO_ACTUALIZADO
@@ -2275,6 +2285,7 @@ enum EstadoReporteCampo {
   ATENDIDO
   EN_REVISION
   RESUELTO
+  FACTURADO
 }
 
 enum EstadoSistema {

@@ -110,6 +110,22 @@ export class ReportesCampoController {
   }
 
   /**
+   * POST /api/reportes-campo/:id/facturar
+   * Factura un reporte Resuelto con cliente + monto → nace la CxC.
+   * Permiso: operaciones.reportes_campo.editar
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'editar')
+  @Post(':id/facturar')
+  @HttpCode(HttpStatus.CREATED)
+  async facturar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.service.facturar(id, user.id);
+  }
+
+  /**
    * DELETE /api/reportes-campo/:id
    * Eliminar (soft delete) un reporte.
    * Permiso: operaciones.reportes_campo.eliminar

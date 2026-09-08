@@ -28,6 +28,10 @@ describe('ReportesCampoController', () => {
     update: jest.fn().mockResolvedValue(mockReporte),
     cambiarEstado: jest.fn().mockResolvedValue(mockReporte),
     remove: jest.fn().mockResolvedValue({ message: 'eliminado' }),
+    facturar: jest.fn().mockResolvedValue({
+      cuenta: { id: 'cxc-1', reporteId: mockReporte.id },
+      reporte: { id: mockReporte.id, estado: 'Facturado' },
+    }),
     findStats: jest.fn().mockResolvedValue({
       pendientes: 2,
       enRevision: 1,
@@ -124,6 +128,16 @@ describe('ReportesCampoController', () => {
       const result = await controller.remove(mockReporte.id, req as never);
       expect(result.message).toContain('eliminado');
       expect(service.remove).toHaveBeenCalledWith(mockReporte.id, 'user-1');
+    });
+  });
+
+  describe('facturar', () => {
+    it('should call facturar passing id and userId', async () => {
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.facturar(mockReporte.id, req as never);
+      expect(result.cuenta).toBeDefined();
+      expect(result.reporte.estado).toBe('Facturado');
+      expect(service.facturar).toHaveBeenCalledWith(mockReporte.id, 'user-1');
     });
   });
 });

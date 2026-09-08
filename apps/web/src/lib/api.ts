@@ -787,12 +787,12 @@ export const proyectosApi = {
 // ────────────────────────────────────────────────────────────
 
 export type TipoReporte = 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
-export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto';
+export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto' | 'Facturado';
 export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
 
 /** Valores de enum que acepta la API en query/body (mayúsculas). */
 export type TipoReporteApi = 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
-export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO';
+export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO' | 'FACTURADO';
 export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
 
 export interface ReporteCampoDTO {
@@ -806,6 +806,11 @@ export interface ReporteCampoDTO {
   maquinaNombre: string | null;
   obraId: string | null;
   obra: string;
+  clienteId: string | null;
+  cliente: string | null;
+  proyectoId: string | null;
+  proyecto: string | null;
+  montoServicio: number | null;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -831,6 +836,9 @@ export interface ReporteCampoCreateInput {
   maquinaId?: string;
   obraId?: string;
   obraTexto: string;
+  clienteId?: string;
+  proyectoId?: string;
+  montoServicio?: number;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -875,6 +883,22 @@ export const reportesCampoApi = {
 
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/reportes-campo/${id}`),
+
+  /** Factura un reporte Resuelto con cliente + monto → nace la CxC. */
+  facturar: (id: string) =>
+    apiClient.post<{
+      cuenta: {
+        id: string;
+        reporteId: string;
+        codigo: string | null;
+        clienteId: string;
+        proyectoId: string | null;
+        monto: number;
+        fechaVencimiento: string;
+        estado: string;
+      };
+      reporte: { id: string; codigo: string | null; estado: string };
+    }>(`/reportes-campo/${id}/facturar`, {}),
 
   stats: () =>
     apiClient.get<ReportesCampoStats>('/reportes-campo/stats'),

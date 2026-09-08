@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
@@ -22,6 +23,8 @@ import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 const REPORTE_INCLUDE = {
   maquinas: { select: { id: true, codigo: true, nombre: true } },
   obras: { select: { id: true, nombre: true } },
+  clientes: { select: { id: true, nombre: true } },
+  proyectos: { select: { id: true, nombre: true } },
 } as const;
 
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -42,6 +45,7 @@ const ESTADO_LABELS: Record<EstadoReporteCampo, string> = {
   [EstadoReporteCampo.ATENDIDO]: 'Atendido',
   [EstadoReporteCampo.EN_REVISION]: 'En Revisión',
   [EstadoReporteCampo.RESUELTO]: 'Resuelto',
+  [EstadoReporteCampo.FACTURADO]: 'Facturado',
 };
 
 const PRIORIDAD_LABELS: Record<Prioridad, string> = {
@@ -62,6 +66,7 @@ const TRANSICIONES: Record<EstadoReporteCampo, EstadoReporteCampo[]> = {
   [EstadoReporteCampo.ATENDIDO]: [EstadoReporteCampo.RESUELTO],
   [EstadoReporteCampo.EN_REVISION]: [EstadoReporteCampo.RESUELTO],
   [EstadoReporteCampo.RESUELTO]: [],
+  [EstadoReporteCampo.FACTURADO]: [],
 };
 
 @Injectable()
@@ -159,6 +164,9 @@ export class ReportesCampoService {
         maquina_id: dto.maquinaId ?? null,
         obra_id: dto.obraId ?? null,
         obra_texto: dto.obraTexto.trim(),
+        cliente_id: dto.clienteId ?? null,
+        proyecto_id: dto.proyectoId ?? null,
+        monto_servicio: dto.montoServicio ?? null,
         fecha: new Date(dto.fecha),
         hora: new Date(`1970-01-01T${dto.hora}:00`),
         descripcion: dto.descripcion.trim(),
@@ -230,6 +238,9 @@ export class ReportesCampoService {
         ...(dto.maquinaId !== undefined && { maquina_id: dto.maquinaId ?? null }),
         ...(dto.obraId !== undefined && { obra_id: dto.obraId ?? null }),
         ...(dto.obraTexto !== undefined && { obra_texto: dto.obraTexto.trim() }),
+        ...(dto.clienteId !== undefined && { cliente_id: dto.clienteId ?? null }),
+        ...(dto.proyectoId !== undefined && { proyecto_id: dto.proyectoId ?? null }),
+        ...(dto.montoServicio !== undefined && { monto_servicio: dto.montoServicio ?? null }),
         ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
         ...(dto.hora !== undefined && { hora: new Date(`1970-01-01T${dto.hora}:00`) }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
@@ -354,6 +365,153 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
+  //  FACTURAR (reporte RESUELTO → CxC, O5)
+  // ────────────────────────────────────────────
+  /**
+   * Cierra el reporte de campo facturado y hace nacer la CxC en una sola
+   * transacción: estado FACTURADO (guard anti doble clic) + cuenta por cobrar
+   * PENDIENTE a 30 días. Emite los audits REPORTE_CAMPO_FACTURADO +
+   * CXC_CREADA (SUCCESS). Permiso: operaciones.reportes_campo.editar
+   */
+  async facturar(id: string, userId: string) {
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.REPORTE_CAMPO_FACTURADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if (reporte.estado !== EstadoReporteCampo.RESUELTO) {
+      return this.fallir(
+        AuditAction.REPORTE_CAMPO_FACTURADO,
+        id,
+        'REPORTE_NO_RESUELTO',
+        ConflictException,
+        `Solo los reportes Resueltos pueden facturarse (estado actual: ${ESTADO_LABELS[reporte.estado as EstadoReporteCampo]})`,
+      );
+    }
+
+    if (!reporte.cliente_id || !reporte.monto_servicio) {
+      return this.fallir(
+        AuditAction.REPORTE_CAMPO_FACTURADO,
+        id,
+        'DATOS_FACTURACION_INCOMPLETOS',
+        ConflictException,
+        'El reporte necesita cliente y monto de servicio para facturarse',
+      );
+    }
+    const clienteId = reporte.cliente_id;
+    const monto = Number(reporte.monto_servicio);
+
+    const cliente = await this.prisma.clientes.findFirst({
+      where: { id: clienteId, activo: true, eliminado_en: null },
+      select: { id: true },
+    });
+    if (!cliente) {
+      return this.fallir(
+        AuditAction.REPORTE_CAMPO_FACTURADO,
+        id,
+        'CLIENTE_INACTIVO',
+        ConflictException,
+        'El cliente del reporte está inactivo',
+      );
+    }
+
+    const proyectoId = reporte.proyecto_id ?? null;
+    const now = new Date();
+    const vencimiento = new Date();
+    vencimiento.setDate(vencimiento.getDate() + 30);
+    const idCxc = randomUUID();
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Guard anti doble clic: solo marca FACTURADO la fila que sigue RESUELTO.
+        const actualizada = await tx.reportes_campo.updateMany({
+          where: { id, estado: EstadoReporteCampo.RESUELTO },
+          data: { estado: EstadoReporteCampo.FACTURADO, actualizado_por: userId, actualizado_en: now },
+        });
+        if (actualizada.count === 0) {
+          throw new ConflictException('El reporte ya fue facturado');
+        }
+
+        await tx.cuentas_por_cobrar.create({
+          data: {
+            id: idCxc,
+            cliente_id: clienteId,
+            proyecto_id: proyectoId,
+            monto,
+            fecha_vencimiento: vencimiento,
+            estado: 'PENDIENTE',
+            activo: true,
+            actualizado_en: now,
+          },
+        });
+      });
+    } catch (e) {
+      // Carrera de doble clic: el updateMany no marcó nada → conflicto con audit FAIL.
+      if (e instanceof ConflictException) {
+        return this.fallir(
+          AuditAction.REPORTE_CAMPO_FACTURADO,
+          id,
+          'REPORTE_YA_FACTURADO',
+          ConflictException,
+          'El reporte ya fue facturado',
+        );
+      }
+      throw e;
+    }
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_CAMPO_FACTURADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { codigo: reporte.codigo, monto, proyectoId, cuentaId: idCxc },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.CXC_CREADA,
+      entityType: 'cuentas_por_cobrar',
+      entityId: idCxc,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        reporteId: id,
+        codigo: reporte.codigo,
+        monto,
+        proyectoId,
+        vencimiento: vencimiento.toISOString().slice(0, 10),
+      },
+    });
+
+    return {
+      cuenta: {
+        id: idCxc,
+        reporteId: id,
+        codigo: reporte.codigo,
+        clienteId: reporte.cliente_id,
+        proyectoId,
+        monto,
+        fechaVencimiento: vencimiento.toISOString().slice(0, 10),
+        estado: 'PENDIENTE',
+      },
+      reporte: { id, codigo: reporte.codigo, estado: 'Facturado' },
+    };
+  }
+
+  // ────────────────────────────────────────────
   //  ESTADÍSTICAS (alimentan las tarjetas y el banner)
   // ────────────────────────────────────────────
   async findStats() {
@@ -465,6 +623,11 @@ export class ReportesCampoService {
       maquinaNombre: reporte.maquinas?.nombre ?? null,
       obraId: reporte.obra_id,
       obra: reporte.obra_texto,
+      clienteId: reporte.cliente_id,
+      cliente: reporte.clientes?.nombre ?? null,
+      proyectoId: reporte.proyecto_id,
+      proyecto: reporte.proyectos?.nombre ?? null,
+      montoServicio: reporte.monto_servicio != null ? Number(reporte.monto_servicio) : null,
       fecha:
         reporte.fecha instanceof Date
           ? reporte.fecha.toISOString().split('T')[0]
