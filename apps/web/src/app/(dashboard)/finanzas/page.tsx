@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download, Landmark,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { formatFechaSolo } from '@/lib/formatters';
@@ -18,6 +18,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { ConciliacionBancaria } from '@/components/finanzas/ConciliacionBancaria';
 import {
   finanzasApi,
   FinanzasCategorias,
@@ -45,6 +46,7 @@ export default function FinanzasPage() {
 
   // ── Estado de datos ──
   const [transacciones, setTransacciones] = useState<TransaccionDTO[]>([]);
+  const [tab, setTab] = useState<'movimientos' | 'conciliacion'>('movimientos');
   const [stats, setStats] = useState({ balance: 0, totalIngresos: 0, totalEgresos: 0, cantidad: 0 });
   const [flujo, setFlujo] = useState<FlujoNetoDTO>({
     items: [],
@@ -406,6 +408,35 @@ export default function FinanzasPage() {
         }
       />
 
+      {/* Tabs: movimientos / conciliación bancaria */}
+      <div className="flex gap-1 w-fit rounded-xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setTab('movimientos')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
+            tab === 'movimientos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          Movimientos
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('conciliacion')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5',
+            tab === 'conciliacion' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <Landmark className="w-4 h-4" />
+          Conciliación
+        </button>
+      </div>
+
+      {tab === 'conciliacion' ? (
+        <ConciliacionBancaria puedeCrear={puedeCrear} puedeEditar={puedeEditar} />
+      ) : (
+      <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <StatsCard
           icon={<Wallet className="w-6 h-6" />}
@@ -793,6 +824,8 @@ export default function FinanzasPage() {
           </div>
         )}
       </FormModal>
+      </>
+      )}
     </div>
   );
 }

@@ -1490,6 +1490,99 @@ export const finanzasApi = {
 };
 
 // ────────────────────────────────────────────────────────────
+//  Conciliación Bancaria API
+// ────────────────────────────────────────────────────────────
+export interface BancoDTO {
+  id: string;
+  nombre: string;
+  activo: boolean;
+}
+
+export interface CuentaBancariaDTO {
+  id: string;
+  bancoId: string;
+  numero: string;
+  nombre: string | null;
+  saldoInicial: number;
+  activo: boolean;
+}
+
+export interface MovimientoBancarioDTO {
+  id: string;
+  cuentaId: string;
+  fecha: string;
+  descripcion: string;
+  deposito: number | null;
+  retiro: number | null;
+  conciliado: boolean;
+  transaccionId: string | null;
+  conciliadoEn: string | null;
+  conciliadoPor: string | null;
+  creadoEn: string | null;
+}
+
+export interface CandidataConciliacionDTO {
+  id: string;
+  codigo: string | null;
+  tipo: 'INGRESO' | 'EGRESO';
+  categoria: string;
+  monto: number;
+  fecha: string;
+  descripcion: string;
+}
+
+export interface CargarLoteResult {
+  totalMovimientos: number;
+  insertados: number;
+  duplicados: number;
+}
+
+/** Candidatas a conciliar: transacciones ±3 días del movimiento con monto similar. */
+export const conciliacionApi = {
+  bancos: () => apiClient.get<BancoDTO[]>('/finanzas/bancos'),
+
+  crearBanco: (data: { nombre: string }) =>
+    apiClient.post<BancoDTO>('/finanzas/bancos', data),
+
+  cuentas: (bancoId: string) =>
+    apiClient.get<CuentaBancariaDTO[]>(`/finanzas/bancos/${bancoId}/cuentas`),
+
+  crearCuenta: (bancoId: string, data: { numero: string; nombre?: string; saldoInicial?: number }) =>
+    apiClient.post<CuentaBancariaDTO>(`/finanzas/bancos/${bancoId}/cuentas`, data),
+
+  movimientos: (cuentaId: string, params?: { soloNoConciliados?: boolean; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.soloNoConciliados) searchParams.set('soloNoConciliados', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<MovimientoBancarioDTO>>(
+      `/finanzas/cuentas/${cuentaId}/movimientos${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  crearMovimiento: (cuentaId: string, data: { fecha: string; descripcion: string; deposito?: number; retiro?: number }) =>
+    apiClient.post<MovimientoBancarioDTO>(`/finanzas/cuentas/${cuentaId}/movimientos`, data),
+
+  cargarLote: (cuentaId: string, csv: string) =>
+    apiClient.post<CargarLoteResult>(`/finanzas/cuentas/${cuentaId}/movimientos/lote`, { csv }),
+
+  candidatas: (movimientoId: string) =>
+    apiClient.get<CandidataConciliacionDTO[]>(`/finanzas/movimientos/${movimientoId}/candidatas`),
+
+  conciliar: (movimientoId: string, transaccionId: string) =>
+    apiClient.post<{ conciliado: boolean; movimientoId: string; transaccionId: string; monto: number }>(
+      `/finanzas/movimientos/${movimientoId}/conciliar`,
+      { transaccionId },
+    ),
+
+  desconciliar: (movimientoId: string) =>
+    apiClient.delete<{ conciliado: boolean; movimientoId: string }>(
+      `/finanzas/movimientos/${movimientoId}/conciliar`,
+    ),
+};
+
+// ────────────────────────────────────────────────────────────
 //  Criba API
 // ────────────────────────────────────────────────────────────
 
