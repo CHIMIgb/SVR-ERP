@@ -2555,6 +2555,14 @@ export const cobranzaApi = {
   registrarCobro: (id: string, data: CobroCreateInput) =>
     apiClient.post<{ cobro: CobroDTO; cuenta: CuentaPorCobrarDTO }>(`/cobranza/${id}/cobros`, data),
 
+  /** Revierte un cobro confirmado: soft-delete del pago, la CxC vuelve a su
+   *  saldo anterior y se genera el EGRESO contable (traza inmutable). */
+  revertirCobro: (id: string, cobroId: string, motivo: string) =>
+    apiClient.post<{ cobroRevertido: { id: string; cuentaId: string; monto: number; motivo: string }; cuenta: CuentaPorCobrarDTO }>(
+      `/cobranza/${id}/cobros/${cobroId}/revertir`,
+      { motivo },
+    ),
+
   /** Cartera agrupada por proyecto (grupo "Sin proyecto" para CxC sin asignar). */
   porProyecto: (params?: {
     estado?: EstadoCuentaCobranza;

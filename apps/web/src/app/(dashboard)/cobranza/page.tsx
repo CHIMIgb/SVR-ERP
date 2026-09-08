@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Wallet, AlertTriangle, HandCoins, Building2, CreditCard, Eye,
+  Wallet, AlertTriangle, HandCoins, Building2, CreditCard, Eye, Undo2,
   SlidersHorizontal, Download, CalendarClock, ReceiptText, X,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
@@ -144,6 +144,7 @@ export default function CobranzaPage() {
   // ── Permisos RBAC (seed: comercial.cobranza) ──
   const vista = user?.vistas?.find((v) => v.ruta === '/cobranza');
   const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
   const puedeExportar = vista?.puedeExportar ?? false;
 
   // ── Datos ──
@@ -174,6 +175,11 @@ export default function CobranzaPage() {
   const [ledgerCuenta, setLedgerCuenta] = useState<CuentaPorCobrarDTO | null>(null);
   const [ledgerMovs, setLedgerMovs] = useState<CobroDTO[]>([]);
   const [ledgerSaldo, setLedgerSaldo] = useState(0);
+
+  // ── Modal reversión de cobro (C6) ──
+  const [revertirCobro, setRevertirCobro] = useState<CobroDTO | null>(null);
+  const [revertirMotivo, setRevertirMotivo] = useState('');
+  const [revertirLoading, setRevertirLoading] = useState(false);
 
   // ── Carga de datos (patrón /proveedores: fetch + initialLoading) ──
   const fetchCuentas = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
@@ -410,6 +416,40 @@ export default function CobranzaPage() {
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
+    }
+  };
+
+  /** Abre el modal de reversión con preview del nuevo saldo. */
+  const openRevertir = (cobro: CobroDTO) => {
+    setRevertirCobro(cobro);
+    setRevertirMotivo('');
+  };
+
+  /** Revierte el cobro (C6): soft-delete + CxC vuelve a saldo anterior. */
+  const handleRevertir = async () => {
+    if (!revertirCobro || !ledgerCuenta) return;
+    const motivo = revertirMotivo.trim();
+    if (motivo.length < 10) {
+      showToast('El motivo debe tener al menos 10 caracteres.', 'error');
+      return;
+    }
+    setRevertirLoading(true);
+    try {
+      const res = await cobranzaApi.revertirCobro(ledgerCuenta.id, revertirCobro.id, motivo);
+      if (res.success) {
+        setRevertirCobro(null);
+        setRevertirMotivo('');
+        showToast(`Cobro de ${formatCurrency(res.data.cobroRevertido.monto)} revertido.`, 'success');
+        // Refresca cuentas/cobros/stats y el ledger abierto con la cuenta actualizada.
+        await refetchAll();
+        await openLedger(res.data.cuenta);
+      } else {
+        showToast(res.error?.message || 'No se pudo revertir el cobro.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setRevertirLoading(false);
     }
   };
 
@@ -1022,7 +1062,19 @@ export default function CobranzaPage() {
                           </p>
                         </div>
                       </div>
-                      <span className="font-black text-green-600 shrink-0">{formatCurrency(m.monto)}</span>
+                      <div className="flex items-center min-w-0">
+                        <span className="font-black text-green-600 shrink-0">{formatCurrency(m.monto)}</span>
+                        {puedeEditar && (
+                          <button
+                            type="button"
+                            onClick={() => openRevertir(m)}
+                            title="Reversión de cobro (C6)"
+                            className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Undo2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1036,6 +1088,42 @@ export default function CobranzaPage() {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* ─── Modal: Reversión de cobro (C6) ─────────────────────────────── */}
+      <FormModal
+        open={!!revertirCobro}
+        onClose={() => setRevertirCobro(null)}
+        onCancel={() => setRevertirCobro(null)}
+        title="Reversión de cobro"
+        subtitle={
+          revertirCobro
+            ? `Se revierte el cobro de ${formatCurrency(revertirCobro.monto)} de ${ledgerCuenta?.empresa ?? ''}. La CxC vuelve a su saldo anterior y la traza contable permanece.`
+            : undefined
+        }
+        submitLabel="Revertir Cobro"
+        cancelLabel="Cancelar"
+        submitDisabled={revertirLoading}
+        onSubmit={handleRevertir}
+      >
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+          <p className="text-sm text-amber-800">
+            Nuevo saldo estimado:{' '}
+            <span className="font-black">{formatCurrency(ledgerSaldo + (revertirCobro?.monto ?? 0))}</span>
+          </p>
+          <p className="text-xs text-amber-700 mt-1">
+            Esta acción no puede deshacerse. Se genera el EGRESO contable correspondiente.
+          </p>
+        </div>
+
+        <ModalField label="Motivo de la reversión" required hint="Mínimo 10 caracteres. Queda en la bitácora de auditoría.">
+          <textarea
+            className={`${modalInputClass} min-h-24 resize-y`}
+            placeholder="Ej: Cobro duplicado en transferencia bancaria, el cliente pagó dos veces la misma factura."
+            value={revertirMotivo}
+            onChange={(e) => setRevertirMotivo(e.target.value)}
+          />
+        </ModalField>
+      </FormModal>
     </div>
   );
 }
