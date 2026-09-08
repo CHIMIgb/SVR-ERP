@@ -50,6 +50,17 @@ export class ClientesController {
   }
 
   /**
+   * GET /api/clientes/:id/consolidado
+   * Estado de cuenta: saldo total, CxC, facturas, cobros y cotizaciones.
+   * Permiso: comercial.clientes.ver
+   */
+  @RequirePermission('comercial', 'clientes', 'ver')
+  @Get(':id/consolidado')
+  async consolidado(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clientesService.consolidado(id);
+  }
+
+  /**
    * GET /api/clientes/:id
    * Obtener un cliente por ID.
    * Permiso: comercial.clientes.ver

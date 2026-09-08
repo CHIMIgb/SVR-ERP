@@ -40,6 +40,10 @@ describe('ClientesService', () => {
           { empresa: 'Gobierno CDMX' },
         ]),
       },
+      cuentas_por_cobrar: { findMany: jest.fn().mockResolvedValue([]) },
+      facturas: { findMany: jest.fn().mockResolvedValue([]) },
+      pagos: { findMany: jest.fn().mockResolvedValue([]) },
+      cotizaciones: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -112,6 +116,104 @@ describe('ClientesService', () => {
     it('should throw NotFoundException when not found', async () => {
       prisma.clientes.findFirst.mockResolvedValue(null);
       await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('consolidado', () => {
+    it('should throw NotFoundException and audit FAIL when cliente not found', async () => {
+      prisma.clientes.findFirst.mockResolvedValue(null);
+
+      await expect(service.consolidado('non-existent')).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.CLIENTE_ACTUALIZADO,
+          result: AuditResult.FAIL,
+          errorCode: 'CLIENTE_NO_ENCONTRADO',
+        }),
+      );
+    });
+
+    it('should return saldo total, CxC, facturas, cobros y cotizaciones', async () => {
+      const mockCuenta = {
+        id: 'c1000000-0000-0000-0000-000000000001',
+        cliente_id: mockCliente.id,
+        factura_id: null,
+        proyecto_id: null,
+        monto: 10000,
+        monto_pagado: 4000,
+        fecha_vencimiento: new Date('2026-08-01'),
+        estado: 'PARCIAL',
+        activo: true,
+        facturas: null,
+        proyectos: null,
+      };
+      const mockFactura = {
+        id: 'f0000000-0000-0000-0000-000000000001',
+        codigo: 'FAC-001',
+        serie: 'X',
+        folio: '0001',
+        total: 1160,
+        estado: 'TIMBRADA',
+        creado_en: new Date('2026-09-01'),
+      };
+      const mockPago = {
+        id: 'd0000000-0000-0000-0000-000000000001',
+        codigo: 'PAG-CXC-2026-001',
+        monto: 4000,
+        fecha_pago: new Date('2026-09-02'),
+        metodo_pago: 'TRANSFERENCIA',
+        referencia: null,
+        estado: 'CONFIRMADO',
+        activo: true,
+        cuentas_por_cobrar: null,
+      };
+      const mockCotizacion = {
+        id: 'e0000000-0000-0000-0000-000000000001',
+        codigo: 'COT-001',
+        descripcion: 'Renta de maquinaria',
+        monto: 20000,
+        fecha: new Date('2026-08-20'),
+        estado: 'ACEPTADA',
+      };
+
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([mockCuenta]);
+      prisma.facturas.findMany.mockResolvedValue([mockFactura]);
+      prisma.pagos.findMany.mockResolvedValue([mockPago]);
+      prisma.cotizaciones.findMany.mockResolvedValue([mockCotizacion]);
+
+      const result = await service.consolidado(mockCliente.id);
+
+      expect(prisma.cuentas_por_cobrar.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ cliente_id: mockCliente.id, activo: true }),
+        }),
+      );
+      expect(result.saldoTotal).toBe(6000);
+      expect(result.cuentasPorCobrar[0]).toEqual(
+        expect.objectContaining({
+          id: mockCuenta.id,
+          monto: 10000,
+          montoPagado: 4000,
+          saldo: 6000,
+          estado: 'PARCIAL',
+          situacion: 'ATRASO_GRAVE',
+        }),
+      );
+      expect(result.facturas[0]).toEqual(
+        expect.objectContaining({ codigo: 'FAC-001', folio: 'X-0001', total: 1160 }),
+      );
+      expect(result.cobros[0]).toEqual(
+        expect.objectContaining({ monto: 4000, metodoPago: 'TRANSFERENCIA', revertido: false }),
+      );
+      expect(result.cotizaciones[0]).toEqual(
+        expect.objectContaining({ monto: 20000, estado: 'ACEPTADA' }),
+      );
+    });
+
+    it('should compute saldo total cero sin CxC abiertas', async () => {
+      const result = await service.consolidado(mockCliente.id);
+      expect(result.saldoTotal).toBe(0);
+      expect(result.cuentasPorCobrar).toHaveLength(0);
     });
   });
 

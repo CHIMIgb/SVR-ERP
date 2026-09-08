@@ -17,6 +17,23 @@ import { QueryClientesDto } from './dto/query-clientes.dto';
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
+/** Días de atraso a partir de los cuales la situación es ATRASO_GRAVE. */
+const DIAS_ATRASO_GRAVE = 30;
+
+/** Inicio del día de hoy (00:00:00) para cálculos de atraso. */
+function inicioDeHoy(): Date {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  return hoy;
+}
+
+/** Serializa una fecha a formato ISO (yyyy-mm-dd) sin romper por null. */
+function isoFecha(fecha: Date | null | undefined): string | null {
+  return fecha && !Number.isNaN(new Date(fecha).getTime())
+    ? new Date(fecha).toISOString().slice(0, 10)
+    : null;
+}
+
 @Injectable()
 export class ClientesService {
   constructor(
@@ -258,6 +275,111 @@ export class ClientesService {
   }
 
   // ────────────────────────────────────────────
+  //  ESTADO DE CUENTA (C4)
+  // ────────────────────────────────────────────
+  async consolidado(id: string) {
+    const cliente = await this.prisma.clientes.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!cliente) {
+      return this.fallir(
+        AuditAction.CLIENTE_ACTUALIZADO,
+        id,
+        'CLIENTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Cliente con id "${id}" no encontrado`,
+      );
+    }
+
+    const [cuentas, facturas, cobros, cotizaciones] = await Promise.all([
+      // CxC activas del cliente (incluye saldadas: la traza no se borra).
+      this.prisma.cuentas_por_cobrar.findMany({
+        where: { cliente_id: id, activo: true },
+        include: {
+          facturas: { select: { serie: true, folio: true } },
+          proyectos: { select: { id: true, codigo: true, nombre: true } },
+        },
+        orderBy: { fecha_vencimiento: 'asc' },
+      }),
+      this.prisma.facturas.findMany({
+        where: { cliente_id: id, activo: true, eliminado_en: null },
+        select: {
+          id: true,
+          codigo: true,
+          serie: true,
+          folio: true,
+          total: true,
+          estado: true,
+          creado_en: true,
+        },
+        orderBy: { creado_en: 'desc' },
+        take: 10,
+      }),
+      // Todos los cobros del cliente (activos y revertidos) para traza total.
+      this.prisma.pagos.findMany({
+        where: { cliente_id: id },
+        include: { cuentas_por_cobrar: { select: { monto: true } } },
+        orderBy: { fecha_pago: 'desc' },
+        take: 10,
+      }),
+      this.prisma.cotizaciones.findMany({
+        where: { cliente_id: id, activo: true, eliminado_en: null },
+        select: {
+          id: true,
+          codigo: true,
+          descripcion: true,
+          monto: true,
+          fecha: true,
+          estado: true,
+        },
+        orderBy: { fecha: 'desc' },
+        take: 10,
+      }),
+    ]);
+
+    const saldoTotal = cuentas.reduce(
+      (acc, c) => acc + (Number(c.monto) - Number(c.monto_pagado)),
+      0,
+    );
+
+    return {
+      cliente: this.serialize(cliente),
+      saldoTotal,
+      cuentasPorCobrar: cuentas.map((cuenta) => this.serializeCuentaCxc(cuenta)),
+      facturas: facturas.map((factura) => ({
+        id: factura.id,
+        codigo: factura.codigo,
+        folio: [factura.serie, factura.folio].filter(Boolean).join('-'),
+        total: Number(factura.total),
+        estado: factura.estado,
+        fechaEmision: isoFecha(factura.creado_en as Date | null),
+      })),
+      cobros: cobros.map((cobro) => ({
+        id: cobro.id,
+        codigo: cobro.codigo,
+        monto: Number(cobro.monto),
+        fecha: isoFecha(cobro.fecha_pago),
+        metodoPago: cobro.metodo_pago,
+        referencia: cobro.referencia ?? null,
+        estado: cobro.estado,
+        revertido: !cobro.activo,
+        cuentaMonto: cobro.cuentas_por_cobrar
+          ? Number(cobro.cuentas_por_cobrar.monto)
+          : null,
+      })),
+      cotizaciones: cotizaciones.map((cotizacion) => ({
+        id: cotizacion.id,
+        codigo: cotizacion.codigo,
+        descripcion: cotizacion.descripcion,
+        monto: Number(cotizacion.monto),
+        fecha: isoFecha(cotizacion.fecha),
+        estado: cotizacion.estado,
+      })),
+    };
+  }
+
+  // ────────────────────────────────────────────
   //  PRIVADOS
   // ────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -274,6 +396,52 @@ export class ClientesService {
       creadoEn: cliente.creado_en?.toISOString?.() ?? cliente.creado_en,
       actualizadoEn:
         cliente.actualizado_en?.toISOString?.() ?? cliente.actualizado_en,
+    };
+  }
+
+  /** CxC consolidada: saldo, estado, vencimiento y situación de atraso. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private serializeCuentaCxc(cuenta: any) {
+    const hoy = inicioDeHoy();
+    const monto = Number(cuenta.monto);
+    const montoPagado = Number(cuenta.monto_pagado);
+    const saldo = monto - montoPagado;
+
+    let diasAtraso = 0;
+    if (cuenta.fecha_vencimiento && saldo > 0.0001) {
+      const venc = new Date(cuenta.fecha_vencimiento);
+      diasAtraso = Math.max(0, Math.floor((hoy.getTime() - venc.getTime()) / 86400000));
+    }
+
+    let situacion: string;
+    if (saldo <= 0.0001) {
+      situacion = 'SALDADO';
+    } else if (!cuenta.fecha_vencimiento || new Date(cuenta.fecha_vencimiento) >= hoy) {
+      situacion = 'AL_CORRIENTE';
+    } else if (diasAtraso < DIAS_ATRASO_GRAVE) {
+      situacion = 'ATRASO_LEVE';
+    } else {
+      situacion = 'ATRASO_GRAVE';
+    }
+
+    const factura = cuenta.facturas;
+    const proyecto = cuenta.proyectos;
+
+    return {
+      id: cuenta.id,
+      facturaFolio: factura
+        ? [factura.serie, factura.folio].filter(Boolean).join('-')
+        : null,
+      proyecto: proyecto
+        ? { id: proyecto.id, codigo: proyecto.codigo ?? '', nombre: proyecto.nombre }
+        : null,
+      monto,
+      montoPagado,
+      saldo,
+      fechaVencimiento: isoFecha(cuenta.fecha_vencimiento as Date | null),
+      estado: cuenta.estado === 'PAGADO' ? 'SALDADO' : cuenta.estado,
+      situacion,
+      diasAtraso,
     };
   }
 }
