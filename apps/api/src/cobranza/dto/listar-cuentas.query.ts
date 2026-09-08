@@ -31,6 +31,10 @@ export class ListarCuentasQuery {
   clienteId?: string;
 
   @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  @IsOptional()
   @IsString()
   search?: string;
 

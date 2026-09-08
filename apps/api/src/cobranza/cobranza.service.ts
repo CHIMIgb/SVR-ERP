@@ -81,6 +81,7 @@ export class CobranzaService {
         include: {
           clientes: { select: { id: true, nombre: true, empresa: true } },
           facturas: { select: { serie: true, folio: true } },
+          proyectos: { select: { id: true, codigo: true, nombre: true } },
           pagos: {
             take: 1,
             orderBy: { fecha_pago: 'desc' },
@@ -114,6 +115,7 @@ export class CobranzaService {
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true } },
         facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
         pagos: {
           take: 5,
           orderBy: { fecha_pago: 'desc' },
@@ -189,11 +191,27 @@ export class CobranzaService {
       }
     }
 
+    if (dto.proyectoId) {
+      const proyecto = await this.prisma.proyectos.findFirst({
+        where: { id: dto.proyectoId, activo: true, eliminado_en: null },
+      });
+      if (!proyecto) {
+        return this.fallir(
+          AuditAction.CXC_CREADA,
+          null,
+          'PROYECTO_NO_ENCONTRADO',
+          NotFoundException,
+          `Proyecto con id "${dto.proyectoId}" no encontrado`,
+        );
+      }
+    }
+
     const cuenta = await this.prisma.cuentas_por_cobrar.create({
       data: {
         id: randomUUID(),
         cliente_id: dto.clienteId,
         factura_id: dto.facturaId ?? null,
+        proyecto_id: dto.proyectoId ?? null,
         monto: dto.monto,
         monto_pagado: 0,
         fecha_vencimiento: dto.fechaVencimiento ? new Date(dto.fechaVencimiento) : null,
@@ -204,6 +222,7 @@ export class CobranzaService {
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true } },
         facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
       },
     });
 
@@ -218,6 +237,7 @@ export class CobranzaService {
       newValue: {
         clienteId: dto.clienteId,
         facturaId: dto.facturaId ?? null,
+        proyectoId: dto.proyectoId ?? null,
         monto: dto.monto,
         fechaVencimiento: dto.fechaVencimiento ?? null,
       },
@@ -235,6 +255,7 @@ export class CobranzaService {
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true } },
         facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
       },
     });
 
@@ -251,7 +272,9 @@ export class CobranzaService {
     const pagosCount = await this.prisma.pagos.count({
       where: { cuenta_por_cobrar_id: id },
     });
-    if (pagosCount > 0) {
+    // Monto/vencimiento son inmutables con cobros; el proyecto sí se puede
+    // asignar/desligar retroactivamente (cartera por obra, O1).
+    if (pagosCount > 0 && (dto.monto !== undefined || dto.fechaVencimiento !== undefined)) {
       return this.fallir(
         AuditAction.CXC_ACTUALIZADA,
         id,
@@ -261,16 +284,33 @@ export class CobranzaService {
       );
     }
 
+    if (dto.proyectoId) {
+      const proyecto = await this.prisma.proyectos.findFirst({
+        where: { id: dto.proyectoId, activo: true, eliminado_en: null },
+      });
+      if (!proyecto) {
+        return this.fallir(
+          AuditAction.CXC_ACTUALIZADA,
+          id,
+          'PROYECTO_NO_ENCONTRADO',
+          NotFoundException,
+          `Proyecto con id "${dto.proyectoId}" no encontrado`,
+        );
+      }
+    }
+
     const cuenta = await this.prisma.cuentas_por_cobrar.update({
       where: { id },
       data: {
         monto: dto.monto,
         fecha_vencimiento: dto.fechaVencimiento ? new Date(dto.fechaVencimiento) : undefined,
+        proyecto_id: dto.proyectoId === undefined ? undefined : dto.proyectoId,
         actualizado_en: new Date(),
       },
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true } },
         facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
       },
     });
 
@@ -298,6 +338,7 @@ export class CobranzaService {
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true } },
         facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
       },
     });
 
@@ -410,6 +451,7 @@ export class CobranzaService {
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true } },
         facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
         pagos: {
           take: 1,
           orderBy: { fecha_pago: 'desc' },
@@ -689,16 +731,113 @@ export class CobranzaService {
       'Situacion',
     ];
 
-    const linea = (fila: (string | number)[]) =>
-      fila
-        .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
-        .join(',');
+    return (
+      '\uFEFF' +
+      this.csvLinea(encabezados) +
+      '\n' +
+      filas.map((fila) => this.csvLinea(fila)).join('\n')
+    );
+  }
+
+  // ────────────────────────────────────────────
+  //  REPORTE POR PROYECTO (cartera por obra, O2)
+  // ────────────────────────────────────────────
+  async porProyecto(query: ListarCuentasQuery) {
+    const where = this.construirWhere(query);
+    const cuentas = await this.prisma.cuentas_por_cobrar.findMany({
+      where,
+      select: {
+        id: true,
+        proyecto_id: true,
+        monto: true,
+        monto_pagado: true,
+        estado: true,
+        fecha_vencimiento: true,
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
+      },
+      orderBy: [{ fecha_vencimiento: 'asc' }, { creado_en: 'desc' }],
+    });
+
+    const hoy = inicioDeHoy();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const grupos = new Map<string, any>();
+    const SIN_PROYECTO_KEY = '__SIN_PROYECTO__';
+
+    for (const c of cuentas) {
+      const llave = c.proyecto_id ?? SIN_PROYECTO_KEY;
+      const monto = Number(c.monto);
+      const pagado = Number(c.monto_pagado);
+      const saldo = monto - pagado;
+      const vencido =
+        c.estado !== 'PAGADO' && c.fecha_vencimiento && new Date(c.fecha_vencimiento) < hoy
+          ? saldo
+          : 0;
+
+      let g = grupos.get(llave);
+      if (!g) {
+        g = {
+          proyecto: c.proyectos
+            ? { id: c.proyectos.id, codigo: c.proyectos.codigo ?? '', nombre: c.proyectos.nombre }
+            : null,
+          totalCuentas: 0,
+          monto: 0,
+          pagado: 0,
+          saldo: 0,
+          vencido: 0,
+        };
+        grupos.set(llave, g);
+      }
+      g.totalCuentas += 1;
+      g.monto += monto;
+      g.pagado += pagado;
+      g.saldo += saldo;
+      g.vencido += vencido;
+    }
+
+    const items = [...grupos.values()].sort((a, b) => {
+      // El grupo "Sin proyecto" al final; el resto por saldo descendente.
+      if (!a.proyecto && b.proyecto) return 1;
+      if (a.proyecto && !b.proyecto) return -1;
+      return b.saldo - a.saldo;
+    });
+
+    const totales = items.reduce(
+      (acc, g) => ({
+        monto: acc.monto + g.monto,
+        pagado: acc.pagado + g.pagado,
+        saldo: acc.saldo + g.saldo,
+        vencido: acc.vencido + g.vencido,
+      }),
+      { monto: 0, pagado: 0, saldo: 0, vencido: 0 },
+    );
+
+    return { items, totales };
+  }
+
+  /** CSV agrupado por proyecto (mismo shape que porProyecto), con BOM UTF-8. */
+  async exportarPorProyecto(query: ListarCuentasQuery): Promise<string> {
+    const { items, totales } = await this.porProyecto(query);
+    const encabezados = ['Proyecto', 'Cuentas', 'Monto', 'Pagado', 'Saldo', 'Vencido'];
+
+    const filas = items.map((g) => [
+      g.proyecto ? `${g.proyecto.codigo} — ${g.proyecto.nombre}` : 'Sin proyecto',
+      g.totalCuentas,
+      g.monto,
+      g.pagado,
+      g.saldo,
+      g.vencido,
+    ]);
+    filas.push([
+      'TOTAL',
+      items.reduce((n, g) => n + g.totalCuentas, 0),
+      ...['monto', 'pagado', 'saldo', 'vencido'].map((k) => totales[k]),
+    ]);
 
     return (
       '\uFEFF' +
-      linea(encabezados) +
+      this.csvLinea(encabezados) +
       '\n' +
-      filas.map(linea).join('\n')
+      filas.map((fila) => this.csvLinea(fila)).join('\n')
     );
   }
 
@@ -714,6 +853,10 @@ export class CobranzaService {
 
     if (query.clienteId) {
       where.cliente_id = query.clienteId;
+    }
+
+    if (query.proyectoId) {
+      where.proyecto_id = query.proyectoId;
     }
 
     if (query.estado) {
@@ -754,6 +897,13 @@ export class CobranzaService {
     }
 
     return where;
+  }
+
+  /** Escapa y une una fila del CSV (reemplaza el helper local de exportar). */
+  private csvLinea(fila: (string | number)[]): string {
+    return fila
+      .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+      .join(',');
   }
 
   /** Genera código PAG-CXC-YYYY-NNN con contador del año (solo cobros a CxC). */
@@ -815,6 +965,7 @@ export class CobranzaService {
     const facturaFolio = factura
       ? [factura.serie, factura.folio].filter(Boolean).join('-')
       : '';
+    const proyecto = cuenta.proyectos;
     const ultimoPago = cuenta.pagos?.[0];
 
     return {
@@ -823,6 +974,10 @@ export class CobranzaService {
       clienteNombre: cuenta.clientes.nombre,
       empresa: cuenta.clientes.empresa,
       obra: '',
+      proyectoId: cuenta.proyecto_id ?? null,
+      proyecto: proyecto
+        ? { id: proyecto.id, codigo: proyecto.codigo ?? '', nombre: proyecto.nombre }
+        : null,
       facturaFolio,
       monto,
       montoPagado: pagado,

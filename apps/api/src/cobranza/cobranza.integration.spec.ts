@@ -26,6 +26,7 @@ describe('Cobranza Audit (Real DB)', () => {
   let service: CobranzaService;
 
   let clienteId: string;
+  let proyectoId: string;
   let cuentaId: string;
   let cuentaFacturaId: string | undefined;
   let facturaId: string | undefined;
@@ -80,6 +81,9 @@ describe('Cobranza Audit (Real DB)', () => {
     if (cuentaId) await limpiarCuenta(cuentaId);
     if (facturaId) {
       await prisma.facturas.deleteMany({ where: { id: facturaId } });
+    }
+    if (proyectoId) {
+      await prisma.proyectos.deleteMany({ where: { id: proyectoId } });
     }
     if (clienteId) {
       await prisma.clientes.deleteMany({ where: { id: clienteId } });
@@ -227,5 +231,50 @@ describe('Cobranza Audit (Real DB)', () => {
 
     const facturaDb = await prisma.facturas.findUnique({ where: { id: factura.id } });
     expect(facturaDb!.estado).toBe('PAGADA');
+  });
+
+  it('porProyecto agrupa cuentas con y sin proyecto en la cartera real', async () => {
+    const proyecto = await prisma.proyectos.create({
+      data: {
+        id: randomUUID(),
+        codigo: `IT-PRY-${TEST_ID}`,
+        nombre: `Proyecto IT ${TEST_ID}`,
+        cliente_id: clienteId,
+        presupuesto: 100000,
+        fecha_inicio: new Date('2026-01-01'),
+        fecha_fin: new Date('2026-12-31'),
+        activo: true,
+        actualizado_en: new Date(),
+      },
+    });
+    proyectoId = proyecto.id;
+
+    const conProyecto = await service.crearCuenta(
+      { clienteId, proyectoId: proyecto.id, monto: 3000, fechaVencimiento: '2026-12-01' },
+      ACTOR_USER_ID,
+    );
+    const sinProyecto = await service.crearCuenta(
+      { clienteId, monto: 2000, fechaVencimiento: '2026-12-02' },
+      ACTOR_USER_ID,
+    );
+
+    const reporte = await service.porProyecto({});
+
+    const grupoProyecto = reporte.items.find((g) => g.proyecto?.id === proyecto.id);
+    expect(grupoProyecto).toBeDefined();
+    expect(grupoProyecto!.totalCuentas).toBe(1);
+    expect(grupoProyecto!.monto).toBe(3000);
+    expect(grupoProyecto!.saldo).toBe(3000);
+
+    const grupoSinProyecto = reporte.items.find((g) => g.proyecto === null);
+    expect(grupoSinProyecto).toBeDefined();
+    expect(grupoSinProyecto!.totalCuentas).toBeGreaterThanOrEqual(1);
+    expect(grupoSinProyecto!.saldo).toBeGreaterThanOrEqual(2000);
+
+    // Cleanup del grupo (auditoría queda, es inmutable).
+    await prisma.cuentas_por_cobrar.deleteMany({ where: { id: sinProyecto.id } });
+    await prisma.cuentas_por_cobrar.deleteMany({ where: { id: conProyecto.id } });
+    await prisma.proyectos.deleteMany({ where: { id: proyecto.id } });
+    proyectoId = '';
   });
 });

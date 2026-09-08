@@ -88,6 +88,30 @@ export class CobranzaController {
   }
 
   /**
+   * GET /api/cobranza/por-proyecto
+   * Cartera agrupada por proyecto (grupo "Sin proyecto" para CxC sin asignar).
+   * Permiso: comercial.cobranza.ver
+   */
+  @RequirePermission('comercial', 'cobranza', 'ver')
+  @Get('cobranza/por-proyecto')
+  async porProyecto(@Query() query: ListarCuentasQuery) {
+    return this.cobranzaService.porProyecto(query);
+  }
+
+  /**
+   * GET /api/cobranza/por-proyecto/exportar
+   * CSV agrupado por proyecto con totales, BOM UTF-8.
+   * Permiso: comercial.cobranza.exportar
+   */
+  @RequirePermission('comercial', 'cobranza', 'exportar')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="cobranza-por-proyecto.csv"')
+  @Get('cobranza/por-proyecto/exportar')
+  async exportarPorProyecto(@Query() query: ListarCuentasQuery): Promise<string> {
+    return this.cobranzaService.exportarPorProyecto(query);
+  }
+
+  /**
    * GET /api/cobranza/:id
    * Detalle de la cuenta (cliente + factura + últimos cobros).
    * Permiso: comercial.cobranza.ver

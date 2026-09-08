@@ -15,6 +15,10 @@ export class CrearCuentaDto {
   @IsUUID()
   facturaId?: string;
 
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)

@@ -24,10 +24,20 @@ describe('CobranzaService', () => {
     eliminado_en: null,
   };
 
+  const PROYECTO_ID = 'f2000000-0000-0000-0000-000000000001';
+  const mockProyecto = {
+    id: PROYECTO_ID,
+    codigo: 'P004',
+    nombre: 'Proyecto de prueba',
+    activo: true,
+    eliminado_en: null,
+  };
+
   const mockCuenta = {
     id: CUENTA_ID,
     cliente_id: CLIENTE_ID,
     factura_id: null,
+    proyecto_id: null,
     monto: 1000,
     monto_pagado: 0,
     fecha_vencimiento: new Date('2026-10-01'),
@@ -37,6 +47,7 @@ describe('CobranzaService', () => {
     actualizado_en: new Date(),
     clientes: { id: CLIENTE_ID, nombre: 'Constructora Beta', empresa: 'Beta SA de CV' },
     facturas: null,
+    proyectos: null,
     pagos: [],
   };
 
@@ -73,6 +84,7 @@ describe('CobranzaService', () => {
       },
       clientes: { findFirst: jest.fn() },
       facturas: { findFirst: jest.fn(), updateMany: jest.fn() },
+      proyectos: { findFirst: jest.fn() },
       pagos: {
         findMany: jest.fn(),
         count: jest.fn(),
@@ -134,6 +146,30 @@ describe('CobranzaService', () => {
       );
       expect(result.items[0].situacion).toBe('ATRASO_GRAVE');
     });
+
+    it('filtra por proyecto y serializa el proyecto en la cuenta', async () => {
+      const conProyecto = {
+        ...mockCuenta,
+        proyecto_id: PROYECTO_ID,
+        proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+      };
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([conProyecto]);
+      prisma.cuentas_por_cobrar.count.mockResolvedValue(1);
+
+      const result = await service.findAll({ proyectoId: PROYECTO_ID });
+
+      expect(prisma.cuentas_por_cobrar.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ activo: true, proyecto_id: PROYECTO_ID }),
+        }),
+      );
+      expect(result.items[0].proyectoId).toBe(PROYECTO_ID);
+      expect(result.items[0].proyecto).toEqual({
+        id: PROYECTO_ID,
+        codigo: 'P004',
+        nombre: 'Proyecto de prueba',
+      });
+    });
   });
 
   describe('findOne', () => {
@@ -179,6 +215,42 @@ describe('CobranzaService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'FACTURA_YA_EN_CXC' }),
       );
+    });
+
+    it('lanza NotFound si el proyecto no existe', async () => {
+      prisma.clientes.findFirst.mockResolvedValue(mockCliente);
+      prisma.proyectos.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.crearCuenta({ clienteId: CLIENTE_ID, proyectoId: PROYECTO_ID, monto: 500 }, USER_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.CXC_CREADA, errorCode: 'PROYECTO_NO_ENCONTRADO' }),
+      );
+    });
+
+    it('persiste el proyecto al crear la cuenta', async () => {
+      prisma.clientes.findFirst.mockResolvedValue(mockCliente);
+      prisma.proyectos.findFirst.mockResolvedValue(mockProyecto);
+      prisma.cuentas_por_cobrar.create.mockResolvedValue({
+        ...mockCuenta,
+        proyecto_id: PROYECTO_ID,
+        proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+      });
+
+      const result = await service.crearCuenta(
+        { clienteId: CLIENTE_ID, proyectoId: PROYECTO_ID, monto: 1000 },
+        USER_ID,
+      );
+
+      expect(prisma.proyectos.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: PROYECTO_ID, activo: true, eliminado_en: null } }),
+      );
+      expect(prisma.cuentas_por_cobrar.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ proyecto_id: PROYECTO_ID }) }),
+      );
+      expect(result.proyecto).toEqual({ id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' });
+      expect(result.proyectoId).toBe(PROYECTO_ID);
     });
 
     it('crea la cuenta y audita CXC_CREADA SUCCESS', async () => {
@@ -237,6 +309,41 @@ describe('CobranzaService', () => {
         }),
       );
       expect(result.monto).toBe(2000);
+    });
+
+    it('permite asignar proyecto aunque la cuenta tenga cobros', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue(mockCuenta);
+      prisma.pagos.count.mockResolvedValue(3);
+      prisma.proyectos.findFirst.mockResolvedValue(mockProyecto);
+      prisma.cuentas_por_cobrar.update.mockResolvedValue({
+        ...mockCuenta,
+        proyecto_id: PROYECTO_ID,
+        proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+      });
+
+      const result = await service.actualizarCuenta(CUENTA_ID, { proyectoId: PROYECTO_ID }, USER_ID);
+
+      expect(prisma.cuentas_por_cobrar.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ proyecto_id: PROYECTO_ID }) }),
+      );
+      expect(result.proyectoId).toBe(PROYECTO_ID);
+    });
+
+    it('desliga el proyecto con null', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue({
+        ...mockCuenta,
+        proyecto_id: PROYECTO_ID,
+        proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+      });
+      prisma.pagos.count.mockResolvedValue(0);
+      prisma.cuentas_por_cobrar.update.mockResolvedValue(mockCuenta);
+
+      const result = await service.actualizarCuenta(CUENTA_ID, { proyectoId: null }, USER_ID);
+
+      expect(prisma.cuentas_por_cobrar.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ proyecto_id: null }) }),
+      );
+      expect(result.proyectoId).toBeNull();
     });
   });
 
@@ -481,6 +588,116 @@ describe('CobranzaService', () => {
       expect(result.startsWith('\uFEFF"ID","Cliente"')).toBe(true);
       expect(result).toContain('Constructora Beta');
       expect(result).not.toContain('ATRASO_GRAVE"');
+    });
+  });
+
+  describe('porProyecto', () => {
+    it('agrupa por proyecto incluyendo Sin proyecto y calcula saldo/vencido', async () => {
+      const hace10 = new Date();
+      hace10.setDate(hace10.getDate() - 10);
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([
+        // P004: vencida con saldo 600
+        {
+          id: CUENTA_ID,
+          proyecto_id: PROYECTO_ID,
+          monto: 1000,
+          monto_pagado: 400,
+          estado: 'PARCIAL',
+          fecha_vencimiento: hace10,
+          proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+        },
+        // P004: al corriente saldo 200
+        {
+          id: 'c0000000-0000-0000-0000-0000000000aa',
+          proyecto_id: PROYECTO_ID,
+          monto: 200,
+          monto_pagado: 0,
+          estado: 'PENDIENTE',
+          fecha_vencimiento: new Date('2026-12-01'),
+          proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+        },
+        // Sin proyecto: saldada — no suma a vencido
+        {
+          id: 'c0000000-0000-0000-0000-0000000000bb',
+          proyecto_id: null,
+          monto: 500,
+          monto_pagado: 500,
+          estado: 'PAGADO',
+          fecha_vencimiento: new Date('2026-01-01'),
+          proyectos: null,
+        },
+      ]);
+
+      const result = await service.porProyecto({});
+
+      expect(result.items).toHaveLength(2);
+      const conProyecto = result.items[0];
+      expect(conProyecto.proyecto).toEqual({
+        id: PROYECTO_ID,
+        codigo: 'P004',
+        nombre: 'Proyecto de prueba',
+      });
+      expect(conProyecto.totalCuentas).toBe(2);
+      expect(conProyecto.monto).toBe(1200);
+      expect(conProyecto.pagado).toBe(400);
+      expect(conProyecto.saldo).toBe(800);
+      expect(conProyecto.vencido).toBe(600);
+
+      const sinProyecto = result.items[1];
+      expect(sinProyecto.proyecto).toBeNull();
+      expect(sinProyecto.saldo).toBe(0);
+      expect(sinProyecto.vencido).toBe(0);
+
+      expect(result.totales).toEqual({ monto: 1700, pagado: 900, saldo: 800, vencido: 600 });
+    });
+
+    it('aplica filtros de estado y proyecto', async () => {
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([]);
+
+      await service.porProyecto({ estado: 'PARCIAL', proyectoId: PROYECTO_ID });
+
+      const call = prisma.cuentas_por_cobrar.findMany.mock.calls.at(-1)[0];
+      expect(call.where).toEqual(
+        expect.objectContaining({
+          activo: true,
+          estado: 'PARCIAL',
+          proyecto_id: PROYECTO_ID,
+        }),
+      );
+    });
+  });
+
+  describe('exportarPorProyecto', () => {
+    it('genera CSV agrupado con BOM, encabezados y fila de totales', async () => {
+      const hace10 = new Date();
+      hace10.setDate(hace10.getDate() - 10);
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([
+        {
+          id: CUENTA_ID,
+          proyecto_id: PROYECTO_ID,
+          monto: 1000,
+          monto_pagado: 400,
+          estado: 'PARCIAL',
+          fecha_vencimiento: hace10,
+          proyectos: { id: PROYECTO_ID, codigo: 'P004', nombre: 'Proyecto de prueba' },
+        },
+        {
+          id: 'c0000000-0000-0000-0000-0000000000cc',
+          proyecto_id: null,
+          monto: 500,
+          monto_pagado: 500,
+          estado: 'PAGADO',
+          fecha_vencimiento: new Date('2026-01-01'),
+          proyectos: null,
+        },
+      ]);
+
+      const result = await service.exportarPorProyecto({});
+
+      expect(result.startsWith('\uFEFF"Proyecto","Cuentas"')).toBe(true);
+      expect(result).toContain('P004 — Proyecto de prueba');
+      expect(result).toContain('Sin proyecto');
+      expect(result).toContain('"TOTAL"');
     });
   });
 });

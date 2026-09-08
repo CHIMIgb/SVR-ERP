@@ -9,6 +9,8 @@ describe('CobranzaController', () => {
     findAll: jest.fn(),
     stats: jest.fn(),
     exportar: jest.fn(),
+    porProyecto: jest.fn(),
+    exportarPorProyecto: jest.fn(),
     findOne: jest.fn(),
     cobrosDeCuenta: jest.fn(),
     cobrosAll: jest.fn(),
@@ -62,6 +64,24 @@ describe('CobranzaController', () => {
       const result = await controller.exportar({} as never);
       expect(service.exportar).toHaveBeenCalledWith({});
       expect(result).toContain('\uFEFF"ID"');
+    });
+  });
+
+  describe('GET /cobranza/por-proyecto', () => {
+    it('debe devolver la cartera agrupada por proyecto', async () => {
+      service.porProyecto.mockResolvedValue({ items: [], totales: { saldo: 0 } });
+      const result = await controller.porProyecto({ estado: 'PARCIAL' } as never);
+      expect(service.porProyecto).toHaveBeenCalledWith({ estado: 'PARCIAL' });
+      expect(result).toEqual({ items: [], totales: { saldo: 0 } });
+    });
+  });
+
+  describe('GET /cobranza/por-proyecto/exportar', () => {
+    it('debe devolver el CSV agrupado por proyecto', async () => {
+      service.exportarPorProyecto.mockResolvedValue('\uFEFF"Proyecto"\n"TOTAL"');
+      const result = await controller.exportarPorProyecto({} as never);
+      expect(service.exportarPorProyecto).toHaveBeenCalledWith({});
+      expect(result).toContain('"Proyecto"');
     });
   });
 

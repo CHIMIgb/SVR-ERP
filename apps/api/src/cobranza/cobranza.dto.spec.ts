@@ -37,13 +37,25 @@ describe('Cobranza DTOs', () => {
   });
 
   describe('CrearCuentaDto', () => {
+    const UUID = '550e8400-e29b-41d4-a716-446655440010';
+
     it('acepta una cuenta válida', async () => {
       const dto = new CrearCuentaDto();
-      dto.clienteId = '550e8400-e29b-41d4-a716-446655440010';
+      dto.clienteId = UUID;
+      dto.proyectoId = UUID;
       dto.monto = 5000;
       dto.fechaVencimiento = '2026-11-01';
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
+    });
+
+    it('rechaza proyectoId que no es UUID', async () => {
+      const dto = new CrearCuentaDto();
+      dto.clienteId = UUID;
+      dto.proyectoId = 'no-uuid';
+      dto.monto = 100;
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
     });
 
     it('rechaza clienteId que no es UUID', async () => {
@@ -62,11 +74,13 @@ describe('Cobranza DTOs', () => {
       const errors = await validate(invalida);
       expect(errors.length).toBeGreaterThan(0);
 
+      const UUID = '550e8400-e29b-41d4-a716-446655440010';
       const valida = new ListarCuentasQuery();
       valida.estado = 'PARCIAL';
       valida.situacion = 'ATRASO_GRAVE';
       valida.rango = 'vencido';
       valida.search = 'Constructora';
+      valida.proyectoId = UUID;
       valida.page = 2;
       valida.limit = 25;
       const errorsValida = await validate(valida);
