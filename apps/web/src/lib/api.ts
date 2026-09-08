@@ -1064,7 +1064,25 @@ export const bitacorasRentaApi = {
     apiClient.patch<BitacoraRentaDTO>(`/bitacoras-renta/${id}`, data),
 
   eliminar: (id: string) => apiClient.delete<{ message: string }>(`/bitacoras-renta/${id}`),
+
+  /** Cierra la bitácora LISTO_FACTURAR y hace nacer la CxC (O3). Permiso: rrhh.trabajadores.editar */
+  facturar: (id: string) => apiClient.post<BitacoraFacturarResponse>(`/bitacoras-renta/${id}/facturar`, undefined),
 };
+
+/** Respuesta del endpoint POST /bitacoras-renta/:id/facturar. */
+export interface BitacoraFacturarResponse {
+  cuenta: {
+    id: string;
+    bitacoraId: string;
+    folio: string;
+    clienteId: string;
+    proyectoId: string | null;
+    monto: number;
+    fechaVencimiento: string;
+    estado: 'PENDIENTE';
+  };
+  bitacora: { id: string; folio: string; estadoCobro: string };
+}
 
 // ────────────────────────────────────────────────────────────
 //  Asistencia API
@@ -2212,6 +2230,24 @@ export interface CuentaPorCobrarDTO {
   estado: EstadoCuentaCobranza;
   situacion: SituacionCobranza;
   ultimoCobroFecha?: string;
+  /** Proyecto asignado a la cuenta (O1). Null = "Sin proyecto". */
+  proyectoId?: string | null;
+  proyecto?: { id: string; codigo: string; nombre: string } | null;
+}
+
+/** Grupo de la cartera agrupada por proyecto (endpoint /cobranza/por-proyecto). */
+export interface GrupoProyectoDTO {
+  proyecto: { id: string; codigo: string; nombre: string } | null;
+  totalCuentas: number;
+  monto: number;
+  pagado: number;
+  saldo: number;
+  vencido: number;
+}
+
+export interface PorProyectoResponse {
+  items: GrupoProyectoDTO[];
+  totales: { monto: number; pagado: number; saldo: number; vencido: number };
 }
 
 export interface CobroDTO {
@@ -2328,6 +2364,48 @@ export const cobranzaApi = {
   /** Registrar cobro contra una cuenta; crea pago + ingreso en finanzas. */
   registrarCobro: (id: string, data: CobroCreateInput) =>
     apiClient.post<{ cobro: CobroDTO; cuenta: CuentaPorCobrarDTO }>(`/cobranza/${id}/cobros`, data),
+
+  /** Cartera agrupada por proyecto (grupo "Sin proyecto" para CxC sin asignar). */
+  porProyecto: (params?: {
+    estado?: EstadoCuentaCobranza;
+    situacion?: SituacionCobranza;
+    proyectoId?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.situacion) searchParams.set('situacion', params.situacion);
+    if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
+    if (params?.search) searchParams.set('search', params.search);
+    const qs = searchParams.toString();
+    return apiClient.get<PorProyectoResponse>(`/cobranza/por-proyecto${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Descarga el CSV agrupado por proyecto (descarga directa, BOM UTF-8). */
+  exportarPorProyecto: async (params?: {
+    estado?: EstadoCuentaCobranza;
+    situacion?: SituacionCobranza;
+    proyectoId?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.situacion) searchParams.set('situacion', params.situacion);
+    if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
+    if (params?.search) searchParams.set('search', params.search);
+    const qs = searchParams.toString();
+    const res = await fetch(`${API_BASE_URL}/cobranza/por-proyecto/exportar${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    if (!res.ok) throw new Error('No se pudo exportar el CSV');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cobranza-por-proyecto-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ────────────────────────────────────────────────────────────

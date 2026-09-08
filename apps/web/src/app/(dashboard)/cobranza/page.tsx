@@ -21,6 +21,7 @@ import { useToast } from '@/components/layout/Toast';
 import {
   cobranzaApi,
   type CuentaPorCobrarDTO, type CobroDTO, type VencimientoDTO, type CobranzaStats,
+  type GrupoProyectoDTO,
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
 
@@ -153,10 +154,12 @@ export default function CobranzaPage() {
   const [vencimientos, setVencimientos] = useState<VencimientoDTO[]>([]);
   const [paginationVenc, setPaginationVenc] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
   const [cuentasCatalogo, setCuentasCatalogo] = useState<CuentaPorCobrarDTO[]>([]);
+  const [grupos, setGrupos] = useState<GrupoProyectoDTO[]>([]);
+  const [totalesPorProyecto, setTotalesPorProyecto] = useState<{ monto: number; pagado: number; saldo: number; vencido: number }>({ monto: 0, pagado: 0, saldo: 0, vencido: 0 });
   const [stats, setStats] = useState<CobranzaStats>({ totalPorCobrar: 0, vencido: 0, cobradoMes: 0, clientesConSaldo: 0 });
 
   // ── UI state ──
-  const [tab, setTab] = useState<'cuentas' | 'cobros' | 'vencimientos'>('cuentas');
+  const [tab, setTab] = useState<'cuentas' | 'cobros' | 'vencimientos' | 'porobra'>('cuentas');
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
@@ -224,6 +227,21 @@ export default function CobranzaPage() {
     if (res.success && res.data) setStats(res.data);
   }, []);
 
+  /** Cartera agrupada por proyecto (tab "Por obra"). */
+  const fetchPorProyecto = useCallback(async (searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.porProyecto({
+      search: searchVal || undefined,
+      estado: filters?.estado as EstadoCuentaCobranza | undefined,
+      situacion: filters?.situacion as SituacionCobranza | undefined,
+    });
+    if (res.success && res.data) {
+      setGrupos(res.data.items);
+      setTotalesPorProyecto(res.data.totales);
+    } else {
+      showToast('Error al cargar la cartera por proyecto.', 'error');
+    }
+  }, [showToast]);
+
   /** Catálogo de cuentas con saldo para el select del modal de cobro. */
   const fetchCatalogo = useCallback(async () => {
     const res = await cobranzaApi.listar({ limit: 100 });
@@ -238,6 +256,7 @@ export default function CobranzaPage() {
           fetchCuentas(1),
           fetchCobros(1),
           fetchVenc(1),
+          fetchPorProyecto(),
           fetchStats(),
           fetchCatalogo(),
         ]);
@@ -248,7 +267,7 @@ export default function CobranzaPage() {
       }
     };
     inicial();
-  }, [fetchCuentas, fetchCobros, fetchVenc, fetchStats, fetchCatalogo, showToast]);
+  }, [fetchCuentas, fetchCobros, fetchVenc, fetchPorProyecto, fetchStats, fetchCatalogo, showToast]);
 
   /** Refetch tras una mutación: tab visible + stats + catálogo. */
   const refetchAll = useCallback(async () => {
@@ -258,6 +277,7 @@ export default function CobranzaPage() {
         fetchCuentas(paginationCuentas.page, search, filterValues),
         fetchCobros(paginationCobros.page, search, filterValues),
         fetchVenc(paginationVenc.page, search, filterValues),
+        fetchPorProyecto(search, filterValues),
         fetchStats(),
         fetchCatalogo(),
       ]);
@@ -266,7 +286,7 @@ export default function CobranzaPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [fetchCuentas, fetchCobros, fetchVenc, fetchStats, fetchCatalogo,
+  }, [fetchCuentas, fetchCobros, fetchVenc, fetchPorProyecto, fetchStats, fetchCatalogo,
     paginationCuentas.page, paginationCobros.page, paginationVenc.page, search, filterValues, showToast]);
 
   // ── Búsqueda y filtros ──
@@ -291,7 +311,7 @@ export default function CobranzaPage() {
   );
 
   const filterFields: FilterField[] =
-    tab === 'cuentas'
+    tab === 'cuentas' || tab === 'porobra'
       ? [
           { key: 'estado', label: 'Estado', type: 'select', options: (Object.keys(ESTADO_LABEL) as EstadoCuentaCobranza[]).map((e) => ({ value: e, label: ESTADO_LABEL[e] })) },
           { key: 'situacion', label: 'Situación', type: 'select', options: (Object.keys(SITUACION_LABEL) as SituacionCobranza[]).map((s) => ({ value: s, label: SITUACION_LABEL[s] })) },
@@ -305,6 +325,7 @@ export default function CobranzaPage() {
     setSearch(q);
     if (tab === 'cuentas') fetchCuentas(1, q, filterValues);
     else if (tab === 'cobros') fetchCobros(1, q, filterValues);
+    else if (tab === 'porobra') fetchPorProyecto(q, filterValues);
     else fetchVenc(1, q, filterValues);
   };
 
@@ -315,6 +336,7 @@ export default function CobranzaPage() {
     setFilterValues(next);
     if (tab === 'cuentas') fetchCuentas(1, search, next);
     else if (tab === 'cobros') fetchCobros(1, search, next);
+    else if (tab === 'porobra') fetchPorProyecto(search, next);
     else fetchVenc(1, search, next);
   };
 
@@ -322,6 +344,7 @@ export default function CobranzaPage() {
     setFilterValues({});
     if (tab === 'cuentas') fetchCuentas(1, search, {});
     else if (tab === 'cobros') fetchCobros(1, search, {});
+    else if (tab === 'porobra') fetchPorProyecto(search, {});
     else fetchVenc(1, search, {});
   };
 
@@ -390,8 +413,22 @@ export default function CobranzaPage() {
     }
   };
 
-  // ── Exportar CSV del tab activo (RBAC: exportar) ──
-  const handleExportar = () => {
+  // ── Exportar CSV: agrupado por proyecto desde el servidor; el resto cliente-side ──
+  const handleExportar = async () => {
+    if (tab === 'porobra') {
+      try {
+        await cobranzaApi.exportarPorProyecto({
+          search: search || undefined,
+          estado: filterValues.estado as EstadoCuentaCobranza | undefined,
+          situacion: filterValues.situacion as SituacionCobranza | undefined,
+        });
+        showToast('Reporte exportado a CSV.', 'success');
+      } catch {
+        showToast('No se pudo exportar el reporte.', 'error');
+      }
+      return;
+    }
+
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const lines: (string | number)[][] =
       tab === 'cuentas'
@@ -429,6 +466,20 @@ export default function CobranzaPage() {
       ),
     },
     { key: 'factura', header: 'Factura', minWidth: '110px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs font-semibold">{c.facturaFolio}</span> },
+    {
+      key: 'proyecto',
+      header: 'Proyecto',
+      minWidth: '160px',
+      nowrap: true,
+      render: (c) =>
+        c.proyecto ? (
+          <span className="text-slate-600 text-xs font-semibold truncate">
+            <span className="text-slate-400 font-mono">{c.proyecto.codigo}</span> · {c.proyecto.nombre}
+          </span>
+        ) : (
+          <Badge variant="neutral" size="sm">Sin proyecto</Badge>
+        ),
+    },
     { key: 'monto', header: 'Total', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{formatCurrency(c.monto)}</span> },
     { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-green-600 font-medium">{formatCurrency(c.montoPagado)}</span> },
     { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-slate-900">{formatCurrency(c.saldo)}</span> },
@@ -531,9 +582,10 @@ export default function CobranzaPage() {
           { key: 'cuentas', label: 'Cuentas por cobrar', icon: <ReceiptText className="w-4 h-4" />, count: paginationCuentas.total },
           { key: 'cobros', label: 'Movimientos de cobro', icon: <HandCoins className="w-4 h-4" />, count: paginationCobros.total },
           { key: 'vencimientos', label: 'Vencimientos', icon: <CalendarClock className="w-4 h-4" />, count: paginationVenc.total },
+          { key: 'porobra', label: 'Por obra', icon: <Building2 className="w-4 h-4" />, count: grupos.length },
         ]}
         onChange={(key) => {
-          setTab(key as 'cuentas' | 'cobros' | 'vencimientos');
+          setTab(key as 'cuentas' | 'cobros' | 'vencimientos' | 'porobra');
           setSearch('');
           setFilterValues({});
           setShowFilters(false);
@@ -733,6 +785,109 @@ export default function CobranzaPage() {
             )}
           </div>
         </TabPanel>
+      {/* ─── POR OBRA (cartera agrupada por proyecto, O2) ─────────────── */}
+        <TabPanel tabKey="porobra">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar proyecto, cliente o factura..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
+
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando cartera por obra..." subtitle="Espera un momento." />
+            ) : grupos.length === 0 ? (
+              <EmptyState
+                title="Sin saldos por proyecto"
+                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <div className="overflow-x-auto scrollbar-none">
+                    <table className="min-w-full divide-y divide-slate-100 text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          <th className="px-4 py-3">Proyecto</th>
+                          <th className="px-4 py-3 text-right">Cuentas</th>
+                          <th className="px-4 py-3 text-right">Monto</th>
+                          <th className="px-4 py-3 text-right">Pagado</th>
+                          <th className="px-4 py-3 text-right">Saldo</th>
+                          <th className="px-4 py-3 text-right">Vencido</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {grupos.map((g, i) => (
+                          <tr key={g.proyecto?.id ?? `sin-proyecto-${i}`} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="px-4 py-3">
+                              {g.proyecto ? (
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-800 truncate">
+                                    <span className="font-mono text-primary/70 mr-1.5">{g.proyecto.codigo}</span>
+                                    {g.proyecto.nombre}
+                                  </p>
+                                </div>
+                              ) : (
+                                <Badge variant="neutral" size="sm">Sin proyecto</Badge>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-500 font-bold">{g.totalCuentas}</td>
+                            <td className="px-4 py-3 text-right text-slate-600 font-medium">{formatCurrency(g.monto)}</td>
+                            <td className="px-4 py-3 text-right text-green-600 font-medium">{formatCurrency(g.pagado)}</td>
+                            <td className="px-4 py-3 text-right font-black text-slate-900">{formatCurrency(g.saldo)}</td>
+                            <td className="px-4 py-3 text-right">
+                              {g.vencido > 0 ? (
+                                <span className="text-red-600 font-black">{formatCurrency(g.vencido)}</span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-50/80 font-black text-slate-900">
+                          <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Total cartera</td>
+                          <td className="px-4 py-3 text-right">{grupos.reduce((n, g) => n + g.totalCuentas, 0)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(totalesPorProyecto.monto)}</td>
+                          <td className="px-4 py-3 text-right text-green-700">{formatCurrency(totalesPorProyecto.pagado)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(totalesPorProyecto.saldo)}</td>
+                          <td className="px-4 py-3 text-right text-red-600">{formatCurrency(totalesPorProyecto.vencido)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </TabPanel>
       </Tabs>
 
       {/* ─── Modal: Registrar cobro ────────────────────────────────────── */}
@@ -755,7 +910,8 @@ export default function CobranzaPage() {
             <option value="">Selecciona la cuenta...</option>
             {cuentasCatalogo.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.empresa} — {c.obra} (saldo {formatCurrency(c.saldo)})
+                {c.empresa} — {c.obra}
+                {c.proyecto ? ` (${c.proyecto.codigo})` : ''} (saldo {formatCurrency(c.saldo)})
               </option>
             ))}
           </select>
