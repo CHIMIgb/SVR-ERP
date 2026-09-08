@@ -18,6 +18,7 @@ import { CobranzaService } from './cobranza.service';
 import { CrearCuentaDto } from './dto/crear-cuenta.dto';
 import { ActualizarCuentaDto } from './dto/actualizar-cuenta.dto';
 import { RegistrarCobroDto } from './dto/registrar-cobro.dto';
+import { RevertirCobroDto } from './dto/revertir-cobro.dto';
 import { ListarCuentasQuery } from './dto/listar-cuentas.query';
 import { ListarCobrosQuery } from './dto/listar-cobros.query';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -177,5 +178,24 @@ export class CobranzaController {
   ) {
     const user = req.user as { id: string };
     return this.cobranzaService.registrarCobro(id, dto, user.id);
+  }
+
+  /**
+   * POST /api/cobranza/:id/cobros/:cobroId/revertir
+   * Revierte un cobro confirmado: soft-delete del pago, CxC vuelve a
+   * saldo anterior y se genera un INGRESO negativo en finanzas, todo en
+   * $transaction. Traza inmutable (no se borra el cobro).
+   * Permiso: comercial.cobranza.editar
+   */
+  @RequirePermission('comercial', 'cobranza', 'editar')
+  @Post('cobranza/:id/cobros/:cobroId/revertir')
+  async revertirCobro(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('cobroId', ParseUUIDPipe) cobroId: string,
+    @Body() dto: RevertirCobroDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.cobranzaService.revertirCobro(id, cobroId, user.id, dto);
   }
 }

@@ -277,4 +277,112 @@ describe('Cobranza Audit (Real DB)', () => {
     await prisma.proyectos.deleteMany({ where: { id: proyecto.id } });
     proyectoId = '';
   });
+
+  it('revierte un cobro: soft-delete del pago, CxC a saldo anterior, INGRESO negativo', async () => {
+    // cuentaId quedó PAGADA (10,000) tras los cobros de 4,000 y 6,000.
+    const pagoSaldador = await prisma.pagos.findFirst({
+      where: { cuenta_por_cobrar_id: cuentaId, monto: 6000 },
+    });
+    expect(pagoSaldador).not.toBeNull();
+
+    const resultado = await service.revertirCobro(
+      cuentaId,
+      pagoSaldador!.id,
+      ACTOR_USER_ID,
+      { motivo: 'Reversión de prueba de integración' },
+    );
+
+    // 1. Auditoría SUCCESS COBRO_REVERTIDO
+    const audit = await prisma.registro_auditoria.findFirst({
+      where: { action: AuditAction.COBRO_REVERTIDO, entity_id: pagoSaldador!.id },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.result).toBe(AuditResult.SUCCESS);
+
+    // 2. Pago soft-delete (nunca se borra físicamente)
+    const pagoDb = await prisma.pagos.findUnique({ where: { id: pagoSaldador!.id } });
+    expect(pagoDb!.activo).toBe(false);
+    expect(pagoDb!.eliminado_en).not.toBeNull();
+
+    // 3. CxC vuelve a saldo parcial
+    const cuenta = await prisma.cuentas_por_cobrar.findUnique({
+      where: { id: cuentaId },
+    });
+    expect(Number(cuenta!.monto_pagado)).toBe(4000);
+    expect(cuenta!.estado).toBe('PARCIAL');
+
+    // 4. Contrapartida contable: EGRESO que revierte el cobro (la BD
+    //    exige montos positivos, chk_monto_positivo)
+    const tx = await prisma.transacciones.findMany({
+      where: { entidad_tipo: 'COBRO', entidad_id: pagoSaldador!.id },
+      orderBy: { creado_en: 'asc' },
+    });
+    expect(tx).toHaveLength(2);
+    expect(Number(tx[1].monto)).toBe(6000);
+    expect(tx[1].tipo).toBe('EGRESO');
+    expect(tx[1].descripcion).toContain('Reversión de cobro');
+
+    // 5. La CxC actualizada también quedó auditada
+    const auditCxc = await prisma.registro_auditoria.findFirst({
+      where: { action: AuditAction.CXC_ACTUALIZADA, entity_id: cuentaId },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(auditCxc).not.toBeNull();
+    expect(auditCxc!.result).toBe(AuditResult.SUCCESS);
+
+    expect(resultado.cuenta).toEqual(
+      expect.objectContaining({ id: cuentaId, estado: 'PARCIAL', montoPagado: 4000 }),
+    );
+    expect(resultado.cobroRevertido.motivo).toBe('Reversión de prueba de integración');
+  });
+
+  it('falla la segunda reversión del mismo cobro y audita FAIL COBRO_NO_ENCONTRADO', async () => {
+    const pagoSaldador = await prisma.pagos.findFirst({
+      where: { cuenta_por_cobrar_id: cuentaId, monto: 6000 },
+    });
+
+    await expect(
+      service.revertirCobro(
+        cuentaId,
+        pagoSaldador!.id,
+        ACTOR_USER_ID,
+        { motivo: 'Intento duplicado de reversión' },
+      ),
+    ).rejects.toThrow();
+
+    const audit = await prisma.registro_auditoria.findFirst({
+      where: {
+        action: AuditAction.COBRO_REVERTIDO,
+        entity_id: pagoSaldador!.id,
+        result: AuditResult.FAIL,
+        error_code: 'COBRO_NO_ENCONTRADO',
+      },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+  });
+
+  it('regresa la factura a TIMBRADA al revertir el cobro que la saldó', async () => {
+    const pagoFactura = await prisma.pagos.findFirst({
+      where: { cuenta_por_cobrar_id: cuentaFacturaId, monto: 1160 },
+    });
+    expect(pagoFactura).not.toBeNull();
+
+    await service.revertirCobro(
+      cuentaFacturaId!,
+      pagoFactura!.id,
+      ACTOR_USER_ID,
+      { motivo: 'Reversión de pago de factura' },
+    );
+
+    const facturaDb = await prisma.facturas.findUnique({ where: { id: facturaId } });
+    expect(facturaDb!.estado).toBe('TIMBRADA');
+
+    const cuenta = await prisma.cuentas_por_cobrar.findUnique({
+      where: { id: cuentaFacturaId },
+    });
+    expect(Number(cuenta!.monto_pagado)).toBe(0);
+    expect(cuenta!.estado).toBe('PENDIENTE');
+  });
 });

@@ -6,8 +6,31 @@ import {
 } from './dto/registrar-cobro.dto';
 import { CrearCuentaDto } from './dto/crear-cuenta.dto';
 import { ListarCuentasQuery } from './dto/listar-cuentas.query';
+import { RevertirCobroDto } from './dto/revertir-cobro.dto';
 
 describe('Cobranza DTOs', () => {
+  describe('RevertirCobroDto', () => {
+    it('acepta un motivo válido', async () => {
+      const dto = new RevertirCobroDto();
+      dto.motivo = 'Pago duplicado por error';
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rechaza motivo vacío', async () => {
+      const dto = new RevertirCobroDto();
+      dto.motivo = '';
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('rechaza motivo menor a 10 caracteres', async () => {
+      const dto = new RevertirCobroDto();
+      dto.motivo = 'corto';
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+  });
   describe('RegistrarCobroDto', () => {
     it('acepta un cobro válido', async () => {
       const dto = new RegistrarCobroDto();

@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { CrearCuentaDto } from './dto/crear-cuenta.dto';
 import { ActualizarCuentaDto } from './dto/actualizar-cuenta.dto';
 import { RegistrarCobroDto } from './dto/registrar-cobro.dto';
+import { RevertirCobroDto } from './dto/revertir-cobro.dto';
 import { ListarCuentasQuery } from './dto/listar-cuentas.query';
 import { ListarCobrosQuery } from './dto/listar-cobros.query';
 
@@ -487,6 +488,200 @@ export class CobranzaService {
         fecha: fechaPago.toISOString(),
         referencia: pago.referencia,
         metodoPago: pago.metodo_pago,
+      },
+      cuenta: this.serializeCuenta(cuentaActualizada ?? (cuenta as never)),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  COBROS — REVERSIÓN
+  // ────────────────────────────────────────────
+  async revertirCobro(
+    cuentaId: string,
+    cobroId: string,
+    userId: string,
+    dto: RevertirCobroDto,
+  ) {
+    const cuenta = await this.prisma.cuentas_por_cobrar.findFirst({
+      where: { id: cuentaId, activo: true },
+      include: {
+        clientes: { select: { id: true, nombre: true, empresa: true } },
+        facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
+      },
+    });
+
+    if (!cuenta) {
+      return this.fallir(
+        AuditAction.CXC_ACTUALIZADA,
+        cuentaId,
+        'CXC_NO_ENCONTRADA',
+        NotFoundException,
+        `Cuenta por cobrar con id "${cuentaId}" no encontrada`,
+      );
+    }
+
+    const pago = await this.prisma.pagos.findFirst({
+      where: { id: cobroId, cuenta_por_cobrar_id: cuentaId, activo: true },
+    });
+
+    if (!pago) {
+      return this.fallir(
+        AuditAction.COBRO_REVERTIDO,
+        cobroId,
+        'COBRO_NO_ENCONTRADO',
+        NotFoundException,
+        `Cobro con id "${cobroId}" no encontrado en la cuenta`,
+      );
+    }
+
+    if (pago.estado !== 'CONFIRMADO') {
+      return this.fallir(
+        AuditAction.COBRO_REVERTIDO,
+        cobroId,
+        'COBRO_NO_REVERSIBLE',
+        ConflictException,
+        'Solo los cobros confirmados pueden revertirse',
+      );
+    }
+
+    const montoCobro = Number(pago.monto);
+    const now = new Date();
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Guard anti doble clic: el soft-delete solo ocurre si el cobro
+        // sigue activo y confirmado (carrera → count 0 → conflicto).
+        const resultado = await tx.pagos.updateMany({
+          where: {
+            id: cobroId,
+            cuenta_por_cobrar_id: cuentaId,
+            activo: true,
+            estado: 'CONFIRMADO',
+          },
+          data: {
+            activo: false,
+            eliminado_en: now,
+            actualizado_en: now,
+            actualizado_por: userId,
+          },
+        });
+
+        if (resultado.count === 0) {
+          throw new ConflictException('COBRO_YA_REVERTIDO');
+        }
+
+        const nuevoPagado = Math.max(
+          0,
+          Number(cuenta.monto_pagado) - montoCobro,
+        );
+        // PENDIENTE → PARCIAL → PAGADO (dominio legacy; el API expone 'SALDADO').
+        const estadoCxc =
+          nuevoPagado >= Number(cuenta.monto) - 0.0001
+            ? 'PAGADO'
+            : nuevoPagado > 0
+              ? 'PARCIAL'
+              : 'PENDIENTE';
+
+        await tx.cuentas_por_cobrar.update({
+          where: { id: cuentaId },
+          data: {
+            monto_pagado: nuevoPagado,
+            estado: estadoCxc,
+            actualizado_en: now,
+          },
+        });
+
+        // Si el cobro revertido había saldado la CxC y la factura ligada
+        // pasó a PAGADA, regresa a TIMBRADA (solo si el nuevo saldo ya no cubre).
+        if (estadoCxc !== 'PAGADO' && cuenta.factura_id) {
+          await tx.facturas.updateMany({
+            where: { id: cuenta.factura_id, estado: 'PAGADA', activo: true },
+            data: { estado: 'TIMBRADA', actualizado_en: now },
+          });
+        }
+
+        // Contrapartida contable: EGRESO que revierte el cobro original,
+        // referenciando la misma entidad (traza inmutable). La BD exige
+        // montos positivos (chk_monto_positivo), por eso se usa EGRESO.
+        await tx.transacciones.create({
+          data: {
+            id: randomUUID(),
+            codigo: generarCodigoTransaccion(),
+            tipo: 'EGRESO',
+            categoria: 'COBRANZA',
+            monto: montoCobro,
+            fecha: now,
+            descripcion: `Reversión de cobro ${pago.codigo} — ${dto.motivo}`,
+            entidad_tipo: 'COBRO',
+            entidad_id: cobroId,
+            creado_por: userId,
+            actualizado_por: userId,
+            actualizado_en: now,
+          },
+        });
+      });
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return this.fallir(
+          AuditAction.COBRO_REVERTIDO,
+          cobroId,
+          'COBRO_YA_REVERTIDO',
+          ConflictException,
+          'El cobro ya fue revertido',
+        );
+      }
+      throw error;
+    }
+
+    await this.auditService.log({
+      action: AuditAction.COBRO_REVERTIDO,
+      entityType: 'pagos',
+      entityId: cobroId,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        cuentaId,
+        monto: montoCobro,
+        motivo: dto.motivo,
+      },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.CXC_ACTUALIZADA,
+      entityType: 'cuentas_por_cobrar',
+      entityId: cuentaId,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        montoPagado: Math.max(0, Number(cuenta.monto_pagado) - montoCobro),
+      },
+    });
+
+    const cuentaActualizada = await this.prisma.cuentas_por_cobrar.findFirst({
+      where: { id: cuentaId },
+      include: {
+        clientes: { select: { id: true, nombre: true, empresa: true } },
+        facturas: { select: { serie: true, folio: true } },
+        proyectos: { select: { id: true, codigo: true, nombre: true } },
+        pagos: {
+          take: 1,
+          orderBy: { fecha_pago: 'desc' },
+          select: { fecha_pago: true },
+        },
+      },
+    });
+
+    return {
+      cobroRevertido: {
+        id: cobroId,
+        cuentaId,
+        monto: montoCobro,
+        motivo: dto.motivo,
       },
       cuenta: this.serializeCuenta(cuentaActualizada ?? (cuenta as never)),
     };

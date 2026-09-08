@@ -18,6 +18,7 @@ describe('CobranzaController', () => {
     crearCuenta: jest.fn(),
     actualizarCuenta: jest.fn(),
     registrarCobro: jest.fn(),
+    revertirCobro: jest.fn(),
   };
 
   const req = { user: { id: 'a0000000-0000-0000-0000-000000000099' } };
@@ -148,6 +149,17 @@ describe('CobranzaController', () => {
       const result = await controller.registrarCobro(ID, dto as never, req as never);
       expect(service.registrarCobro).toHaveBeenCalledWith(ID, dto, req.user.id);
       expect(result).toEqual({ cobro: { id: 'pago' }, cuenta: {} });
+    });
+  });
+
+  describe('POST /cobranza/:id/cobros/:cobroId/revertir', () => {
+    it('debe revertir el cobro con el cobroId y la sesión', async () => {
+      const COBRO_ID = '550e8400-e29b-41d4-a716-446655440011';
+      const dto = { motivo: 'Pago duplicado por error' };
+      service.revertirCobro.mockResolvedValue({ cobroRevertido: { id: COBRO_ID }, cuenta: {} });
+      const result = await controller.revertirCobro(ID, COBRO_ID, dto as never, req as never);
+      expect(service.revertirCobro).toHaveBeenCalledWith(ID, COBRO_ID, req.user.id, dto);
+      expect(result).toEqual({ cobroRevertido: { id: COBRO_ID }, cuenta: {} });
     });
   });
 });

@@ -87,9 +87,11 @@ describe('CobranzaService', () => {
       proyectos: { findFirst: jest.fn() },
       pagos: {
         findMany: jest.fn(),
+        findFirst: jest.fn(),
         count: jest.fn(),
         create: jest.fn(),
         aggregate: jest.fn(),
+        updateMany: jest.fn(),
       },
       transacciones: { create: jest.fn() },
       $transaction: runTx,
@@ -439,6 +441,153 @@ describe('CobranzaService', () => {
         }),
       );
       expect(result.cuenta.estado).toBe('SALDADO');
+    });
+  });
+
+  describe('revertirCobro', () => {
+    it('lanza NotFound si la cuenta no existe', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, { motivo: 'Pago duplicado por error' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.CXC_ACTUALIZADA,
+          result: AuditResult.FAIL,
+          errorCode: 'CXC_NO_ENCONTRADA',
+        }),
+      );
+    });
+
+    it('lanza NotFound si el cobro no pertenece a la cuenta', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue(mockCuenta);
+      prisma.pagos.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, { motivo: 'Pago duplicado por error' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COBRO_REVERTIDO,
+          errorCode: 'COBRO_NO_ENCONTRADO',
+        }),
+      );
+    });
+
+    it('rechaza cobros que no estén CONFIRMADO', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue(mockCuenta);
+      prisma.pagos.findFirst.mockResolvedValue({ ...mockPago, estado: 'PENDIENTE' });
+
+      await expect(
+        service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, { motivo: 'Pago duplicado por error' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COBRO_REVERTIDO,
+          errorCode: 'COBRO_NO_REVERSIBLE',
+        }),
+      );
+    });
+
+    it('revierte el cobro: soft-delete, CxC a saldo anterior, INGRESO negativo', async () => {
+      const cuentaConPago = { ...mockCuenta, monto_pagado: 400, estado: 'PARCIAL' };
+      prisma.cuentas_por_cobrar.findFirst
+        .mockResolvedValueOnce(cuentaConPago) // validación
+        .mockResolvedValueOnce({ ...cuentaConPago, monto_pagado: 0, estado: 'PENDIENTE' }); // post
+      prisma.pagos.findFirst.mockResolvedValue(mockPago);
+      prisma.pagos.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+
+      const result = await service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, {
+        motivo: 'Pago duplicado por error',
+      });
+
+      expect(prisma.pagos.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: PAGO_ID,
+            cuenta_por_cobrar_id: CUENTA_ID,
+            activo: true,
+            estado: 'CONFIRMADO',
+          }),
+          data: expect.objectContaining({ activo: false, eliminado_en: expect.any(Date) }),
+        }),
+      );
+      expect(prisma.cuentas_por_cobrar.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ monto_pagado: 0, estado: 'PENDIENTE' }),
+        }),
+      );
+      expect(prisma.transacciones.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tipo: 'EGRESO',
+            categoria: 'COBRANZA',
+            monto: 400,
+            entidad_tipo: 'COBRO',
+            entidad_id: PAGO_ID,
+          }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COBRO_REVERTIDO,
+          result: AuditResult.SUCCESS,
+          entityType: 'pagos',
+          entityId: PAGO_ID,
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.CXC_ACTUALIZADA,
+          result: AuditResult.SUCCESS,
+        }),
+      );
+      expect(result.cobroRevertido).toEqual(
+        expect.objectContaining({ id: PAGO_ID, monto: 400, motivo: 'Pago duplicado por error' }),
+      );
+      expect(result.cuenta.estado).toBe('PENDIENTE');
+    });
+
+    it('regresa la factura a TIMBRADA si el cobro revertido la había saldado', async () => {
+      const FACTURA_ID = 'e0000000-0000-0000-0000-000000000002';
+      const cuentaConFactura = { ...mockCuenta, factura_id: FACTURA_ID, monto_pagado: 1000, estado: 'PAGADO' };
+      prisma.cuentas_por_cobrar.findFirst
+        .mockResolvedValueOnce(cuentaConFactura)
+        .mockResolvedValueOnce({ ...cuentaConFactura, monto_pagado: 600, estado: 'PARCIAL' });
+      prisma.pagos.findFirst.mockResolvedValue({ ...mockPago, monto: 400 });
+      prisma.pagos.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+      prisma.facturas.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, {
+        motivo: 'Pago duplicado por error',
+      });
+
+      expect(prisma.facturas.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: FACTURA_ID, estado: 'PAGADA' }),
+          data: expect.objectContaining({ estado: 'TIMBRADA' }),
+        }),
+      );
+    });
+
+    it('protege contra doble reversión (carrera) con COBRO_YA_REVERTIDO', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue(mockCuenta);
+      prisma.pagos.findFirst.mockResolvedValue(mockPago);
+      prisma.pagos.updateMany.mockResolvedValue({ count: 0 }); // alguien ya lo revirtió
+
+      await expect(
+        service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, { motivo: 'Pago duplicado por error' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COBRO_REVERTIDO,
+          result: AuditResult.FAIL,
+          errorCode: 'COBRO_YA_REVERTIDO',
+        }),
+      );
     });
   });
 
