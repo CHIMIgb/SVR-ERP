@@ -26,6 +26,7 @@ import {
   type TransaccionDTO,
   type TipoTransaccionApi,
   type FlujoNetoDTO,
+  type VentanaFlujoItem,
 } from '@/lib/api';
 
 // ── Constantes ──
@@ -319,6 +320,13 @@ export default function FinanzasPage() {
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
+  const flujoColumns: Column<VentanaFlujoItem>[] = [
+    { key: 'ventana', header: 'Ventana', render: (it) => <span className="font-medium text-slate-700">{it.label}</span> },
+    { key: 'porCobrar', header: 'Por cobrar', align: 'right', render: (it) => <span className="text-emerald-600">{formatCurrency(it.porCobrar)}</span> },
+    { key: 'porPagar', header: 'Por pagar', align: 'right', render: (it) => <span className="text-rose-600">{formatCurrency(it.porPagar)}</span> },
+    { key: 'neto', header: 'Neto', align: 'right', render: (it) => <span className={it.neto >= 0 ? 'font-semibold text-slate-800' : 'font-semibold text-rose-700'}>{formatCurrency(it.neto)}</span> },
+  ];
+
   // ── Columnas de DataTable ──
   const columns: Column<TransaccionDTO>[] = [
     {
@@ -479,53 +487,13 @@ export default function FinanzasPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-100">
-                <th className="py-2.5 pr-4 font-semibold">Ventana</th>
-                <th className="py-2.5 pr-4 font-semibold text-right">Por cobrar</th>
-                <th className="py-2.5 pr-4 font-semibold text-right">Por pagar</th>
-                <th className="py-2.5 font-semibold text-right">Neto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {flujo.items.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center text-slate-400">
-                    Sin cuentas por cobrar ni por pagar activas.
-                  </td>
-                </tr>
-              )}
-              {flujo.items.map((item) => (
-                <tr key={item.ventana} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2.5 pr-4 font-medium text-slate-700">{item.label}</td>
-                  <td className="py-2.5 pr-4 text-right text-emerald-600">
-                    {formatCurrency(item.porCobrar)}
-                  </td>
-                  <td className="py-2.5 pr-4 text-right text-rose-600">
-                    {formatCurrency(item.porPagar)}
-                  </td>
-                  <td className="py-2.5 text-right font-semibold text-slate-800">
-                    {formatCurrency(item.neto)}
-                  </td>
-                </tr>
-              ))}
-              <tr className="bg-slate-50/60">
-                <td className="py-3 pr-4 font-bold text-slate-900">Total</td>
-                <td className="py-3 pr-4 text-right font-bold text-emerald-700">
-                  {formatCurrency(flujo.totales.porCobrar)}
-                </td>
-                <td className="py-3 pr-4 text-right font-bold text-rose-700">
-                  {formatCurrency(flujo.totales.porPagar)}
-                </td>
-                <td className="py-3 text-right font-bold text-slate-900">
-                  {formatCurrency(flujo.totales.neto)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={flujoColumns}
+          data={flujo.items}
+          keyExtractor={(item) => item.ventana}
+          emptyText="Sin cuentas por cobrar ni por pagar activas."
+          className="min-w-[560px]"
+        />
       </div>
       )}
 
