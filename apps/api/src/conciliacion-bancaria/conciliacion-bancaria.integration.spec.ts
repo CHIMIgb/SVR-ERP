@@ -213,4 +213,21 @@ describe('ConciliacionBancaria Audit (Real DB)', () => {
       expect(audits[0]?.error_code).toBe('MONTO_NO_COINCIDE');
     });
   });
+
+  describe('UNICIDAD', () => {
+    it('debe rechazar banco duplicado con ConflictException y auditoria FAIL', async () => {
+      const nombre = `Banco Único ${TEST_ID}`;
+      const primero = await service.crearBanco({ nombre }, ACTOR_USER_ID);
+      createdBancos.push(primero.id);
+
+      await expect(service.crearBanco({ nombre }, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.BANCO_CREADO, error_code: 'BANCO_DUPLICADO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('FAIL');
+    });
+  });
 });

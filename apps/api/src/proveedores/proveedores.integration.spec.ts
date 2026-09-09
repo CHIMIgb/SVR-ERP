@@ -9,7 +9,7 @@
  * Requires: PostgreSQL running with svr_erp database.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ConflictException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -223,6 +223,28 @@ describe('Proveedores Audit (Real DB)', () => {
           action: AuditAction.PAGO_PROVEEDOR_REGISTRADO,
           error_code: 'ABONO_EXCEDE_MONTO',
         },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('FAIL');
+    });
+  });
+
+  describe('UNICIDAD', () => {
+    it('debe rechazar RFC duplicado con ConflictException y auditoria FAIL', async () => {
+      const rfc = `RFC${TEST_ID}${randomUUID().slice(0, 4).toUpperCase()}`;
+      const dto = { nombre: `Prov-RFC ${TEST_ID}`, categoria: 'Materiales', rfc };
+
+      const primero = await service.create(dto, ACTOR_USER_ID);
+      createdProveedorIds.push(primero.id);
+
+      // Segundo proveedor con el mismo RFC → rechazado en DB real.
+      await expect(
+        service.create({ ...dto, nombre: `Prov-RFC2 ${TEST_ID}` }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.PROVEEDOR_CREADO, error_code: 'PROVEEDOR_RFC_DUPLICADO' },
         orderBy: { timestamp: 'desc' },
       });
       expect(audits.length).toBeGreaterThanOrEqual(1);
