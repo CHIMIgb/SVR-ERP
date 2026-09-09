@@ -296,6 +296,22 @@ describe('ProveedoresService', () => {
       expect(result[0].pagado).toBe(400);
       expect(result[0].saldo).toBe(1100);
     });
+
+    it('should exclude CANCELADA ordenes from the summary (and their KPI)', async () => {
+      prisma.proveedores.findMany.mockResolvedValue([
+        {
+          ...mockProveedor,
+          ordenes_compra: [
+            { id: '1', monto: 1000, pagado: 400 },
+            { id: '2', monto: 500, pagado: 0 },
+          ],
+        },
+      ]);
+      await service.findEstadoCuentaResumen();
+      const { where } = prisma.proveedores.findMany.mock.calls[0][0];
+      expect(where.ordenes_compra.some.estado).toEqual({ not: EstadoOrdenCompra.CANCELADA });
+      expect(where.ordenes_compra.some.eliminado_en).toBeNull();
+    });
   });
 
   describe('findLedgerPorProveedor', () => {

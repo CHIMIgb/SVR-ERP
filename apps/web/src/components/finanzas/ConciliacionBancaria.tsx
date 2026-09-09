@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, Landmark, Upload, Plus, CheckCircle2,
-  Undo2, Loader2,
+  Undo2,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import {
 } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
@@ -344,6 +345,81 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
     setPage(1);
   };
 
+  // ── Columnas de la tabla (patrón DataTable de las vistas CRUD) ──
+  const movimientoColumns: Column<MovimientoBancarioDTO>[] = [
+    {
+      key: 'fecha',
+      header: 'Fecha',
+      nowrap: true,
+      render: (m) => <span className="text-slate-600">{m.fecha}</span>,
+    },
+    {
+      key: 'descripcion',
+      header: 'Descripción',
+      nowrap: true,
+      render: (m) => (
+        <span className="block max-w-[220px] truncate font-medium text-slate-800" title={m.descripcion}>
+          {m.descripcion}
+        </span>
+      ),
+    },
+    {
+      key: 'deposito',
+      header: 'Depósito',
+      align: 'right',
+      nowrap: true,
+      render: (m) => (
+        <span className="font-semibold text-emerald-600">{m.deposito != null ? formatCurrency(m.deposito) : '—'}</span>
+      ),
+    },
+    {
+      key: 'retiro',
+      header: 'Retiro',
+      align: 'right',
+      nowrap: true,
+      render: (m) => (
+        <span className="font-semibold text-rose-600">{m.retiro != null ? formatCurrency(m.retiro) : '—'}</span>
+      ),
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      align: 'center',
+      render: (m) => (
+        <Badge variant={m.conciliado ? 'success' : 'warning'}>
+          {m.conciliado ? 'Conciliado' : 'Pendiente'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'accion',
+      header: 'Acción',
+      align: 'right',
+      render: (m) =>
+        m.conciliado ? (
+          puedeEditar ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Undo2 className="w-3.5 h-3.5" />}
+              onClick={() => { setMovimientoSel(m); setDesconciliarOpen(true); }}
+            >
+              Desconciliar
+            </Button>
+          ) : null
+        ) : puedeEditar ? (
+          <Button
+            variant="success"
+            size="sm"
+            icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+            onClick={() => openConciliar(m)}
+          >
+            Conciliar
+          </Button>
+        ) : null,
+    },
+  ];
+
   return (
     <div className="space-y-5">
       {/* Selector banco → cuenta */}
@@ -426,83 +502,14 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
 
           {/* Tabla */}
           <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-100 bg-slate-50/60">
-                    <th className="py-3 px-4 font-semibold">Fecha</th>
-                    <th className="py-3 px-4 font-semibold">Descripción</th>
-                    <th className="py-3 px-4 font-semibold text-right">Depósito</th>
-                    <th className="py-3 px-4 font-semibold text-right">Retiro</th>
-                    <th className="py-3 px-4 font-semibold text-center">Estado</th>
-                    <th className="py-3 px-4 font-semibold text-right">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading && movimientos.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-10 text-center text-slate-400">
-                        <Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Cargando movimientos...
-                      </td>
-                    </tr>
-                  )}
-                  {!loading && movimientos.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-8">
-                        <EmptyState
-                          title="Sin movimientos"
-                          subtitle="Carga un CSV del estado de cuenta o registra un movimiento manual."
-                        />
-                      </td>
-                    </tr>
-                  )}
-                  {movimientos.map((m) => (
-                    <tr key={m.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-colors">
-                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{m.fecha}</td>
-                      <td className="py-3 px-4 text-slate-800 font-medium max-w-[220px] truncate" title={m.descripcion}>
-                        {m.descripcion}
-                      </td>
-                      <td className="py-3 px-4 text-right text-emerald-600 font-semibold whitespace-nowrap">
-                        {m.deposito != null ? formatCurrency(m.deposito) : '—'}
-                      </td>
-                      <td className="py-3 px-4 text-right text-rose-600 font-semibold whitespace-nowrap">
-                        {m.retiro != null ? formatCurrency(m.retiro) : '—'}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <Badge variant={m.conciliado ? 'success' : 'warning'}>
-                          {m.conciliado ? 'Conciliado' : 'Pendiente'}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4">
-                        {m.conciliado ? (
-                          puedeEditar && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              icon={<Undo2 className="w-3.5 h-3.5" />}
-                              onClick={() => { setMovimientoSel(m); setDesconciliarOpen(true); }}
-                            >
-                              Desconciliar
-                            </Button>
-                          )
-                        ) : (
-                          puedeEditar && (
-                            <Button
-                              variant="success"
-                              size="sm"
-                              icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                              onClick={() => openConciliar(m)}
-                            >
-                              Conciliar
-                            </Button>
-                          )
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={movimientoColumns}
+              data={movimientos}
+              keyExtractor={(m) => m.id}
+              loading={loading && movimientos.length === 0}
+              emptyText="Sin movimientos. Carga un CSV del estado de cuenta o registra un movimiento manual."
+              maxBodyHeight="500px"
+            />
             {pagination.totalPages > 1 && (
               <div className="border-t border-slate-100 px-4 py-3">
                 <Pagination

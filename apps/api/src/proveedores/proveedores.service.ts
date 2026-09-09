@@ -316,11 +316,13 @@ export class ProveedoresService {
     const proveedores = await this.prisma.proveedores.findMany({
       where: {
         eliminado_en: null,
-        ordenes_compra: { some: { eliminado_en: null } },
+        ordenes_compra: {
+          some: { eliminado_en: null, estado: { not: EstadoOrdenCompra.CANCELADA } },
+        },
       },
       include: {
         ordenes_compra: {
-          where: { eliminado_en: null },
+          where: { eliminado_en: null, estado: { not: EstadoOrdenCompra.CANCELADA } },
           select: { id: true, monto: true, pagado: true },
         },
       },
