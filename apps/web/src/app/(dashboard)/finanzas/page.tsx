@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp,
+  Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp, ArrowRightLeft,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download, Landmark,
+  Receipt, BadgeCheck, Unlink,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { formatFechaSolo } from '@/lib/formatters';
@@ -48,6 +49,7 @@ export default function FinanzasPage() {
   const [transacciones, setTransacciones] = useState<TransaccionDTO[]>([]);
   const [tab, setTab] = useState<'movimientos' | 'conciliacion'>('movimientos');
   const [stats, setStats] = useState({ balance: 0, totalIngresos: 0, totalEgresos: 0, cantidad: 0 });
+  const [concTotales, setConcTotales] = useState({ cargado: 0, conciliado: 0, sinConciliar: 0 });
   const [flujo, setFlujo] = useState<FlujoNetoDTO>({
     items: [],
     totales: { porCobrar: 0, porPagar: 0, neto: 0 },
@@ -408,35 +410,6 @@ export default function FinanzasPage() {
         }
       />
 
-      {/* Tabs: movimientos / conciliación bancaria */}
-      <div className="flex gap-1 w-fit rounded-xl bg-slate-100 p-1">
-        <button
-          type="button"
-          onClick={() => setTab('movimientos')}
-          className={cn(
-            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            tab === 'movimientos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
-          )}
-        >
-          Movimientos
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('conciliacion')}
-          className={cn(
-            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5',
-            tab === 'conciliacion' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
-          )}
-        >
-          <Landmark className="w-4 h-4" />
-          Conciliación
-        </button>
-      </div>
-
-      {tab === 'conciliacion' ? (
-        <ConciliacionBancaria puedeCrear={puedeCrear} puedeEditar={puedeEditar} />
-      ) : (
-      <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <StatsCard
           icon={<Wallet className="w-6 h-6" />}
@@ -456,9 +429,32 @@ export default function FinanzasPage() {
           label="Egresos"
           color="error"
         />
+        {tab === 'conciliacion' && (
+          <>
+            <StatsCard
+              icon={<Receipt className="w-6 h-6" />}
+              value={formatCurrency(concTotales.cargado)}
+              label="Total cargado"
+              color="primary"
+            />
+            <StatsCard
+              icon={<BadgeCheck className="w-6 h-6" />}
+              value={formatCurrency(concTotales.conciliado)}
+              label="Conciliado"
+              color="success"
+            />
+            <StatsCard
+              icon={<Unlink className="w-6 h-6" />}
+              value={formatCurrency(concTotales.sinConciliar)}
+              label="Sin conciliar"
+              color={concTotales.sinConciliar === 0 ? 'success' : 'warning'}
+            />
+          </>
+        )}
       </div>
 
-      {/* Flujo neto proyectado CxC vs CxP */}
+      {/* Flujo neto proyectado CxC vs CxP (solo tab movimientos) */}
+      {tab === 'movimientos' && (
       <div className="card p-6">
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
@@ -531,6 +527,38 @@ export default function FinanzasPage() {
           </table>
         </div>
       </div>
+      )}
+
+      {/* Tabs: movimientos / conciliación bancaria */}
+      <div className="flex gap-1 w-fit rounded-xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setTab('movimientos')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-1.5',
+            tab === 'movimientos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <ArrowRightLeft className="w-4 h-4" />
+          Movimientos
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('conciliacion')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5',
+            tab === 'conciliacion' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <Landmark className="w-4 h-4" />
+          Conciliación
+        </button>
+      </div>
+
+      {tab === 'conciliacion' ? (
+        <ConciliacionBancaria puedeCrear={puedeCrear} puedeEditar={puedeEditar} onTotales={setConcTotales} />
+      ) : (
+      <>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <SearchBar

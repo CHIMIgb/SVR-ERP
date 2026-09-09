@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Building2, Landmark, Upload, Plus, Receipt, CheckCircle2,
-  Undo2, Loader2, BadgeCheck, Unlink,
+  Building2, Landmark, Upload, Plus, CheckCircle2,
+  Undo2, Loader2,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,6 @@ import {
 } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { StatsCard } from '@/components/ui/StatsCard';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
@@ -27,9 +26,17 @@ const PAGE_SIZE = 25;
 interface Props {
   puedeCrear: boolean;
   puedeEditar: boolean;
+  onTotales?: (totales: ConciliacionTotales) => void;
 }
 
-export function ConciliacionBancaria({ puedeCrear, puedeEditar }: Props) {
+/** Totales de los movimientos bancarios de la cuenta seleccionada. */
+export interface ConciliacionTotales {
+  cargado: number;
+  conciliado: number;
+  sinConciliar: number;
+}
+
+export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Props) {
   const { showToast } = useToast();
 
   // ── Selección banco → cuenta ──
@@ -167,6 +174,11 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar }: Props) {
     (sum, m) => sum + (m.conciliado ? (m.deposito ?? 0) - (m.retiro ?? 0) : 0),
     0,
   );
+
+  // Notifica totales al padre (las KPIs viven en la vista /finanzas).
+  useEffect(() => {
+    onTotales?.({ cargado: totalCargado, conciliado: totalConciliado, sinConciliar: totalCargado - totalConciliado });
+  }, [totalCargado, totalConciliado, onTotales]);
 
   // ── Alta banco ──
   const handleCrearBanco = useCallback(async () => {
@@ -334,28 +346,6 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar }: Props) {
 
   return (
     <div className="space-y-5">
-      {/* Métricas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-        <StatsCard
-          icon={<Receipt className="w-6 h-6" />}
-          value={formatCurrency(totalCargado)}
-          label="Total cargado"
-          color="primary"
-        />
-        <StatsCard
-          icon={<BadgeCheck className="w-6 h-6" />}
-          value={formatCurrency(totalConciliado)}
-          label="Conciliado"
-          color="success"
-        />
-        <StatsCard
-          icon={<Unlink className="w-6 h-6" />}
-          value={formatCurrency(totalCargado - totalConciliado)}
-          label="Sin conciliar"
-          color={totalCargado - totalConciliado === 0 ? 'success' : 'warning'}
-        />
-      </div>
-
       {/* Selector banco → cuenta */}
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">

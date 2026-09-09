@@ -13,7 +13,7 @@ import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
-import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
@@ -140,6 +140,7 @@ export default function FacturasPage() {
 
   // ── Estado de modales ──
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMode, setDetailMode] = useState<'ver' | 'editar'>('ver');
   const [createOpen, setCreateOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -147,6 +148,8 @@ export default function FacturasPage() {
   const [form, setForm] = useState(emptyForm);
   const [stateForm, setStateForm] = useState(emptyStateForm);
   const [conceptoForm, setConceptoForm] = useState(emptyConceptoForm);
+  const [deleteConceptoOpen, setDeleteConceptoOpen] = useState(false);
+  const [selectedConcepto, setSelectedConcepto] = useState<FacturaConceptoDTO | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [facturasStats, setFacturasStats] = useState<FacturasStats | null>(null);
 
@@ -450,12 +453,16 @@ export default function FacturasPage() {
     }
   };
 
-  const handleEliminarConcepto = async (c: FacturaConceptoDTO) => {
-    if (!selected) return;
-    if (!window.confirm(`¿Eliminar el concepto "${c.descripcion}"?`)) return;
+  const openEliminarConcepto = (c: FacturaConceptoDTO) => {
+    setSelectedConcepto(c);
+    setDeleteConceptoOpen(true);
+  };
+
+  const handleEliminarConcepto = async () => {
+    if (!selected || !selectedConcepto) return;
     setSubmitting(true);
     try {
-      const res = await facturasApi.eliminarConcepto(selected.id, c.id);
+      const res = await facturasApi.eliminarConcepto(selected.id, selectedConcepto.id);
       if (!res.success) {
         showToast(res.error?.message ?? 'Error al eliminar el concepto.', 'error');
         return;
@@ -463,6 +470,8 @@ export default function FacturasPage() {
       showToast('Concepto eliminado.', 'success');
       setSelected(res.data);
       setConceptoForm(emptyConceptoForm);
+      setDeleteConceptoOpen(false);
+      setSelectedConcepto(null);
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
     } finally {
@@ -520,16 +529,32 @@ export default function FacturasPage() {
       render: (f) => (
         <div className="flex items-center justify-end gap-1">
           <Button
-            variant="ghost"
+            variant="info"
             size="sm"
             icon={<Eye className="w-3.5 h-3.5" />}
             onClick={() => {
               setSelected(f);
+              setDetailMode('ver');
               setDetailOpen(true);
             }}
           >
             Ver
           </Button>
+          {puedeEditar && f.estado === 'PENDIENTE' && (
+            <Button
+              variant="warning"
+              size="sm"
+              icon={<Pencil className="w-3.5 h-3.5" />}
+              onClick={() => {
+                setSelected(f);
+                setDetailMode('editar');
+                setConceptoForm(emptyConceptoForm);
+                setDetailOpen(true);
+              }}
+            >
+              Editar
+            </Button>
+          )}
           {puedeEditar && f.estado === 'PENDIENTE' && (
             <Button
               variant="success"
@@ -714,14 +739,17 @@ export default function FacturasPage() {
       </div>
 
       {/* ── Modal detalle ── */}
-      <FormModal
+      <Modal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
-        onCancel={() => setDetailOpen(false)}
-        title={selected ? `Factura ${selected.codigo}` : ''}
-        subtitle={selected ? `${selected.empresa || selected.clienteNombre} — ${ESTADO_BADGE[selected.estado]?.label ?? selected.estado}` : ''}
-        hideFooter
+        size="lg"
       >
+        <ModalHeader
+          title={selected ? `Factura ${selected.codigo}` : ''}
+          subtitle={selected ? `${selected.empresa || selected.clienteNombre} — ${ESTADO_BADGE[selected.estado]?.label ?? selected.estado}` : ''}
+          onClose={() => setDetailOpen(false)}
+        />
+        <ModalBody>
         {selected && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -761,7 +789,7 @@ export default function FacturasPage() {
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Conceptos</p>
               <div className="space-y-2">
                 {selected.conceptos.map((c: FacturaConceptoDTO) => {
-                  const esEditable = selected.estado === 'PENDIENTE' && puedeEditar;
+                  const esEditable = detailMode === 'editar' && selected.estado === 'PENDIENTE' && puedeEditar;
                   const enEdicion = esEditable && conceptoForm.editId === c.id;
                   return enEdicion ? (
                     <div key={c.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
@@ -803,10 +831,11 @@ export default function FacturasPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         <p className="font-bold text-slate-900">{formatCurrency(c.importe)}</p>
                         {esEditable && (
-                          <div className="flex gap-1">
-                            <button
-                              className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
-                              title="Editar concepto"
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="warning"
+                              size="sm"
+                              icon={<Pencil className="w-3.5 h-3.5" />}
                               onClick={() =>
                                 setConceptoForm({
                                   editId: c.id,
@@ -818,15 +847,16 @@ export default function FacturasPage() {
                                 })
                               }
                             >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
-                              title="Eliminar concepto"
-                              onClick={() => handleEliminarConcepto(c)}
+                              Editar
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              icon={<Trash2 className="w-3.5 h-3.5" />}
+                              onClick={() => openEliminarConcepto(c)}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                              Eliminar
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -835,7 +865,7 @@ export default function FacturasPage() {
                 })}
               </div>
 
-              {selected.estado === 'PENDIENTE' && puedeEditar && conceptoForm.editId === null && (
+              {detailMode === 'editar' && selected.estado === 'PENDIENTE' && puedeEditar && conceptoForm.editId === null && (
                 <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                     Agregar concepto
@@ -874,7 +904,13 @@ export default function FacturasPage() {
             </div>
           </div>
         )}
-      </FormModal>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setDetailOpen(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {/* ── Modal crear ── */}
       <FormModal
@@ -1042,6 +1078,24 @@ export default function FacturasPage() {
             Al timbrar la factura quedará en estado Timbrada y ya no podrá editarse.
           </p>
         )}
+      </FormModal>
+
+      {/* ── Modal eliminar concepto ── */}
+      <FormModal
+        open={deleteConceptoOpen}
+        onClose={() => setDeleteConceptoOpen(false)}
+        onCancel={() => setDeleteConceptoOpen(false)}
+        title="Eliminar concepto"
+        subtitle={selected?.codigo}
+        submitLabel="Eliminar"
+        cancelLabel="Cancelar"
+        onSubmit={handleEliminarConcepto}
+        isSubmitting={submitting}
+      >
+        <p className="text-sm text-slate-500">
+          ¿Eliminar el concepto “{selectedConcepto?.descripcion}” de la factura?
+          El total se recalculará automáticamente.
+        </p>
       </FormModal>
 
       {/* ── Modal eliminar ── */}

@@ -156,6 +156,7 @@ export default function CobranzaPage() {
   const [paginationVenc, setPaginationVenc] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
   const [cuentasCatalogo, setCuentasCatalogo] = useState<CuentaPorCobrarDTO[]>([]);
   const [grupos, setGrupos] = useState<GrupoProyectoDTO[]>([]);
+  const [porObraPage, setPorObraPage] = useState(1);
   const [totalesPorProyecto, setTotalesPorProyecto] = useState<{ monto: number; pagado: number; saldo: number; vencido: number }>({ monto: 0, pagado: 0, saldo: 0, vencido: 0 });
   const [stats, setStats] = useState<CobranzaStats>({ totalPorCobrar: 0, vencido: 0, cobradoMes: 0, clientesConSaldo: 0 });
 
@@ -331,7 +332,7 @@ export default function CobranzaPage() {
     setSearch(q);
     if (tab === 'cuentas') fetchCuentas(1, q, filterValues);
     else if (tab === 'cobros') fetchCobros(1, q, filterValues);
-    else if (tab === 'porobra') fetchPorProyecto(q, filterValues);
+    else if (tab === 'porobra') { fetchPorProyecto(q, filterValues); setPorObraPage(1); }
     else fetchVenc(1, q, filterValues);
   };
 
@@ -342,7 +343,7 @@ export default function CobranzaPage() {
     setFilterValues(next);
     if (tab === 'cuentas') fetchCuentas(1, search, next);
     else if (tab === 'cobros') fetchCobros(1, search, next);
-    else if (tab === 'porobra') fetchPorProyecto(search, next);
+    else if (tab === 'porobra') { fetchPorProyecto(search, next); setPorObraPage(1); }
     else fetchVenc(1, search, next);
   };
 
@@ -350,7 +351,7 @@ export default function CobranzaPage() {
     setFilterValues({});
     if (tab === 'cuentas') fetchCuentas(1, search, {});
     else if (tab === 'cobros') fetchCobros(1, search, {});
-    else if (tab === 'porobra') fetchPorProyecto(search, {});
+    else if (tab === 'porobra') { fetchPorProyecto(search, {}); setPorObraPage(1); }
     else fetchVenc(1, search, {});
   };
 
@@ -593,6 +594,48 @@ export default function CobranzaPage() {
     { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (v) => <span className="font-black text-slate-900">{formatCurrency(v.monto)}</span> },
   ];
 
+  // ── Columnas: cartera por proyecto ──
+  const porObraColumns: Column<GrupoProyectoDTO>[] = [
+    {
+      key: 'proyecto',
+      header: 'Proyecto',
+      minWidth: '260px',
+      nowrap: true,
+      render: (g) =>
+        g.proyecto ? (
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-800 truncate">
+              <span className="font-mono text-primary/70 mr-1.5">{g.proyecto.codigo}</span>
+              {g.proyecto.nombre}
+            </p>
+          </div>
+        ) : (
+          <Badge variant="neutral" size="sm">Sin proyecto</Badge>
+        ),
+    },
+    { key: 'cuentas', header: 'Cuentas', align: 'right', minWidth: '90px', nowrap: true, render: (g) => <span className="text-slate-500 font-bold">{g.totalCuentas}</span> },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-slate-600 font-medium">{formatCurrency(g.monto)}</span> },
+    { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-green-600 font-medium">{formatCurrency(g.pagado)}</span> },
+    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="font-black text-slate-900">{formatCurrency(g.saldo)}</span> },
+    {
+      key: 'vencido',
+      header: 'Vencido',
+      align: 'right',
+      minWidth: '130px',
+      nowrap: true,
+      render: (g) =>
+        g.vencido > 0 ? (
+          <span className="text-red-600 font-black">{formatCurrency(g.vencido)}</span>
+        ) : (
+          <span className="text-slate-300 font-medium">—</span>
+        ),
+    },
+  ];
+
+  // Paginación local: el endpoint por-proyecto no pagina (client-side).
+  const porObraTotalPages = Math.max(1, Math.ceil(grupos.length / PAGE_SIZE));
+  const porObraPaginated = grupos.slice((porObraPage - 1) * PAGE_SIZE, porObraPage * PAGE_SIZE);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -614,6 +657,37 @@ export default function CobranzaPage() {
         <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" />
         <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" />
         <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" />
+        <StatsCard
+          icon={<Wallet className="w-5 h-5" />}
+          label={
+            <>
+              Monto
+              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                {grupos.reduce((n, g) => n + g.totalCuentas, 0)} cuentas · {grupos.length} proyecto{grupos.length !== 1 ? 's' : ''}
+              </span>
+            </>
+          }
+          value={formatCurrency(totalesPorProyecto.monto)}
+          color="info"
+        />
+        <StatsCard
+          icon={<HandCoins className="w-5 h-5" />}
+          label="Pagado"
+          value={formatCurrency(totalesPorProyecto.pagado)}
+          color="success"
+        />
+        <StatsCard
+          icon={<Building2 className="w-5 h-5" />}
+          label="Saldo por obra"
+          value={formatCurrency(totalesPorProyecto.saldo)}
+          color="warning"
+        />
+        <StatsCard
+          icon={<AlertTriangle className="w-5 h-5" />}
+          label="Vencido por obra"
+          value={formatCurrency(totalesPorProyecto.vencido)}
+          color="error"
+        />
       </div>
 
       {/* Tabs */}
@@ -871,59 +945,20 @@ export default function CobranzaPage() {
               />
             ) : (
               <>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="overflow-x-auto scrollbar-none">
-                    <table className="min-w-full divide-y divide-slate-100 text-sm">
-                      <thead>
-                        <tr className="bg-slate-50 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          <th className="px-4 py-3">Proyecto</th>
-                          <th className="px-4 py-3 text-right">Cuentas</th>
-                          <th className="px-4 py-3 text-right">Monto</th>
-                          <th className="px-4 py-3 text-right">Pagado</th>
-                          <th className="px-4 py-3 text-right">Saldo</th>
-                          <th className="px-4 py-3 text-right">Vencido</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {grupos.map((g, i) => (
-                          <tr key={g.proyecto?.id ?? `sin-proyecto-${i}`} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="px-4 py-3">
-                              {g.proyecto ? (
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-slate-800 truncate">
-                                    <span className="font-mono text-primary/70 mr-1.5">{g.proyecto.codigo}</span>
-                                    {g.proyecto.nombre}
-                                  </p>
-                                </div>
-                              ) : (
-                                <Badge variant="neutral" size="sm">Sin proyecto</Badge>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right text-slate-500 font-bold">{g.totalCuentas}</td>
-                            <td className="px-4 py-3 text-right text-slate-600 font-medium">{formatCurrency(g.monto)}</td>
-                            <td className="px-4 py-3 text-right text-green-600 font-medium">{formatCurrency(g.pagado)}</td>
-                            <td className="px-4 py-3 text-right font-black text-slate-900">{formatCurrency(g.saldo)}</td>
-                            <td className="px-4 py-3 text-right">
-                              {g.vencido > 0 ? (
-                                <span className="text-red-600 font-black">{formatCurrency(g.vencido)}</span>
-                              ) : (
-                                <span className="text-slate-300 font-medium">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className="bg-slate-50/80 font-black text-slate-900">
-                          <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Total cartera</td>
-                          <td className="px-4 py-3 text-right">{grupos.reduce((n, g) => n + g.totalCuentas, 0)}</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(totalesPorProyecto.monto)}</td>
-                          <td className="px-4 py-3 text-right text-green-700">{formatCurrency(totalesPorProyecto.pagado)}</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(totalesPorProyecto.saldo)}</td>
-                          <td className="px-4 py-3 text-right text-red-600">{formatCurrency(totalesPorProyecto.vencido)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <DataTable
+                  columns={porObraColumns}
+                  data={porObraPaginated}
+                  keyExtractor={(g) => g.proyecto?.id ?? 'sin-proyecto'}
+                  emptyText="No se encontraron grupos para la búsqueda."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={porObraPage}
+                  totalPages={porObraTotalPages}
+                  totalRecords={grupos.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPorObraPage}
+                />
               </>
             )}
           </div>
