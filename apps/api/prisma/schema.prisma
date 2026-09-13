@@ -558,7 +558,7 @@ model facturas {
   folio                                 String?
   uuid_cfdi                             String?             @unique
   cliente_id                            String              @db.Uuid
-  cotizacion_id                         String?             @db.Uuid
+  cotizacion_id                         String?             @unique @db.Uuid
   periodo_inicio                        DateTime?           @db.Date
   periodo_fin                           DateTime?           @db.Date
   subtotal                              Decimal             @default(0) @db.Decimal(14, 2)
@@ -589,7 +589,6 @@ model facturas {
 
   @@index([cliente_id])
   @@index([estado])
-  @@index([cotizacion_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

@@ -481,7 +481,7 @@ describe('CotizacionesService', () => {
     const ID = mockCotizacion.id;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tx: any = {
-      cotizaciones: { update: jest.fn() },
+      cotizaciones: { updateMany: jest.fn(), findUnique: jest.fn() },
       facturas: { count: jest.fn().mockResolvedValue(0), create: jest.fn() },
       cuentas_por_cobrar: { create: jest.fn() },
     };
@@ -493,7 +493,7 @@ describe('CotizacionesService', () => {
         facturas: [],
       });
       prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
-      tx.cotizaciones.update.mockResolvedValue({ ...mockCotizacion, estado: EstadoCotizacion.ACEPTADA });
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 1 });
       tx.facturas.create.mockImplementation(async ({ data }: any) => ({
         id: data.id,
         codigo: data.codigo,
@@ -509,8 +509,9 @@ describe('CotizacionesService', () => {
 
       const result = await service.facturar(ID, 'user-1');
 
-      expect(tx.cotizaciones.update).toHaveBeenCalledWith(
+      expect(tx.cotizaciones.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({ estado: EstadoCotizacion.PENDIENTE }),
           data: expect.objectContaining({ estado: EstadoCotizacion.ACEPTADA }),
         }),
       );
@@ -539,6 +540,62 @@ describe('CotizacionesService', () => {
       );
       expect(result.cotizacionId).toBe(ID);
       expect(result.factura.codigo).toBe('FAC-2026-0001');
+    });
+
+    it('debe fallar COTIZACION_YA_FACTURADA si perdió la carrera de transición', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockClear();
+      tx.facturas.create.mockClear();
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 0 });
+      tx.cotizaciones.findUnique.mockResolvedValue({
+        estado: EstadoCotizacion.ACEPTADA,
+        facturas: [{ id: 'factura-ganadora' }],
+      });
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+
+      expect(tx.cotizaciones.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: EstadoCotizacion.PENDIENTE }),
+        }),
+      );
+      expect(tx.cotizaciones.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: ID } }),
+      );
+      expect(tx.facturas.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_YA_FACTURADA' }),
+      );
+    });
+
+    it('debe fallar COTIZACION_NO_PENDIENTE si perdió la carrera contra otro estado', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockClear();
+      tx.facturas.create.mockClear();
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 0 });
+      tx.cotizaciones.findUnique.mockResolvedValue({
+        estado: EstadoCotizacion.RECHAZADA,
+        facturas: [],
+      });
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+
+      expect(tx.facturas.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_NO_PENDIENTE' }),
+      );
     });
 
     it('debe fallar COTIZACION_NO_ENCONTRADA si no existe', async () => {

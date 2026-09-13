@@ -395,5 +395,85 @@ describe('Cotizaciones Audit (Real DB)', () => {
       });
       expect(audit).not.toBeNull();
     });
+
+    it('debe facturar UNA sola vez ante doble llamada concurrente y auditar FAIL al perdedor', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Carrera doble ${TEST_ID}`, monto: 50000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+
+      const resultados = await Promise.allSettled([
+        service.facturar(cotizacion.id, ACTOR_USER_ID),
+        service.facturar(cotizacion.id, ACTOR_USER_ID),
+      ]);
+
+      const ganadores = resultados.filter((r) => r.status === 'fulfilled');
+      const perdedores = resultados.filter((r) => r.status === 'rejected');
+      expect(ganadores).toHaveLength(1);
+      expect(perdedores).toHaveLength(1);
+
+      // Una sola factura y una sola CxC para la cotización.
+      const facturas = await prisma.facturas.findMany({
+        where: { cotizacion_id: cotizacion.id },
+      });
+      expect(facturas).toHaveLength(1);
+      createdFacturaIds.push(facturas[0].id);
+
+      const cxcCount = await prisma.cuentas_por_cobrar.count({
+        where: { factura_id: facturas[0].id },
+      });
+      expect(cxcCount).toBe(1);
+
+      // El perdedor audita FAIL. El código depende del timing: si la lectura
+      // previa alcanzó a ver el commit del ganador → NO_PENDIENTE (pre-check);
+      // si ambas entraron a la transacción → YA_FACTURADA (guard transicional).
+      // Lo invariante: exactamente un FAIL para la misma cotización.
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.COTIZACION_FACTURADA,
+          entity_id: cotizacion.id,
+          result: 'FAIL',
+          error_code: { in: ['COTIZACION_YA_FACTURADA', 'COTIZACION_NO_PENDIENTE'] },
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+    });
+
+    it('debe asignar folios únicos al facturar cotizaciones distintas en paralelo', async () => {
+      const cliente = await createCliente();
+      const c1 = await service.create(
+        cliente.id,
+        { descripcion: `Folio A ${TEST_ID}`, monto: 10000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+      const c2 = await service.create(
+        cliente.id,
+        { descripcion: `Folio B ${TEST_ID}`, monto: 20000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+
+      const resultados = await Promise.allSettled([
+        service.facturar(c1.id, ACTOR_USER_ID),
+        service.facturar(c2.id, ACTOR_USER_ID),
+      ]);
+
+      const ganadores = resultados.filter((r) => r.status === 'fulfilled') as Array<
+        PromiseFulfilledResult<{ factura: { codigo: string } }>
+      >;
+      expect(ganadores).toHaveLength(2);
+
+      const codigos = ganadores.map((r) => r.value.factura.codigo);
+      expect(new Set(codigos).size).toBe(2);
+      codigos.forEach((codigo) => expect(codigo).toMatch(/^FAC-\d{4}-\d{4}$/));
+
+      const facturas = await prisma.facturas.findMany({
+        where: { cotizacion_id: { in: [c1.id, c2.id] } },
+      });
+      expect(facturas).toHaveLength(2);
+      facturas.forEach((f) => createdFacturaIds.push(f.id));
+    });
   });
 });

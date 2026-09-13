@@ -28,6 +28,14 @@ const ESTADO_LABELS: Record<EstadoCotizacion, string> = {
   [EstadoCotizacion.RECHAZADA]: 'Rechazada',
 };
 
+/**
+ * Máximo de intentos para asignar el folio secuencial FAC-YYYY-NNNN.
+ * Dos facturaciones concurrentes pueden generar el mismo `codigo` (count+1);
+ * al chocar P2002 se reintenta TODA la transacción con un conteo fresco
+ * (Postgres 25P02 impide reintentar dentro del mismo $transaction).
+ */
+const MAX_INTENTOS_FOLIO = 10;
+
 @Injectable()
 export class CotizacionesService {
   constructor(
@@ -507,105 +515,185 @@ export class CotizacionesService {
 
     const monto = Number(cotizacion.monto);
 
-    const { factura, cxc } = await this.prisma.$transaction(async (tx) => {
-      // 1. La cotización queda ACEPTADA (se facturó).
-      await tx.cotizaciones.update({
-        where: { id },
-        data: {
-          estado: EstadoCotizacion.ACEPTADA,
-          actualizado_por: userId,
-          actualizado_en: new Date(),
-        },
-      });
+    for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
+      try {
+        const { factura, cxc } = await this.prisma.$transaction(async (tx) => {
+          // 1. Transición PENDIENTE→ACEPTADA: solo una tx concurrente puede
+          //    ganarla. El updateMany se bloquea en el lock de fila del ganador
+          //    y al despertar re-evalúa el WHERE contra el estado ya commiteado
+          //    → count 0 para el perdedor (cierra el TOCTOU del Blocker #3).
+          const transicion = await tx.cotizaciones.updateMany({
+            where: { id, eliminado_en: null, estado: EstadoCotizacion.PENDIENTE },
+            data: {
+              estado: EstadoCotizacion.ACEPTADA,
+              actualizado_por: userId,
+              actualizado_en: new Date(),
+            },
+          });
 
-      // 2. Factura con folio secuencial FAC-YYYY-NNNN.
-      const anio = new Date().getFullYear();
-      const base = `FAC-${anio}`;
-      const conteo = await tx.facturas.count({ where: { codigo: { startsWith: base } } });
-      const codigo = `${base}-${String(conteo + 1).padStart(4, '0')}`;
-      const facturaId = randomUUID();
-      const factura = await tx.facturas.create({
-        data: {
-          id: facturaId,
-          codigo,
-          serie: 'F',
-          folio: String(conteo + 1).padStart(6, '0'),
-          cliente_id: cotizacion.cliente_id,
-          cotizacion_id: id,
-          subtotal: monto,
-          impuestos: 0,
-          total: monto,
-          moneda: 'MXN',
-          tipo_cambio: 1,
-          estado: 'PENDIENTE',
-          activo: true,
-          creado_en: new Date(),
-          actualizado_en: new Date(),
-          creado_por: userId,
-          actualizado_por: userId,
-          factura_conceptos: {
-            create: [
-              {
-                id: randomUUID(),
-                cantidad: 1,
-                unidad: 'Servicio',
-                descripcion: cotizacion.descripcion,
-                valor_unitario: monto,
-                importe: monto,
-                descuento: 0,
-                objeto_impuesto: '04',
-                impuesto_tasa: 0.16,
-                impuesto_importe: 0,
-                activo: true,
+          if (transicion.count === 0) {
+            // Carrera perdida: releemos para dar el código correcto. El perdedor
+            // normalmente verá ACEPTADA + factura; pero el estado pudo llegar a
+            // RECHAZADA por otro path concurrente.
+            const actual = await tx.cotizaciones.findUnique({
+              where: { id },
+              select: { estado: true, facturas: { select: { id: true } } },
+            });
+            if (actual?.facturas.length) {
+              throw new BadRequestException('COTIZACION_YA_FACTURADA');
+            }
+            throw new BadRequestException('COTIZACION_NO_PENDIENTE');
+          }
+
+          // 2. Folio secuencial FAC-YYYY-NNNN. Si dos tx concurrentes (de
+          //    cotizaciones distintas) generan el mismo código, el create
+          //    choca P2002 en `codigo` y se reintenta todo el bloque de arriba.
+          const anio = new Date().getFullYear();
+          const base = `FAC-${anio}`;
+          const conteo = await tx.facturas.count({ where: { codigo: { startsWith: base } } });
+          const codigo =
+            intento === MAX_INTENTOS_FOLIO - 1
+              ? `${base}-${randomUUID().slice(0, 6).toUpperCase()}`
+              : `${base}-${String(conteo + 1).padStart(4, '0')}`;
+          const facturaId = randomUUID();
+          const factura = await tx.facturas.create({
+            data: {
+              id: facturaId,
+              codigo,
+              serie: 'F',
+              folio: String(conteo + 1).padStart(6, '0'),
+              cliente_id: cotizacion.cliente_id,
+              cotizacion_id: id,
+              subtotal: monto,
+              impuestos: 0,
+              total: monto,
+              moneda: 'MXN',
+              tipo_cambio: 1,
+              estado: 'PENDIENTE',
+              activo: true,
+              creado_en: new Date(),
+              actualizado_en: new Date(),
+              creado_por: userId,
+              actualizado_por: userId,
+              factura_conceptos: {
+                create: [
+                  {
+                    id: randomUUID(),
+                    cantidad: 1,
+                    unidad: 'Servicio',
+                    descripcion: cotizacion.descripcion,
+                    valor_unitario: monto,
+                    importe: monto,
+                    descuento: 0,
+                    objeto_impuesto: '04',
+                    impuesto_tasa: 0.16,
+                    impuesto_importe: 0,
+                    activo: true,
+                  },
+                ],
               },
-            ],
+            },
+          });
+
+          // 3. CxC por el total, vence en 30 días.
+          const vencimiento = new Date();
+          vencimiento.setDate(vencimiento.getDate() + 30);
+          const cxc = await tx.cuentas_por_cobrar.create({
+            data: {
+              id: randomUUID(),
+              cliente_id: cotizacion.cliente_id,
+              factura_id: facturaId,
+              monto,
+              monto_pagado: 0,
+              fecha_vencimiento: vencimiento,
+              estado: 'PENDIENTE',
+              activo: true,
+              creado_en: new Date(),
+              actualizado_en: new Date(),
+            },
+          });
+
+          return { factura, cxc };
+        });
+
+        await this.auditService.log({
+          action: AuditAction.COTIZACION_FACTURADA,
+          entityType: 'cotizaciones',
+          entityId: id,
+          result: AuditResult.SUCCESS,
+          actorUserId: userId,
+          actorType: 'USER',
+          actorRole: 'autenticado',
+          previousValue: { estado: 'Pendiente' },
+          newValue: {
+            estado: 'Aceptada',
+            facturaId: factura.id,
+            facturaCodigo: factura.codigo,
+            cxcId: cxc.id,
           },
-        },
-      });
+        });
 
-      // 3. CxC por el total, vence en 30 días.
-      const vencimiento = new Date();
-      vencimiento.setDate(vencimiento.getDate() + 30);
-      const cxc = await tx.cuentas_por_cobrar.create({
-        data: {
-          id: randomUUID(),
-          cliente_id: cotizacion.cliente_id,
-          factura_id: facturaId,
-          monto,
-          monto_pagado: 0,
-          fecha_vencimiento: vencimiento,
-          estado: 'PENDIENTE',
-          activo: true,
-          creado_en: new Date(),
-          actualizado_en: new Date(),
-        },
-      });
+        return {
+          cotizacionId: id,
+          factura: { id: factura.id, codigo: factura.codigo, total: Number(factura.total), estado: factura.estado },
+          cxc: { id: cxc.id, monto: Number(cxc.monto), fechaVencimiento: cxc.fecha_vencimiento },
+        };
+      } catch (error) {
+        // Prisma 7 (driver adapters) no expone meta.target: la restricción
+        // violada viene en driverAdapterError.cause.originalMessage («nombre`).
+        const constraintP2002 = (err: unknown): string | null => {
+          if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') {
+            return null;
+          }
+          const meta = (err.meta ?? {}) as Record<string, unknown>;
+          const causa = (
+            meta.driverAdapterError as
+              | { cause?: { kind?: string; originalMessage?: string } }
+              | undefined
+          )?.cause;
+          if (causa?.kind !== 'UniqueConstraintViolation') return null;
+          return causa.originalMessage?.match(/«([^»]+)»/)?.[1] ?? null;
+        };
+        const constraint = constraintP2002(error);
 
-      return { factura, cxc };
-    });
+        // Colisión de folio entre facturaciones concurrentes → reintentar.
+        if (constraint === 'facturas_codigo_key') {
+          continue;
+        }
 
-    await this.auditService.log({
-      action: AuditAction.COTIZACION_FACTURADA,
-      entityType: 'cotizaciones',
-      entityId: id,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      previousValue: { estado: 'Pendiente' },
-      newValue: {
-        estado: 'Aceptada',
-        facturaId: factura.id,
-        facturaCodigo: factura.codigo,
-        cxcId: cxc.id,
-      },
-    });
+        // Errores de negocio lanzados por el guard transicional.
+        if (error instanceof BadRequestException) {
+          const esYaFacturada = error.message === 'COTIZACION_YA_FACTURADA';
+          return this.fallir(
+            AuditAction.COTIZACION_FACTURADA,
+            id,
+            esYaFacturada ? 'COTIZACION_YA_FACTURADA' : 'COTIZACION_NO_PENDIENTE',
+            BadRequestException,
+            esYaFacturada
+              ? 'La cotización ya tiene una factura asociada'
+              : 'Solo se pueden facturar cotizaciones PENDIENTES',
+            userId,
+          );
+        }
 
-    return {
-      cotizacionId: id,
-      factura: { id: factura.id, codigo: factura.codigo, total: Number(factura.total), estado: factura.estado },
-      cxc: { id: cxc.id, monto: Number(cxc.monto), fechaVencimiento: cxc.fecha_vencimiento },
-    };
+        // Defensa en profundidad: el índice único (Blocker #3) bloqueó una
+        // segunda factura para la misma cotización.
+        if (constraint === 'facturas_cotizacion_id_key') {
+          return this.fallir(
+            AuditAction.COTIZACION_FACTURADA,
+            id,
+            'COTIZACION_YA_FACTURADA',
+            BadRequestException,
+            'La cotización ya tiene una factura asociada',
+            userId,
+          );
+        }
+
+        throw error;
+      }
+    }
+
+    throw new Error('No se pudo asignar un folio único a la factura');
   }
 
   // ────────────────────────────────────────────
