@@ -1721,7 +1721,7 @@ model movimientos_bancarios {
   //     COALESCE(deposito, 0), COALESCE(retiro, 0));
 
   @@index([cuenta_id, fecha])
-  @@index([transaccion_id])
+  @@unique([transaccion_id])
   @@index([conciliado])
 }
 

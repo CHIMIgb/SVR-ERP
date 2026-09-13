@@ -233,6 +233,68 @@ describe('ConciliacionBancaria Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.MOVIMIENTO_CONCILIADO, movimiento.id, 'FAIL');
       expect(audits[0]?.error_code).toBe('MONTO_NO_COINCIDE');
     });
+
+    it('debe rechazar conciliar la misma transacción contra otro movimiento (Blocker #5)', async () => {
+      // Dos movimientos depósito (mismo monto) en dos cuentas: la transacción
+      // solo puede respaldar a UNO. El índice único transaccion_id lo garantiza.
+      const banco = await service.crearBanco({ nombre: `Banco Doble ${TEST_ID}` }, ACTOR_USER_ID);
+      createdBancos.push(banco.id);
+      const cuentaA = await service.crearCuenta(banco.id, { numero: `4444a${TEST_ID}` }, ACTOR_USER_ID);
+      const cuentaB = await service.crearCuenta(banco.id, { numero: `4444b${TEST_ID}` }, ACTOR_USER_ID);
+      createdCuentas.push(cuentaA.id, cuentaB.id);
+
+      const movA = await service.crearMovimiento(
+        cuentaA.id,
+        { fecha: '2026-09-07', descripcion: `Depósito A ${TEST_ID}`, deposito: 20000 },
+        ACTOR_USER_ID,
+      );
+      const movB = await service.crearMovimiento(
+        cuentaB.id,
+        { fecha: '2026-09-07', descripcion: `Depósito B ${TEST_ID}`, deposito: 20000 },
+        ACTOR_USER_ID,
+      );
+      createdMovimientos.push(movA.id, movB.id);
+
+      const trx = await prisma.transacciones.create({
+        data: {
+          id: randomUUID(),
+          tipo: TipoTransaccion.INGRESO,
+          categoria: 'Anticipo de Cliente',
+          monto: 20000,
+          fecha: new Date('2026-09-07'),
+          descripcion: `Anticipo doble ${TEST_ID}`,
+          activo: true,
+          actualizado_en: new Date(),
+          creado_por: ACTOR_USER_ID,
+        },
+      });
+      createdTransacciones.push(trx.id);
+
+      // 1) El primer movimiento concilia OK.
+      const ok = await service.conciliar(movA.id, { transaccionId: trx.id }, ACTOR_USER_ID);
+      expect(ok).toMatchObject({ conciliado: true, transaccionId: trx.id });
+
+      // 2) El segundo contra la MISMA transacción → error de negocio + audit FAIL.
+      await expect(service.conciliar(movB.id, { transaccionId: trx.id }, ACTOR_USER_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      const failAuditsB = await findAudits(AuditAction.MOVIMIENTO_CONCILIADO, movB.id, 'FAIL');
+      expect(failAuditsB[0]?.error_code).toBe('TRANSACCION_YA_CONCILIADA');
+
+      // El movB quedó sin conciliar (el índice nunca permitió el enlace).
+      const persistidoB = await prisma.movimientos_bancarios.findUnique({ where: { id: movB.id } });
+      expect(persistidoB?.conciliado).toBe(false);
+      expect(persistidoB?.transaccion_id).toBeNull();
+
+      // 3) listarCandidatas no sugiere la transacción ya enlazada.
+      const candidatas = await service.listarCandidatas(movB.id);
+      expect(candidatas.some((t: { id: string }) => t.id === trx.id)).toBe(false);
+
+      // 4) Al desconciliar el primero, la transacción vuelve a ser candidata.
+      await service.desconciliar(movA.id, ACTOR_USER_ID);
+      const candidatasLibres = await service.listarCandidatas(movB.id);
+      expect(candidatasLibres.some((t: { id: string }) => t.id === trx.id)).toBe(true);
+    });
   });
 
   describe('UNICIDAD', () => {

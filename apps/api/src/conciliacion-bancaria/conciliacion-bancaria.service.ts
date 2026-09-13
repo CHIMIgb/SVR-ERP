@@ -14,6 +14,7 @@ import { CreateMovimientoDto } from './dto/create-movimiento.dto';
 import { ConciliarMovimientoDto } from './dto/conciliar-movimiento.dto';
 import { QueryMovimientosDto } from './dto/query-movimientos.dto';
 import { CargarLoteDto } from './dto/cargar-lote.dto';
+import { constraintP2002 } from '../common/prisma-constraint';
 
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const PAGE_SIZE = 25;
@@ -192,8 +193,18 @@ export class ConciliacionBancariaService {
       orderBy: { fecha: 'desc' },
     });
 
+    // Transacciones ya enlazadas a algún movimiento (conciliadas): no se
+    // sugieren como candidatas. La relajación al desconciliar es automática
+    // porque desconciliar pone transaccion_id = NULL.
+    const enlazadas = await this.prisma.movimientos_bancarios.findMany({
+      where: { transaccion_id: { not: null } },
+      select: { transaccion_id: true },
+    });
+    const enlazadasSet = new Set(enlazadas.map((m) => m.transaccion_id));
+
     // Monto similar (±1) — filtro client-side por si hay Decimal vs la comparación exacta.
     return transacciones
+      .filter((t) => !enlazadasSet.has(t.id))
       .filter((t) => Math.abs(Number(t.monto) - monto) <= 1)
       .map((t) => ({
         id: t.id,
@@ -366,9 +377,12 @@ export class ConciliacionBancariaService {
     const now = new Date();
     try {
       await this.prisma.$transaction(async (tx) => {
-        // Guard anti doble clic: solo concilia la fila que sigue sin conciliar.
+        // Guard anti doble clic + anti re-enlace: solo concilia la fila que
+        // sigue sin conciliar y sin transacción enlazada (idempotencia del
+        // propio movimiento; la garantía real anti doble conciliación entre
+        // movimientos distintos es el índice único transaccion_id).
         const actualizado = await tx.movimientos_bancarios.updateMany({
-          where: { id: movimientoId, conciliado: false },
+          where: { id: movimientoId, conciliado: false, transaccion_id: null },
           data: {
             conciliado: true,
             transaccion_id: transaccion.id,
@@ -389,6 +403,17 @@ export class ConciliacionBancariaService {
           'MOVIMIENTO_YA_CONCILIADO',
           ConflictException,
           'El movimiento ya fue conciliado',
+        );
+      }
+      // Carrera entre dos conciliaciones con la misma transacción: el segundo
+      // update choca con el índice único transaccion_id (garantía atómica).
+      if (constraintP2002(e) === 'movimientos_bancarios_transaccion_id_key') {
+        return this.fallir(
+          AuditAction.MOVIMIENTO_CONCILIADO,
+          movimientoId,
+          'TRANSACCION_YA_CONCILIADA',
+          ConflictException,
+          'La transacción ya está conciliada contra otro movimiento',
         );
       }
       throw e;

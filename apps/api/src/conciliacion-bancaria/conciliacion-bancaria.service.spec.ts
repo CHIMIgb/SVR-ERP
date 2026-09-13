@@ -195,6 +195,19 @@ describe('ConciliacionBancariaService', () => {
       const callArgs = prisma.transacciones.findMany.mock.calls[0][0];
       expect(callArgs.where.tipo).toBe(TipoTransaccion.EGRESO);
     });
+
+    it('debe excluir transacciones ya enlazadas a otro movimiento (Blocker #5)', async () => {
+      prisma.movimientos_bancarios.findMany.mockResolvedValueOnce([{ transaccion_id: TRX_ID }]);
+      const result = await service.listarCandidatas(MOVIMIENTO_ID);
+      expect(result).toHaveLength(0);
+    });
+
+    it('debe incluir la transacción si ningún movimiento la tiene enlazada', async () => {
+      // findMany por defecto devuelve [mockMovimiento] con transaccion_id: null.
+      const result = await service.listarCandidatas(MOVIMIENTO_ID);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ id: TRX_ID });
+    });
   });
 
   describe('crearMovimiento', () => {
@@ -300,7 +313,7 @@ describe('ConciliacionBancariaService', () => {
       const result = await service.conciliar(MOVIMIENTO_ID, { transaccionId: TRX_ID }, USER_ID);
       expect(result).toEqual({ conciliado: true, movimientoId: MOVIMIENTO_ID, transaccionId: TRX_ID, monto: 5000 });
       expect(prisma.movimientos_bancarios.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: MOVIMIENTO_ID, conciliado: false } }),
+        expect.objectContaining({ where: { id: MOVIMIENTO_ID, conciliado: false, transaccion_id: null } }),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.MOVIMIENTO_CONCILIADO, result: AuditResult.SUCCESS }),
@@ -354,6 +367,28 @@ describe('ConciliacionBancariaService', () => {
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'MOVIMIENTO_YA_CONCILIADO', result: AuditResult.FAIL }),
+      );
+    });
+
+    it('debe mapear P2002 del índice transaccion_id a TRANSACCION_YA_CONCILIADA (Blocker #5)', async () => {
+      const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: {
+          driverAdapterError: {
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              originalMessage: 'Unique constraint violated: «movimientos_bancarios_transaccion_id_key»',
+            },
+          },
+        },
+      });
+      prisma.movimientos_bancarios.updateMany.mockRejectedValue(p2002);
+      await expect(service.conciliar(MOVIMIENTO_ID, { transaccionId: TRX_ID }, USER_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'TRANSACCION_YA_CONCILIADA', result: AuditResult.FAIL }),
       );
     });
   });

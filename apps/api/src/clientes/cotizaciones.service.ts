@@ -17,6 +17,7 @@ import { QueryCotizacionesDto } from './dto/query-cotizaciones.dto';
 import { QueryCotizacionesGlobalDto } from './dto/query-cotizaciones-global.dto';
 import { CambiarEstadoCotizacionDto } from './dto/cambiar-estado-cotizacion.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
+import { constraintP2002 } from '../common/prisma-constraint';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -639,21 +640,8 @@ export class CotizacionesService {
           cxc: { id: cxc.id, monto: Number(cxc.monto), fechaVencimiento: cxc.fecha_vencimiento },
         };
       } catch (error) {
-        // Prisma 7 (driver adapters) no expone meta.target: la restricción
-        // violada viene en driverAdapterError.cause.originalMessage («nombre`).
-        const constraintP2002 = (err: unknown): string | null => {
-          if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') {
-            return null;
-          }
-          const meta = (err.meta ?? {}) as Record<string, unknown>;
-          const causa = (
-            meta.driverAdapterError as
-              | { cause?: { kind?: string; originalMessage?: string } }
-              | undefined
-          )?.cause;
-          if (causa?.kind !== 'UniqueConstraintViolation') return null;
-          return causa.originalMessage?.match(/«([^»]+)»/)?.[1] ?? null;
-        };
+        // Prisma 7 (driver adapters) no expone meta.target en P2002: la
+        // restricción se extrae vía helper común (ver common/prisma-constraint.ts).
         const constraint = constraintP2002(error);
 
         // Colisión de folio entre facturaciones concurrentes → reintentar.
