@@ -263,8 +263,11 @@ export class ConciliacionBancariaService {
       );
     }
 
-    // Dedupe previo contra lo existente: el UNIQUE de Postgres no colisiona con
-    // NULLs (deposito/retiro), por lo que la re-importación duplicaría sin esto.
+    // Dedupe previo contra lo existente: optimización de reporte y de inserts.
+    // La garantía real (anti-TOCTOU) es el índice único de expresión
+    // movimientos_bancarios_dedupe_key (COALESCE deposito/retiro) + skipDuplicates:
+    // dos importaciones concurrentes del mismo CSV colisionan en BD y se absorben
+    // atómicamente. Ver migración 20260925000000_movimientos_bancarios_dedupe_idempotente.
     const existentes = await this.prisma.movimientos_bancarios.findMany({
       where: { cuenta_id: cuentaId },
       select: { fecha: true, descripcion: true, deposito: true, retiro: true },

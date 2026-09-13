@@ -229,5 +229,30 @@ describe('ConciliacionBancaria Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('FAIL');
     });
+
+    it('debe ser idempotente bajo carga concurrente (TOCTOU del dedupe)', async () => {
+      // Blocker #1 de la review del PR #11: el @@unique con deposito/retiro NULL
+      // nunca disparaba; el dedupe app-level era TOCTOU. El índice de expresión
+      // con COALESCE + createMany(skipDuplicates) cierra la carrera de forma atómica:
+      // dos importaciones simultáneas del mismo CSV jamás duplican filas.
+      const banco = await service.crearBanco({ nombre: `Banco TOCTOU ${TEST_ID}` }, ACTOR_USER_ID);
+      createdBancos.push(banco.id);
+      const cuenta = await service.crearCuenta(banco.id, { numero: `TOCTOU${TEST_ID}` }, ACTOR_USER_ID);
+      createdCuentas.push(cuenta.id);
+
+      const csv = `fecha,descripcion,deposito,retiro
+2026-09-08,Depósito concurrente,2000,
+2026-09-09,Retiro concurrente,,750`;
+
+      const [r1, r2] = await Promise.all([
+        service.cargarLote(cuenta.id, { csv }, ACTOR_USER_ID),
+        service.cargarLote(cuenta.id, { csv }, ACTOR_USER_ID),
+      ]);
+
+      const total = await prisma.movimientos_bancarios.count({ where: { cuenta_id: cuenta.id } });
+      expect(total).toBe(2); // nunca 4
+      expect(r1.insertados + r2.insertados).toBe(2);
+      expect(r1.duplicados + r2.duplicados).toBe(2);
+    });
   });
 });
