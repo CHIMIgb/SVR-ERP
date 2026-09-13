@@ -94,6 +94,7 @@ describe('CobranzaService', () => {
         updateMany: jest.fn(),
       },
       transacciones: { create: jest.fn() },
+      $executeRaw: jest.fn(),
       $transaction: runTx,
     };
 
@@ -371,7 +372,8 @@ describe('CobranzaService', () => {
         .mockResolvedValueOnce({ ...mockCuenta, monto_pagado: 400, estado: 'PARCIAL', pagos: [{ fecha_pago: new Date('2026-09-02') }] });
       prisma.pagos.create.mockResolvedValue(mockPago);
       prisma.transacciones.create.mockResolvedValue({});
-      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.cuentas_por_cobrar.findUnique.mockResolvedValue({ estado: 'PARCIAL' });
 
       const result = await service.registrarCobro(
         CUENTA_ID,
@@ -380,6 +382,7 @@ describe('CobranzaService', () => {
       );
 
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.$executeRaw).toHaveBeenCalled();
       expect(prisma.pagos.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -425,7 +428,8 @@ describe('CobranzaService', () => {
         });
       prisma.pagos.create.mockResolvedValue(mockPago);
       prisma.transacciones.create.mockResolvedValue({});
-      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.cuentas_por_cobrar.findUnique.mockResolvedValue({ estado: 'PAGADO' });
       prisma.facturas.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.registrarCobro(
@@ -441,6 +445,25 @@ describe('CobranzaService', () => {
         }),
       );
       expect(result.cuenta.estado).toBe('SALDADO');
+    });
+
+    it('rechaza con COBRO_EXCEDE_SALDO si en carrera el saldo se agotó dentro de la tx', async () => {
+      prisma.cuentas_por_cobrar.findFirst.mockResolvedValue(mockCuenta);
+      prisma.pagos.create.mockResolvedValue(mockPago);
+      // El chequeo previo pasó (saldo suficiente al leer), pero el UPDATE
+      // condicional atómico ve el saldo ya consumido por otro cobro concurrente.
+      prisma.$executeRaw.mockResolvedValue(0);
+
+      await expect(
+        service.registrarCobro(CUENTA_ID, { monto: 400, metodoPago: 'EFECTIVO' }, USER_ID),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COBRO_REGISTRADO,
+          result: AuditResult.FAIL,
+          errorCode: 'COBRO_EXCEDE_SALDO',
+        }),
+      );
     });
   });
 
@@ -497,7 +520,8 @@ describe('CobranzaService', () => {
         .mockResolvedValueOnce({ ...cuentaConPago, monto_pagado: 0, estado: 'PENDIENTE' }); // post
       prisma.pagos.findFirst.mockResolvedValue(mockPago);
       prisma.pagos.updateMany.mockResolvedValue({ count: 1 });
-      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.cuentas_por_cobrar.findUnique.mockResolvedValue({ estado: 'PENDIENTE', monto_pagado: 0 });
 
       const result = await service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, {
         motivo: 'Pago duplicado por error',
@@ -514,9 +538,11 @@ describe('CobranzaService', () => {
           data: expect.objectContaining({ activo: false, eliminado_en: expect.any(Date) }),
         }),
       );
-      expect(prisma.cuentas_por_cobrar.update).toHaveBeenCalledWith(
+      expect(prisma.$executeRaw).toHaveBeenCalled();
+      expect(prisma.cuentas_por_cobrar.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ monto_pagado: 0, estado: 'PENDIENTE' }),
+          where: { id: CUENTA_ID },
+          select: expect.objectContaining({ estado: true, monto_pagado: true }),
         }),
       );
       expect(prisma.transacciones.create).toHaveBeenCalledWith(
@@ -542,6 +568,7 @@ describe('CobranzaService', () => {
         expect.objectContaining({
           action: AuditAction.CXC_ACTUALIZADA,
           result: AuditResult.SUCCESS,
+          newValue: expect.objectContaining({ montoPagado: 0 }),
         }),
       );
       expect(result.cobroRevertido).toEqual(
@@ -558,7 +585,8 @@ describe('CobranzaService', () => {
         .mockResolvedValueOnce({ ...cuentaConFactura, monto_pagado: 600, estado: 'PARCIAL' });
       prisma.pagos.findFirst.mockResolvedValue({ ...mockPago, monto: 400 });
       prisma.pagos.updateMany.mockResolvedValue({ count: 1 });
-      prisma.cuentas_por_cobrar.update.mockResolvedValue({});
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.cuentas_por_cobrar.findUnique.mockResolvedValue({ estado: 'PARCIAL', monto_pagado: 600 });
       prisma.facturas.updateMany.mockResolvedValue({ count: 1 });
 
       await service.revertirCobro(CUENTA_ID, PAGO_ID, USER_ID, {

@@ -30,6 +30,7 @@ describe('Cobranza Audit (Real DB)', () => {
   let cuentaId: string;
   let cuentaFacturaId: string | undefined;
   let facturaId: string | undefined;
+  const raceCuentaIds: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -79,6 +80,7 @@ describe('Cobranza Audit (Real DB)', () => {
 
     if (cuentaFacturaId) await limpiarCuenta(cuentaFacturaId);
     if (cuentaId) await limpiarCuenta(cuentaId);
+    for (const id of raceCuentaIds) await limpiarCuenta(id);
     if (facturaId) {
       await prisma.facturas.deleteMany({ where: { id: facturaId } });
     }
@@ -384,5 +386,106 @@ describe('Cobranza Audit (Real DB)', () => {
     });
     expect(Number(cuenta!.monto_pagado)).toBe(0);
     expect(cuenta!.estado).toBe('PENDIENTE');
+  });
+
+  // ────────────────────────────────────────────
+  //  CARRERAS (Blocker #2 de PR #11) — el saldo nunca se pierde
+  // ────────────────────────────────────────────
+  it('no pierde saldo ante 10 cobros concurrentes contra la misma cuenta', async () => {
+    const cuenta = await service.crearCuenta(
+      { clienteId, monto: 2000, fechaVencimiento: '2026-12-15' },
+      ACTOR_USER_ID,
+    );
+    raceCuentaIds.push(cuenta.id);
+
+    const cobros = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        service.registrarCobro(
+          cuenta.id,
+          { monto: 100, metodoPago: 'TRANSFERENCIA', referencia: `IT-RAZA-${i}` },
+          ACTOR_USER_ID,
+        ),
+      ),
+    );
+    expect(cobros).toHaveLength(10);
+
+    // Sin el update condicional atómico, el último write absoluto pisaría al
+    // resto (resultado típico: monto_pagado = 100 en vez de 1000).
+    const cuentaDb = await prisma.cuentas_por_cobrar.findUnique({
+      where: { id: cuenta.id },
+    });
+    expect(Number(cuentaDb!.monto_pagado)).toBe(1000);
+
+    const pagos = await prisma.pagos.count({
+      where: { cuenta_por_cobrar_id: cuenta.id, activo: true },
+    });
+    expect(pagos).toBe(10);
+  });
+
+  it('solo un cobro gana cuando el saldo no alcanza para ambos concurrentes', async () => {
+    const cuenta = await service.crearCuenta(
+      { clienteId, monto: 500, fechaVencimiento: '2026-12-16' },
+      ACTOR_USER_ID,
+    );
+    raceCuentaIds.push(cuenta.id);
+
+    const resultados = await Promise.allSettled([
+      service.registrarCobro(cuenta.id, { monto: 400, metodoPago: 'EFECTIVO', referencia: 'IT-RAZA-400-A' }, ACTOR_USER_ID),
+      service.registrarCobro(cuenta.id, { monto: 400, metodoPago: 'EFECTIVO', referencia: 'IT-RAZA-400-B' }, ACTOR_USER_ID),
+    ]);
+
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(resultados.filter((r) => r.status === 'rejected')).toHaveLength(1);
+
+    // El perdedor audita FAIL COBRO_EXCEDE_SALDO (carrera perdida dentro de la tx).
+    const auditFail = await prisma.registro_auditoria.findFirst({
+      where: {
+        action: AuditAction.COBRO_REGISTRADO,
+        entity_id: cuenta.id,
+        result: AuditResult.FAIL,
+        error_code: 'COBRO_EXCEDE_SALDO',
+      },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(auditFail).not.toBeNull();
+
+    const cuentaDb = await prisma.cuentas_por_cobrar.findUnique({
+      where: { id: cuenta.id },
+    });
+    expect(Number(cuentaDb!.monto_pagado)).toBe(400);
+  });
+
+  it('reversiones concurrentes de cobros distintos no pierden saldo', async () => {
+    const cuenta = await service.crearCuenta(
+      { clienteId, monto: 1000, fechaVencimiento: '2026-12-17' },
+      ACTOR_USER_ID,
+    );
+    raceCuentaIds.push(cuenta.id);
+
+    const c1 = await service.registrarCobro(
+      cuenta.id,
+      { monto: 400, metodoPago: 'TRANSFERENCIA', referencia: 'IT-REV-A' },
+      ACTOR_USER_ID,
+    );
+    const c2 = await service.registrarCobro(
+      cuenta.id,
+      { monto: 400, metodoPago: 'TRANSFERENCIA', referencia: 'IT-REV-B' },
+      ACTOR_USER_ID,
+    );
+
+    await Promise.all([
+      service.revertirCobro(cuenta.id, c1.cobro.id, ACTOR_USER_ID, {
+        motivo: 'Reversión concurrente A de prueba',
+      }),
+      service.revertirCobro(cuenta.id, c2.cobro.id, ACTOR_USER_ID, {
+        motivo: 'Reversión concurrente B de prueba',
+      }),
+    ]);
+
+    const cuentaDb = await prisma.cuentas_por_cobrar.findUnique({
+      where: { id: cuenta.id },
+    });
+    expect(Number(cuentaDb!.monto_pagado)).toBe(0);
+    expect(cuentaDb!.estado).toBe('PENDIENTE');
   });
 });

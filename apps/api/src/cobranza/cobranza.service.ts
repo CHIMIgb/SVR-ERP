@@ -378,74 +378,129 @@ export class CobranzaService {
     const idPago = randomUUID();
     const now = new Date();
 
-    const { pago, facturaSaldada } = await this.prisma.$transaction(async (tx) => {
-      const nuevoPagado = Number(cuenta.monto_pagado) + dto.monto;
-      // Dominio legacy de CxC: PENDIENTE → PARCIAL → PAGADO (el API expone
-      // 'SALDADO' a la UI; el mapeo vive en serializeCuenta).
-      const estadoCxc =
-        nuevoPagado >= Number(cuenta.monto) - 0.0001 ? 'PAGADO' : 'PARCIAL';
+    let pago: {
+      id: string;
+      codigo: string;
+      metodo_pago: string;
+      referencia: string | null;
+    } | undefined;
 
-      const codigo = await this.generarCodigoCobro(tx, fechaPago);
+    try {
+      // Folio anti-colisión (moderado #2 de PR #11): con cobros concurrentes el
+      // contador count+1 puede repetir → P2002 en pagos.codigo. Postgres 25P02
+      // impide reintentar dentro del mismo tx (queda abortado), así que se
+      // reintenta TODO el $transaction (rollback total del intento fallido) con
+      // conteo fresco; último recurso: sufijo aleatorio único por construcción.
+      const MAX_INTENTOS_FOLIO = 10;
+      for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
+        try {
+          const resultadoTx = await this.prisma.$transaction(async (tx) => {
+            const codigo =
+              intento === MAX_INTENTOS_FOLIO - 1
+                ? `PAG-CXC-${fechaPago.getFullYear()}-${randomUUID().slice(0, 6).toUpperCase()}`
+                : await this.generarCodigoCobro(tx, fechaPago);
 
-      const nuevo = await tx.pagos.create({
-        data: {
-          id: idPago,
-          codigo,
-          cliente_id: cuenta.cliente_id,
-          factura_id: cuenta.factura_id,
-          cuenta_por_cobrar_id: cuenta.id,
-          monto: dto.monto,
-          fecha_pago: fechaPago,
-          metodo_pago: dto.metodoPago ?? 'EFECTIVO',
-          referencia: dto.referencia?.trim() || null,
-          // Dominio legacy de pagos: PENDIENTE → CONFIRMADO → RECHAZADO.
-          // Un cobro recibido queda CONFIRMADO (el ledger filtra por CxC + activo).
-          estado: 'CONFIRMADO',
-          creado_por: userId,
-          actualizado_por: userId,
-          actualizado_en: now,
-        },
-      });
+            const nuevo = await tx.pagos.create({
+              data: {
+                id: idPago,
+                codigo,
+                cliente_id: cuenta.cliente_id,
+                factura_id: cuenta.factura_id,
+                cuenta_por_cobrar_id: cuenta.id,
+                monto: dto.monto,
+                fecha_pago: fechaPago,
+                metodo_pago: dto.metodoPago ?? 'EFECTIVO',
+                referencia: dto.referencia?.trim() || null,
+                // Dominio legacy de pagos: PENDIENTE → CONFIRMADO → RECHAZADO.
+                // Un cobro recibido queda CONFIRMADO (el ledger filtra por CxC + activo).
+                estado: 'CONFIRMADO',
+                creado_por: userId,
+                actualizado_por: userId,
+                actualizado_en: now,
+              },
+            });
 
-      await tx.cuentas_por_cobrar.update({
-        where: { id: cuenta.id },
-        data: {
-          monto_pagado: nuevoPagado,
-          estado: estadoCxc,
-          actualizado_en: now,
-        },
-      });
+            // Update condicional atómico (Blocker #2 de PR #11): el WHERE valida
+            // el saldo contra el valor ACTUAL en BD (no el leído antes de la tx)
+            // y el incremento es aritmético — dos cobros concurrentes no se
+            // pisan. count 0 → en carrera el saldo se agotó → rollback del pago
+            // recién insertado y de la transacción financiera.
+            const actualizado = await tx.$executeRaw`
+              UPDATE cuentas_por_cobrar
+              SET monto_pagado = monto_pagado + ${dto.monto}::numeric,
+                  estado = CASE WHEN monto_pagado + ${dto.monto}::numeric >= monto - 0.0001
+                                THEN 'PAGADO' ELSE 'PARCIAL' END,
+                  actualizado_en = ${now}
+              WHERE id = ${cuenta.id}
+                AND activo = true
+                AND monto_pagado + ${dto.monto}::numeric <= monto + 0.0001
+            `;
+            if (actualizado === 0) {
+              throw new BadRequestException('COBRO_EXCEDE_SALDO');
+            }
 
-      // Integridad del ciclo venta→cobro: al saldar la cuenta, la factura
-      // timbrada ligada pasa a PAGADA (misma transacción, sin audit extra).
-      let facturaSaldada = false;
-      if (estadoCxc === 'PAGADO' && cuenta.factura_id) {
-        const updated = await tx.facturas.updateMany({
-          where: { id: cuenta.factura_id, estado: 'TIMBRADA', activo: true },
-          data: { estado: 'PAGADA', actualizado_en: now },
-        });
-        facturaSaldada = updated.count > 0;
+            // Dominio legacy de CxC: PENDIENTE → PARCIAL → PAGADO (el API expone
+            // 'SALDADO' a la UI; el mapeo vive en serializeCuenta). Se lee el
+            // estado autoritativo post-update (misma tx, ve el valor recién
+            // incrementado).
+            const cuentaPost = await tx.cuentas_por_cobrar.findUnique({
+              where: { id: cuenta.id },
+              select: { estado: true },
+            });
+
+            // Integridad del ciclo venta→cobro: al saldar la cuenta, la factura
+            // timbrada ligada pasa a PAGADA (misma transacción, sin audit extra).
+            if (cuentaPost!.estado === 'PAGADO' && cuenta.factura_id) {
+              await tx.facturas.updateMany({
+                where: { id: cuenta.factura_id, estado: 'TIMBRADA', activo: true },
+                data: { estado: 'PAGADA', actualizado_en: now },
+              });
+            }
+
+            await tx.transacciones.create({
+              data: {
+                id: randomUUID(),
+                codigo: generarCodigoTransaccion(),
+                tipo: 'INGRESO',
+                categoria: 'COBRANZA',
+                monto: dto.monto,
+                fecha: fechaPago,
+                descripcion: `Cobro ${codigo} — ${cuenta.clientes.nombre}`,
+                entidad_tipo: 'COBRO',
+                entidad_id: idPago,
+                creado_por: userId,
+                actualizado_por: userId,
+                actualizado_en: now,
+              },
+            });
+
+            return { pago: nuevo };
+          });
+
+          pago = resultadoTx.pago;
+          break;
+        } catch (error) {
+          const esColisionCodigo =
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002';
+          if (!esColisionCodigo) throw error;
+        }
       }
-
-      await tx.transacciones.create({
-        data: {
-          id: randomUUID(),
-          codigo: generarCodigoTransaccion(),
-          tipo: 'INGRESO',
-          categoria: 'COBRANZA',
-          monto: dto.monto,
-          fecha: fechaPago,
-          descripcion: `Cobro ${codigo} — ${cuenta.clientes.nombre}`,
-          entidad_tipo: 'COBRO',
-          entidad_id: idPago,
-          creado_por: userId,
-          actualizado_por: userId,
-          actualizado_en: now,
-        },
-      });
-
-      return { pago: nuevo, facturaSaldada };
-    });
+      if (!pago) {
+        throw new Error('No se pudo asignar un folio único al cobro');
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        return this.fallir(
+          AuditAction.COBRO_REGISTRADO,
+          id,
+          'COBRO_EXCEDE_SALDO',
+          BadRequestException,
+          'El cobro excede el saldo pendiente de la cuenta',
+        );
+      }
+      throw error;
+    }
 
     const cuentaActualizada = await this.prisma.cuentas_por_cobrar.findFirst({
       where: { id },
@@ -470,12 +525,12 @@ export class CobranzaService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: {
-        codigo: pago.codigo,
+        codigo: pago!.codigo,
         cuentaId: id,
         clienteNombre: cuenta.clientes.nombre,
         monto: dto.monto,
         fechaPago: fechaPago.toISOString(),
-        metodoPago: pago.metodo_pago,
+        metodoPago: pago!.metodo_pago,
       },
     });
 
@@ -486,8 +541,8 @@ export class CobranzaService {
         clienteNombre: cuenta.clientes.nombre,
         monto: dto.monto,
         fecha: fechaPago.toISOString(),
-        referencia: pago.referencia,
-        metodoPago: pago.metodo_pago,
+        referencia: pago!.referencia,
+        metodoPago: pago!.metodo_pago,
       },
       cuenta: this.serializeCuenta(cuentaActualizada ?? (cuenta as never)),
     };
@@ -548,6 +603,7 @@ export class CobranzaService {
     const montoCobro = Number(pago.monto);
     const now = new Date();
 
+    let nuevoMontoPagado = 0;
     try {
       await this.prisma.$transaction(async (tx) => {
         // Guard anti doble clic: el soft-delete solo ocurre si el cobro
@@ -571,26 +627,35 @@ export class CobranzaService {
           throw new ConflictException('COBRO_YA_REVERTIDO');
         }
 
-        const nuevoPagado = Math.max(
-          0,
-          Number(cuenta.monto_pagado) - montoCobro,
-        );
-        // PENDIENTE → PARCIAL → PAGADO (dominio legacy; el API expone 'SALDADO').
-        const estadoCxc =
-          nuevoPagado >= Number(cuenta.monto) - 0.0001
-            ? 'PAGADO'
-            : nuevoPagado > 0
-              ? 'PARCIAL'
-              : 'PENDIENTE';
+        // Update condicional atómico (Blocker #2 de PR #11): decremento sobre
+        // el valor ACTUAL en BD, no el leído antes de la tx. Dos reversiones
+        // concurrentes de cobros distintos ya no se pisan entre sí; el WHERE
+        // evita saldo negativo en carrera (defensa anti corrupción).
+        const actualizado = await tx.$executeRaw`
+          UPDATE cuentas_por_cobrar
+          SET monto_pagado = monto_pagado - ${montoCobro}::numeric,
+              estado = CASE
+                WHEN monto_pagado - ${montoCobro}::numeric >= monto - 0.0001 THEN 'PAGADO'
+                WHEN monto_pagado - ${montoCobro}::numeric > 0 THEN 'PARCIAL'
+                ELSE 'PENDIENTE' END,
+              actualizado_en = ${now}
+          WHERE id = ${cuentaId}
+            AND activo = true
+            AND monto_pagado >= ${montoCobro}::numeric
+        `;
+        if (actualizado === 0) {
+          // Solo alcanzable si la BD está corrupta: cada cobro confirmado pagó
+          // su monto, así que monto_pagado nunca debería quedar por debajo.
+          throw new ConflictException('SALDO_INCONSISTENTE');
+        }
 
-        await tx.cuentas_por_cobrar.update({
+        // Dominio legacy: PENDIENTE → PARCIAL → PAGADO (el API expone 'SALDADO').
+        // Estado autoritativo post-update (misma tx) para factura y auditoría.
+        const cuentaPost = await tx.cuentas_por_cobrar.findUnique({
           where: { id: cuentaId },
-          data: {
-            monto_pagado: nuevoPagado,
-            estado: estadoCxc,
-            actualizado_en: now,
-          },
+          select: { estado: true, monto_pagado: true },
         });
+        const estadoCxc = cuentaPost!.estado;
 
         // Si el cobro revertido había saldado la CxC y la factura ligada
         // pasó a PAGADA, regresa a TIMBRADA (solo si el nuevo saldo ya no cubre).
@@ -620,15 +685,20 @@ export class CobranzaService {
             actualizado_en: now,
           },
         });
+
+        nuevoMontoPagado = Number(cuentaPost!.monto_pagado);
       });
     } catch (error) {
       if (error instanceof ConflictException) {
+        const esSaldoInconsistente = error.message === 'SALDO_INCONSISTENTE';
         return this.fallir(
           AuditAction.COBRO_REVERTIDO,
           cobroId,
-          'COBRO_YA_REVERTIDO',
+          esSaldoInconsistente ? 'SALDO_INCONSISTENTE' : 'COBRO_YA_REVERTIDO',
           ConflictException,
-          'El cobro ya fue revertido',
+          esSaldoInconsistente
+            ? 'El saldo de la cuenta no cubre el cobro revertido'
+            : 'El cobro ya fue revertido',
         );
       }
       throw error;
@@ -658,7 +728,7 @@ export class CobranzaService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: {
-        montoPagado: Math.max(0, Number(cuenta.monto_pagado) - montoCobro),
+        montoPagado: nuevoMontoPagado,
       },
     });
 
