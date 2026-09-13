@@ -151,6 +151,14 @@ describe('Proveedores Audit (Real DB)', () => {
       );
       createdOrdenIds.push(orden.id);
 
+      // La máquina de estados exige APROBADA antes de poder abonar.
+      const aprobada = await service.cambiarEstadoOrden(
+        orden.id,
+        { estado: 'APROBADA' },
+        ACTOR_USER_ID,
+      );
+      expect(aprobada.estado).toBe('APROBADA');
+
       const resultado = await service.registrarAbono(
         proveedor.id,
         { ordenCompraId: orden.id, monto: 2000, metodoPago: 'TRANSFERENCIA' },
@@ -227,6 +235,65 @@ describe('Proveedores Audit (Real DB)', () => {
       });
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('FAIL');
+    });
+
+    it('debe rechazar abono completo sobre PENDIENTE y permitirlo tras aprobar (Blocker #PR11)', async () => {
+      const proveedor = await service.create(
+        { nombre: `Prov-BLK5 ${TEST_ID}-${randomUUID().slice(0, 4)}` },
+        ACTOR_USER_ID,
+      );
+      createdProveedorIds.push(proveedor.id);
+
+      const orden = await service.createOrden(
+        {
+          proveedorId: proveedor.id,
+          descripcion: `Blocker test ${TEST_ID}`,
+          monto: 3000,
+        },
+        ACTOR_USER_ID,
+      );
+      createdOrdenIds.push(orden.id);
+      expect(orden.estado).toBe('PENDIENTE');
+
+      // 1) Abono completo sobre PENDIENTE → rechazado (salto ilegal a RECIBIDA).
+      await expect(
+        service.registrarAbono(
+          proveedor.id,
+          { ordenCompraId: orden.id, monto: 3000, metodoPago: 'TRANSFERENCIA' },
+          ACTOR_USER_ID,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      const failAudits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.PAGO_PROVEEDOR_REGISTRADO,
+          error_code: 'ORDEN_PENDIENTE_NO_ABONABLE',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(failAudits[0]?.result).toBe('FAIL');
+
+      // La orden sigue PENDIENTE y sin pagos: la transacción no persistió nada.
+      const intacta = await prisma.ordenes_compra.findUnique({ where: { id: orden.id } });
+      expect(intacta?.estado).toBe('PENDIENTE');
+      expect(Number(intacta?.pagado)).toBe(0);
+      const pagos = await prisma.pagos_proveedor.count({ where: { orden_compra_id: orden.id } });
+      expect(pagos).toBe(0);
+
+      // 2) Tras aprobar, el abono completo sí lleva la orden a RECIBIDA.
+      await service.cambiarEstadoOrden(orden.id, { estado: 'APROBADA' }, ACTOR_USER_ID);
+      const resultado = await service.registrarAbono(
+        proveedor.id,
+        { ordenCompraId: orden.id, monto: 3000, metodoPago: 'TRANSFERENCIA' },
+        ACTOR_USER_ID,
+      );
+      expect(resultado.orden.estado).toBe('RECIBIDA');
+
+      const okAudits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.PAGO_PROVEEDOR_REGISTRADO, entity_id: resultado.abono.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(okAudits[0]?.result).toBe('SUCCESS');
     });
   });
 

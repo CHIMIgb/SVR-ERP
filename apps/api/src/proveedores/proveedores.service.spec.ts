@@ -517,6 +517,11 @@ describe('ProveedoresService', () => {
     const dto = { ordenCompraId: mockOrden.id, monto: 400, metodoPago: 'TRANSFERENCIA' };
 
     it('should create pago + update OC/CxP + create transaccion EGRESO', async () => {
+      // Solo se abonan órdenes APROBADAS (la máquina bloquea PENDIENTE).
+      prisma.ordenes_compra.findFirst.mockResolvedValue({
+        ...mockOrden,
+        estado: EstadoOrdenCompra.APROBADA,
+      });
       const result = await service.registrarAbono(mockProveedor.id, dto, USER_ID);
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(prisma.pagos_proveedor.create).toHaveBeenCalled();
@@ -565,6 +570,39 @@ describe('ProveedoresService', () => {
       ).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'ABONO_EXCEDE_MONTO' }),
+      );
+    });
+
+    it('should reject abono on PENDIENTE orden with ORDEN_PENDIENTE_NO_ABONABLE', async () => {
+      // mockOrden por defecto está PENDIENTE (estado inicial de createOrden).
+      await expect(service.registrarAbono(mockProveedor.id, dto, USER_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.pagos_proveedor.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'ORDEN_PENDIENTE_NO_ABONABLE', result: AuditResult.FAIL }),
+      );
+    });
+
+    it('should reject abono that COMPLETES payment on PENDIENTE (salto PENDIENTE→RECIBIDA cerrado)', async () => {
+      // El escenario del blocker: abono completo sobre PENDIENTE solía llevarla
+      // directo a RECIBIDA saltando la aprobación.
+      await expect(
+        service.registrarAbono(mockProveedor.id, { ...dto, monto: 1000 }, USER_ID),
+      ).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'ORDEN_PENDIENTE_NO_ABONABLE', result: AuditResult.FAIL }),
+      );
+    });
+
+    it('should set RECIBIDA when abono completes an APROBADA orden', async () => {
+      prisma.ordenes_compra.findFirst.mockResolvedValue({
+        ...mockOrden,
+        estado: EstadoOrdenCompra.APROBADA,
+      });
+      await service.registrarAbono(mockProveedor.id, { ...dto, monto: 1000 }, USER_ID);
+      expect(prisma.ordenes_compra.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ estado: EstadoOrdenCompra.RECIBIDA }) }),
       );
     });
   });

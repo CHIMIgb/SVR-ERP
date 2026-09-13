@@ -893,6 +893,20 @@ export class ProveedoresService {
       );
     }
 
+    // La máquina de estados de la OC solo permite PENDIENTE → APROBADA/CANCELADA.
+    // Sin este guard, un abono que completa el pago llevaría una orden PENDIENTE
+    // directo a RECIBIDA, saltando la aprobación. Regla de negocio: no se paga
+    // una orden no aprobada.
+    if (orden.estado === EstadoOrdenCompra.PENDIENTE) {
+      return this.fallir(
+        AuditAction.PAGO_PROVEEDOR_REGISTRADO,
+        proveedorId,
+        'ORDEN_PENDIENTE_NO_ABONABLE',
+        ConflictException,
+        'No se puede abonar a una orden pendiente de aprobación: aprueba la orden primero',
+      );
+    }
+
     const fechaPago = dto.fechaPago ? new Date(dto.fechaPago) : new Date();
     const idPago = randomUUID();
     const idTx = randomUUID();
