@@ -131,6 +131,27 @@ describe('ConciliacionBancaria Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(2);
     });
 
+    it('debe cargar un CSV con separador de miles sin corromper (Blocker #4)', async () => {
+      const banco = await service.crearBanco({ nombre: `Banco Miles ${TEST_ID}` }, ACTOR_USER_ID);
+      createdBancos.push(banco.id);
+      const cuenta = await service.crearCuenta(banco.id, { numero: `5555${TEST_ID}` }, ACTOR_USER_ID);
+      createdCuentas.push(cuenta.id);
+
+      // La fila real del banco: 1,234.56 es UN solo monto con separador de miles.
+      const csv = '2026-09-01,Pago proveedor,1,234.56\n';
+      const result = await service.cargarLote(cuenta.id, { csv }, ACTOR_USER_ID);
+      expect(result).toMatchObject({ totalMovimientos: 1, insertados: 1, duplicados: 0 });
+
+      // Nunca se guarda deposito=1 + retiro=234.56 (estado inválido del módulo):
+      // el movimiento queda con UN solo monto, conciliable como depósito.
+      const mov = await prisma.movimientos_bancarios.findFirst({
+        where: { cuenta_id: cuenta.id },
+      });
+      expect(mov).not.toBeNull();
+      expect(Number(mov!.deposito)).toBe(1234.56);
+      expect(mov!.retiro).toBeNull();
+    });
+
     it('debe conciliar depósito contra INGRESO real y desconciliar', async () => {
       const banco = await service.crearBanco({ nombre: `Banco Conc ${TEST_ID}` }, ACTOR_USER_ID);
       createdBancos.push(banco.id);

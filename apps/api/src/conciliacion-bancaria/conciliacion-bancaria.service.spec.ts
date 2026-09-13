@@ -253,6 +253,46 @@ describe('ConciliacionBancariaService', () => {
         expect.objectContaining({ errorCode: 'CSV_SIN_MOVIMIENTOS_VALIDOS', result: AuditResult.FAIL }),
       );
     });
+
+    it('debe parsear un monto con separador de miles sin corromper (Blocker #4)', async () => {
+      const csv = '2026-09-01,Pago proveedor,1,234.56\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({ totalMovimientos: 1, insertados: 1, duplicados: 0 });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls.at(-1)[0].data;
+      expect(data[0]).toMatchObject({ descripcion: 'Pago proveedor', deposito: 1234.56, retiro: null });
+    });
+
+    it('debe respetar comillas en descripciones y montos (RFC 4180)', async () => {
+      const csv =
+        '2026-09-01,"Pago, proveedor","1,234.56",\n2026-09-02,"Factura ""X""",,500.25\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 2 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result.totalMovimientos).toBe(2);
+      const data = prisma.movimientos_bancarios.createMany.mock.calls.at(-1)[0].data;
+      expect(data[0]).toMatchObject({ descripcion: 'Pago, proveedor', deposito: 1234.56, retiro: null });
+      expect(data[1]).toMatchObject({ descripcion: 'Factura "X"', retiro: 500.25 });
+    });
+
+    it('debe descartar filas con ambos montos o sin montos (paridad con crearMovimiento)', async () => {
+      const csv =
+        '2026-09-01,Ambos,1000,500\n2026-09-02,Sin monto,,\n2026-09-03,Válido,,300\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({ totalMovimientos: 1, insertados: 1, duplicados: 0 });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls.at(-1)[0].data;
+      expect(data[0]).toMatchObject({ descripcion: 'Válido', retiro: 300 });
+    });
+
+    it('debe mantener el layout de 4 columnas sin unir montos legítimos', async () => {
+      const csv = '2026-09-01,Depósito A,1000,\n2026-09-02,Retiro B,,500\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 2 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({ totalMovimientos: 2, insertados: 2, duplicados: 0 });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls.at(-1)[0].data;
+      expect(data[0]).toMatchObject({ descripcion: 'Depósito A', deposito: 1000, retiro: null });
+      expect(data[1]).toMatchObject({ descripcion: 'Retiro B', deposito: null, retiro: 500 });
+    });
   });
 
   describe('conciliar', () => {

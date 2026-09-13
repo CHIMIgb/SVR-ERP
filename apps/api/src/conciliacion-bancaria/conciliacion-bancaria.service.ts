@@ -474,33 +474,105 @@ export class ConciliacionBancariaService {
     return movimiento;
   }
 
+  /**
+   * Regla compartida del dominio: un movimiento válido tiene EXACTAMENTE un
+   * monto (depósito O retiro, nunca ambos ni ninguno). La usa validarMontos
+   * para fallir y parseCsv para descartar filas — paridad Blocker #4.
+   */
+  private esMontoInvalido(
+    deposito: number | null | undefined,
+    retiro: number | null | undefined,
+  ): boolean {
+    return (deposito == null) === (retiro == null);
+  }
+
   private validarMontos(
     deposito: number | undefined,
     retiro: number | undefined,
     action: AuditAction,
     entityId: string | null,
   ) {
-    if (deposito != null && retiro != null) {
-      return this.fallir(
-        action,
-        entityId,
-        'MONTO_AMBOS',
-        BadRequestException,
-        'Un movimiento no puede tener depósito y retiro a la vez',
-      );
+    if (!this.esMontoInvalido(deposito, retiro)) return;
+    const ambos = deposito != null && retiro != null;
+    return this.fallir(
+      action,
+      entityId,
+      ambos ? 'MONTO_AMBOS' : 'MONTO_FALTANTE',
+      BadRequestException,
+      ambos
+        ? 'Un movimiento no puede tener depósito y retiro a la vez'
+        : 'Debe indicar depósito o retiro',
+    );
+  }
+
+  /**
+   * Tokeniza una línea CSV por `,` o `;` respetando comillas dobles
+   * (`"..."` con `""` escapado, estilo RFC 4180). Devuelve campos crudos
+   * (sin comillas de envoltura).
+   */
+  private tokenizarCsv(linea: string): string[] {
+    const campos: string[] = [];
+    let actual = '';
+    let enComillas = false;
+    for (let i = 0; i < linea.length; i++) {
+      const ch = linea[i];
+      if (enComillas) {
+        if (ch === '"') {
+          if (linea[i + 1] === '"') {
+            actual += '"';
+            i++;
+          } else {
+            enComillas = false;
+          }
+        } else {
+          actual += ch;
+        }
+      } else if (ch === '"') {
+        enComillas = true;
+      } else if (ch === ',' || ch === ';') {
+        campos.push(actual);
+        actual = '';
+      } else {
+        actual += ch;
+      }
     }
-    if (deposito == null && retiro == null) {
-      return this.fallir(
-        action,
-        entityId,
-        'MONTO_FALTANTE',
-        BadRequestException,
-        'Debe indicar depósito o retiro',
-      );
+    campos.push(actual);
+    return campos;
+  }
+
+  /**
+   * Une los dos últimos campos si forman un número con separador de miles sin
+   * comillas (`1,234.56` → `1,234.56`). Un banco nunca emite depósito Y retiro
+   * en la misma fila, así que dos campos numéricos consecutivos al final son un
+   * solo monto. Convención del dominio (Blocker #4): el monto único cae en la
+   * columna depósito (campo 3 del layout fecha,descripcion,deposito,retiro).
+   */
+  private unirMiles(campos: string[]): void {
+    const n = campos.length;
+    if (n < 3) return;
+    const penultimo = campos[n - 2];
+    const ultimo = campos[n - 1];
+    if (/^\d{1,3}$/.test(penultimo) && /^\d{3}(?:\.\d+)?$/.test(ultimo)) {
+      campos[n - 2] = `${penultimo},${ultimo}`;
+      campos.pop();
     }
   }
 
-  /** Parser CSV mínimo: `fecha;descripcion;deposito;retiro` (o `,`), BOM opcional, header opcional. */
+  /** Convierte un monto crudo a número, normalizando el separador de miles. */
+  private parseMonto(raw: string | undefined): number | null {
+    const s = raw?.trim();
+    if (!s) return null;
+    const sinMiles = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(s) ? s.replace(/,/g, '') : s;
+    const n = Number(sinMiles);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /**
+   * Parser CSV: `fecha;descripcion;deposito;retiro` (o `,`), comillas simples
+   * estilo RFC 4180, separador de miles `1,234.56`, BOM opcional, header
+   * opcional. Descarta filas inválidas con las mismas reglas que crearMovimiento
+   * (MONTO_AMBOS / MONTO_FALTANTE).
+   */
   private parseCsv(raw: string): MovimientoCsv[] {
     const lineas = raw
       .replace(/^\uFEFF/, '')
@@ -510,18 +582,22 @@ export class ConciliacionBancariaService {
 
     const resultado: MovimientoCsv[] = [];
     for (let i = 0; i < lineas.length; i++) {
-      const cols = lineas[i].split(/[;,]/, 4);
-      const [fecha, descripcion, depositoRaw, retiroRaw] = cols.map((c) => c.trim());
       // Header opcional: primera línea con "fecha" o "descripcion" se ignora.
       if (i === 0 && /fecha|descripcion/i.test(lineas[i])) continue;
+
+      const campos = this.tokenizarCsv(lineas[i]).map((c) => c.trim());
+      this.unirMiles(campos);
+
+      const [fecha, descripcion, depositoRaw, retiroRaw] = campos;
       if (!fecha || !descripcion) continue;
 
-      const deposito = depositoRaw ? Number(depositoRaw) : null;
-      const retiro = retiroRaw ? Number(retiroRaw) : null;
-      const montoValido = (deposito != null && Number.isFinite(deposito) && deposito > 0) ||
-        (retiro != null && Number.isFinite(retiro) && retiro > 0);
+      const deposito = this.parseMonto(depositoRaw);
+      const retiro = this.parseMonto(retiroRaw);
+      const montoValido = (deposito != null && deposito > 0) ||
+        (retiro != null && retiro > 0);
       const fechaValida = !Number.isNaN(new Date(`${fecha}T00:00:00`).getTime());
-      if (!montoValido || !fechaValida) continue;
+      // Paridad con crearMovimiento: una fila nunca es depósito Y retiro.
+      if (this.esMontoInvalido(deposito, retiro) || !montoValido || !fechaValida) continue;
 
       resultado.push({
         fecha,
