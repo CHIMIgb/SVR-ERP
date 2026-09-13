@@ -1,358 +1,607 @@
 "use client";
 
-import React, { useState } from 'react';
-import { MapPin, Navigation, Truck, SignalHigh, Layers, AlertTriangle, Radio } from 'lucide-react';
-import { maquinaria } from '@/lib/data';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  MapPin, Truck, Pause, WifiOff, AlertTriangle,
+  Plus, Pencil, Trash2, RefreshCw, Radar, Navigation,
+} from 'lucide-react';
+import {
+  gpsApi,
+  type MaquinaGpsDTO,
+  type GeocercaDTO,
+  type HistorialGpsDTO,
+  type TipoGeocerca,
+} from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
+import { useAuth } from '@/hooks/useAuth';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import {
+  GpsMap, MachineList, TrackingPanel, GpsTimeline, LiveIndicator,
+  type GpsMachine,
+} from '@/components/ui/GpsTracking';
 
-type MapView = 'mapa' | 'satelite';
-
-interface Geocerca {
-  id: string;
-  nombre: string;
-  top: string;
-  left: string;
-  radio: string;
-  color: string;
-}
-
-const geocercas: Geocerca[] = [
-  { id: 'G1', nombre: 'Valle Sur', top: '38%', left: '42%', radio: '80px', color: '#f97316' },
-  { id: 'G2', nombre: 'Lerma Norte', top: '55%', left: '62%', radio: '60px', color: '#3b82f6' },
-  { id: 'G3', nombre: 'Toluca C2',   top: '25%', left: '58%', radio: '50px', color: '#8b5cf6' },
+const TIPOS_GEOCERCA: Array<{ value: TipoGeocerca; label: string }> = [
+  { value: 'OBRA', label: 'Obra' },
+  { value: 'PATIO', label: 'Patio de maquinaria' },
+  { value: 'ESTACION', label: 'Estación de servicio' },
+  { value: 'RUTA', label: 'Ruta autorizada' },
+  { value: 'PROHIBIDA', label: 'Zona prohibida' },
 ];
 
-// Traffic segments simulated as colored road-like overlays
-const trafficSegments = [
-  { top: '35%', left: '30%', w: '120px', h: '6px', rot: '-15deg', color: '#22c55e' },   // libre
-  { top: '48%', left: '50%', w: '90px',  h: '6px', rot: '20deg',  color: '#f59e0b' },   // moderado
-  { top: '60%', left: '38%', w: '100px', h: '6px', rot: '-5deg',  color: '#ef4444' },   // congestionado
-  { top: '28%', left: '55%', w: '70px',  h: '6px', rot: '40deg',  color: '#22c55e' },   // libre
-  { top: '70%', left: '60%', w: '110px', h: '6px', rot: '-30deg', color: '#ef4444' },   // congestionado
-];
+const TIPO_LABEL: Record<TipoGeocerca, string> = {
+  OBRA: 'Obra',
+  PATIO: 'Patio de maquinaria',
+  ESTACION: 'Estación de servicio',
+  RUTA: 'Ruta autorizada',
+  PROHIBIDA: 'Zona prohibida',
+};
 
-const markerPositions = [
-  { top: '40%', left: '44%' },
-  { top: '57%', left: '63%' },
-  { top: '27%', left: '60%' },
-  { top: '68%', left: '35%' },
-];
+const TIPO_BADGE: Record<TipoGeocerca, 'primary' | 'success' | 'warning' | 'error' | 'info'> = {
+  OBRA: 'primary',
+  PATIO: 'info',
+  ESTACION: 'success',
+  RUTA: 'warning',
+  PROHIBIDA: 'error',
+};
 
-export default function GPSPage() {
+/** Refresco automático del rastreo, en milisegundos. */
+const INTERVALO_REFRESCO_MS = 30000;
+
+const formInicial = {
+  nombre: '',
+  tipo: 'OBRA' as TipoGeocerca,
+  color: '#3b82f6',
+  centroLat: '',
+  centroLng: '',
+  radioMetros: '300',
+  activa: true,
+};
+
+export default function GpsPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
-  const [view, setView] = useState<MapView>('mapa');
-  const [trafficOn, setTrafficOn] = useState(false);
-  const [geocercasOn, setGeocercasOn] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
 
-  const handleView = (v: MapView) => {
-    setView(v);
-    showToast(v === 'satelite' ? '🛰️ Vista satelital activada.' : '🗺️ Vista de mapa activada.', 'success');
+  const vista = user?.vistas?.find((v) => v.ruta === '/gps');
+  const puedeEditar = vista?.puedeEditar ?? false;
+
+  const [maquinas, setMaquinas] = useState<MaquinaGpsDTO[]>([]);
+  const [geocercas, setGeocercas] = useState<GeocercaDTO[]>([]);
+  const [historial, setHistorial] = useState<HistorialGpsDTO | null>(null);
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [simulando, setSimulando] = useState(false);
+  const [tab, setTab] = useState('rastreo');
+  const hasLoaded = useRef(false);
+
+  // Modal de geocerca
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [editando, setEditando] = useState<GeocercaDTO | null>(null);
+  const [form, setForm] = useState(formInicial);
+  const [guardando, setGuardando] = useState(false);
+
+  const cargarRastreo = useCallback(async () => {
+    const res = await gpsApi.maquinas();
+    if (!res.success) throw new Error(res.error.message);
+    setMaquinas(res.data);
+    return res.data;
+  }, []);
+
+  const cargarGeocercas = useCallback(async () => {
+    const res = await gpsApi.listarGeocercas({ limit: 100 });
+    if (!res.success) throw new Error(res.error.message);
+    setGeocercas(res.data.items);
+  }, []);
+
+  const cargarTodo = useCallback(async () => {
+    try {
+      setErrorCarga(null);
+      const [lista] = await Promise.all([cargarRastreo(), cargarGeocercas()]);
+      setSelectedId((actual) => actual ?? lista[0]?.id);
+    } catch {
+      setErrorCarga('No se pudo cargar el rastreo GPS. Revisa que el servidor esté disponible.');
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [cargarRastreo, cargarGeocercas]);
+
+  useEffect(() => {
+    if (hasLoaded.current) return;
+    hasLoaded.current = true;
+    cargarTodo();
+  }, [cargarTodo]);
+
+  // Refresco periódico del rastreo (sólo la posición, no las geocercas).
+  useEffect(() => {
+    const timer = setInterval(() => {
+      cargarRastreo().catch(() => {
+        /* un fallo puntual de refresco no debe romper la vista ya cargada */
+      });
+    }, INTERVALO_REFRESCO_MS);
+    return () => clearInterval(timer);
+  }, [cargarRastreo]);
+
+  // Historial de la máquina seleccionada.
+  useEffect(() => {
+    if (!selectedId) {
+      setHistorial(null);
+      return;
+    }
+    let cancelado = false;
+    gpsApi
+      .historial(selectedId, { limit: 100 })
+      .then((res) => {
+        if (!cancelado) setHistorial(res.success ? res.data : null);
+      })
+      .catch(() => {
+        if (!cancelado) setHistorial(null);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [selectedId, maquinas]);
+
+  const handleSimular = async () => {
+    if (simulando) return;
+    setSimulando(true);
+    try {
+      const res = await gpsApi.simular();
+      if (!res.success) throw new Error(res.error.message);
+      const { entradas, salidas, maquinasActualizadas } = res.data;
+      await cargarTodo();
+      const cruces = entradas.length + salidas.length;
+      showToast(
+        cruces > 0
+          ? `Posiciones actualizadas (${maquinasActualizadas} máquinas, ${entradas.length} entradas y ${salidas.length} salidas de geocerca)`
+          : `Posiciones actualizadas (${maquinasActualizadas} máquinas)`,
+        'success',
+      );
+    } catch {
+      showToast('No se pudo actualizar el rastreo', 'error');
+    } finally {
+      setSimulando(false);
+    }
   };
 
-  const handleTraffic = () => {
-    setTrafficOn(p => !p);
-    showToast(trafficOn ? '🚦 Capa de tráfico desactivada.' : '🚦 Capa de tráfico activada.', trafficOn ? 'warning' : 'success');
+  const abrirCrear = () => {
+    setEditando(null);
+    setForm(formInicial);
+    setModalAbierto(true);
   };
 
-  const handleGeocercas = () => {
-    setGeocercasOn(p => !p);
-    showToast(geocercasOn ? '📍 Geocercas desactivadas.' : '📍 3 geocercas de obras cargadas.', geocercasOn ? 'warning' : 'success');
+  const abrirEditar = (g: GeocercaDTO) => {
+    setEditando(g);
+    setForm({
+      nombre: g.nombre,
+      tipo: g.tipo,
+      color: g.color,
+      centroLat: String(g.centroLat),
+      centroLng: String(g.centroLng),
+      radioMetros: String(g.radioMetros),
+      activa: g.activa,
+    });
+    setModalAbierto(true);
   };
 
-  const selectedMachine = maquinaria.find(m => m.id === selected);
+  const handleGuardar = async () => {
+    if (guardando) return;
+
+    const centroLat = Number(form.centroLat);
+    const centroLng = Number(form.centroLng);
+    const radioMetros = Number(form.radioMetros);
+
+    if (!form.nombre.trim() || form.nombre.trim().length < 3) {
+      showToast('El nombre debe tener al menos 3 caracteres', 'error');
+      return;
+    }
+    if (!Number.isFinite(centroLat) || centroLat < -90 || centroLat > 90) {
+      showToast('La latitud debe estar entre -90 y 90', 'error');
+      return;
+    }
+    if (!Number.isFinite(centroLng) || centroLng < -180 || centroLng > 180) {
+      showToast('La longitud debe estar entre -180 y 180', 'error');
+      return;
+    }
+    if (!Number.isFinite(radioMetros) || radioMetros < 10 || radioMetros > 50000) {
+      showToast('El radio debe estar entre 10 y 50,000 metros', 'error');
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      const payload = {
+        nombre: form.nombre.trim(),
+        tipo: form.tipo,
+        color: form.color,
+        centroLat: Number(centroLat.toFixed(6)),
+        centroLng: Number(centroLng.toFixed(6)),
+        radioMetros: Number(radioMetros.toFixed(2)),
+        activa: form.activa,
+      };
+
+      const res = editando
+        ? await gpsApi.actualizarGeocerca(editando.id, payload)
+        : await gpsApi.crearGeocerca(payload);
+      if (!res.success) throw new Error(res.error.message);
+      showToast(editando ? 'Geocerca actualizada' : 'Geocerca creada', 'success');
+      setModalAbierto(false);
+      await cargarTodo();
+    } catch (e) {
+      const mensaje = e instanceof Error ? e.message : 'No se pudo guardar la geocerca';
+      showToast(mensaje, 'error');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleEliminar = async (g: GeocercaDTO) => {
+    if (!window.confirm(`¿Eliminar la geocerca "${g.nombre}"? Se perderá el registro de qué máquinas están dentro.`)) {
+      return;
+    }
+    try {
+      const res = await gpsApi.eliminarGeocerca(g.id);
+      if (!res.success) throw new Error(res.error.message);
+      showToast('Geocerca eliminada', 'success');
+      await cargarTodo();
+    } catch {
+      showToast('No se pudo eliminar la geocerca', 'error');
+    }
+  };
+
+  // El componente de mapa trabaja con su propio shape; los campos extra
+  // (geocercas, maquinaId) se quedan fuera a propósito.
+  const machines: GpsMachine[] = maquinas.map((m) => ({
+    id: m.id,
+    name: m.name,
+    type: m.type,
+    status: m.status,
+    lat: m.lat,
+    lng: m.lng,
+    speed: m.speed,
+    heading: m.heading,
+    fuel: m.fuel,
+    temperature: m.temperature,
+    hours: m.hours,
+    lastUpdate: m.lastUpdate,
+    operator: m.operator,
+  }));
+
+  const seleccionada = maquinas.find((m) => m.id === selectedId);
+  const seleccionadaMapa = machines.find((m) => m.id === selectedId);
+
+  const enMovimiento = maquinas.filter((m) => m.status === 'moving').length;
+  const detenidas = maquinas.filter((m) => m.status === 'idle').length;
+  const sinSenal = maquinas.filter((m) => m.status === 'offline').length;
+  const enAlerta = maquinas.filter((m) => m.status === 'alert').length;
+
+  const columnasGeocercas: Column<GeocercaDTO>[] = [
+    {
+      key: 'nombre',
+      header: 'Geocerca',
+      minWidth: '220px',
+      render: (g) => (
+        <div className="flex items-center gap-2.5">
+          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+          <div className="min-w-0">
+            <p className="font-bold text-slate-900 truncate">{g.nombre}</p>
+            <p className="text-[11px] text-slate-500">{TIPO_LABEL[g.tipo]}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'tipo',
+      header: 'Tipo',
+      render: (g) => <Badge variant={TIPO_BADGE[g.tipo]} size="sm">{TIPO_LABEL[g.tipo]}</Badge>,
+    },
+    {
+      key: 'centro',
+      header: 'Centro',
+      minWidth: '170px',
+      render: (g) => (
+        <span className="text-xs font-mono text-slate-600">
+          {g.centroLat.toFixed(6)}, {g.centroLng.toFixed(6)}
+        </span>
+      ),
+    },
+    {
+      key: 'radio',
+      header: 'Radio',
+      align: 'right',
+      render: (g) => <span className="font-bold text-slate-800">{g.radioMetros.toLocaleString('es-MX')} m</span>,
+    },
+    {
+      key: 'maquinasDentro',
+      header: 'Máquinas dentro',
+      align: 'center',
+      render: (g) => (
+        <Badge variant={g.maquinasDentro > 0 ? 'success' : 'neutral'} size="sm">
+          {g.maquinasDentro}
+        </Badge>
+      ),
+    },
+    {
+      key: 'activa',
+      header: 'Estado',
+      align: 'center',
+      render: (g) => (
+        <Badge variant={g.activa ? 'success' : 'neutral'} size="sm" dot>
+          {g.activa ? 'Activa' : 'Inactiva'}
+        </Badge>
+      ),
+    },
+    ...(puedeEditar
+      ? [
+          {
+            key: 'acciones',
+            header: 'Acciones',
+            align: 'right' as const,
+            render: (g: GeocercaDTO) => (
+              <div className="flex items-center justify-end gap-1.5">
+                <Button variant="ghost" size="sm" icon={<Pencil size={14} />} onClick={() => abrirEditar(g)}>
+                  Editar
+                </Button>
+                <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} onClick={() => handleEliminar(g)}>
+                  Eliminar
+                </Button>
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  if (initialLoading) {
+    return <LoadingState text="Cargando rastreo GPS..." />;
+  }
+
+  if (errorCarga) {
+    return (
+      <EmptyState
+        icon={<AlertTriangle className="w-10 h-10" />}
+        title="No se pudo cargar el GPS"
+        subtitle={errorCarga}
+        action={<Button variant="primary" onClick={() => { hasLoaded.current = false; setInitialLoading(true); cargarTodo(); }}>Reintentar</Button>}
+      />
+    );
+  }
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Monitoreo GPS</h1>
-          <p className="text-slate-500 font-medium">Ubicación satelital y estado de telemetría en tiempo real.</p>
-        </div>
-        <div className="flex gap-2">
-           <div className="bg-green-50 text-green-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2">
-              <SignalHigh className="w-4 h-4" />Sistemas Online: 100%
-           </div>
-           {trafficOn && (
-             <div className="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 animate-pulse">
-               <AlertTriangle className="w-4 h-4" />Congestionamiento en Lerma
-             </div>
-           )}
-        </div>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Rastreo GPS"
+        subtitle="Ubicación en tiempo real de la maquinaria y control de geocercas."
+        action={
+          <div className="flex items-center gap-2">
+            <LiveIndicator />
+            {puedeEditar && (
+              <Button
+                variant="secondary"
+                icon={<RefreshCw className={`w-4 h-4 ${simulando ? 'animate-spin' : ''}`} />}
+                onClick={handleSimular}
+                disabled={simulando}
+              >
+                {simulando ? 'Actualizando...' : 'Actualizar posiciones'}
+              </Button>
+            )}
+            {puedeEditar && (
+              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={abrirCrear}>
+                Nueva Geocerca
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatsCard icon={<Truck className="w-5 h-5" />} value={enMovimiento} label="En movimiento" color="success" />
+        <StatsCard icon={<Pause className="w-5 h-5" />} value={detenidas} label="Detenidas" color="warning" />
+        <StatsCard icon={<WifiOff className="w-5 h-5" />} value={sinSenal} label="Sin señal" color="neutral" />
+        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} value={enAlerta} label="En alerta" color="error" />
       </div>
 
-      <div className="flex-1 flex gap-6 min-h-0">
-        {/* Machine Sidebar */}
-        <div className="w-80 bg-white border border-slate-200 rounded-[2rem] overflow-hidden flex flex-col shrink-0">
-           <div className="p-6 border-b border-slate-100">
-              <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Activos Cercanos</h3>
-           </div>
-           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {maquinaria.map((m) => (
-                <div
-                  key={m.id}
-                  onClick={() => setSelected(selected === m.id ? null : m.id)}
-                  className={`p-4 border rounded-2xl cursor-pointer transition-all group ${
-                    selected === m.id
-                      ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
-                      : 'border-slate-100 hover:border-primary/50'
-                  }`}
-                >
-                   <div className="flex justify-between items-start mb-2">
-                      <div className="font-black text-slate-900">{m.id}</div>
-                      <span className={`w-2 h-2 rounded-full ${m.estado === 'Encendida' || m.estado === 'Movimiento' ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
-                   </div>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{m.nombre}</p>
-                   <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 mb-1">
-                      <MapPin className="w-3 h-3 text-primary" />
-                      {m.lat.toFixed(4)}, {m.lng.toFixed(4)}
-                   </div>
-                   <div className="flex items-center gap-2 mt-2">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${
-                        m.estado === 'Encendida' ? 'bg-green-100 text-green-700' :
-                        m.estado === 'Movimiento' ? 'bg-blue-100 text-blue-700' :
-                        m.estado === 'Mantenimiento' ? 'bg-orange-100 text-orange-700' :
-                        'bg-slate-100 text-slate-600'
-                      }`}>{m.estado}</span>
-                      <span className="text-[9px] font-bold text-slate-400">{m.horometro.toLocaleString()} hrs</span>
-                   </div>
-                </div>
-              ))}
-           </div>
+      <Tabs
+        tabs={[
+          { key: 'rastreo', label: 'Rastreo en vivo', icon: <Radar className="w-4 h-4" />, count: maquinas.length },
+          { key: 'geocercas', label: 'Geocercas', icon: <MapPin className="w-4 h-4" />, count: geocercas.length },
+        ]}
+        value={tab}
+        onChange={setTab}
+      >
 
-           {/* Legend */}
-           <div className="p-4 border-t border-slate-100 space-y-2">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Leyenda</p>
-              <div className="flex flex-wrap gap-2">
-                 <span className="flex items-center gap-1 text-[9px] font-bold text-slate-600"><span className="w-2 h-2 rounded-full bg-green-500" />Activa</span>
-                 <span className="flex items-center gap-1 text-[9px] font-bold text-slate-600"><span className="w-2 h-2 rounded-full bg-blue-500" />Movimiento</span>
-                 <span className="flex items-center gap-1 text-[9px] font-bold text-slate-600"><span className="w-2 h-2 rounded-full bg-orange-500" />Mant.</span>
-                 <span className="flex items-center gap-1 text-[9px] font-bold text-slate-600"><span className="w-2 h-2 rounded-full bg-slate-300" />Apagada</span>
-              </div>
-           </div>
-        </div>
-
-        {/* Map Area */}
-        <div className="flex-1 rounded-[2rem] overflow-hidden relative">
-          {/* ── MAP BACKGROUND ── */}
-          {view === 'mapa' ? (
-            /* Road-map style dark */
-            <div className="absolute inset-0 bg-[#1e293b]">
-              {/* Grid streets simulation */}
-              <svg className="absolute inset-0 w-full h-full opacity-25" xmlns="http://www.w3.org/2000/svg">
-                {/* Horizontal streets */}
-                {[15,28,42,55,68,80].map(y => (
-                  <line key={`h${y}`} x1="0" y1={`${y}%`} x2="100%" y2={`${y}%`} stroke="#94a3b8" strokeWidth="1.5"/>
-                ))}
-                {/* Vertical streets */}
-                {[12,25,38,52,65,78,90].map(x => (
-                  <line key={`v${x}`} x1={`${x}%`} y1="0" x2={`${x}%`} y2="100%" stroke="#94a3b8" strokeWidth="1.5"/>
-                ))}
-                {/* Main avenues (thicker) */}
-                <line x1="0" y1="45%" x2="100%" y2="45%" stroke="#cbd5e1" strokeWidth="3"/>
-                <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#cbd5e1" strokeWidth="3"/>
-                {/* Diagonal boulevard */}
-                <line x1="0" y1="100%" x2="100%" y2="0" stroke="#cbd5e1" strokeWidth="2.5" opacity="0.6"/>
-                {/* Zone fills */}
-                <rect x="30%" y="30%" width="25%" height="20%" fill="#0f172a" opacity="0.5" rx="4"/>
-                <rect x="60%" y="55%" width="20%" height="15%" fill="#0f172a" opacity="0.4" rx="4"/>
-              </svg>
-            </div>
-          ) : (
-            /* Satellite style */
-            <div className="absolute inset-0 bg-[#2d4a1e]">
-              <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                {/* Terrain blobs */}
-                <ellipse cx="30%" cy="40%" rx="18%" ry="12%" fill="#3a5e28" opacity="0.8"/>
-                <ellipse cx="70%" cy="60%" rx="15%" ry="10%" fill="#4a7a35" opacity="0.7"/>
-                <ellipse cx="50%" cy="25%" rx="20%" ry="8%" fill="#2e5020" opacity="0.9"/>
-                <ellipse cx="20%" cy="70%" rx="12%" ry="8%" fill="#3d6530" opacity="0.6"/>
-                <ellipse cx="80%" cy="30%" rx="10%" ry="6%" fill="#4a7a35" opacity="0.8"/>
-                {/* Urban blocks */}
-                <rect x="38%" y="38%" width="8%" height="6%" fill="#5a5a5a" opacity="0.9" rx="2"/>
-                <rect x="48%" y="44%" width="6%" height="4%" fill="#666" opacity="0.8" rx="2"/>
-                <rect x="60%" y="55%" width="7%" height="5%" fill="#555" opacity="0.9" rx="2"/>
-                {/* Roads */}
-                <line x1="0" y1="45%" x2="100%" y2="45%" stroke="#8b8b6e" strokeWidth="4" opacity="0.8"/>
-                <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#8b8b6e" strokeWidth="3" opacity="0.8"/>
-                <line x1="0" y1="100%" x2="100%" y2="0" stroke="#7a7a5a" strokeWidth="2.5" opacity="0.6"/>
-                {/* Water body */}
-                <ellipse cx="85%" cy="80%" rx="12%" ry="8%" fill="#1e4080" opacity="0.7"/>
-              </svg>
-            </div>
-          )}
-
-          {/* ── TRAFFIC LAYER ── */}
-          {trafficOn && (
-            <div className="absolute inset-0 pointer-events-none">
-              {trafficSegments.map((seg, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full opacity-80"
-                  style={{
-                    top: seg.top,
-                    left: seg.left,
-                    width: seg.w,
-                    height: seg.h,
-                    backgroundColor: seg.color,
-                    transform: `rotate(${seg.rot})`,
-                    boxShadow: `0 0 8px ${seg.color}`,
-                  }}
-                />
-              ))}
-              {/* Traffic legend */}
-              <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm rounded-xl p-3 text-white space-y-1.5">
-                <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Tráfico</p>
-                {[['#22c55e','Libre'],['#f59e0b','Moderado'],['#ef4444','Congestionado']].map(([c,l]) => (
-                  <div key={l} className="flex items-center gap-2">
-                    <span className="w-6 h-1.5 rounded-full inline-block" style={{backgroundColor: c}}/>
-                    <span className="text-[9px] font-bold">{l}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── GEOCERCAS LAYER ── */}
-          {geocercasOn && geocercas.map((g) => (
-            <div
-              key={g.id}
-              className="absolute pointer-events-none"
-              style={{ top: g.top, left: g.left, transform: 'translate(-50%, -50%)' }}
-            >
-              {/* Outer pulsing ring */}
-              <div
-                className="absolute rounded-full animate-ping opacity-20"
-                style={{ width: g.radio, height: g.radio, backgroundColor: g.color, transform: 'translate(-50%,-50%)', top:'50%', left:'50%' }}
+      <TabPanel tabKey="rastreo">
+        {maquinas.length === 0 ? (
+          <EmptyState
+            icon={<Navigation className="w-10 h-10" />}
+            title="Sin máquinas que rastrear"
+            subtitle="No hay maquinaria activa registrada. Da de alta maquinaria en la vista de Flota para verla aquí."
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="lg:col-span-2 space-y-4">
+              <GpsMap
+                machines={machines}
+                selectedId={selectedId}
+                onSelect={(m) => setSelectedId(m.id)}
+                height="460px"
               />
-              {/* Filled circle */}
-              <div
-                className="absolute rounded-full opacity-15 border-2"
-                style={{ width: g.radio, height: g.radio, backgroundColor: g.color, borderColor: g.color, transform: 'translate(-50%,-50%)', top:'50%', left:'50%' }}
-              />
-              {/* Label */}
-              <div
-                className="absolute px-2 py-0.5 rounded-lg text-white text-[9px] font-black uppercase tracking-widest whitespace-nowrap"
-                style={{ backgroundColor: g.color, top: `calc(50% + calc(${g.radio} / 2) + 4px)`, left: '50%', transform: 'translateX(-50%)' }}
-              >
-                {g.nombre}
-              </div>
-              {/* Center dot */}
-              <div className="w-2 h-2 rounded-full bg-white shadow-lg relative z-10" style={{border:`2px solid ${g.color}`}} />
-            </div>
-          ))}
 
-          {/* ── MACHINE MARKERS ── */}
-          {maquinaria.map((m, i) => {
-            const pos = markerPositions[i] ?? { top: `${30 + i * 12}%`, left: `${35 + i * 10}%` };
-            const isSelected = selected === m.id;
-            return (
-              <div
-                key={m.id}
-                className="absolute cursor-pointer transition-all hover:scale-110 z-10"
-                style={{ top: pos.top, left: pos.left }}
-                onClick={() => setSelected(isSelected ? null : m.id)}
-              >
-                {/* Ping */}
-                <div className={`absolute -inset-4 rounded-full opacity-20 ${
-                  m.estado === 'Encendida' ? 'bg-green-500 animate-ping' :
-                  m.estado === 'Movimiento' ? 'bg-blue-500 animate-pulse' :
-                  m.estado === 'Mantenimiento' ? 'bg-orange-500 animate-pulse' :
-                  'bg-slate-500'
-                }`} />
-                {/* Marker */}
-                <div className={`relative bg-white rounded-lg shadow-2xl flex items-center gap-2 px-2 py-1.5 transition-all ${isSelected ? 'ring-2 ring-primary scale-110' : ''}`}>
-                   <div className={`p-1.5 rounded-md text-white ${
-                     m.estado === 'Encendida' ? 'bg-green-500' :
-                     m.estado === 'Movimiento' ? 'bg-blue-500' :
-                     m.estado === 'Mantenimiento' ? 'bg-orange-500' :
-                     'bg-slate-600'
-                   }`}>
-                      <Truck className="w-3.5 h-3.5" />
-                   </div>
-                   <div className="leading-none">
-                      <p className="text-[10px] font-black text-slate-900">{m.id}</p>
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">{m.estado}</p>
-                   </div>
-                </div>
-                {/* Tooltip on select */}
-                {isSelected && (
-                  <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-slate-900 text-white rounded-xl p-3 min-w-[160px] shadow-2xl z-20">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-1">{m.nombre}</p>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[9px]">
-                        <span className="text-white/60">Horómetro</span>
-                        <span className="font-black">{m.horometro.toLocaleString()} hrs</span>
-                      </div>
-                      <div className="flex justify-between text-[9px]">
-                        <span className="text-white/60">Combustible</span>
-                        <span className={`font-black ${m.combustible < 20 ? 'text-red-400' : 'text-green-400'}`}>{m.combustible}%</span>
-                      </div>
-                      <div className="flex justify-between text-[9px]">
-                        <span className="text-white/60">Operador</span>
-                        <span className="font-black">{m.operador.split(' ')[0]}</span>
-                      </div>
-                      <div className="flex justify-between text-[9px]">
-                        <span className="text-white/60">Diesel hoy</span>
-                        <span className="font-black">{m.dieselHoy} L</span>
-                      </div>
-                    </div>
+              <Card padding="sm">
+                <h3 className="text-sm font-black text-slate-900 mb-3">Unidades ({maquinas.length})</h3>
+                <MachineList machines={machines} selectedId={selectedId} onSelect={(m) => setSelectedId(m.id)} />
+              </Card>
+            </div>
+
+            <div className="space-y-4">
+              {seleccionadaMapa && <TrackingPanel machine={seleccionadaMapa} />}
+
+              {seleccionada && seleccionada.geocercas.length > 0 && (
+                <Card padding="sm">
+                  <h3 className="text-sm font-black text-slate-900 mb-3">Dentro de</h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {seleccionada.geocercas.map((g) => (
+                      <span
+                        key={g.nombre}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-700 bg-slate-50 border border-slate-200"
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: g.color }} />
+                        {g.nombre}
+                      </span>
+                    ))}
                   </div>
+                </Card>
+              )}
+
+              <Card padding="sm">
+                <h3 className="text-sm font-black text-slate-900 mb-3">Eventos de hoy</h3>
+                {historial && historial.eventos.length > 0 ? (
+                  <GpsTimeline events={historial.eventos} />
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Sin entradas ni salidas de geocerca registradas hoy para esta unidad.
+                  </p>
                 )}
-              </div>
-            );
-          })}
+              </Card>
 
-          {/* ── COMPASS ── */}
-          <div className="absolute top-4 right-4 w-12 h-12 bg-black/40 backdrop-blur-md rounded-full border border-white/10 flex items-center justify-center">
-             <Navigation className="w-6 h-6 text-primary rotate-45" />
+              {historial && historial.puntos.length > 0 && (
+                <Card padding="sm">
+                  <h3 className="text-sm font-black text-slate-900 mb-1">Recorrido de hoy</h3>
+                  <p className="text-xs text-slate-500">
+                    {historial.puntos.length} posiciones registradas · última a las {historial.puntos[0].time} h
+                  </p>
+                </Card>
+              )}
+            </div>
           </div>
+        )}
+      </TabPanel>
 
-          {/* ── VIEW BADGE ── */}
-          <div className="absolute top-4 right-20 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl px-3 py-1.5 flex items-center gap-2">
-            {view === 'satelite' ? <Radio className="w-3 h-3 text-green-400" /> : <Layers className="w-3 h-3 text-blue-400" />}
-            <span className="text-[9px] font-black text-white uppercase tracking-widest">{view === 'satelite' ? 'Satelital' : 'Mapa'}</span>
-          </div>
+      <TabPanel tabKey="geocercas">
+        {geocercas.length === 0 ? (
+          <EmptyState
+            icon={<MapPin className="w-10 h-10" />}
+            title="Sin geocercas configuradas"
+            subtitle="Define zonas de obra, patios o áreas prohibidas para detectar automáticamente cuándo entra o sale cada máquina."
+            action={puedeEditar ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={abrirCrear}>Nueva Geocerca</Button> : undefined}
+          />
+        ) : (
+          <DataTable
+            columns={columnasGeocercas}
+            data={geocercas}
+            keyExtractor={(g) => g.id}
+            emptyText="Sin geocercas configuradas"
+          />
+        )}
+      </TabPanel>
+      </Tabs>
 
-          {/* ── MAP CONTROLS ── */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-2 flex gap-2">
-            <button
-              onClick={() => handleView('mapa')}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                view === 'mapa' ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'text-white/70 hover:bg-white/10'
-              }`}
+      <FormModal
+        open={modalAbierto}
+        onClose={() => setModalAbierto(false)}
+        title={editando ? 'Editar Geocerca' : 'Nueva Geocerca'}
+        subtitle="Define el centro y el radio; las entradas y salidas se detectan solas con cada posición recibida."
+        onSubmit={handleGuardar}
+        submitLabel={editando ? 'Guardar cambios' : 'Crear geocerca'}
+        isSubmitting={guardando}
+        size="lg"
+      >
+        <ModalField label="Nombre" required>
+          <input
+            className={modalInputClass}
+            value={form.nombre}
+            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+            placeholder="Obra Norte - Torre Insignia"
+            required
+          />
+        </ModalField>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Tipo" required>
+            <select
+              className={modalSelectClass}
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoGeocerca })}
             >
-              Mapa
-            </button>
-            <button
-              onClick={() => handleView('satelite')}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                view === 'satelite' ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'text-white/70 hover:bg-white/10'
-              }`}
-            >
-              Satélite
-            </button>
-            <div className="w-px bg-white/10" />
-            <button
-              onClick={handleTraffic}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                trafficOn ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30' : 'text-white/70 hover:bg-white/10'
-              }`}
-            >
-              Tráfico
-            </button>
-            <button
-              onClick={handleGeocercas}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                geocercasOn ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-white/70 hover:bg-white/10'
-              }`}
-            >
-              Geocercas
-            </button>
-          </div>
+              {TIPOS_GEOCERCA.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Color en el mapa">
+            <input
+              type="color"
+              className="w-full h-[42px] rounded-xl border border-slate-200 bg-white px-2 cursor-pointer"
+              value={form.color}
+              onChange={(e) => setForm({ ...form, color: e.target.value })}
+            />
+          </ModalField>
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <ModalField label="Latitud del centro" required>
+            <input
+              className={modalInputClass}
+              type="number"
+              step="0.000001"
+              min={-90}
+              max={90}
+              value={form.centroLat}
+              onChange={(e) => setForm({ ...form, centroLat: e.target.value })}
+              placeholder="19.432600"
+              required
+            />
+          </ModalField>
+
+          <ModalField label="Longitud del centro" required>
+            <input
+              className={modalInputClass}
+              type="number"
+              step="0.000001"
+              min={-180}
+              max={180}
+              value={form.centroLng}
+              onChange={(e) => setForm({ ...form, centroLng: e.target.value })}
+              placeholder="-99.133200"
+              required
+            />
+          </ModalField>
+
+          <ModalField label="Radio (metros)" required>
+            <input
+              className={modalInputClass}
+              type="number"
+              step="1"
+              min={10}
+              max={50000}
+              value={form.radioMetros}
+              onChange={(e) => setForm({ ...form, radioMetros: e.target.value })}
+              required
+            />
+          </ModalField>
+        </div>
+
+        <ModalField label="Estado">
+          <label className="flex items-center gap-2.5 text-sm font-semibold text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+              checked={form.activa}
+              onChange={(e) => setForm({ ...form, activa: e.target.checked })}
+            />
+            Geocerca activa (sólo las activas detectan entradas y salidas)
+          </label>
+        </ModalField>
+      </FormModal>
     </div>
   );
 }

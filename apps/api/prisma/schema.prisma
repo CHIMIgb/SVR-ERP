@@ -1195,6 +1195,7 @@ model rastreo_gps {
   ignition         Boolean?
   odometro         Decimal? @db.Decimal(10, 2)
   horometro        Decimal? @db.Decimal(10, 2)
+  temperatura_motor Decimal? @db.Decimal(5, 2)
   proveedor_gps    String   @default("SVR-GPS")
   dispositivo_id   String?
   activo           Boolean  @default(true)
@@ -2042,6 +2043,12 @@ enum AuditAction {
   CIERRE_CAJA_APROBADO
   CIERRE_CAJA_RECHAZADO
   CONFIG_TURNO_ACTUALIZADA
+  GEOCERCA_CREADA
+  GEOCERCA_ACTUALIZADA
+  GEOCERCA_ELIMINADA
+  GEOCERCA_ENTRADA_DETECTADA
+  GEOCERCA_SALIDA_DETECTADA
+  GPS_POSICIONES_SIMULADAS
   ERROR_SISTEMA
 }
 

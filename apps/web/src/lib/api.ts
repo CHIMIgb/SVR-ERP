@@ -1998,3 +1998,103 @@ export const cotizacionesApi = {
   actualizar: (id: string, data: CotizacionUpdateInput) =>
     apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}`, data),
 };
+
+// ────────────────────────────────────────────────────────────
+//  GPS / Rastreo de maquinaria
+// ────────────────────────────────────────────────────────────
+
+export type EstadoGpsMaquina = 'moving' | 'idle' | 'offline' | 'alert';
+
+export type TipoGeocerca = 'OBRA' | 'PATIO' | 'ESTACION' | 'RUTA' | 'PROHIBIDA';
+
+export interface GeocercaDTO {
+  id: string;
+  nombre: string;
+  tipo: TipoGeocerca;
+  color: string;
+  centroLat: number;
+  centroLng: number;
+  radioMetros: number;
+  activa: boolean;
+  maquinasDentro: number;
+  creadoEn: string;
+}
+
+export interface GeocercaInput {
+  nombre: string;
+  tipo: TipoGeocerca;
+  color?: string;
+  centroLat: number;
+  centroLng: number;
+  radioMetros: number;
+  activa?: boolean;
+}
+
+export interface MaquinaGpsDTO {
+  id: string;
+  maquinaId: string;
+  name: string;
+  type: string;
+  status: EstadoGpsMaquina;
+  lat: number;
+  lng: number;
+  speed: number;
+  heading: number;
+  fuel: number;
+  temperature: number;
+  hours: number;
+  lastUpdate: string;
+  ultimaFechaHora: string | null;
+  operator?: string;
+  geocercas: Array<{ nombre: string; color: string }>;
+}
+
+export interface HistorialGpsDTO {
+  maquinaId: string;
+  maquinaNombre: string;
+  fecha: string;
+  puntos: Array<{ lat: number; lng: number; time: string; speed: number }>;
+  eventos: Array<{ time: string; text: string; speed?: number }>;
+}
+
+export interface SimulacionGpsDTO {
+  maquinasActualizadas: number;
+  entradas: Array<{ maquinaId: string; geocerca: string }>;
+  salidas: Array<{ maquinaId: string; geocerca: string }>;
+  fechaHora: string;
+}
+
+export const gpsApi = {
+  /** Última posición conocida de cada máquina activa, con estado y geocercas. */
+  maquinas: () => apiClient.get<MaquinaGpsDTO[]>('/gps/maquinas'),
+
+  /** Recorrido y eventos de geocerca del día para una máquina. */
+  historial: (maquinaId: string, params?: { fecha?: string; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.fecha) searchParams.set('fecha', params.fecha);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<HistorialGpsDTO>(`/gps/maquinas/${maquinaId}/historial${qs ? `?${qs}` : ''}`);
+  },
+
+  listarGeocercas: (params?: { search?: string; tipo?: TipoGeocerca; activa?: boolean; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.activa !== undefined) searchParams.set('activa', String(params.activa));
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<GeocercaDTO>>(`/gps/geocercas${qs ? `?${qs}` : ''}`);
+  },
+
+  crearGeocerca: (data: GeocercaInput) => apiClient.post<GeocercaDTO>('/gps/geocercas', data),
+
+  actualizarGeocerca: (id: string, data: Partial<GeocercaInput>) =>
+    apiClient.patch<GeocercaDTO>(`/gps/geocercas/${id}`, data),
+
+  eliminarGeocerca: (id: string) => apiClient.delete<{ message: string }>(`/gps/geocercas/${id}`),
+
+  /** Genera el siguiente ping de cada máquina y evalúa cruces de geocerca. */
+  simular: () => apiClient.post<SimulacionGpsDTO>('/gps/simular', {}),
+};
