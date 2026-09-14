@@ -9,6 +9,7 @@ import { useToast } from '@/components/layout/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter, FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 interface BitacorasRentaModalProps {
   isOpen: boolean;
@@ -37,7 +38,6 @@ export default function BitacorasRentaModal({
   onBitacoraCreada,
 }: BitacorasRentaModalProps) {
   const { showToast } = useToast();
-  const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
   const [bitacoras, setBitacoras] = useState<BitacoraRentaDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +102,7 @@ export default function BitacorasRentaModal({
 
     if (res.success) {
       setCaptureModalOpen(false);
-      showToast(`Hoja de Bitácora ${res.data.folio} registrada (${fmt.format(res.data.importeTotalRenta)} a facturar).`, 'success');
+      showToast(`Hoja de Bitácora ${res.data.folio} registrada (${formatCurrency(res.data.importeTotalRenta)} a facturar).`, 'success');
       fetchBitacoras();
       onBitacoraCreada?.();
     } else {
@@ -121,7 +121,7 @@ export default function BitacorasRentaModal({
       const { cuenta, bitacora } = res.data;
       setFacturarTarget(null);
       showToast(
-        `Bitácora ${bitacora.folio} facturada: CxC ${cuenta.folio} por ${fmt.format(cuenta.monto)} (vence ${cuenta.fechaVencimiento}).`,
+        `Bitácora ${bitacora.folio} facturada: CxC ${cuenta.folio} por ${formatCurrency(cuenta.monto)} (vence ${cuenta.fechaVencimiento}).`,
         'success',
       );
       fetchBitacoras();
@@ -160,7 +160,7 @@ export default function BitacorasRentaModal({
                 <div className="flex sm:flex-col items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 text-right">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Facturable</span>
                   <span className="text-xl font-black text-emerald-700">
-                    {fmt.format(bitacoras.reduce((s, b) => s + b.importeTotalRenta, 0))}
+                    {formatCurrency(bitacoras.reduce((s, b) => s + b.importeTotalRenta, 0))}
                   </span>
                 </div>
               </div>
@@ -195,7 +195,7 @@ export default function BitacorasRentaModal({
                       </div>
 
                       <div className="text-right">
-                        <span className="text-xs font-black text-slate-900">{fmt.format(b.importeTotalRenta)}</span>
+                        <span className="text-xs font-black text-slate-900">{formatCurrency(b.importeTotalRenta)}</span>
                         <span className="text-[10px] text-slate-400 ml-1">
                           ({b.horasEfectivas + b.horasExtras}h @ ${b.tarifaHoraRenta}/hr)
                         </span>
@@ -374,7 +374,7 @@ export default function BitacorasRentaModal({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400 font-semibold text-xs">Importe a facturar</span>
-                <span className="font-black text-emerald-700">{fmt.format(facturarTarget.importeTotalRenta)}</span>
+                <span className="font-black text-emerald-700">{formatCurrency(facturarTarget.importeTotalRenta)}</span>
               </div>
             </div>
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
