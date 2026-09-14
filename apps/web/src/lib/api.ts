@@ -1555,10 +1555,18 @@ export interface CandidataConciliacionDTO {
   descripcion: string;
 }
 
+/** Fila CSV inválida que el backend NO insertó; se reporta al usuario (Blocker #3). */
+export interface DescarteCsv {
+  /** Número de línea física del CSV (1-based, incluye header si existe). */
+  linea: number;
+  motivo: 'FECHA_INVALIDA' | 'MONTO_INVALIDO' | 'CAMPOS_FALTANTES';
+}
+
 export interface CargarLoteResult {
   totalMovimientos: number;
   insertados: number;
   duplicados: number;
+  descartadas: DescarteCsv[];
 }
 
 /** Candidatas a conciliar: transacciones ±3 días del movimiento con monto similar. */

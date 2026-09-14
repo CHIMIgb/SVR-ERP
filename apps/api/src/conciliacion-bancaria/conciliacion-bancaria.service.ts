@@ -583,20 +583,32 @@ export class ConciliacionBancariaService {
   }
 
   /**
-   * Une los dos últimos campos si forman un número con separador de miles sin
-   * comillas (`1,234.56` → `1,234.56`). Un banco nunca emite depósito Y retiro
-   * en la misma fila, así que dos campos numéricos consecutivos al final son un
-   * solo monto. Convención del dominio (Blocker #4): el monto único cae en la
-   * columna depósito (campo 3 del layout fecha,descripcion,deposito,retiro).
+   * Recompone un monto partido por el separador de miles cuando el CSV NO trae
+   * comillas (`1,234.56` → `1,234.56`; `1,234,567.89` → `1,234,567.89`).
+   * Dos reglas del layout bancario estándar:
+   *  - el retiro vacío llega como campo vacío final (`...,1,234.56,`), así que
+   *    se descarta ese `""` antes de unir (Blocker #3), y
+   *  - un banco nunca emite depósito Y retiro en la misma fila: los fragmentos
+   *    numéricos consecutivos al final son UN solo monto. Convención del
+   *    dominio (Blocker #4): el monto único cae en la columna depósito
+   *    (campo 3 del layout fecha,descripcion,deposito,retiro).
    */
   private unirMiles(campos: string[]): void {
-    const n = campos.length;
+    if (campos[campos.length - 1] === '') campos.pop(); // retiro vacío (layout 4 col)
+    let n = campos.length;
     if (n < 3) return;
-    const penultimo = campos[n - 2];
-    const ultimo = campos[n - 1];
-    if (/^\d{1,3}$/.test(penultimo) && /^\d{3}(?:\.\d+)?$/.test(ultimo)) {
+    let penultimo = campos[n - 2];
+    let ultimo = campos[n - 1];
+    while (
+      /^\d{1,3}$/.test(penultimo) &&
+      /^\d{3}(?:,\d{3})*(?:\.\d+)?$/.test(ultimo)
+    ) {
       campos[n - 2] = `${penultimo},${ultimo}`;
       campos.pop();
+      n--;
+      if (n < 3) break;
+      penultimo = campos[n - 2];
+      ultimo = campos[n - 1];
     }
   }
 

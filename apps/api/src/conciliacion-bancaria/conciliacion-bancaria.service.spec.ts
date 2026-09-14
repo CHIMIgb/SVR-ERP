@@ -276,6 +276,52 @@ describe('ConciliacionBancariaService', () => {
       expect(data[0]).toMatchObject({ descripcion: 'Pago proveedor', deposito: 1234.56, retiro: null });
     });
 
+    // ── Blocker #3 · Regresión fijada: layout ESTÁNDAR de 4 columnas con retiro
+    // ── vacío final (`...,1,234.56,`) y MILLONES (`...,1,234,567.89,`). El banco
+    // ── deja la fila `fecha,descripcion,deposito,retiro` con el retiro vacío al
+    // ── final (la coma queda y el monto partido corre a la izquierda). unirMiles
+    // ── debe (1) descartar ese `""` final y (2) unir TODOS los fragmentos de
+    // ── miles (millones incluidos), depositando el monto único en depósito.
+    it('debe unir miles con el retiro vacío final del layout estándar (Blocker #3: `...,1,234.56,`)', async () => {
+      const csv = '2026-09-01,Pago proveedor,1,234.56,\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({
+        totalMovimientos: 1,
+        insertados: 1,
+        duplicados: 0,
+        descartadas: [],
+      });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls[prisma.movimientos_bancarios.createMany.mock.calls.length - 1][0].data;
+      expect(data[0]).toMatchObject({ descripcion: 'Pago proveedor', deposito: 1234.56, retiro: null });
+    });
+
+    it('debe unir MILLONES con retiro vacío final (Blocker #3: `...,1,234,567.89,`)', async () => {
+      const csv = '2026-09-01,Pago proveedor,1,234,567.89,\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({
+        totalMovimientos: 1,
+        insertados: 1,
+        duplicados: 0,
+        descartadas: [],
+      });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls[prisma.movimientos_bancarios.createMany.mock.calls.length - 1][0].data;
+      expect(data[0]).toMatchObject({ descripcion: 'Pago proveedor', deposito: 1234567.89, retiro: null });
+    });
+
+    it('debe REPORTAR en descartadas el layout con depósito Y retiro (paridad crearMovimiento, Blocker #3)', async () => {
+      const csv = '2026-09-01,Ambos montos,1,234.56,700.25\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({
+        totalMovimientos: 0,
+        insertados: 0,
+        duplicados: 0,
+        descartadas: [{ linea: 1, motivo: 'MONTO_INVALIDO' }],
+      });
+    });
+
     it('debe respetar comillas en descripciones y montos (RFC 4180)', async () => {
       const csv =
         '2026-09-01,"Pago, proveedor","1,234.56",\n2026-09-02,"Factura ""X""",,500.25\n';

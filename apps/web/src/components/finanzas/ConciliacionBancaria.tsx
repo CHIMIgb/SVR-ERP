@@ -13,6 +13,7 @@ import {
   type CuentaBancariaDTO,
   type MovimientoBancarioDTO,
   type CandidataConciliacionDTO,
+  type DescarteCsv,
 } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -23,6 +24,14 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/layout/Toast';
 
 const PAGE_SIZE = 25;
+
+/** Motivo breve para cada descarte CSV en toast warning (Blocker #3): las filas
+ * que el backend no pudo leer se reportan al usuario siempre, jamás en silencio. */
+const MOTIVO_CSV: Record<DescarteCsv['motivo'], string> = {
+  FECHA_INVALIDA: 'fecha inválida',
+  MONTO_INVALIDO: 'monto inválido',
+  CAMPOS_FALTANTES: 'campos faltantes',
+};
 
 interface Props {
   puedeCrear: boolean;
@@ -268,6 +277,17 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
           `Se cargaron ${res.data.insertados} movimientos (${res.data.duplicados} duplicados omitidos).`,
           'success',
         );
+        // Blocker #3: las filas que el backend NO pudo leer no deben perderse en
+        // silencio — se avisan en un toast warning con línea + motivo de cada una.
+        const descartadas = res.data.descartadas ?? [];
+        if (descartadas.length > 0) {
+          showToast(
+            `${descartadas.length} fila(s) no cargada(s): ${descartadas
+              .map((d) => `línea ${d.linea} (${MOTIVO_CSV[d.motivo]})`)
+              .join(', ')}.`,
+            'warning',
+          );
+        }
         setCsvText('');
         setCsvOpen(false);
         refetch();
