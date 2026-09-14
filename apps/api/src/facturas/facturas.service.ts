@@ -12,7 +12,6 @@ import { CrearFacturaDto, ConceptoFacturaDto } from './dto/crear-factura.dto';
 import { ActualizarFacturaDto } from './dto/actualizar-factura.dto';
 import { CambiarEstadoFacturaDto } from './dto/cambiar-estado-factura.dto';
 import { CrearConceptoDto, ActualizarConceptoDto, ListarFacturasQuery } from './dto/conceptos.dto';
-import { constraintP2002 } from '../common/prisma-constraint';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -354,7 +353,15 @@ export class FacturasService {
         factura = await this.prisma.facturas.create({ data });
         break;
       } catch (e) {
-        if (intento < MAX_INTENTOS_FOLIO - 1 && constraintP2002(e) === 'facturas_codigo_key') {
+        // Patrón cobranza/proveedores (idioma-neutral): el único unique
+        // colisionable en este create es `codigo` (Prisma 7 driver adapters
+        // no expone meta.target; el texto del mensaje varía según el idioma
+        // de Postgres — ver PR #11 Blocker "constraintP2002 idioma").
+        if (
+          intento < MAX_INTENTOS_FOLIO - 1 &&
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
           continue; // colisión de folio: reintentar con conteo fresco
         }
         throw e;

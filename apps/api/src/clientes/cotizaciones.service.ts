@@ -17,7 +17,6 @@ import { QueryCotizacionesDto } from './dto/query-cotizaciones.dto';
 import { QueryCotizacionesGlobalDto } from './dto/query-cotizaciones-global.dto';
 import { CambiarEstadoCotizacionDto } from './dto/cambiar-estado-cotizacion.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
-import { constraintP2002 } from '../common/prisma-constraint';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -650,12 +649,18 @@ export class CotizacionesService {
           cxc: { id: cxc.id, monto: Number(cxc.monto), fechaVencimiento: cxc.fecha_vencimiento },
         };
       } catch (error) {
-        // Prisma 7 (driver adapters) no expone meta.target en P2002: la
-        // restricción se extrae vía helper común (ver common/prisma-constraint.ts).
-        const constraint = constraintP2002(error);
-
+        // Prisma 7 (driver adapters) → se detecta P2002 vía tipo+code,
+        // sin leer el texto del mensaje (idioma-neutral, patrón cobranza/
+        // proveedores — ver PR #11 Blocker "constraintP2002 idioma").
+        //
         // Colisión de folio entre facturaciones concurrentes → reintentar.
-        if (constraint === 'facturas_codigo_key') {
+        // Colisión de cotizacion_id (TX concurrente ganadora): el reintento
+        // relee la cotización y el guard transicional de negocio la detecta
+        // como ya facturada → COTIZACION_YA_FACTURADA en el siguiente viaje.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
           continue;
         }
 
@@ -670,19 +675,6 @@ export class CotizacionesService {
             esYaFacturada
               ? 'La cotización ya tiene una factura asociada'
               : 'Solo se pueden facturar cotizaciones PENDIENTES',
-            userId,
-          );
-        }
-
-        // Defensa en profundidad: el índice único (Blocker #3) bloqueó una
-        // segunda factura para la misma cotización.
-        if (constraint === 'facturas_cotizacion_id_key') {
-          return this.fallir(
-            AuditAction.COTIZACION_FACTURADA,
-            id,
-            'COTIZACION_YA_FACTURADA',
-            BadRequestException,
-            'La cotización ya tiene una factura asociada',
             userId,
           );
         }

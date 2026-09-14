@@ -14,7 +14,6 @@ import { CreateMovimientoDto } from './dto/create-movimiento.dto';
 import { ConciliarMovimientoDto } from './dto/conciliar-movimiento.dto';
 import { QueryMovimientosDto } from './dto/query-movimientos.dto';
 import { CargarLoteDto } from './dto/cargar-lote.dto';
-import { constraintP2002 } from '../common/prisma-constraint';
 
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const PAGE_SIZE = 25;
@@ -420,7 +419,12 @@ export class ConciliacionBancariaService {
       }
       // Carrera entre dos conciliaciones con la misma transacción: el segundo
       // update choca con el índice único transaccion_id (garantía atómica).
-      if (constraintP2002(e) === 'movimientos_bancarios_transaccion_id_key') {
+      // Prisma 7 no expone meta.target; el único colisionable aquí es
+      // transaccion_id → P2002 se detecta con el patrón cobranza/proveedores.
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
         return this.fallir(
           AuditAction.MOVIMIENTO_CONCILIADO,
           movimientoId,
