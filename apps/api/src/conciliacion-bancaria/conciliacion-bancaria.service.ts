@@ -20,10 +20,16 @@ const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const PAGE_SIZE = 25;
 
 interface MovimientoCsv {
-  fecha: string;
+  fecha: Date;
   descripcion: string;
   deposito: number | null;
   retiro: number | null;
+}
+
+export interface DescarteCsv {
+  /** Número de línea física del CSV (1-based, incluye header si existe). */
+  linea: number;
+  motivo: 'FECHA_INVALIDA' | 'MONTO_INVALIDO' | 'CAMPOS_FALTANTES';
 }
 
 @Injectable()
@@ -263,7 +269,7 @@ export class ConciliacionBancariaService {
 
   async cargarLote(cuentaId: string, dto: CargarLoteDto, userId: string) {
     await this.existeCuenta(cuentaId);
-    const movimientos = this.parseCsv(dto.csv);
+    const { movimientos, descartadas } = this.parseCsv(dto.csv);
     if (movimientos.length === 0) {
       return this.fallir(
         AuditAction.MOVIMIENTO_BANCARIO_LOTE_CARGADO,
@@ -287,7 +293,7 @@ export class ConciliacionBancariaService {
       existentes.map((m) => this.claveMovimiento(m.fecha, m.descripcion, m.deposito, m.retiro)),
     );
     const nuevos = movimientos.filter(
-      (m) => !clavesExistentes.has(this.claveMovimiento(new Date(`${m.fecha}T00:00:00`), m.descripcion, m.deposito, m.retiro)),
+      (m) => !clavesExistentes.has(this.claveMovimiento(m.fecha, m.descripcion, m.deposito, m.retiro)),
     );
     const insertados = nuevos.length === 0
       ? 0
@@ -295,7 +301,7 @@ export class ConciliacionBancariaService {
           data: nuevos.map((m) => ({
             id: randomUUID(),
             cuenta_id: cuentaId,
-            fecha: new Date(`${m.fecha}T00:00:00`),
+            fecha: m.fecha,
             descripcion: m.descripcion,
             deposito: m.deposito,
             retiro: m.retiro,
@@ -312,13 +318,20 @@ export class ConciliacionBancariaService {
       entityId: cuentaId,
       result: AuditResult.SUCCESS,
       actorUserId: userId,
-      newValue: { cuentaId, totalMovimientos: movimientos.length, insertados, duplicados: movimientos.length - insertados },
+      newValue: {
+        cuentaId,
+        totalMovimientos: movimientos.length,
+        insertados,
+        duplicados: movimientos.length - insertados,
+        descartadas: descartadas.length,
+      },
     });
 
     return {
       totalMovimientos: movimientos.length,
       insertados,
       duplicados: movimientos.length - insertados,
+      descartadas,
     };
   }
 
@@ -593,45 +606,91 @@ export class ConciliacionBancariaService {
   }
 
   /**
+   * Fechas de estados de cuenta bancarios MX: ISO `YYYY-MM-DD` (layout actual)
+   * y latinas `DD/MM/YYYY` o `DD-MM-YYYY`. Rechaza redondeo de calendario
+   * (`31/02/2026` → null). Devuelve el Date a medianoche local, igual que el
+   * `new Date(\`${fecha}T00:00:00\`)` previo.
+   */
+  private parseFechaCsv(raw: string | undefined): Date | null {
+    const s = raw?.trim();
+    if (!s) return null;
+
+    const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(s);
+    if (iso) {
+      const d = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    const dma = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);
+    if (dma) {
+      const dia = Number(dma[1]);
+      const mes = Number(dma[2]);
+      const anio = Number(dma[3]);
+      const d = new Date(anio, mes - 1, dia);
+      return d.getFullYear() === anio && d.getMonth() === mes - 1 && d.getDate() === dia ? d : null;
+    }
+
+    return null;
+  }
+
+  /**
    * Parser CSV: `fecha;descripcion;deposito;retiro` (o `,`), comillas simples
    * estilo RFC 4180, separador de miles `1,234.56`, BOM opcional, header
-   * opcional. Descarta filas inválidas con las mismas reglas que crearMovimiento
-   * (MONTO_AMBOS / MONTO_FALTANTE).
+   * opcional. Fechas ISO o latinas (DD/MM/YYYY, DD-MM-YYYY).
+   *
+   * Las filas inválidas NO se pierden en silencio: se reportan en `descartadas`
+   * (línea + motivo), con las mismas reglas de negocio que crearMovimiento.
+   * Visible en la respuesta de cargarLote y en la auditoría.
    */
-  private parseCsv(raw: string): MovimientoCsv[] {
+  private parseCsv(
+    raw: string,
+  ): { movimientos: MovimientoCsv[]; descartadas: DescarteCsv[] } {
     const lineas = raw
       .replace(/^\uFEFF/, '')
       .split(/\r?\n/)
       .filter((l) => l.trim().length > 0);
-    if (lineas.length === 0) return [];
+    if (lineas.length === 0) return { movimientos: [], descartadas: [] };
 
-    const resultado: MovimientoCsv[] = [];
+    const movimientos: MovimientoCsv[] = [];
+    const descartadas: DescarteCsv[] = [];
     for (let i = 0; i < lineas.length; i++) {
       // Header opcional: primera línea con "fecha" o "descripcion" se ignora.
       if (i === 0 && /fecha|descripcion/i.test(lineas[i])) continue;
+      const numLinea = i + 1;
 
       const campos = this.tokenizarCsv(lineas[i]).map((c) => c.trim());
       this.unirMiles(campos);
 
-      const [fecha, descripcion, depositoRaw, retiroRaw] = campos;
-      if (!fecha || !descripcion) continue;
+      const [fechaRaw, descripcion, depositoRaw, retiroRaw] = campos;
+      if (!fechaRaw || !descripcion) {
+        descartadas.push({ linea: numLinea, motivo: 'CAMPOS_FALTANTES' });
+        continue;
+      }
 
       const deposito = this.parseMonto(depositoRaw);
       const retiro = this.parseMonto(retiroRaw);
-      const montoValido = (deposito != null && deposito > 0) ||
-        (retiro != null && retiro > 0);
-      const fechaValida = !Number.isNaN(new Date(`${fecha}T00:00:00`).getTime());
+      const montoValido =
+        (deposito != null && deposito > 0) || (retiro != null && retiro > 0);
       // Paridad con crearMovimiento: una fila nunca es depósito Y retiro.
-      if (this.esMontoInvalido(deposito, retiro) || !montoValido || !fechaValida) continue;
+      if (this.esMontoInvalido(deposito, retiro) || !montoValido) {
+        descartadas.push({ linea: numLinea, motivo: 'MONTO_INVALIDO' });
+        continue;
+      }
 
-      resultado.push({
+      const fecha = this.parseFechaCsv(fechaRaw);
+      if (!fecha) {
+        descartadas.push({ linea: numLinea, motivo: 'FECHA_INVALIDA' });
+        continue;
+      }
+
+      movimientos.push({
         fecha,
         descripcion,
         deposito: deposito != null && deposito > 0 ? deposito : null,
         retiro: retiro != null && retiro > 0 ? retiro : null,
       });
     }
-    return resultado;
+    return { movimientos, descartadas };
   }
 
   /** Audita un fallo de negocio y lanza la excepción correspondiente. */

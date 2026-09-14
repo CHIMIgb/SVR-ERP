@@ -152,6 +152,43 @@ describe('ConciliacionBancaria Audit (Real DB)', () => {
       expect(mov!.retiro).toBeNull();
     });
 
+    it('debe aceptar fechas latinas DD/MM/YYYY, deduplicar contra ISO y reportar descartes', async () => {
+      const banco = await service.crearBanco({ nombre: `Banco Fechas ${TEST_ID}` }, ACTOR_USER_ID);
+      createdBancos.push(banco.id);
+      const cuenta = await service.crearCuenta(
+        banco.id,
+        { numero: `4444${TEST_ID}` },
+        ACTOR_USER_ID,
+      );
+      createdCuentas.push(cuenta.id);
+
+      // Primero: la misma operación con fecha ISO.
+      const csvIso = '2026-03-10,Depósito latino,1000,\n';
+      const primero = await service.cargarLote(cuenta.id, { csv: csvIso }, ACTOR_USER_ID);
+      expect(primero).toMatchObject({ totalMovimientos: 1, insertados: 1 });
+
+      // Luego: fecha latina equivalente + una fila con fecha imposible.
+      const csvLatino =
+        '10/03/2026,Depósito latino,1000,\n31/02/2026,Fecha imposible,100,\n';
+      const segundo = await service.cargarLote(cuenta.id, { csv: csvLatino }, ACTOR_USER_ID);
+
+      // La latina se deduplica contra la ISO (misma fecha normalizada); la
+      // imposible se REPORTa, no se pierde en silencio.
+      expect(segundo).toMatchObject({
+        totalMovimientos: 1,
+        insertados: 0,
+        duplicados: 1,
+      });
+      expect(segundo.descartadas).toEqual([{ linea: 2, motivo: 'FECHA_INVALIDA' }]);
+
+      // En BD: la fecha quedó como 2026-03-10 (no 10/03/1970 ni basura).
+      const mov = await prisma.movimientos_bancarios.findFirst({
+        where: { cuenta_id: cuenta.id, descripcion: 'Depósito latino' },
+      });
+      expect(mov).not.toBeNull();
+      expect((mov!.fecha as Date).toISOString().split('T')[0]).toBe('2026-03-10');
+    });
+
     it('debe conciliar depósito contra INGRESO real y desconciliar', async () => {
       const banco = await service.crearBanco({ nombre: `Banco Conc ${TEST_ID}` }, ACTOR_USER_ID);
       createdBancos.push(banco.id);
