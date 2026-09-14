@@ -58,7 +58,8 @@ describe('Proyectos Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
-    // Cleanup: proyectos → cliente (FK-safe)
+    // Cleanup: CxC de prueba → proyectos → cliente (FK-safe)
+    await prisma.cuentas_por_cobrar.deleteMany({ where: { cliente_id: clienteId } });
     if (createdProyectoIds.length > 0) {
       await prisma.proyectos.deleteMany({
         where: { id: { in: createdProyectoIds } },
@@ -170,6 +171,58 @@ describe('Proyectos Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+    });
+
+    it('debe rechazar el soft-delete mientras existan CxC abiertas y permitirlo al cancelarlas', async () => {
+      const proyecto = await service.create(
+        createDto({ estado: EstadoProyecto.EN_PROCESO }),
+        ACTOR_USER_ID,
+      );
+      createdProyectoIds.push(proyecto.id);
+
+      // CxC abierta ligada al proyecto (estado PENDIENTE).
+      const cxcId = randomUUID();
+      await prisma.cuentas_por_cobrar.create({
+        data: {
+          id: cxcId,
+          cliente_id: clienteId,
+          proyecto_id: proyecto.id,
+          monto: 50000,
+          monto_pagado: 0,
+          estado: 'PENDIENTE',
+          activo: true,
+          actualizado_en: new Date(),
+        },
+      });
+
+      // 1. Bloqueado: el proyecto NO se elimina.
+      await expect(service.remove(proyecto.id, ACTOR_USER_ID)).rejects.toThrow(
+        'cuenta(s) por cobrar abiertas',
+      );
+      const intacto = await prisma.proyectos.findUnique({
+        where: { id: proyecto.id },
+      });
+      expect(intacto?.eliminado_en).toBeNull();
+
+      const auditsFail = await findAudits(AuditAction.PROYECTO_ELIMINADO, proyecto.id);
+      expect(auditsFail[0].result).toBe('FAIL');
+      expect(auditsFail[0].error_code).toBe('PROYECTO_CON_CXC_ABIERTAS');
+
+      // 2. Pagada la CxC, el soft-delete procede (PAGADO no bloquea).
+      await prisma.cuentas_por_cobrar.update({
+        where: { id: cxcId },
+        data: { estado: 'PAGADO', monto_pagado: 50000, actualizado_en: new Date() },
+      });
+      const result = await service.remove(proyecto.id, ACTOR_USER_ID);
+      expect(result.message).toContain('eliminado');
+
+      const eliminado = await prisma.proyectos.findUnique({
+        where: { id: proyecto.id },
+      });
+      expect(eliminado?.eliminado_en).not.toBeNull();
+
+      // Cleanup FK-safe de la CxC (inmutable? no: solo registro_auditoria lo es).
+      await prisma.cuentas_por_cobrar.deleteMany({ where: { id: cxcId } });
     });
   });
 
