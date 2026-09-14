@@ -78,6 +78,7 @@ export default function FinanzasPage() {
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
+  const puedeExportar = vista?.puedeExportar ?? false;
 
   // ── Cargar datos ──
   const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
@@ -122,6 +123,19 @@ export default function FinanzasPage() {
       setFlujo(res.data);
     }
   }, []);
+
+  // ── Exportar CSV con los filtros actuales ──
+  const handleExportar = useCallback(async () => {
+    try {
+      await finanzasApi.exportar({
+        search: search || undefined,
+        tipo: filterValues.tipo as TipoTransaccionApi | undefined,
+        categoria: filterValues.categoria || undefined,
+      });
+    } catch {
+      showToast('No se pudo exportar el CSV.', 'error');
+    }
+  }, [search, filterValues, showToast]);
 
   useEffect(() => {
     const inicial = async () => {
@@ -406,9 +420,11 @@ export default function FinanzasPage() {
         subtitle="Flujo de caja, ingresos por obras y gastos operativos."
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={() => {}}>
-              Exportar
-            </Button>
+            {puedeExportar && (
+              <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={handleExportar}>
+                Exportar
+              </Button>
+            )}
             {puedeCrear && (
               <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
                 Nueva Transacción

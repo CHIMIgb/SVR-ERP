@@ -1487,6 +1487,30 @@ export const finanzasApi = {
   /** Flujo neto proyectado CxC vs CxP por ventana de vencimiento */
   flujoNeto: () =>
     apiClient.get<FlujoNetoDTO>('/finanzas/flujo-neto'),
+
+  /** Descarga un CSV de las transacciones (descarga directa del navegador). */
+  exportar: async (params?: {
+    search?: string;
+    tipo?: TipoTransaccionApi;
+    categoria?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.categoria) searchParams.set('categoria', params.categoria);
+    const qs = searchParams.toString();
+    const res = await fetch(`${API_BASE_URL}/finanzas/exportar${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    if (!res.ok) throw new Error('No se pudo exportar el CSV');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `finanzas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ────────────────────────────────────────────────────────────

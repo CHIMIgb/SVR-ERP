@@ -104,10 +104,7 @@ export class FinanzasService {
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
   // ────────────────────────────────────────────
-  async findAll(query: QueryTransaccionesDto) {
-    const page = query.page || 1;
-    const limit = Math.min(query.limit || 10, 100);
-
+  private buildWhere(query: QueryTransaccionesDto): Prisma.transaccionesWhereInput {
     const where: Prisma.transaccionesWhereInput = {
       eliminado_en: null,
     };
@@ -143,6 +140,14 @@ export class FinanzasService {
       if (query.fechaHasta) where.fecha.lte = new Date(query.fechaHasta);
     }
 
+    return where;
+  }
+
+  async findAll(query: QueryTransaccionesDto) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+    const where = this.buildWhere(query);
+
     const [items, total] = await Promise.all([
       this.prisma.transacciones.findMany({
         where,
@@ -162,6 +167,39 @@ export class FinanzasService {
         totalPages: Math.max(1, Math.ceil(total / limit)),
       },
     };
+  }
+
+  // ────────────────────────────────────────────
+  //  EXPORTAR CSV (con los filtros actuales)
+  // ────────────────────────────────────────────
+  async exportar(query: QueryTransaccionesDto) {
+    const transacciones = await this.prisma.transacciones.findMany({
+      where: this.buildWhere(query),
+      orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
+    });
+
+    const escape = (v: unknown) => {
+      const s = String(v ?? '');
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const lineas = transacciones.map((t) =>
+      [
+        t.codigo,
+        t.fecha.toISOString().slice(0, 10),
+        t.tipo,
+        t.categoria,
+        t.descripcion,
+        Number(t.monto),
+      ]
+        .map(escape)
+        .join(','),
+    );
+
+    return [
+      '\ufeffCodigo,Fecha,Tipo,Categoria,Descripcion,Monto',
+      ...lineas,
+    ].join('\n');
   }
 
   // ────────────────────────────────────────────

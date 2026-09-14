@@ -38,6 +38,7 @@ describe('FinanzasController', () => {
       items: [],
       totales: { porCobrar: 0, porPagar: 0, neto: 0 },
     }),
+    exportar: jest.fn().mockResolvedValue('\ufeffCodigo,Fecha,Tipo,Categoria,Descripcion,Monto'),
   };
 
   beforeEach(async () => {
@@ -81,6 +82,25 @@ describe('FinanzasController', () => {
       expect(result).toHaveProperty('items');
       expect(result).toHaveProperty('totales');
       expect(service.flujoNeto).toHaveBeenCalled();
+    });
+  });
+
+  describe('exportar', () => {
+    it('should stream a CSV attachment with the service output', async () => {
+      const res = {
+        setHeader: jest.fn(),
+        send: jest.fn(),
+      };
+
+      await controller.exportar({}, res as never);
+
+      expect(service.exportar).toHaveBeenCalledWith({});
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        expect.stringContaining('attachment; filename="finanzas-'),
+      );
+      expect(res.send).toHaveBeenCalledWith('\ufeffCodigo,Fecha,Tipo,Categoria,Descripcion,Monto');
     });
   });
 

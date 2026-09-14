@@ -102,6 +102,34 @@ describe('FinanzasService', () => {
     });
   });
 
+  describe('exportar', () => {
+    it('should produce a CSV with BOM and escaped values', async () => {
+      prisma.transacciones.findMany.mockResolvedValue([
+        mockTransaccion,
+        {
+          ...mockTransaccion,
+          id: '660e8400-e29b-41d4-a716-446655440010',
+          codigo: 'TRA-20260821-DEF456',
+          tipo: TipoTransaccion.EGRESO,
+          categoria: 'Proveedores',
+          monto: 4000.5,
+          fecha: new Date('2026-08-21'),
+          descripcion: 'Descripción con, coma y "comillas"',
+        },
+      ]);
+
+      const csv = await service.exportar({});
+      expect(prisma.transacciones.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ eliminado_en: null }) }),
+      );
+      expect(csv.startsWith('\ufeffCodigo,Fecha,Tipo,Categoria,Descripcion,Monto')).toBe(true);
+      expect(csv).toContain('TRA-20260820-ABC123');
+      expect(csv).toContain('4000.5');
+      // Escape RFC: comas y comillas dobles dentro de la descripción.
+      expect(csv).toContain('"Descripción con, coma y ""comillas"""');
+    });
+  });
+
   describe('findOne', () => {
     it('should return a serialized transaccion', async () => {
       const result = await service.findOne(mockTransaccion.id);
