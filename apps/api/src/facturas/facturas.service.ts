@@ -12,6 +12,7 @@ import { CrearFacturaDto, ConceptoFacturaDto } from './dto/crear-factura.dto';
 import { ActualizarFacturaDto } from './dto/actualizar-factura.dto';
 import { CambiarEstadoFacturaDto } from './dto/cambiar-estado-factura.dto';
 import { CrearConceptoDto, ActualizarConceptoDto, ListarFacturasQuery } from './dto/conceptos.dto';
+import { escapeCsv } from '../common/csv';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -228,10 +229,7 @@ export class FacturasService {
       },
     });
 
-    const escape = (v: unknown) => {
-      const s = String(v ?? '');
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
+    const escape = escapeCsv;
 
     const lineas = facturas.map((f) =>
       [

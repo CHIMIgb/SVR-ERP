@@ -14,6 +14,7 @@ import { RegistrarCobroDto } from './dto/registrar-cobro.dto';
 import { RevertirCobroDto } from './dto/revertir-cobro.dto';
 import { ListarCuentasQuery } from './dto/listar-cuentas.query';
 import { ListarCobrosQuery } from './dto/listar-cobros.query';
+import { neutralizarFormula } from '../common/csv';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -1167,7 +1168,7 @@ export class CobranzaService {
   /** Escapa y une una fila del CSV (reemplaza el helper local de exportar). */
   private csvLinea(fila: (string | number)[]): string {
     return fila
-      .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+      .map((v) => `"${neutralizarFormula(v).replace(/"/g, '""')}"`)
       .join(',');
   }
 

@@ -14,6 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateTransaccionDto } from './dto/create-transaccion.dto';
 import { UpdateTransaccionDto } from './dto/update-transaccion.dto';
 import { QueryTransaccionesDto } from './dto/query-transacciones.dto';
+import { escapeCsv } from '../common/csv';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -178,10 +179,7 @@ export class FinanzasService {
       orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
     });
 
-    const escape = (v: unknown) => {
-      const s = String(v ?? '');
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
+    const escape = escapeCsv;
 
     const lineas = transacciones.map((t) =>
       [
