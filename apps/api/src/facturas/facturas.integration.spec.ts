@@ -158,4 +158,38 @@ describe('Facturas Audit (Real DB)', () => {
     await prisma.factura_conceptos.deleteMany({ where: { factura_id: pendiente.id } });
     await prisma.facturas.deleteMany({ where: { id: pendiente.id } });
   });
+
+  it('debe crear facturas concurrentes sin colisionar el folio (reintento anti-colisión)', async () => {
+    const dto = {
+      clienteId,
+      conceptos: [{ cantidad: 1, unidad: 'pza', descripcion: 'Concurrente', valorUnitario: 100 }],
+    };
+
+    // 5 creates simultáneos: sin el reintento, varios chocarían P2002 en
+    // `codigo` (mismo count+1) y fallarían con 500.
+    const resultados = await Promise.all(
+      Array.from({ length: 5 }, () => service.create(dto as never, ACTOR_USER_ID)),
+    );
+
+    expect(resultados).toHaveLength(5);
+    const codigos = resultados.map((r) => r.codigo);
+    expect(new Set(codigos).size).toBe(5);
+    resultados.forEach((r) => expect(r.codigo).toMatch(/^FAC-\d{4}-(\d{4}|[A-F0-9]{6})$/));
+
+    // En BD: 5 facturas PENDIENTES, sin duplicados de codigo.
+    const enBd = await prisma.facturas.findMany({
+      where: { id: { in: resultados.map((r) => r.id) } },
+      select: { codigo: true },
+    });
+    expect(enBd).toHaveLength(5);
+    expect(new Set(enBd.map((f) => f.codigo)).size).toBe(5);
+
+    // Limpieza local.
+    await prisma.factura_conceptos.deleteMany({
+      where: { factura_id: { in: resultados.map((r) => r.id) } },
+    });
+    await prisma.facturas.deleteMany({
+      where: { id: { in: resultados.map((r) => r.id) } },
+    });
+  });
 });

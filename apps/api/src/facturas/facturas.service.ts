@@ -12,9 +12,18 @@ import { CrearFacturaDto, ConceptoFacturaDto } from './dto/crear-factura.dto';
 import { ActualizarFacturaDto } from './dto/actualizar-factura.dto';
 import { CambiarEstadoFacturaDto } from './dto/cambiar-estado-factura.dto';
 import { CrearConceptoDto, ActualizarConceptoDto, ListarFacturasQuery } from './dto/conceptos.dto';
+import { constraintP2002 } from '../common/prisma-constraint';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Máximo de intentos para asignar el folio secuencial FAC-YYYY-NNNN.
+ * Dos creates concurrentes pueden generar el mismo `codigo` (count+1); al
+ * chocar P2002 en el unique se reintenta con un conteo fresco (mismo patrón
+ * que `facturar` en cotizaciones). En el último intento cae el sufijo UUID.
+ */
+const MAX_INTENTOS_FOLIO = 10;
 
 const IVA_DEFAULT = 0.16;
 const TASA_II = 0.02; // IVA importación (objeto 04)
@@ -111,15 +120,6 @@ export class FacturasService {
     if ('periodoInicio' in dto && dto.periodoInicio) data.periodo_inicio = new Date(dto.periodoInicio);
     if ('periodoFin' in dto && dto.periodoFin) data.periodo_fin = new Date(dto.periodoFin);
     return data;
-  }
-
-  private async generarFolio(tx: Prisma.TransactionClient, serie: string): Promise<string> {
-    const anio = new Date().getFullYear();
-    const base = `FAC-${anio}`;
-    const total = await tx.facturas.count({
-      where: { codigo: { startsWith: base } },
-    });
-    return `${base}-${String(total + 1).padStart(4, '0')}`;
   }
 
   private async recalcularFactura(tx: Prisma.TransactionClient, facturaId: string) {
@@ -310,31 +310,60 @@ export class FacturasService {
 
     const { subtotal, impuestos, total, lineas } = this.calcularTotales(dto.conceptos);
     const serie = (dto.serie ?? 'F').toUpperCase();
-    const folio = await this.generarFolio(this.prisma as Prisma.TransactionClient, serie);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = this.facturaDataBase(dto);
-    data.id = randomUUID();
-    data.codigo = folio;
-    data.cliente_id = dto.clienteId;
-    data.serie = serie;
-    data.folio = String((await this.prisma.facturas.count()) + 1).padStart(6, '0');
-    data.subtotal = subtotal;
-    data.impuestos = impuestos;
-    data.total = total;
-    data.moneda = dto.moneda ?? 'MXN';
-    data.tipo_cambio = dto.tipoCambio ?? 1;
-    data.estado = 'PENDIENTE';
-    data.activo = true;
-    data.creado_en = new Date();
-    data.actualizado_en = new Date();
-    data.creado_por = userId;
-    data.actualizado_por = userId;
-    data.factura_conceptos = {
-      create: dto.conceptos.map((c, i) => this.conceptoData(c, lineas[i])),
-    };
+    // Folio secuencial FAC-YYYY-NNNN con reintento anti-colisión (mismo patrón
+    // que `facturar` en cotizaciones): dos creates concurrentes pueden generar
+    // el mismo `codigo` (count+1); al chocar P2002 en el unique se reintenta
+    // con un conteo fresco. En el último intento cae el sufijo UUID.
+    let factura: Prisma.facturasGetPayload<Record<string, never>> | undefined;
+    for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
+      const anio = new Date().getFullYear();
+      const conteo = await this.prisma.facturas.count({
+        where: { codigo: { startsWith: `FAC-${anio}` } },
+      });
+      const codigo =
+        intento === MAX_INTENTOS_FOLIO - 1
+          ? `FAC-${anio}-${randomUUID().slice(0, 6).toUpperCase()}`
+          : `FAC-${anio}-${String(conteo + 1).padStart(4, '0')}`;
 
-    const factura = await this.prisma.facturas.create({ data });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = this.facturaDataBase(dto);
+      data.id = randomUUID();
+      data.codigo = codigo;
+      data.cliente_id = dto.clienteId;
+      data.serie = serie;
+      // El folio numérico deriva del mismo conteo que el código (como `facturar`):
+      // una sola query count por intento y folios coherentes entre flujos.
+      data.folio = String(conteo + 1).padStart(6, '0');
+      data.subtotal = subtotal;
+      data.impuestos = impuestos;
+      data.total = total;
+      data.moneda = dto.moneda ?? 'MXN';
+      data.tipo_cambio = dto.tipoCambio ?? 1;
+      data.estado = 'PENDIENTE';
+      data.activo = true;
+      data.creado_en = new Date();
+      data.actualizado_en = new Date();
+      data.creado_por = userId;
+      data.actualizado_por = userId;
+      data.factura_conceptos = {
+        create: dto.conceptos.map((c, i) => this.conceptoData(c, lineas[i])),
+      };
+
+      try {
+        factura = await this.prisma.facturas.create({ data });
+        break;
+      } catch (e) {
+        if (intento < MAX_INTENTOS_FOLIO - 1 && constraintP2002(e) === 'facturas_codigo_key') {
+          continue; // colisión de folio: reintentar con conteo fresco
+        }
+        throw e;
+      }
+    }
+    if (!factura) {
+      // Inalcanzable: el último intento siempre lanza o asigna. Guard de tipos.
+      throw new Error('No se pudo asignar folio de factura');
+    }
 
     await this.auditService.log({
       action: AuditAction.FACTURA_CREADA,

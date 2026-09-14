@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { AuditAction, AuditResult } from '@prisma/client';
+import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { FacturasService } from './facturas.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -190,6 +190,87 @@ describe('FacturasService', () => {
         }),
       );
       expect(result.total).toBe(1160);
+    });
+
+    it('reintenta el folio cuando dos creates concurrentes colisionan en codigo', async () => {
+      prisma.clientes.findFirst.mockResolvedValue(mockCliente);
+      // Primer conteo 0 (colisión); tras el P2002 el conteo fresco sube a 1.
+      prisma.facturas.count.mockResolvedValueOnce(0).mockResolvedValue(1);
+      const errorColision = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: {
+          driverAdapterError: {
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              originalMessage: 'Unique constraint violated: «facturas_codigo_key»',
+            },
+          },
+        },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const createMock = jest
+        .fn()
+        .mockRejectedValueOnce(errorColision)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .mockImplementation(async ({ data }: any) => ({ ...mockFactura, ...data, id: FACTURA_ID }));
+      prisma.facturas.create = createMock;
+      // findOne devuelve la factura persistida: el codigo del último create.
+      prisma.facturas.findFirst.mockImplementation(async () => ({
+        ...mockFactura,
+        codigo: createMock.mock.calls[createMock.mock.calls.length - 1][0].data.codigo,
+        factura_conceptos: [mockConcepto],
+      }));
+
+      const result = await service.create(dto as never, USER_ID);
+
+      expect(createMock).toHaveBeenCalledTimes(2);
+      expect(createMock.mock.calls[0][0].data.codigo).toBe('FAC-2026-0001');
+      expect(createMock.mock.calls[1][0].data.codigo).toBe('FAC-2026-0002');
+      expect(result.codigo).toBe('FAC-2026-0002');
+    });
+
+    it('usa sufijo UUID como fallback tras agotar los reintentos', async () => {
+      prisma.clientes.findFirst.mockResolvedValue(mockCliente);
+      prisma.facturas.count.mockResolvedValue(0);
+      const errorColision = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: {
+          driverAdapterError: {
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              originalMessage: 'Unique constraint violated: «facturas_codigo_key»',
+            },
+          },
+        },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const createMock = jest
+        .fn()
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        .mockRejectedValueOnce(errorColision)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .mockImplementation(async ({ data }: any) => ({ ...mockFactura, ...data, id: FACTURA_ID }));
+      prisma.facturas.create = createMock;
+      prisma.facturas.findFirst.mockImplementation(async () => ({
+        ...mockFactura,
+        codigo: createMock.mock.calls[createMock.mock.calls.length - 1][0].data.codigo,
+        factura_conceptos: [mockConcepto],
+      }));
+
+      const result = await service.create(dto as never, USER_ID);
+
+      expect(createMock).toHaveBeenCalledTimes(10);
+      expect(createMock.mock.calls[9][0].data.codigo).toMatch(/^FAC-2026-[A-F0-9]{6}$/);
+      expect(result.codigo).toMatch(/^FAC-2026-[A-F0-9]{6}$/);
     });
   });
 
