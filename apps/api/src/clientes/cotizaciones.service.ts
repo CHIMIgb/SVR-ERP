@@ -561,9 +561,13 @@ export class CotizacionesService {
           const anio = new Date().getFullYear();
           const base = `FAC-${anio}`;
           const conteo = await tx.facturas.count({ where: { codigo: { startsWith: base } } });
+          // Sufijo único compartido: si el intento final cae al respaldo, BOTH
+          // codigo y folio se vuelven únicos (el único de serie+folio exige que
+          // el folio no repita el conteo+1 que ya colisionó).
+          const sufijo = randomUUID().slice(0, 6).toUpperCase();
           const codigo =
             intento === MAX_INTENTOS_FOLIO - 1
-              ? `${base}-${randomUUID().slice(0, 6).toUpperCase()}`
+              ? `${base}-${sufijo}`
               : `${base}-${String(conteo + 1).padStart(4, '0')}`;
           const facturaId = randomUUID();
           const factura = await tx.facturas.create({
@@ -571,7 +575,10 @@ export class CotizacionesService {
               id: facturaId,
               codigo,
               serie: 'F',
-              folio: String(conteo + 1).padStart(6, '0'),
+              folio:
+                intento === MAX_INTENTOS_FOLIO - 1
+                  ? sufijo
+                  : String(conteo + 1).padStart(6, '0'),
               cliente_id: cotizacion.cliente_id,
               cotizacion_id: id,
               subtotal: monto,

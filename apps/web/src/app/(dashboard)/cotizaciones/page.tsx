@@ -631,7 +631,7 @@ export default function CotizacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Monto (MXN)" required>
+          <ModalField label="Subtotal (MXN, antes de IVA)" required>
             <input
               type="number"
               className={modalInputClass}
@@ -641,6 +641,9 @@ export default function CotizacionesPage() {
               value={form.monto}
               onChange={(e) => setForm({ ...form, monto: e.target.value })}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              La factura se emite por este monto + IVA 16% (se aplica al aceptar con factura).
+            </p>
           </ModalField>
 
           <ModalField label="Fecha" required>
@@ -689,7 +692,7 @@ export default function CotizacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Monto (MXN)" required>
+          <ModalField label="Subtotal (MXN, antes de IVA)" required>
             <input
               type="number"
               className={modalInputClass}
@@ -699,6 +702,9 @@ export default function CotizacionesPage() {
               value={editForm.monto}
               onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              La factura se emite por este monto + IVA 16%.
+            </p>
           </ModalField>
 
           <ModalField label="Fecha" required>

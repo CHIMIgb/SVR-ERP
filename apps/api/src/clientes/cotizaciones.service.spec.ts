@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { AuditAction, AuditResult, EstadoCotizacion } from '@prisma/client';
+import { AuditAction, AuditResult, EstadoCotizacion, Prisma } from '@prisma/client';
 import { CotizacionesService } from './cotizaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,6 +12,11 @@ describe('CotizacionesService', () => {
   const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
 
   const mockClienteId = '550e8400-e29b-41d4-a716-446655440010';
+
+  const errorP2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+    code: 'P2002',
+    clientVersion: 'x',
+  });
 
   const mockCotizacion = {
     id: '490e8400-e29b-41d4-a716-446655440010',
@@ -647,6 +652,37 @@ describe('CotizacionesService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CLIENTE_NO_ENCONTRADO' }),
       );
+    });
+
+    it('debe reasignar folio al sufijo UUID en el intento final cuando el conteo+1 colisiona (Blocker #4)', async () => {
+      // El conteo nunca avanza (simula colisión persistente de count+1). Las
+      // iteraciones 0..N-1 generan el mismo codigo/folio; la última debe caer
+      // al respaldo UUID en AMBOS (codigo y folio), igual que el unique de
+      // serie+folio lo exige.
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 1 });
+      tx.facturas.count.mockResolvedValue(5); // conteo congelado → count+1 siempre colisiona
+      tx.facturas.create.mockRejectedValue(errorP2002);
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(
+        'No se pudo asignar un folio único a la factura',
+      );
+
+      // Último intento: folio = sufijo UUID, consistente con el codigo y
+      // distinto del count+1 ('000006') que ya colisionó.
+      const calls = tx.facturas.create.mock.calls;
+      const ultimo = calls[calls.length - 1][0].data;
+      expect(ultimo.folio).not.toBe('000006');
+      expect(ultimo.folio).toBe(ultimo.codigo.split('-').pop());
+      // Los intentos intermedios sí usaron el secuencial por conteo.
+      const penultimo = calls[calls.length - 2][0].data;
+      expect(penultimo.folio).toBe('000006');
     });
   });
 });

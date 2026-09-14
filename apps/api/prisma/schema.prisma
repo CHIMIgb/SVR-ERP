@@ -589,6 +589,7 @@ model facturas {
 
   @@index([cliente_id])
   @@index([estado])
+  @@unique([serie, folio])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

@@ -228,19 +228,36 @@ export class ConciliacionBancariaService {
 
     const id = randomUUID();
     const now = new Date();
-    await this.prisma.movimientos_bancarios.create({
-      data: {
-        id,
-        cuenta_id: cuentaId,
-        fecha: new Date(`${dto.fecha}T00:00:00`),
-        descripcion: dto.descripcion.trim(),
-        deposito: dto.deposito ?? null,
-        retiro: dto.retiro ?? null,
-        conciliado: false,
-        creado_por: userId,
-        actualizado_en: now,
-      },
-    });
+    try {
+      await this.prisma.movimientos_bancarios.create({
+        data: {
+          id,
+          cuenta_id: cuentaId,
+          fecha: new Date(`${dto.fecha}T00:00:00`),
+          descripcion: dto.descripcion.trim(),
+          deposito: dto.deposito ?? null,
+          retiro: dto.retiro ?? null,
+          conciliado: false,
+          creado_por: userId,
+          actualizado_en: now,
+        },
+      });
+    } catch (e) {
+      // El índice único de expresión movimientos_bancarios_dedupe_key
+      // (cuenta_id, fecha, descripcion, COALESCE montos) es la garantía real
+      // anti-duplicados: dar de alta a mano una fila idéntica a una existente
+      // choca P2002 aquí. Debe ser FAIL de negocio auditado, nunca un 500.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        return this.fallir(
+          AuditAction.MOVIMIENTO_BANCARIO_CREADO,
+          null,
+          'MOVIMIENTO_DUPLICADO',
+          ConflictException,
+          'Ya existe un movimiento con la misma fecha, descripción y monto en esta cuenta',
+        );
+      }
+      throw e;
+    }
 
     await this.auditService.log({
       action: AuditAction.MOVIMIENTO_BANCARIO_CREADO,
@@ -633,8 +650,11 @@ export class ConciliacionBancariaService {
 
     const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(s);
     if (iso) {
-      const d = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00`);
-      return Number.isNaN(d.getTime()) ? null : d;
+      const anio = Number(iso[1]);
+      const mes = Number(iso[2]);
+      const dia = Number(iso[3]);
+      const d = new Date(anio, mes - 1, dia);
+      return d.getFullYear() === anio && d.getMonth() === mes - 1 && d.getDate() === dia ? d : null;
     }
 
     const dma = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);

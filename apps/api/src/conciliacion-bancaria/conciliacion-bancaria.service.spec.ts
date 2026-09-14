@@ -236,6 +236,16 @@ describe('ConciliacionBancariaService', () => {
         expect.objectContaining({ errorCode: 'MONTO_FALTANTE', result: AuditResult.FAIL }),
       );
     });
+
+    it('debe responder MOVIMIENTO_DUPLICADO auditado (FAIL) si choca el índice único de dedupe (Blocker #2)', async () => {
+      prisma.movimientos_bancarios.create.mockRejectedValue(errorP2002);
+      await expect(
+        service.crearMovimiento(CUENTA_ID, { fecha: '2026-09-01', descripcion: 'Duplicado', deposito: 100 }, USER_ID),
+      ).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'MOVIMIENTO_DUPLICADO', result: AuditResult.FAIL }),
+      );
+    });
   });
 
   describe('cargarLote', () => {
@@ -377,6 +387,29 @@ describe('ConciliacionBancariaService', () => {
       expect(data[1]).toMatchObject({
         descripcion: 'Retiro guiones',
         fecha: new Date('2026-01-20T00:00:00'),
+      });
+    });
+
+    it('debe descartar fechas ISO que no existen (2026-02-31, 2026-04-31) sin rollover (Blocker #1)', async () => {
+      const csv =
+        '2026-02-31,Febrero imposible,100,\n2026-04-31,Abril imposible,,200\n2026-04-30,Abril válido,,300\n';
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({
+        totalMovimientos: 1,
+        insertados: 1,
+        duplicados: 0,
+        descartadas: [
+          { linea: 1, motivo: 'FECHA_INVALIDA' },
+          { linea: 2, motivo: 'FECHA_INVALIDA' },
+        ],
+      });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls[
+        prisma.movimientos_bancarios.createMany.mock.calls.length - 1
+      ][0].data;
+      expect(data[0]).toMatchObject({
+        descripcion: 'Abril válido',
+        fecha: new Date('2026-04-30T00:00:00'),
       });
     });
 

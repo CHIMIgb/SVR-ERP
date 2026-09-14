@@ -318,9 +318,12 @@ export class FacturasService {
       const conteo = await this.prisma.facturas.count({
         where: { codigo: { startsWith: `FAC-${anio}` } },
       });
+      // Sufijo único compartido: en el último intento BOTH codigo y folio caen
+      // al respaldo UUID (el unique de serie+folio exige folio único también).
+      const sufijo = randomUUID().slice(0, 6).toUpperCase();
       const codigo =
         intento === MAX_INTENTOS_FOLIO - 1
-          ? `FAC-${anio}-${randomUUID().slice(0, 6).toUpperCase()}`
+          ? `FAC-${anio}-${sufijo}`
           : `FAC-${anio}-${String(conteo + 1).padStart(4, '0')}`;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -331,7 +334,12 @@ export class FacturasService {
       data.serie = serie;
       // El folio numérico deriva del mismo conteo que el código (como `facturar`):
       // una sola query count por intento y folios coherentes entre flujos.
-      data.folio = String(conteo + 1).padStart(6, '0');
+      // En el último intento el folio usa el sufijo único (igual que codigo)
+      // para no chocar con el unique de serie+folio.
+      data.folio =
+        intento === MAX_INTENTOS_FOLIO - 1
+          ? sufijo
+          : String(conteo + 1).padStart(6, '0');
       data.subtotal = subtotal;
       data.impuestos = impuestos;
       data.total = total;
