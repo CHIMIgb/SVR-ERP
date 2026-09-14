@@ -354,7 +354,7 @@ export class ProveedoresService {
 
     if (!proveedor) {
       return this.fallir(
-        AuditAction.PROVEEDOR_ACTUALIZADO,
+        AuditAction.PROVEEDOR_CONSULTADO,
         proveedorId,
         'PROVEEDOR_NO_ENCONTRADO',
         NotFoundException,
@@ -983,6 +983,20 @@ export class ProveedoresService {
       });
 
       return nuevo;
+    }).catch(async (error: unknown) => {
+      // Folio único del abono: dos abonos concurrentes del mismo año pueden
+      // generar el mismo código (count+1 TOCTOU) → P2002 en pagos_proveedor.codigo
+      // o transacciones.codigo. Mismo patrón defensivo que createOrden.
+      if ((error as { code?: string })?.code === 'P2002') {
+        return this.fallir(
+          AuditAction.PAGO_PROVEEDOR_REGISTRADO,
+          proveedorId,
+          'CODIGO_DUPLICADO',
+          ConflictException,
+          'No se pudo generar un folio único del abono, intente nuevamente',
+        );
+      }
+      throw error;
     });
 
     await this.auditService.log({

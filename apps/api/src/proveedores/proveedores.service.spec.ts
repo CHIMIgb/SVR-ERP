@@ -330,6 +330,13 @@ describe('ProveedoresService', () => {
     it('should throw NotFoundException when proveedor not found', async () => {
       prisma.proveedores.findFirst.mockResolvedValue(null);
       await expect(service.findLedgerPorProveedor('non-existent')).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PROVEEDOR_CONSULTADO,
+          errorCode: 'PROVEEDOR_NO_ENCONTRADO',
+          result: AuditResult.FAIL,
+        }),
+      );
     });
   });
 
@@ -603,6 +610,27 @@ describe('ProveedoresService', () => {
       await service.registrarAbono(mockProveedor.id, { ...dto, monto: 1000 }, USER_ID);
       expect(prisma.ordenes_compra.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ estado: EstadoOrdenCompra.RECIBIDA }) }),
+      );
+    });
+
+    it('should map duplicate folio (P2002) to ConflictException with fallir CODIGO_DUPLICADO', async () => {
+      // Dos abonos concurrentes del mismo año generan el mismo PAG-PROV-YYYY-NNN
+      // (count+1 TOCTOU) → P2002 en pagos_proveedor.codigo único.
+      prisma.ordenes_compra.findFirst.mockResolvedValue({
+        ...mockOrden,
+        estado: EstadoOrdenCompra.APROBADA,
+      });
+      prisma.pagos_proveedor.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      await expect(service.registrarAbono(mockProveedor.id, dto, USER_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PAGO_PROVEEDOR_REGISTRADO,
+          errorCode: 'CODIGO_DUPLICADO',
+          result: AuditResult.FAIL,
+        }),
       );
     });
   });
