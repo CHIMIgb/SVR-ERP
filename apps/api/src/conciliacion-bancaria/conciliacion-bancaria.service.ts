@@ -269,7 +269,7 @@ export class ConciliacionBancariaService {
   async cargarLote(cuentaId: string, dto: CargarLoteDto, userId: string) {
     await this.existeCuenta(cuentaId);
     const { movimientos, descartadas } = this.parseCsv(dto.csv);
-    if (movimientos.length === 0 && descartadas.length === 0) {
+    if (movimientos.length === 0 && descartadas.every((d) => d.motivo === 'CAMPOS_FALTANTES')) {
       return this.fallir(
         AuditAction.MOVIMIENTO_BANCARIO_LOTE_CARGADO,
         null,
@@ -678,8 +678,8 @@ export class ConciliacionBancariaService {
       this.unirMiles(campos);
 
       const [fechaRaw, descripcion, depositoRaw, retiroRaw] = campos;
-      if (!fechaRaw || !descripcion) {
-        descartadas.push({ linea: numLinea, motivo: 'CAMPOS_FALTANTES' });
+    if (!fechaRaw || !descripcion || campos.length < 3) {
+      descartadas.push({ linea: numLinea, motivo: 'CAMPOS_FALTANTES' });
         continue;
       }
 
