@@ -335,15 +335,19 @@ describe('Cotizaciones Audit (Real DB)', () => {
       expect(factura).not.toBeNull();
       expect(factura!.cotizacion_id).toBe(cotizacion.id);
       expect(factura!.cliente_id).toBe(cliente.id);
-      expect(Number(factura!.total)).toBe(75000);
+      expect(Number(factura!.total)).toBe(87000);
+      expect(Number(factura!.impuestos)).toBe(12000);
       expect(factura!.estado).toBe('PENDIENTE');
       expect(factura!.factura_conceptos).toHaveLength(1);
       expect(factura!.factura_conceptos[0].descripcion).toBe(`A facturar ${TEST_ID}`);
+      // Desglose de IVA consistente (tasa 16% con importe acorde, no 0).
+      expect(Number(factura!.factura_conceptos[0].impuesto_tasa)).toBe(0.16);
+      expect(Number(factura!.factura_conceptos[0].impuesto_importe)).toBe(12000);
 
-      // 2. CxC creada por el total con vencimiento +30 días
+      // 2. CxC creada por el total (con IVA) con vencimiento +30 días
       const cxc = factura!.cuentas_por_cobrar;
       expect(cxc).not.toBeNull();
-      expect(Number(cxc!.monto)).toBe(75000);
+      expect(Number(cxc!.monto)).toBe(87000);
       expect(Number(cxc!.monto_pagado)).toBe(0);
       expect(cxc!.estado).toBe('PENDIENTE');
       const vencimientoEsperado = new Date();

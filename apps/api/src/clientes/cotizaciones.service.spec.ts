@@ -521,14 +521,23 @@ describe('CotizacionesService', () => {
             cotizacion_id: ID,
             cliente_id: mockClienteId,
             subtotal: 125000,
-            total: 125000,
+            impuestos: 20000,
+            total: 145000,
             estado: 'PENDIENTE',
           }),
         }),
       );
+      // Desglose de IVA consistente por concepto (tasa 16% con importe acorde).
+      const dataFactura = tx.facturas.create.mock.calls[0][0].data;
+      expect(dataFactura.factura_conceptos.create[0]).toEqual(
+        expect.objectContaining({
+          impuesto_tasa: 0.16,
+          impuesto_importe: 20000,
+        }),
+      );
       expect(tx.cuentas_por_cobrar.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ monto: 125000, estado: 'PENDIENTE' }),
+          data: expect.objectContaining({ monto: 145000, estado: 'PENDIENTE' }),
         }),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(

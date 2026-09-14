@@ -37,6 +37,9 @@ const ESTADO_LABELS: Record<EstadoCotizacion, string> = {
  */
 const MAX_INTENTOS_FOLIO = 10;
 
+/** Redondeo monetario a 2 decimales (misma convención que facturas). */
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 @Injectable()
 export class CotizacionesService {
   constructor(
@@ -515,6 +518,13 @@ export class CotizacionesService {
     }
 
     const monto = Number(cotizacion.monto);
+    // IVA 16% sobre el neto (las cotizaciones se cotizan más IVA, misma
+    // convención que el módulo de facturas: impuesto_importe = importe × tasa).
+    // La CxC se crea por el total CON IVA: si el desglose naciera mal ya no
+    // se puede corregir una vez emitida.
+    const TASA_IVA = 0.16;
+    const impuestoIva = round2(monto * TASA_IVA);
+    const totalConIva = round2(monto + impuestoIva);
 
     for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
       try {
@@ -566,8 +576,8 @@ export class CotizacionesService {
               cliente_id: cotizacion.cliente_id,
               cotizacion_id: id,
               subtotal: monto,
-              impuestos: 0,
-              total: monto,
+              impuestos: impuestoIva,
+              total: totalConIva,
               moneda: 'MXN',
               tipo_cambio: 1,
               estado: 'PENDIENTE',
@@ -587,8 +597,8 @@ export class CotizacionesService {
                     importe: monto,
                     descuento: 0,
                     objeto_impuesto: '04',
-                    impuesto_tasa: 0.16,
-                    impuesto_importe: 0,
+                    impuesto_tasa: TASA_IVA,
+                    impuesto_importe: impuestoIva,
                     activo: true,
                   },
                 ],
@@ -604,7 +614,7 @@ export class CotizacionesService {
               id: randomUUID(),
               cliente_id: cotizacion.cliente_id,
               factura_id: facturaId,
-              monto,
+              monto: totalConIva,
               monto_pagado: 0,
               fecha_vencimiento: vencimiento,
               estado: 'PENDIENTE',
