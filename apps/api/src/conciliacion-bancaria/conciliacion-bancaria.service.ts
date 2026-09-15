@@ -300,7 +300,7 @@ export class ConciliacionBancariaService {
     // La garantía real (anti-TOCTOU) es el índice único de expresión
     // movimientos_bancarios_dedupe_key (COALESCE deposito/retiro) + skipDuplicates:
     // dos importaciones concurrentes del mismo CSV colisionan en BD y se absorben
-    // atómicamente. Ver migración 20260925000000_movimientos_bancarios_dedupe_idempotente.
+    // atómicamente. Ver migración 20260925120000_movimientos_bancarios_dedupe_idempotente.
     const existentes = await this.prisma.movimientos_bancarios.findMany({
       where: { cuenta_id: cuentaId },
       select: { fecha: true, descripcion: true, deposito: true, retiro: true },
