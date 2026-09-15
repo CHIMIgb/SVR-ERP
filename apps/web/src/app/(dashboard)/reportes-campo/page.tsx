@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Wrench, Fuel, User, ClipboardCheck, Clock, MapPin,
   ShieldAlert, HardHat, Users, AlertTriangle, CheckCircle2,
-  Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal,
+  Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal, Receipt,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -51,6 +51,7 @@ const ESTADOS_FILTRO: { value: EstadoReporteApi; label: string }[] = [
   { value: 'ATENDIDO', label: 'Atendido' },
   { value: 'EN_REVISION', label: 'En Revisión' },
   { value: 'RESUELTO', label: 'Resuelto' },
+  { value: 'FACTURADO', label: 'Facturado' },
 ];
 
 const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
@@ -94,6 +95,7 @@ const estadoVariant: Record<EstadoReporte, 'warning' | 'info' | 'success' | 'pri
   Atendido: 'success',
   'En Revisión': 'primary',
   Resuelto: 'success',
+  Facturado: 'primary',
 };
 
 const prioridadVariant: Record<PrioridadReporte, 'error' | 'warning' | 'neutral' | 'info'> = {
@@ -120,6 +122,7 @@ const ESTADO_API: Record<EstadoReporte, EstadoReporteApi> = {
   Atendido: 'ATENDIDO',
   'En Revisión': 'EN_REVISION',
   Resuelto: 'RESUELTO',
+  Facturado: 'FACTURADO',
 };
 
 /** Etiqueta del botón principal — conserva los nombres originales de la vista. */
@@ -191,9 +194,12 @@ export default function ReportesCampoPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [facturarOpen, setFacturarOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReporteCampoDTO | null>(null);
+  const [facturarItem, setFacturarItem] = useState<ReporteCampoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  const [facturando, setFacturando] = useState(false);
 
   // ── Cargar catálogos de obra y máquina (una sola vez) ──
   useEffect(() => {
@@ -244,8 +250,14 @@ export default function ReportesCampoPage() {
   }, []);
 
   useEffect(() => {
-    fetchData(1);
-    fetchStats();
+    const inicial = async () => {
+      try {
+        await Promise.all([fetchData(1), fetchStats()]);
+      } catch {
+        /* manejo de error delegado a cada fetch */
+      }
+    };
+    inicial();
   }, [fetchData, fetchStats]);
 
   // ── Filtros activos (chips) ──
@@ -487,6 +499,31 @@ export default function ReportesCampoPage() {
     [showToast, refetch, fetchStats],
   );
 
+  // ── Facturar reporte Resuelto (nace la CxC) ──
+  const handleFacturar = useCallback(async () => {
+    if (!facturarItem) return;
+    setFacturando(true);
+    try {
+      const res = await reportesCampoApi.facturar(facturarItem.id);
+      if (res.success) {
+        showToast(
+          `Reporte facturado — CxC por ${formatCurrency(res.data.cuenta.monto)} creada.`,
+          'success',
+        );
+        setFacturarItem(null);
+        setFacturarOpen(false);
+        refetch();
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al facturar el reporte.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setFacturando(false);
+    }
+  }, [facturarItem, showToast, refetch, fetchStats]);
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
@@ -696,6 +733,16 @@ export default function ReportesCampoPage() {
                           Máq: {report.maquinaCodigo ?? report.maquinaNombre}
                         </div>
                       )}
+                      {report.cliente && (
+                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+                          <User className="w-3 h-3" /> Cliente: {report.cliente}
+                        </div>
+                      )}
+                      {report.montoServicio != null && (
+                        <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                          Servicio: {formatCurrency(report.montoServicio)}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -765,6 +812,23 @@ export default function ReportesCampoPage() {
                         {accion}
                       </Button>
                     )}
+                    {puedeEditar &&
+                      report.estado === 'Resuelto' &&
+                      report.cliente &&
+                      report.montoServicio != null && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={<Receipt className="w-3.5 h-3.5" />}
+                          className="w-full"
+                          onClick={() => {
+                            setFacturarItem(report);
+                            setFacturarOpen(true);
+                          }}
+                        >
+                          Facturar
+                        </Button>
+                      )}
                     {puedeEditar && report.estado === 'Pendiente' && (
                       <Button
                         variant="warning"
@@ -1051,6 +1115,35 @@ export default function ReportesCampoPage() {
             </p>
             <p className="text-xs text-slate-500 max-w-xs truncate">
               &ldquo;{selectedItem.descripcion}&rdquo;
+            </p>
+          </div>
+        )}
+      </FormModal>
+
+      <FormModal
+        open={facturarOpen}
+        onClose={() => setFacturarOpen(false)}
+        onCancel={() => setFacturarOpen(false)}
+        title="Facturar Reporte"
+        subtitle="Se creará una cuenta por cobrar al cliente. Esta acción no se puede deshacer."
+        submitLabel="Sí, Facturar"
+        cancelLabel="Cancelar"
+        onSubmit={handleFacturar}
+        isSubmitting={facturando}
+      >
+        {facturarItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+              <Receipt className="w-7 h-7 text-emerald-600" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">
+              Reporte de <strong>{facturarItem.usuario}</strong> ({facturarItem.tipo})
+            </p>
+            <p className="font-black text-slate-900 text-2xl mb-1">
+              {formatCurrency(facturarItem.montoServicio ?? 0)}
+            </p>
+            <p className="text-xs text-slate-500">
+              Cliente: {facturarItem.cliente} · Vencimiento a 30 días
             </p>
           </div>
         )}

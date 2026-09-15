@@ -44,6 +44,21 @@ describe('Clientes Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
+    // FK-safe: hijos del cliente antes que el cliente.
+    for (const id of createdClienteIds) {
+      const pagos = await prisma.pagos.findMany({
+        where: { cliente_id: id },
+        select: { id: true },
+      });
+      await prisma.transacciones.deleteMany({
+        where: { entidad_tipo: 'COBRO', entidad_id: { in: pagos.map((p) => p.id) } },
+      });
+      await prisma.pagos.deleteMany({ where: { cliente_id: id } });
+      await prisma.cuentas_por_cobrar.deleteMany({ where: { cliente_id: id } });
+      await prisma.cotizaciones.deleteMany({ where: { cliente_id: id } });
+      await prisma.facturas.deleteMany({ where: { cliente_id: id } });
+    }
+
     if (createdClienteIds.length > 0) {
       await prisma.clientes.deleteMany({
         where: { id: { in: createdClienteIds } },
@@ -167,6 +182,93 @@ describe('Clientes Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+    });
+  });
+
+  describe('CONSOLIDADO (C4)', () => {
+    it('devuelve saldo total, CxC, cobros y cotizaciones reales del cliente', async () => {
+      const dto = createDto();
+      const cliente = await service.create(dto, ACTOR_USER_ID);
+      createdClienteIds.push(cliente.id);
+
+      const cuenta = await prisma.cuentas_por_cobrar.create({
+        data: {
+          id: randomUUID(),
+          cliente_id: cliente.id,
+          monto: 10000,
+          monto_pagado: 0,
+          fecha_vencimiento: new Date('2026-08-01'),
+          estado: 'PENDIENTE',
+          activo: true,
+          actualizado_en: new Date(),
+        },
+      });
+
+      await prisma.pagos.create({
+        data: {
+          id: randomUUID(),
+          codigo: `IT-PAG-CONS-${TEST_ID}`,
+          cliente_id: cliente.id,
+          cuenta_por_cobrar_id: cuenta.id,
+          monto: 4000,
+          fecha_pago: new Date('2026-09-02'),
+          metodo_pago: 'TRANSFERENCIA',
+          referencia: `IT-CONS-${TEST_ID}`,
+          estado: 'CONFIRMADO',
+          activo: true,
+          creado_por: ACTOR_USER_ID,
+          actualizado_por: ACTOR_USER_ID,
+          actualizado_en: new Date(),
+        },
+      });
+
+      await prisma.cotizaciones.create({
+        data: {
+          id: randomUUID(),
+          codigo: `IT-COT-${TEST_ID}`,
+          cliente_id: cliente.id,
+          descripcion: 'Cotización de prueba',
+          monto: 20000,
+          fecha: new Date('2026-08-20'),
+          estado: 'ACEPTADA',
+          activo: true,
+          actualizado_en: new Date(),
+        },
+      });
+
+      const resultado = await service.consolidado(cliente.id);
+
+      expect(resultado.cliente.id).toBe(cliente.id);
+      expect(resultado.saldoTotal).toBe(10000);
+
+      const cxc = resultado.cuentasPorCobrar.find((c) => c.id === cuenta.id);
+      expect(cxc).toBeDefined();
+      expect(cxc!.monto).toBe(10000);
+      expect(cxc!.saldo).toBe(10000);
+      expect(cxc!.estado).toBe('PENDIENTE');
+
+      expect(resultado.cobros[0]).toEqual(
+        expect.objectContaining({ monto: 4000, metodoPago: 'TRANSFERENCIA', revertido: false }),
+      );
+      expect(resultado.cotizaciones[0]).toEqual(
+        expect.objectContaining({ monto: 20000, estado: 'ACEPTADA' }),
+      );
+    });
+
+    it('lanza NotFound para cliente inexistente y audita FAIL', async () => {
+      const idInexistente = randomUUID();
+
+      await expect(service.consolidado(idInexistente)).rejects.toThrow('no encontrado');
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.CLIENTE_ACTUALIZADO,
+          result: 'FAIL',
+          error_code: 'CLIENTE_NO_ENCONTRADO',
+          entity_id: idInexistente,
+        },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

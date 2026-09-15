@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -92,5 +93,17 @@ export class CotizacionesGlobalController {
   ) {
     const user = req.user as { id: string };
     return this.cotizacionesService.cambiarEstado(id, dto, user.id);
+  }
+
+  /**
+   * POST /api/cotizaciones/:id/facturar
+   * Acepta la cotización y crea factura + CxC en una transacción atómica.
+   * Permiso: comercial.cotizaciones.editar
+   */
+  @RequirePermission('comercial', 'cotizaciones', 'editar')
+  @Post(':id/facturar')
+  facturar(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.cotizacionesService.facturar(id, user.id);
   }
 }

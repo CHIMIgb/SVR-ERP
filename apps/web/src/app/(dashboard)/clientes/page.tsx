@@ -1,20 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus, Building2, Mail, Phone, FilePlus2, Pencil,
   Trash2, SlidersHorizontal, AlertCircle, Users, FolderKanban, Eye,
   FileText, Loader2, Clock, CheckCircle2, XCircle, CalendarDays, ExternalLink,
+  Wallet, HandCoins, ClipboardList, Receipt,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { SearchBar } from '@/components/ui/SearchBar';
+import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass } from '@/components/ui/Modal';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@/lib/formatters';
@@ -23,10 +26,12 @@ import {
   type ClienteDTO,
   type ClientesStats,
   type CotizacionDTO,
+  type ConsolidadoClienteDTO,
 } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 8;
+const MODAL_PAGE_SIZE = 5;
 
 // ── Form defaults ──
 const emptyForm = {
@@ -60,8 +65,10 @@ export default function ClientesPage() {
   const hasLoaded = useRef(false);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
-  // ── Estado de búsqueda ──
+  // ── Estado de búsqueda y filtros ──
   const [search, setSearch] = useState('');
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
 
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
@@ -81,6 +88,12 @@ export default function ClientesPage() {
   const [cotizacionCliente, setCotizacionCliente] = useState<ClienteDTO | null>(null);
   const [cotizacionForm, setCotizacionForm] = useState(emptyCotizacionForm);
   const [cotizacionSubmitting, setCotizacionSubmitting] = useState(false);
+  const [consolidadoOpen, setConsolidadoOpen] = useState(false);
+  const [consolidadoCliente, setConsolidadoCliente] = useState<ClienteDTO | null>(null);
+  const [consolidadoData, setConsolidadoData] = useState<ConsolidadoClienteDTO | null>(null);
+  const [consolidadoLoading, setConsolidadoLoading] = useState(false);
+  const [consolidadoTab, setConsolidadoTab] = useState<'cuentas' | 'facturas' | 'cobros' | 'cotizaciones'>('cuentas');
+  const [consolidadoPage, setConsolidadoPage] = useState(1);
 
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/clientes');
@@ -89,7 +102,7 @@ export default function ClientesPage() {
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string) => {
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {
@@ -98,6 +111,7 @@ export default function ClientesPage() {
     try {
       const res = await clientesApi.listar({
         search: searchVal || undefined,
+        activo: filters?.estado === 'inactivo' ? 'false' : filters?.estado === 'activo' ? 'true' : undefined,
         page,
         limit: PAGE_SIZE,
       });
@@ -160,18 +174,47 @@ export default function ClientesPage() {
     fetchStats();
   }, [fetchData, fetchStats]);
 
-  // ── Handlers de búsqueda / paginación ──
+  // ── Handlers de búsqueda / filtros / paginación ──
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
   }, []);
 
   const handleSearch = useCallback(() => {
-    fetchData(1, search);
-  }, [fetchData, search]);
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   const handlePageChange = useCallback((page: number) => {
-    fetchData(page, search);
+    fetchData(page, search, filterValues);
+  }, [fetchData, search, filterValues]);
+
+  const handleFilterChange = useCallback((key: string, value: string) => {
+    const next = { ...filterValues };
+    if (value) next[key] = value;
+    else delete next[key];
+    setFilterValues(next);
+    fetchData(1, search, next);
+  }, [fetchData, search, filterValues]);
+
+  const handleClearFilters = useCallback(() => {
+    setFilterValues({});
+    fetchData(1, search, {});
   }, [fetchData, search]);
+
+  const filterFields: FilterField[] = [
+    { key: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activo', label: 'Activos' }, { value: 'inactivo', label: 'Inactivos' }] },
+  ];
+
+  const activeFilters: ActiveFilter[] = useMemo(
+    () =>
+      Object.entries(filterValues)
+        .filter(([, v]) => v)
+        .map(([key, value]) => ({
+          key,
+          label: key === 'estado' ? 'Estado' : key,
+          value,
+        })),
+    [filterValues],
+  );
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
@@ -227,7 +270,7 @@ export default function ClientesPage() {
       if (res.success) {
         showToast(`Cliente "${form.empresa}" creado exitosamente.`, 'success');
         setCreateOpen(false);
-        fetchData(pagination.page, search);
+        fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
         showToast(res.error?.message || 'Error al crear cliente.', 'error');
@@ -237,7 +280,7 @@ export default function ClientesPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [form, showToast, fetchData, pagination.page, search, fetchStats]);
+  }, [form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleEdit = useCallback(async () => {
     if (!selected) return;
@@ -255,7 +298,7 @@ export default function ClientesPage() {
         showToast(`Cliente "${form.empresa}" actualizado exitosamente.`, 'success');
         setEditOpen(false);
         setSelected(null);
-        fetchData(pagination.page, search);
+        fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
         showToast(res.error?.message || 'Error al actualizar cliente.', 'error');
@@ -265,7 +308,7 @@ export default function ClientesPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [selected, form, showToast, fetchData, pagination.page, search, fetchStats]);
+  }, [selected, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -276,7 +319,7 @@ export default function ClientesPage() {
         showToast(`Cliente "${selected.empresa}" eliminado exitosamente.`, 'success');
         setDeleteOpen(false);
         setSelected(null);
-        fetchData(pagination.page, search);
+        fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
         showToast(res.error?.message || 'Error al eliminar cliente.', 'error');
@@ -286,9 +329,31 @@ export default function ClientesPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [selected, showToast, fetchData, pagination.page, search, fetchStats]);
+  }, [selected, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Handlers de acciones por fila (cotizaciones) ──
+  const openConsolidado = useCallback(async (item: ClienteDTO) => {
+    setConsolidadoCliente(item);
+    setConsolidadoData(null);
+    setConsolidadoTab('cuentas');
+    setConsolidadoOpen(true);
+    setConsolidadoLoading(true);
+    try {
+      const res = await clientesApi.consolidado(item.id);
+      if (res.success) {
+        setConsolidadoData(res.data);
+      } else {
+        setConsolidadoData(null);
+        showToast(res.error?.message || 'Error al obtener el estado de cuenta.', 'error');
+      }
+    } catch {
+      setConsolidadoData(null);
+      showToast('Error de conexión al obtener el estado de cuenta.', 'error');
+    } finally {
+      setConsolidadoLoading(false);
+    }
+  }, [showToast]);
+
   const handleNuevaCotizacion = useCallback((item: ClienteDTO) => {
     setCotizacionCliente(item);
     setCotizacionForm(emptyCotizacionForm);
@@ -405,6 +470,14 @@ export default function ClientesPage() {
             Ver
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            icon={<Wallet className="w-3.5 h-3.5" />}
+            onClick={(e) => { e.stopPropagation(); openConsolidado(item); }}
+          >
+            Cuenta
+          </Button>
+          <Button
             variant="info"
             size="sm"
             icon={<FilePlus2 className="w-3.5 h-3.5" />}
@@ -436,6 +509,52 @@ export default function ClientesPage() {
       ),
     },
   ];
+
+  // ── Columnas del modal de estado de cuenta por cliente ──
+  const estadoCuentaColumns = {
+    cuentas: [
+      { key: 'fechaVencimiento', header: 'Vencimiento', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-slate-600">{c.fechaVencimiento ?? '—'}</span> },
+      { key: 'proyecto', header: 'Proyecto', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-slate-600">{c.proyecto ? `${c.proyecto.codigo} — ${c.proyecto.nombre}` : 'Sin proyecto'}</span> },
+      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(c.monto)}</span> },
+      { key: 'montoPagado', header: 'Pagado', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-slate-600">{formatCurrency(c.montoPagado)}</span> },
+      { key: 'saldo', header: 'Saldo', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="font-bold text-slate-900">{formatCurrency(c.saldo)}</span> },
+      {
+        key: 'situacion',
+        header: 'Situación',
+        render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => {
+          if (c.situacion === 'SALDADO') return <Badge variant="success" size="sm">Saldado</Badge>;
+          if (c.situacion === 'AL_CORRIENTE') return <Badge variant="info" size="sm">Al corriente</Badge>;
+          if (c.situacion === 'ATRASO_LEVE') return <Badge variant="warning" size="sm">Atraso {c.diasAtraso} días</Badge>;
+          return <Badge variant="error" size="sm">Atraso grave {c.diasAtraso} días</Badge>;
+        },
+      },
+    ] as Column<ConsolidadoClienteDTO['cuentasPorCobrar'][number]>[],
+    facturas: [
+      { key: 'folio', header: 'Folio', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="font-semibold text-slate-800">{f.folio || f.codigo || '—'}</span> },
+      { key: 'fechaEmision', header: 'Emisión', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="text-slate-600">{f.fechaEmision ?? '—'}</span> },
+      { key: 'total', header: 'Total', align: 'right', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(f.total)}</span> },
+      { key: 'estado', header: 'Estado', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <Badge variant="neutral" size="sm">{f.estado}</Badge> },
+    ] as Column<ConsolidadoClienteDTO['facturas'][number]>[],
+    cobros: [
+      { key: 'fecha', header: 'Fecha', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-slate-600">{c.fecha ?? '—'}</span> },
+      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(c.monto)}</span> },
+      { key: 'metodoPago', header: 'Método', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-slate-600">{c.metodoPago}</span> },
+      { key: 'referencia', header: 'Referencia', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-slate-600">{c.referencia ?? '—'}</span> },
+      {
+        key: 'estado',
+        header: 'Estado',
+        render: (c: ConsolidadoClienteDTO['cobros'][number]) => c.revertido
+          ? <Badge variant="error" size="sm">Revertido</Badge>
+          : <Badge variant="success" size="sm">Confirmado</Badge>,
+      },
+    ] as Column<ConsolidadoClienteDTO['cobros'][number]>[],
+    cotizaciones: [
+      { key: 'fecha', header: 'Fecha', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="text-slate-600">{c.fecha ?? '—'}</span> },
+      { key: 'descripcion', header: 'Descripción', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="text-slate-700">{c.descripcion}</span> },
+      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(c.monto)}</span> },
+      { key: 'estado', header: 'Estado', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => estadoBadge(c.estado as CotizacionDTO['estado']) },
+    ] as Column<ConsolidadoClienteDTO['cotizaciones'][number]>[],
+  };
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -481,15 +600,34 @@ export default function ClientesPage() {
           className="flex-1"
         />
         <Button
-          variant="secondary"
+          variant={showFilters ? 'primary' : 'secondary'}
           size="md"
           icon={<SlidersHorizontal className="w-4 h-4" />}
-          onClick={() => showToast('Filtros avanzados próximamente.', 'info')}
+          onClick={() => setShowFilters((prev) => !prev)}
           className="shrink-0 whitespace-nowrap"
         >
           Filtros
+          {activeFilters.length > 0 && (
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+              {activeFilters.length}
+            </span>
+          )}
         </Button>
       </div>
+
+      <ActiveFilters
+        filters={activeFilters}
+        onRemove={(key) => handleFilterChange(key, '')}
+        onClearAll={handleClearFilters}
+      />
+
+      {showFilters && (
+        <FilterPanel
+          filters={filterFields}
+          values={filterValues}
+          onChange={handleFilterChange}
+        />
+      )}
 
       <div className="space-y-3">
         <div className="relative">
@@ -859,6 +997,152 @@ export default function ClientesPage() {
           </div>
         )}
       </FormModal>
+
+      {/* Estado de cuenta (C4) */}
+      <Modal open={consolidadoOpen} onClose={() => setConsolidadoOpen(false)} size="xl">
+        <ModalHeader
+          title={`Estado de cuenta — ${consolidadoCliente?.empresa ?? ''}`}
+          subtitle={consolidadoCliente ? `${consolidadoCliente.nombre} · ${consolidadoCliente.correo}` : ''}
+          onClose={() => setConsolidadoOpen(false)}
+        />
+        <ModalBody>
+          {consolidadoLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+          ) : consolidadoData ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
+                <StatsCard
+                  icon={<Wallet className="w-5 h-5" />}
+                  value={formatCurrency(consolidadoData.saldoTotal)}
+                  label="Saldo total"
+                  color="primary"
+                />
+                <StatsCard
+                  icon={<Receipt className="w-5 h-5" />}
+                  value={`${consolidadoData.cuentasPorCobrar.length}`}
+                  label="Cuentas por cobrar"
+                  color="info"
+                />
+                <StatsCard
+                  icon={<FileText className="w-5 h-5" />}
+                  value={`${consolidadoData.facturas.length}`}
+                  label="Facturas recientes"
+                  color="neutral"
+                />
+                <StatsCard
+                  icon={<HandCoins className="w-5 h-5" />}
+                  value={`${consolidadoData.cobros.length}`}
+                  label="Cobros recientes"
+                  color="success"
+                />
+              </div>
+
+              <Tabs
+                tabs={[
+                  { key: 'cuentas', label: 'Cuentas', icon: <Receipt className="w-4 h-4" />, count: consolidadoData.cuentasPorCobrar.length },
+                  { key: 'facturas', label: 'Facturas', icon: <FileText className="w-4 h-4" />, count: consolidadoData.facturas.length },
+                  { key: 'cobros', label: 'Cobros', icon: <HandCoins className="w-4 h-4" />, count: consolidadoData.cobros.length },
+                  { key: 'cotizaciones', label: 'Cotizaciones', icon: <ClipboardList className="w-4 h-4" />, count: consolidadoData.cotizaciones.length },
+                ]}
+                value={consolidadoTab}
+                onChange={(key) => {
+                  setConsolidadoTab(key as 'cuentas' | 'facturas' | 'cobros' | 'cotizaciones');
+                  setConsolidadoPage(1);
+                }}
+              >
+                <TabPanel tabKey="cuentas">
+                  <DataTable
+                    columns={estadoCuentaColumns.cuentas}
+                    data={consolidadoData.cuentasPorCobrar.slice(
+                      (consolidadoPage - 1) * MODAL_PAGE_SIZE,
+                      consolidadoPage * MODAL_PAGE_SIZE
+                    )}
+                    keyExtractor={(c) => c.id}
+                    emptyText="Este cliente no tiene cuentas abiertas."
+                  />
+                  <Pagination
+                    currentPage={consolidadoPage}
+                    totalPages={Math.max(1, Math.ceil(consolidadoData.cuentasPorCobrar.length / MODAL_PAGE_SIZE))}
+                    totalRecords={consolidadoData.cuentasPorCobrar.length}
+                    pageSize={MODAL_PAGE_SIZE}
+                    onPageChange={setConsolidadoPage}
+                    className="mt-3"
+                  />
+                </TabPanel>
+
+                <TabPanel tabKey="facturas">
+                  <DataTable
+                    columns={estadoCuentaColumns.facturas}
+                    data={consolidadoData.facturas.slice(
+                      (consolidadoPage - 1) * MODAL_PAGE_SIZE,
+                      consolidadoPage * MODAL_PAGE_SIZE
+                    )}
+                    keyExtractor={(f) => f.id}
+                    emptyText="Este cliente no tiene facturas recientes."
+                  />
+                  <Pagination
+                    currentPage={consolidadoPage}
+                    totalPages={Math.max(1, Math.ceil(consolidadoData.facturas.length / MODAL_PAGE_SIZE))}
+                    totalRecords={consolidadoData.facturas.length}
+                    pageSize={MODAL_PAGE_SIZE}
+                    onPageChange={setConsolidadoPage}
+                    className="mt-3"
+                  />
+                </TabPanel>
+
+                <TabPanel tabKey="cobros">
+                  <DataTable
+                    columns={estadoCuentaColumns.cobros}
+                    data={consolidadoData.cobros.slice(
+                      (consolidadoPage - 1) * MODAL_PAGE_SIZE,
+                      consolidadoPage * MODAL_PAGE_SIZE
+                    )}
+                    keyExtractor={(c) => c.id}
+                    emptyText="Este cliente no tiene cobros registrados."
+                  />
+                  <Pagination
+                    currentPage={consolidadoPage}
+                    totalPages={Math.max(1, Math.ceil(consolidadoData.cobros.length / MODAL_PAGE_SIZE))}
+                    totalRecords={consolidadoData.cobros.length}
+                    pageSize={MODAL_PAGE_SIZE}
+                    onPageChange={setConsolidadoPage}
+                    className="mt-3"
+                  />
+                </TabPanel>
+
+                <TabPanel tabKey="cotizaciones">
+                  <DataTable
+                    columns={estadoCuentaColumns.cotizaciones}
+                    data={consolidadoData.cotizaciones.slice(
+                      (consolidadoPage - 1) * MODAL_PAGE_SIZE,
+                      consolidadoPage * MODAL_PAGE_SIZE
+                    )}
+                    keyExtractor={(c) => c.id}
+                    emptyText="Este cliente no tiene cotizaciones activas."
+                  />
+                  <Pagination
+                    currentPage={consolidadoPage}
+                    totalPages={Math.max(1, Math.ceil(consolidadoData.cotizaciones.length / MODAL_PAGE_SIZE))}
+                    totalRecords={consolidadoData.cotizaciones.length}
+                    pageSize={MODAL_PAGE_SIZE}
+                    onPageChange={setConsolidadoPage}
+                    className="mt-3"
+                  />
+                </TabPanel>
+              </Tabs>
+            </>
+          ) : (
+            <EmptyState title="No hay datos" subtitle="No se pudo cargar el estado de cuenta." />
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="warning" onClick={() => setConsolidadoOpen(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { EstadoProyecto, AuditAction, AuditResult } from '@prisma/client';
 import { ProyectosService } from './proyectos.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -51,6 +51,9 @@ describe('ProyectosService', () => {
       clientes: {
         findFirst: jest.fn().mockResolvedValue(mockCliente),
         findMany: jest.fn().mockResolvedValue([mockCliente]),
+      },
+      cuentas_por_cobrar: {
+        count: jest.fn().mockResolvedValue(0),
       },
     };
 
@@ -201,6 +204,9 @@ describe('ProyectosService', () => {
   describe('remove', () => {
     it('should soft delete a proyecto and log PROYECTO_ELIMINADO', async () => {
       const result = await service.remove(mockProyecto.id, 'user-1');
+      expect(prisma.cuentas_por_cobrar.count).toHaveBeenCalledWith({
+        where: { proyecto_id: mockProyecto.id, estado: { notIn: ['CANCELADA', 'PAGADO'] } },
+      });
       expect(prisma.proyectos.update).toHaveBeenCalled();
       expect(result.message).toBe('Proyecto eliminado exitosamente');
       expect(mockAudit.log).toHaveBeenCalledWith(
@@ -209,6 +215,25 @@ describe('ProyectosService', () => {
           entityType: 'proyectos',
           actorUserId: 'user-1',
           result: AuditResult.SUCCESS,
+        }),
+      );
+    });
+
+    it('should reject soft delete if proyecto has CxC abiertas and log FAIL', async () => {
+      prisma.cuentas_por_cobrar.count.mockResolvedValue(2);
+      prisma.proyectos.update.mockClear();
+
+      await expect(service.remove(mockProyecto.id, 'user-1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.proyectos.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PROYECTO_ELIMINADO,
+          entityType: 'proyectos',
+          entityId: mockProyecto.id,
+          result: AuditResult.FAIL,
+          errorCode: 'PROYECTO_CON_CXC_ABIERTAS',
         }),
       );
     });

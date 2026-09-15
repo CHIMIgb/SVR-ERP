@@ -8,7 +8,7 @@
  * Run with: npm run test:integration -- --testPathPattern="reportes-campo"
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException } from '@nestjs/common';
+import { INestApplication, BadRequestException, ConflictException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
@@ -32,6 +32,8 @@ describe('ReportesCampo Audit (Real DB)', () => {
   let auditContext: any;
 
   const createdIds: string[] = [];
+  const cxcFacturadas: string[] = [];
+  const clientesFacturados: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -49,9 +51,20 @@ describe('ReportesCampo Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
+    // Orden FK-safe: CxC → reportes → clientes (registro_auditoria es inmutable).
+    if (cxcFacturadas.length > 0) {
+      await prisma.cuentas_por_cobrar.deleteMany({
+        where: { id: { in: cxcFacturadas } },
+      });
+    }
     if (createdIds.length > 0) {
       await prisma.reportes_campo.deleteMany({
         where: { id: { in: createdIds } },
+      });
+    }
+    if (clientesFacturados.length > 0) {
+      await prisma.clientes.deleteMany({
+        where: { id: { in: clientesFacturados } },
       });
     }
 
@@ -241,6 +254,105 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
       const audits = await findAudits(AuditAction.REPORTE_ELIMINADO, reporte.id);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+  });
+
+  describe('REPORTE_CAMPO_FACTURADO', () => {
+    const crearClienteReal = async () => {
+      const cliente = await prisma.clientes.create({
+        data: {
+          id: randomUUID(),
+          nombre: `Cliente Facturar ${TEST_ID} ${randomUUID().slice(0, 4)}`,
+          empresa: 'Empresa Test',
+          correo: '',
+          telefono: '',
+          actualizado_en: new Date(),
+        },
+      });
+      clientesFacturados.push(cliente.id);
+      return cliente;
+    };
+
+    const crearReporteResuelto = async (clienteId: string) => {
+      const reporte = await service.create(
+        createDto({ clienteId, montoServicio: 8500.5 }),
+        ACTOR_USER_ID,
+      );
+      createdIds.push(reporte.id);
+      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
+      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID);
+      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID);
+      return reporte;
+    };
+
+    it('debe crear CxC real y auditar REPORTE_CAMPO_FACTURADO + CXC_CREADA', async () => {
+      const cliente = await crearClienteReal();
+      const reporte = await crearReporteResuelto(cliente.id);
+
+      const resultado = await service.facturar(reporte.id, ACTOR_USER_ID);
+      cxcFacturadas.push(resultado.cuenta.id);
+
+      expect(resultado.cuenta).toMatchObject({
+        reporteId: reporte.id,
+        clienteId: cliente.id,
+        monto: 8500.5,
+        estado: 'PENDIENTE',
+      });
+
+      const cxc = await prisma.cuentas_por_cobrar.findUnique({
+        where: { id: resultado.cuenta.id },
+      });
+      expect(cxc?.cliente_id).toBe(cliente.id);
+      expect(Number(cxc?.monto)).toBe(8500.5);
+      expect(cxc?.estado).toBe('PENDIENTE');
+      expect(cxc?.fecha_vencimiento).not.toBeNull();
+
+      // El reporte quedó FACTURADO en BD
+      const enBD = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(enBD?.estado).toBe(EstadoReporteCampo.FACTURADO);
+
+      const audits = await findAudits(AuditAction.REPORTE_CAMPO_FACTURADO, reporte.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+
+      const auditCxc = await findAudits(AuditAction.CXC_CREADA, resultado.cuenta.id);
+      expect(auditCxc.length).toBeGreaterThanOrEqual(1);
+      expect(auditCxc[0].result).toBe('SUCCESS');
+      expect((auditCxc[0].new_value as Record<string, unknown>)?.reporteId).toBe(reporte.id);
+    });
+
+    it('debe rechazar doble clic (409) dejando una sola CxC', async () => {
+      const cliente = await crearClienteReal();
+      const reporte = await crearReporteResuelto(cliente.id);
+
+      const primera = await service.facturar(reporte.id, ACTOR_USER_ID);
+      cxcFacturadas.push(primera.cuenta.id);
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo/facturar', method: 'POST' },
+        async () => {
+          await expect(service.facturar(reporte.id, ACTOR_USER_ID)).rejects.toThrow(
+            ConflictException,
+          );
+        },
+      );
+
+      const cxcCount = await prisma.cuentas_por_cobrar.count({
+        where: { cliente_id: cliente.id },
+      });
+      expect(cxcCount).toBe(1);
+
+      // En la 2ª llamada secuencial el reporte ya está FACTURADO → guard de estado.
+      // (La carrera concurrente real la cubre el unit test con updateMany count 0 → REPORTE_YA_FACTURADO.)
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.REPORTE_CAMPO_FACTURADO,
+          result: 'FAIL',
+          error_code: 'REPORTE_NO_RESUELTO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

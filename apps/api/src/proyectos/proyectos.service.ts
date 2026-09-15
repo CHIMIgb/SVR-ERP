@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
@@ -27,6 +28,23 @@ export class ProyectosService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Audita un fallo de negocio y lanza ConflictException.
+   * Patrón estándar del repo (ver clientes/proveedores): la mutación aborta
+   * con audit FAIL + error_code antes de lanzar.
+   */
+  private async fallir(entityId: string, errorCode: string, message: string): Promise<never> {
+    await this.auditService.log({
+      action: AuditAction.PROYECTO_ELIMINADO,
+      entityType: 'proyectos',
+      entityId,
+      result: AuditResult.FAIL,
+      severity: 'WARNING',
+      errorCode,
+    });
+    throw new ConflictException(message);
+  }
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
@@ -266,6 +284,20 @@ export class ProyectosService {
 
     if (!existente) {
       throw new NotFoundException(`Proyecto con id "${id}" no encontrado`);
+    }
+
+    // No se puede eliminar un proyecto con CxC abiertas: la deuda quedaría
+    // huérfana apuntando a un proyecto eliminado. Deben cobrarse/cancelarse
+    // primero (CANCELADA/PAGADO no bloquean).
+    const cxcAbiertas = await this.prisma.cuentas_por_cobrar.count({
+      where: { proyecto_id: id, estado: { notIn: ['CANCELADA', 'PAGADO'] } },
+    });
+    if (cxcAbiertas > 0) {
+      await this.fallir(
+        id,
+        'PROYECTO_CON_CXC_ABIERTAS',
+        `No se puede eliminar el proyecto: tiene ${cxcAbiertas} cuenta(s) por cobrar abiertas. Cobre o cancele antes.`,
+      );
     }
 
     await this.prisma.proyectos.update({

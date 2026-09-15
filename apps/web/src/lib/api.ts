@@ -15,6 +15,8 @@ const API_BASE_URL =
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
+  /** Devolver la Response cruda (sin parsear JSON) — para descargas/blob. */
+  raw?: boolean;
 }
 
 // ── Access token: almacenado EN MEMORIA (no localStorage) para mitigar XSS ──
@@ -117,7 +119,7 @@ async function request<T>(
   endpoint: string,
   options: FetchOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { skipAuth, headers: customHeaders, ...fetchOptions } = options;
+  const { skipAuth, headers: customHeaders, raw, ...fetchOptions } = options;
   const url = `${API_BASE_URL}${endpoint}`;
 
   const headers: Record<string, string> = {
@@ -190,6 +192,10 @@ async function request<T>(
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'Sesión expirada' },
     };
+  }
+
+  if (raw) {
+    return response as unknown as ApiResponse<T>;
   }
 
   const data: ApiResponse<T> = await response.json();
@@ -787,12 +793,12 @@ export const proyectosApi = {
 // ────────────────────────────────────────────────────────────
 
 export type TipoReporte = 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
-export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto';
+export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto' | 'Facturado';
 export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
 
 /** Valores de enum que acepta la API en query/body (mayúsculas). */
 export type TipoReporteApi = 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
-export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO';
+export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO' | 'FACTURADO';
 export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
 
 export interface ReporteCampoDTO {
@@ -806,6 +812,11 @@ export interface ReporteCampoDTO {
   maquinaNombre: string | null;
   obraId: string | null;
   obra: string;
+  clienteId: string | null;
+  cliente: string | null;
+  proyectoId: string | null;
+  proyecto: string | null;
+  montoServicio: number | null;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -831,6 +842,9 @@ export interface ReporteCampoCreateInput {
   maquinaId?: string;
   obraId?: string;
   obraTexto: string;
+  clienteId?: string;
+  proyectoId?: string;
+  montoServicio?: number;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -875,6 +889,22 @@ export const reportesCampoApi = {
 
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/reportes-campo/${id}`),
+
+  /** Factura un reporte Resuelto con cliente + monto → nace la CxC. */
+  facturar: (id: string) =>
+    apiClient.post<{
+      cuenta: {
+        id: string;
+        reporteId: string;
+        codigo: string | null;
+        clienteId: string;
+        proyectoId: string | null;
+        monto: number;
+        fechaVencimiento: string;
+        estado: string;
+      };
+      reporte: { id: string; codigo: string | null; estado: string };
+    }>(`/reportes-campo/${id}/facturar`, {}),
 
   stats: () =>
     apiClient.get<ReportesCampoStats>('/reportes-campo/stats'),
@@ -1064,7 +1094,25 @@ export const bitacorasRentaApi = {
     apiClient.patch<BitacoraRentaDTO>(`/bitacoras-renta/${id}`, data),
 
   eliminar: (id: string) => apiClient.delete<{ message: string }>(`/bitacoras-renta/${id}`),
+
+  /** Cierra la bitácora LISTO_FACTURAR y hace nacer la CxC (O3). Permiso: rrhh.trabajadores.editar */
+  facturar: (id: string) => apiClient.post<BitacoraFacturarResponse>(`/bitacoras-renta/${id}/facturar`, undefined),
 };
+
+/** Respuesta del endpoint POST /bitacoras-renta/:id/facturar. */
+export interface BitacoraFacturarResponse {
+  cuenta: {
+    id: string;
+    bitacoraId: string;
+    folio: string;
+    clienteId: string;
+    proyectoId: string | null;
+    monto: number;
+    fechaVencimiento: string;
+    estado: 'PENDIENTE';
+  };
+  bitacora: { id: string; folio: string; estadoCobro: string };
+}
 
 // ────────────────────────────────────────────────────────────
 //  Asistencia API
@@ -1355,6 +1403,27 @@ export interface FinanzasStats {
   cantidad: number;
 }
 
+export type VentanaFlujoDTO =
+  | 'vencido'
+  | '0-30d'
+  | '31-60d'
+  | '61-90d'
+  | '+90d'
+  | 'sin_vencimiento';
+
+export interface VentanaFlujoItem {
+  ventana: VentanaFlujoDTO;
+  label: string;
+  porCobrar: number;
+  porPagar: number;
+  neto: number;
+}
+
+export interface FlujoNetoDTO {
+  items: VentanaFlujoItem[];
+  totales: { porCobrar: number; porPagar: number; neto: number };
+}
+
 export interface TransaccionCreateInput {
   tipo: TipoTransaccionApi;
   categoria: string;
@@ -1420,6 +1489,137 @@ export const finanzasApi = {
   /** Estadísticas financieras */
   stats: () =>
     apiClient.get<FinanzasStats>('/finanzas/stats'),
+
+  /** Flujo neto proyectado CxC vs CxP por ventana de vencimiento */
+  flujoNeto: () =>
+    apiClient.get<FlujoNetoDTO>('/finanzas/flujo-neto'),
+
+  /** Descarga un CSV de las transacciones (descarga directa del navegador). */
+  exportar: async (params?: {
+    search?: string;
+    tipo?: TipoTransaccionApi;
+    categoria?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.tipo) searchParams.set('tipo', params.tipo);
+    if (params?.categoria) searchParams.set('categoria', params.categoria);
+    const qs = searchParams.toString();
+    // `raw: true` hace que request() maneje el refresh 401 y devuelva la Response.
+    const res = (await request<never>(
+      `/finanzas/exportar${qs ? `?${qs}` : ''}`,
+      { method: 'GET', raw: true },
+    )) as unknown as Response;
+    if (!res.ok) throw new Error('No se pudo exportar el CSV');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `finanzas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};
+
+// ────────────────────────────────────────────────────────────
+//  Conciliación Bancaria API
+// ────────────────────────────────────────────────────────────
+export interface BancoDTO {
+  id: string;
+  nombre: string;
+  activo: boolean;
+}
+
+export interface CuentaBancariaDTO {
+  id: string;
+  bancoId: string;
+  numero: string;
+  nombre: string | null;
+  saldoInicial: number;
+  activo: boolean;
+}
+
+export interface MovimientoBancarioDTO {
+  id: string;
+  cuentaId: string;
+  fecha: string;
+  descripcion: string;
+  deposito: number | null;
+  retiro: number | null;
+  conciliado: boolean;
+  transaccionId: string | null;
+  conciliadoEn: string | null;
+  conciliadoPor: string | null;
+  creadoEn: string | null;
+}
+
+export interface CandidataConciliacionDTO {
+  id: string;
+  codigo: string | null;
+  tipo: 'INGRESO' | 'EGRESO';
+  categoria: string;
+  monto: number;
+  fecha: string;
+  descripcion: string;
+}
+
+/** Fila CSV inválida que el backend NO insertó; se reporta al usuario (Blocker #3). */
+export interface DescarteCsv {
+  /** Número de línea física del CSV (1-based, incluye header si existe). */
+  linea: number;
+  motivo: 'FECHA_INVALIDA' | 'MONTO_INVALIDO' | 'CAMPOS_FALTANTES';
+}
+
+export interface CargarLoteResult {
+  totalMovimientos: number;
+  insertados: number;
+  duplicados: number;
+  descartadas: DescarteCsv[];
+}
+
+/** Candidatas a conciliar: transacciones ±3 días del movimiento con monto similar. */
+export const conciliacionApi = {
+  bancos: () => apiClient.get<BancoDTO[]>('/finanzas/bancos'),
+
+  crearBanco: (data: { nombre: string }) =>
+    apiClient.post<BancoDTO>('/finanzas/bancos', data),
+
+  cuentas: (bancoId: string) =>
+    apiClient.get<CuentaBancariaDTO[]>(`/finanzas/bancos/${bancoId}/cuentas`),
+
+  crearCuenta: (bancoId: string, data: { numero: string; nombre?: string; saldoInicial?: number }) =>
+    apiClient.post<CuentaBancariaDTO>(`/finanzas/bancos/${bancoId}/cuentas`, data),
+
+  movimientos: (cuentaId: string, params?: { soloNoConciliados?: boolean; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.soloNoConciliados) searchParams.set('soloNoConciliados', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<MovimientoBancarioDTO>>(
+      `/finanzas/cuentas/${cuentaId}/movimientos${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  crearMovimiento: (cuentaId: string, data: { fecha: string; descripcion: string; deposito?: number; retiro?: number }) =>
+    apiClient.post<MovimientoBancarioDTO>(`/finanzas/cuentas/${cuentaId}/movimientos`, data),
+
+  cargarLote: (cuentaId: string, csv: string) =>
+    apiClient.post<CargarLoteResult>(`/finanzas/cuentas/${cuentaId}/movimientos/lote`, { csv }),
+
+  candidatas: (movimientoId: string) =>
+    apiClient.get<CandidataConciliacionDTO[]>(`/finanzas/movimientos/${movimientoId}/candidatas`),
+
+  conciliar: (movimientoId: string, transaccionId: string) =>
+    apiClient.post<{ conciliado: boolean; movimientoId: string; transaccionId: string; monto: number }>(
+      `/finanzas/movimientos/${movimientoId}/conciliar`,
+      { transaccionId },
+    ),
+
+  desconciliar: (movimientoId: string) =>
+    apiClient.delete<{ conciliado: boolean; movimientoId: string }>(
+      `/finanzas/movimientos/${movimientoId}/conciliar`,
+    ),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -1868,11 +2068,56 @@ export interface ClienteCreateInput {
   activo?: boolean;
 }
 
+export interface ConsolidadoClienteDTO {
+  cliente: ClienteDTO;
+  saldoTotal: number;
+  cuentasPorCobrar: Array<{
+    id: string;
+    facturaFolio: string | null;
+    proyecto: { id: string; codigo: string; nombre: string } | null;
+    monto: number;
+    montoPagado: number;
+    saldo: number;
+    fechaVencimiento: string | null;
+    estado: string;
+    situacion: string;
+    diasAtraso: number;
+  }>;
+  facturas: Array<{
+    id: string;
+    codigo: string | null;
+    folio: string;
+    total: number;
+    estado: string;
+    fechaEmision: string | null;
+  }>;
+  cobros: Array<{
+    id: string;
+    codigo: string | null;
+    monto: number;
+    fecha: string | null;
+    metodoPago: string;
+    referencia: string | null;
+    estado: string;
+    revertido: boolean;
+    cuentaMonto: number | null;
+  }>;
+  cotizaciones: Array<{
+    id: string;
+    codigo: string | null;
+    descripcion: string;
+    monto: number;
+    fecha: string | null;
+    estado: string;
+  }>;
+}
+
 export const clientesApi = {
-  /** Listar clientes con búsqueda y paginación */
-  listar: (params?: { search?: string; page?: number; limit?: number }) => {
+  /** Listar clientes con búsqueda, filtro de estado y paginación */
+  listar: (params?: { search?: string; activo?: 'true' | 'false'; page?: number; limit?: number }) => {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set('search', params.search);
+    if (params?.activo) searchParams.set('activo', params.activo);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();
@@ -1883,6 +2128,10 @@ export const clientesApi = {
 
   /** Obtener un cliente por ID */
   obtener: (id: string) => apiClient.get<ClienteDTO>(`/clientes/${id}`),
+
+  /** Estado de cuenta: saldo, CxC, facturas, cobros y cotizaciones */
+  consolidado: (id: string) =>
+    apiClient.get<ConsolidadoClienteDTO>(`/clientes/${id}/consolidado`),
 
   /** Crear un cliente */
   crear: (data: ClienteCreateInput) =>
@@ -1997,4 +2246,560 @@ export const cotizacionesApi = {
   /** Editar campos de la cotización (descripción, monto, fecha, cliente). */
   actualizar: (id: string, data: CotizacionUpdateInput) =>
     apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}`, data),
+
+  /** Facturar: acepta la cotización y crea factura + CxC en una transacción. */
+  facturar: (id: string) =>
+    apiClient.post<{
+      cotizacionId: string;
+      factura: { id: string; codigo: string; total: number; estado: string };
+      cxc: { id: string; monto: number; fechaVencimiento: string };
+    }>(`/cotizaciones/${id}/facturar`, {}),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Proveedores API (módulo proveedores: OC, abonos y CxP)
+//  Backend: apps/api/src/proveedores/
+// ────────────────────────────────────────────────────────────
+
+/** Estados de orden de compra serializados por el backend (enum API). */
+export type EstadoOrdenApi = 'PENDIENTE' | 'APROBADA' | 'RECIBIDA' | 'CANCELADA';
+
+export interface ProveedorDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  rfc: string | null;
+  correo: string | null;
+  telefono: string | null;
+  categoria: string;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface OrdenCompraDTO {
+  id: string;
+  folio: string;
+  proveedorId: string;
+  proveedor: string | null;
+  descripcion: string;
+  monto: number;
+  pagado: number;
+  saldo: number;
+  fecha: string; // ISO
+  estado: EstadoOrdenApi;
+  motivoCancelacion: string | null;
+  activo: boolean;
+}
+
+export interface AbonoDTO {
+  id: string;
+  codigo: string;
+  monto: number;
+  fechaPago: string; // ISO
+  metodoPago: string | null;
+  referencia: string | null;
+}
+
+export interface OrdenCompraDetalleDTO extends OrdenCompraDTO {
+  abonos: AbonoDTO[];
+}
+
+export interface EstadoCuentaResumenDTO {
+  proveedorId: string;
+  proveedor: string;
+  operaciones: number;
+  total: number;
+  pagado: number;
+  saldo: number;
+}
+
+export interface LedgerMovimientoDTO {
+  fecha: string; // ISO
+  folio: string;
+  concepto: string;
+  cargo: number;
+  abono: number;
+  saldo: number;
+  estado: string;
+}
+
+export interface LedgerDetalleDTO {
+  proveedorId: string;
+  proveedor: string;
+  movimientos: LedgerMovimientoDTO[];
+  totales: {
+    cargo: number;
+    abono: number;
+    saldo: number;
+  };
+}
+
+export interface AbonoResultDTO {
+  abono: AbonoDTO;
+  orden: OrdenCompraDTO;
+}
+
+export interface ProveedorCreateInput {
+  nombre: string;
+  rfc?: string;
+  correo?: string;
+  telefono?: string;
+  categoria: string;
+}
+
+export type ProveedorUpdateInput = Partial<ProveedorCreateInput>;
+
+export interface OrdenCompraCreateInput {
+  proveedorId: string;
+  descripcion: string;
+  monto: number;
+  fecha?: string; // YYYY-MM-DD
+}
+
+export type OrdenCompraUpdateInput = Partial<
+  Pick<OrdenCompraCreateInput, 'descripcion' | 'monto'>
+>;
+
+export interface RegistrarAbonoInput {
+  ordenCompraId: string;
+  monto: number;
+  metodoPago?: string; // EFECTIVO | TARJETA | TRANSFERENCIA | MIXTO
+}
+
+export interface CambiarEstadoOrdenInput {
+  estado: EstadoOrdenApi;
+  /** Obligatorio al cancelar (campo `motivo` del DTO backend). */
+  motivo?: string;
+}
+
+export const proveedoresApi = {
+  /** Listar proveedores con búsqueda, filtros y paginación. */
+  listar: (params?: { search?: string; categoria?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.categoria) searchParams.set('categoria', params.categoria);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<ProveedorDTO>>(`/proveedores${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<ProveedorDTO>(`/proveedores/${id}`),
+
+  crear: (data: ProveedorCreateInput) => apiClient.post<ProveedorDTO>('/proveedores', data),
+
+  actualizar: (id: string, data: ProveedorUpdateInput) =>
+    apiClient.patch<ProveedorDTO>(`/proveedores/${id}`, data),
+
+  eliminar: (id: string) => apiClient.delete<void>(`/proveedores/${id}`),
+
+  /** Resumen de estados de cuenta (proveedores con operaciones). */
+  estadosCuenta: () => apiClient.get<EstadoCuentaResumenDTO[]>('/proveedores/estados-cuenta'),
+
+  /** Ledger detalle de un proveedor: movimientos con saldo corrido + totales. */
+  ledger: (id: string) => apiClient.get<LedgerDetalleDTO>(`/proveedores/${id}/estado-cuenta`),
+
+  /** Registrar abono (pago) contra una orden; crea transacción EGRESO. */
+  abonar: (proveedorId: string, data: RegistrarAbonoInput) =>
+    apiClient.post<AbonoResultDTO>(`/proveedores/${proveedorId}/abonos`, data),
+};
+
+export const ordenesCompraApi = {
+  /** Listar órdenes de compra con búsqueda, filtros y paginación. */
+  listar: (params?: { search?: string; estado?: EstadoOrdenApi; proveedorId?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.proveedorId) searchParams.set('proveedorId', params.proveedorId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<OrdenCompraDTO>>(`/ordenes-compra${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<OrdenCompraDetalleDTO>(`/ordenes-compra/${id}`),
+
+  crear: (data: OrdenCompraCreateInput) => apiClient.post<OrdenCompraDTO>('/ordenes-compra', data),
+
+  actualizar: (id: string, data: OrdenCompraUpdateInput) =>
+    apiClient.patch<OrdenCompraDTO>(`/ordenes-compra/${id}`, data),
+
+  eliminar: (id: string) => apiClient.delete<void>(`/ordenes-compra/${id}`),
+
+  /** Aprobar / Recibir / Cancelar (cancelar requiere motivo). */
+  cambiarEstado: (id: string, data: CambiarEstadoOrdenInput) =>
+    apiClient.post<OrdenCompraDTO>(`/ordenes-compra/${id}/cambiar-estado`, data),
+};
+
+// ─── Cobranza (cuentas por cobrar) ───────────────────────────────────────────
+// Contrato consumido por la UI. Fuente real: módulo NestJS `cobranza`
+// (modelos `cuentas_por_cobrar` y `pagos`).
+
+export type EstadoCuentaCobranza = 'PENDIENTE' | 'PARCIAL' | 'SALDADO';
+export type MetodoPagoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE';
+export type SituacionCobranza = 'AL_CORRIENTE' | 'ATRASO_LEVE' | 'ATRASO_GRAVE' | 'SALDADO';
+
+export interface CuentaPorCobrarDTO {
+  id: string;
+  clienteId: string;
+  clienteNombre: string;
+  empresa: string;
+  obra: string;
+  facturaFolio: string;
+  monto: number;
+  montoPagado: number;
+  /** Saldo restante (monto - montoPagado) */
+  saldo: number;
+  /** Fecha emisión ISO (YYYY-MM-DD) */
+  fechaEmision: string;
+  /** Fecha vencimiento ISO (YYYY-MM-DD) */
+  fechaVencimiento: string;
+  /** Días de atraso (0 si está al corriente o sin vencer) */
+  diasAtraso: number;
+  estado: EstadoCuentaCobranza;
+  situacion: SituacionCobranza;
+  ultimoCobroFecha?: string;
+  /** Proyecto asignado a la cuenta (O1). Null = "Sin proyecto". */
+  proyectoId?: string | null;
+  proyecto?: { id: string; codigo: string; nombre: string } | null;
+}
+
+/** Grupo de la cartera agrupada por proyecto (endpoint /cobranza/por-proyecto). */
+export interface GrupoProyectoDTO {
+  proyecto: { id: string; codigo: string; nombre: string } | null;
+  totalCuentas: number;
+  monto: number;
+  pagado: number;
+  saldo: number;
+  vencido: number;
+}
+
+export interface PorProyectoResponse {
+  items: GrupoProyectoDTO[];
+  totales: { monto: number; pagado: number; saldo: number; vencido: number };
+}
+
+export interface CobroDTO {
+  id: string;
+  cuentaId: string;
+  clienteNombre: string;
+  monto: number;
+  /** Fecha del cobro ISO (YYYY-MM-DD) */
+  fecha: string;
+  referencia: string;
+  metodoPago: MetodoPagoCobro;
+}
+
+export interface VencimientoDTO {
+  id: string;
+  cuentaId: string;
+  clienteNombre: string;
+  obra: string;
+  monto: number;
+  fechaVencimiento: string;
+  diasAtraso: number;
+}
+
+export interface CobranzaStats {
+  totalPorCobrar: number;
+  vencido: number;
+  cobradoMes: number;
+  clientesConSaldo: number;
+}
+
+export interface CobroCreateInput {
+  monto: number;
+  fecha?: string;
+  metodoPago?: MetodoPagoCobro;
+  referencia?: string;
+}
+
+/** Ledger de cobros de una cuenta (endpoint /cobranza/:id/cobros). */
+export interface LedgerCobranzaDTO {
+  cuentaId: string;
+  saldo: number;
+  cobros: CobroDTO[];
+}
+
+export interface CobranzaCuentaCreateInput {
+  clienteId: string;
+  facturaId?: string;
+  monto: number;
+  fechaVencimiento?: string;
+}
+
+export interface CobranzaCuentaUpdateInput {
+  monto?: number;
+  fechaVencimiento?: string;
+}
+
+export const cobranzaApi = {
+  /** Listar cuentas por cobrar con búsqueda, filtros y paginación. */
+  listar: (params?: {
+    estado?: EstadoCuentaCobranza;
+    situacion?: SituacionCobranza;
+    clienteId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.situacion) searchParams.set('situacion', params.situacion);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CuentaPorCobrarDTO>>(`/cobranza${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Estadísticas globales de la cartera. */
+  stats: () => apiClient.get<CobranzaStats>('/cobranza/stats'),
+
+  /** Listar cobros (movimientos) globales con búsqueda, filtro y paginación. */
+  cobros: (params?: { metodoPago?: MetodoPagoCobro; search?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.metodoPago) searchParams.set('metodoPago', params.metodoPago);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<CobroDTO>>(`/cobranza/cobros${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Listar vencimientos (cuentas con saldo pendiente). */
+  vencimientos: (params?: { search?: string; rango?: 'vencido' | 'por_vencer'; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.rango) searchParams.set('rango', params.rango);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<VencimientoDTO>>(`/cobranza/vencimientos${qs ? `?${qs}` : ''}`);
+  },
+
+  obtener: (id: string) => apiClient.get<CuentaPorCobrarDTO>(`/cobranza/${id}`),
+
+  crearCuenta: (data: CobranzaCuentaCreateInput) =>
+    apiClient.post<CuentaPorCobrarDTO>('/cobranza', data),
+
+  actualizarCuenta: (id: string, data: CobranzaCuentaUpdateInput) =>
+    apiClient.patch<CuentaPorCobrarDTO>(`/cobranza/${id}`, data),
+
+  /** Ledger de movimientos de una cuenta. */
+  cobrosDeCuenta: (id: string) => apiClient.get<LedgerCobranzaDTO>(`/cobranza/${id}/cobros`),
+
+  /** Registrar cobro contra una cuenta; crea pago + ingreso en finanzas. */
+  registrarCobro: (id: string, data: CobroCreateInput) =>
+    apiClient.post<{ cobro: CobroDTO; cuenta: CuentaPorCobrarDTO }>(`/cobranza/${id}/cobros`, data),
+
+  /** Revierte un cobro confirmado: soft-delete del pago, la CxC vuelve a su
+   *  saldo anterior y se genera el EGRESO contable (traza inmutable). */
+  revertirCobro: (id: string, cobroId: string, motivo: string) =>
+    apiClient.post<{ cobroRevertido: { id: string; cuentaId: string; monto: number; motivo: string }; cuenta: CuentaPorCobrarDTO }>(
+      `/cobranza/${id}/cobros/${cobroId}/revertir`,
+      { motivo },
+    ),
+
+  /** Cartera agrupada por proyecto (grupo "Sin proyecto" para CxC sin asignar). */
+  porProyecto: (params?: {
+    estado?: EstadoCuentaCobranza;
+    situacion?: SituacionCobranza;
+    proyectoId?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.situacion) searchParams.set('situacion', params.situacion);
+    if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
+    if (params?.search) searchParams.set('search', params.search);
+    const qs = searchParams.toString();
+    return apiClient.get<PorProyectoResponse>(`/cobranza/por-proyecto${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Descarga el CSV agrupado por proyecto (descarga directa, BOM UTF-8). */
+  exportarPorProyecto: async (params?: {
+    estado?: EstadoCuentaCobranza;
+    situacion?: SituacionCobranza;
+    proyectoId?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.situacion) searchParams.set('situacion', params.situacion);
+    if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
+    if (params?.search) searchParams.set('search', params.search);
+    const qs = searchParams.toString();
+    // `raw: true` → request() maneja el refresh 401 y devuelve la Response.
+    const res = (await request<never>(
+      `/cobranza/por-proyecto/exportar${qs ? `?${qs}` : ''}`,
+      { method: 'GET', raw: true },
+    )) as unknown as Response;
+    if (!res.ok) throw new Error('No se pudo exportar el CSV');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cobranza-por-proyecto-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};
+
+// ────────────────────────────────────────────────────────────
+//  Facturas API (módulo facturas)
+//  Backend: apps/api/src/facturas/
+// ────────────────────────────────────────────────────────────
+
+/** Estados de factura serializados por el backend (string del modelo `facturas`). */
+export type EstadoFacturaApi = 'PENDIENTE' | 'TIMBRADA' | 'PAGADA' | 'CANCELADA';
+
+export interface FacturaDTO {
+  id: string;
+  codigo: string;
+  serie: string;
+  folio: string;
+  clienteId: string;
+  clienteNombre: string;
+  empresa: string;
+  rfc: string;
+  cotizacionId: string | null;
+  cotizacionCodigo: string | null;
+  subtotal: number;
+  impuestos: number;
+  total: number;
+  moneda: string;
+  tipoCambio: number;
+  formaPago: string;
+  metodoPago: string;
+  usoCfdi: string;
+  estado: string;
+  timbradoEn: string | null;
+  fechaEmision: string;
+  periodoInicio: string | null;
+  periodoFin: string | null;
+  conceptos: FacturaConceptoDTO[];
+  cuentaPorCobrar: { id: string; estado: string; montoPagado: number } | null;
+}
+
+export interface FacturaConceptoDTO {
+  id: string;
+  cantidad: number;
+  unidad: string;
+  descripcion: string;
+  valorUnitario: number;
+  importe: number;
+  descuento: number;
+  objetoImpuesto: string;
+  impuestoTasa: number;
+  impuestoImporte: number;
+}
+
+export interface FacturasStats {
+  total: number;
+  pendientes: number;
+  timbradas: number;
+  canceladas: number;
+  montoTotal: number;
+}
+
+export interface FacturaCreateInput {
+  clienteId: string;
+  serie?: string;
+  formaPago?: string;
+  metodoPago?: string;
+  usoCfdi?: string;
+  conceptos: {
+    cantidad: number;
+    unidad: string;
+    descripcion: string;
+    valorUnitario: number;
+    objetoImpuesto?: string;
+  }[];
+}
+
+export interface FacturaEstadoInput {
+  estado: 'TIMBRADA' | 'CANCELADA';
+  motivoCancelacion?: string;
+}
+
+export const facturasApi = {
+  /** Listar facturas con búsqueda, filtros y paginación. */
+  listar: (params?: {
+    search?: string;
+    estado?: string;
+    clienteId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<FacturaDTO>>(`/facturas${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Detalle de una factura. */
+  obtener: (id: string) => apiClient.get<FacturaDTO>(`/facturas/${id}`),
+
+  /** Crear una factura en estado PENDIENTE. */
+  crear: (data: FacturaCreateInput) => apiClient.post<FacturaDTO>('/facturas', data),
+
+  /** Actualizar datos fiscales de una factura PENDIENTE. */
+  actualizar: (id: string, data: Partial<FacturaCreateInput>) =>
+    apiClient.patch<FacturaDTO>(`/facturas/${id}`, data),
+
+  /** Cambiar estado (PENDIENTE→TIMBRADA, PENDIENTE→CANCELADA). */
+  cambiarEstado: (id: string, data: FacturaEstadoInput) =>
+    apiClient.patch<FacturaDTO>(`/facturas/${id}/estado`, data),
+
+  /** Eliminar (soft delete) una factura PENDIENTE sin CxC. */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/facturas/${id}`),
+
+  /** Agregar concepto a una factura PENDIENTE. */
+  agregarConcepto: (
+    id: string,
+    data: { cantidad: number; unidad: string; descripcion: string; valorUnitario: number; objetoImpuesto?: string },
+  ) => apiClient.post<FacturaDTO>(`/facturas/${id}/conceptos`, data),
+
+  /** Actualizar concepto y recalcular totales. */
+  actualizarConcepto: (
+    id: string,
+    conceptoId: string,
+    data: { cantidad?: number; unidad?: string; descripcion?: string; valorUnitario?: number; objetoImpuesto?: string; impuestoTasa?: number | null },
+  ) => apiClient.patch<FacturaDTO>(`/facturas/${id}/conceptos/${conceptoId}`, data),
+
+  /** Eliminar concepto y recalcular totales. */
+  eliminarConcepto: (id: string, conceptoId: string) =>
+    apiClient.delete<FacturaDTO>(`/facturas/${id}/conceptos/${conceptoId}`),
+
+  /** Estadísticas globales para las StatsCards. */
+  stats: () => apiClient.get<FacturasStats>('/facturas/stats'),
+
+  /** Descarga un CSV de las facturas (descarga directa del navegador). */
+  exportar: async (params?: { search?: string; estado?: string; clienteId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    const qs = searchParams.toString();
+    // `raw: true` → request() maneja el refresh 401 y devuelve la Response.
+    const res = (await request<never>(
+      `/facturas/exportar${qs ? `?${qs}` : ''}`,
+      { method: 'GET', raw: true },
+    )) as unknown as Response;
+    if (!res.ok) throw new Error('No se pudo exportar el CSV');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `facturas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };

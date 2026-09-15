@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -392,6 +392,141 @@ export class BitacorasRentaService {
     });
 
     return { message: 'Bitácora de renta eliminada exitosamente' };
+  }
+
+  // ────────────────────────────────────────────
+  //  FACTURAR (Bitácora LISTO_FACTURAR → CxC, O3)
+  // ────────────────────────────────────────────
+  /**
+   * Cierra la bitácora facturada y hace nacer la CxC en una sola transacción:
+   * estado FACTURADO (guard anti doble clic) + cuenta por cobrar PENDIENTE a
+   * 30 días, derivando el proyecto desde la obra (nullable).
+   * Emite los audits BITACORA_FACTURADA + CXC_CREADA (SUCCESS).
+   * Permiso: rrhh.trabajadores.editar
+   */
+  async facturar(id: string, userId: string) {
+    const bitacora = await this.prisma.bitacoras_renta_diaria.findFirst({
+      where: { id, eliminado_en: null },
+      include: { obras: { select: { proyecto_id: true } } },
+    });
+
+    if (!bitacora) {
+      return this.fallir(
+        AuditAction.BITACORA_FACTURADA,
+        id,
+        'BITACORA_NO_ENCONTRADA',
+        NotFoundException,
+        `Bitácora de renta con id "${id}" no encontrada`,
+      );
+    }
+
+    if (bitacora.estado_cobro !== 'LISTO_FACTURAR') {
+      return this.fallir(
+        AuditAction.BITACORA_FACTURADA,
+        id,
+        'BITACORA_NO_LISTA_FACTURAR',
+        ConflictException,
+        bitacora.estado_cobro === 'PENDIENTE_FIRMA'
+          ? 'La bitácora no está lista para facturar: falta la firma del cliente'
+          : 'La bitácora ya fue facturada',
+      );
+    }
+
+    const cliente = await this.prisma.clientes.findFirst({
+      where: { id: bitacora.cliente_id, activo: true, eliminado_en: null },
+      select: { id: true },
+    });
+    if (!cliente) {
+      return this.fallir(
+        AuditAction.BITACORA_FACTURADA,
+        id,
+        'CLIENTE_INACTIVO',
+        ConflictException,
+        'El cliente de la bitácora está inactivo',
+      );
+    }
+
+    const proyectoId = bitacora.obras?.proyecto_id ?? null;
+    const now = new Date();
+    const vencimiento = new Date();
+    vencimiento.setDate(vencimiento.getDate() + 30);
+    const idCxc = randomUUID();
+    const monto = Number(bitacora.importe_total_renta);
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Guard anti doble clic: solo marca FACTURADO la fila que sigue LISTO_FACTURAR.
+        const actualizada = await tx.bitacoras_renta_diaria.updateMany({
+          where: { id, estado_cobro: 'LISTO_FACTURAR' },
+          data: { estado_cobro: 'FACTURADO', actualizado_por: userId, actualizado_en: now },
+        });
+        if (actualizada.count === 0) {
+          throw new ConflictException('La bitácora ya fue facturada');
+        }
+
+        await tx.cuentas_por_cobrar.create({
+          data: {
+            id: idCxc,
+            cliente_id: bitacora.cliente_id,
+            bitacora_id: id,
+            proyecto_id: proyectoId,
+            monto,
+            fecha_vencimiento: vencimiento,
+            estado: 'PENDIENTE',
+            activo: true,
+            actualizado_en: now,
+          },
+        });
+      });
+    } catch (e) {
+      // Carrera de doble clic: el updateMany no marcó nada → conflicto con audit FAIL.
+      if (e instanceof ConflictException) {
+        return this.fallir(
+          AuditAction.BITACORA_FACTURADA,
+          id,
+          'BITACORA_YA_FACTURADA',
+          ConflictException,
+          'La bitácora ya fue facturada',
+        );
+      }
+      throw e;
+    }
+
+    await this.auditService.log({
+      action: AuditAction.BITACORA_FACTURADA,
+      entityType: ENTITY_TYPE,
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { folio: bitacora.folio, importe: monto, proyectoId, cuentaId: idCxc },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.CXC_CREADA,
+      entityType: 'cuentas_por_cobrar',
+      entityId: idCxc,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { bitacoraId: id, folio: bitacora.folio, monto, proyectoId, vencimiento: vencimiento.toISOString().slice(0, 10) },
+    });
+
+    return {
+      cuenta: {
+        id: idCxc,
+        bitacoraId: id,
+        folio: bitacora.folio,
+        clienteId: bitacora.cliente_id,
+        proyectoId,
+        monto,
+        fechaVencimiento: vencimiento.toISOString().slice(0, 10),
+        estado: 'PENDIENTE',
+      },
+      bitacora: { id, folio: bitacora.folio, estadoCobro: 'Facturado' },
+    };
   }
 
   /** Convierte "HH:mm" a un Date anclado en UTC para columnas @db.Time (ver nota en trabajadores.service.ts). */
