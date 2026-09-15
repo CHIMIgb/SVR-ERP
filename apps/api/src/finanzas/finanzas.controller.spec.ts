@@ -91,10 +91,11 @@ describe('FinanzasController', () => {
         setHeader: jest.fn(),
         send: jest.fn(),
       };
+      const req = { user: { id: 'user-1' } };
 
-      await controller.exportar({}, res as never);
+      await controller.exportar({}, req as never, res as never);
 
-      expect(service.exportar).toHaveBeenCalledWith({});
+      expect(service.exportar).toHaveBeenCalledWith({}, 'user-1');
       expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
       expect(res.setHeader).toHaveBeenCalledWith(
         'Content-Disposition',

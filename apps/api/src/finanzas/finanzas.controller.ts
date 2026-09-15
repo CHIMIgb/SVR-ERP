@@ -52,8 +52,13 @@ export class FinanzasController {
    */
   @Get('exportar')
   @RequirePermission('comercial', 'finanzas', 'exportar')
-  async exportar(@Query() query: QueryTransaccionesDto, @Res() res: Response) {
-    const csv = await this.finanzasService.exportar(query);
+  async exportar(
+    @Query() query: QueryTransaccionesDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as { id: string };
+    const csv = await this.finanzasService.exportar(query, user.id);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',

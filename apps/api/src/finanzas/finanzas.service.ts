@@ -173,7 +173,7 @@ export class FinanzasService {
   // ────────────────────────────────────────────
   //  EXPORTAR CSV (con los filtros actuales)
   // ────────────────────────────────────────────
-  async exportar(query: QueryTransaccionesDto) {
+  async exportar(query: QueryTransaccionesDto, userId: string) {
     const transacciones = await this.prisma.transacciones.findMany({
       where: this.buildWhere(query),
       orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
@@ -193,6 +193,17 @@ export class FinanzasService {
         .map(escape)
         .join(','),
     );
+
+    await this.auditService.log({
+      action: AuditAction.TRANSACCION_EXPORTADA,
+      entityType: 'transacciones',
+      entityId: ENTITY_PLACEHOLDER,
+      result: AuditResult.SUCCESS,
+      severity: 'INFO',
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+    });
 
     return [
       '\ufeffCodigo,Fecha,Tipo,Categoria,Descripcion,Monto',

@@ -15,6 +15,8 @@ const API_BASE_URL =
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
+  /** Devolver la Response cruda (sin parsear JSON) — para descargas/blob. */
+  raw?: boolean;
 }
 
 // ── Access token: almacenado EN MEMORIA (no localStorage) para mitigar XSS ──
@@ -117,7 +119,7 @@ async function request<T>(
   endpoint: string,
   options: FetchOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { skipAuth, headers: customHeaders, ...fetchOptions } = options;
+  const { skipAuth, headers: customHeaders, raw, ...fetchOptions } = options;
   const url = `${API_BASE_URL}${endpoint}`;
 
   const headers: Record<string, string> = {
@@ -190,6 +192,10 @@ async function request<T>(
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'Sesión expirada' },
     };
+  }
+
+  if (raw) {
+    return response as unknown as ApiResponse<T>;
   }
 
   const data: ApiResponse<T> = await response.json();
@@ -1499,9 +1505,11 @@ export const finanzasApi = {
     if (params?.tipo) searchParams.set('tipo', params.tipo);
     if (params?.categoria) searchParams.set('categoria', params.categoria);
     const qs = searchParams.toString();
-    const res = await fetch(`${API_BASE_URL}/finanzas/exportar${qs ? `?${qs}` : ''}`, {
-      headers: { Authorization: `Bearer ${getAccessToken()}` },
-    });
+    // `raw: true` hace que request() maneje el refresh 401 y devuelva la Response.
+    const res = (await request<never>(
+      `/finanzas/exportar${qs ? `?${qs}` : ''}`,
+      { method: 'GET', raw: true },
+    )) as unknown as Response;
     if (!res.ok) throw new Error('No se pudo exportar el CSV');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -2624,9 +2632,11 @@ export const cobranzaApi = {
     if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
     if (params?.search) searchParams.set('search', params.search);
     const qs = searchParams.toString();
-    const res = await fetch(`${API_BASE_URL}/cobranza/por-proyecto/exportar${qs ? `?${qs}` : ''}`, {
-      headers: { Authorization: `Bearer ${getAccessToken()}` },
-    });
+    // `raw: true` → request() maneja el refresh 401 y devuelve la Response.
+    const res = (await request<never>(
+      `/cobranza/por-proyecto/exportar${qs ? `?${qs}` : ''}`,
+      { method: 'GET', raw: true },
+    )) as unknown as Response;
     if (!res.ok) throw new Error('No se pudo exportar el CSV');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -2778,9 +2788,11 @@ export const facturasApi = {
     if (params?.estado) searchParams.set('estado', params.estado);
     if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
     const qs = searchParams.toString();
-    const res = await fetch(`${API_BASE_URL}/facturas/exportar${qs ? `?${qs}` : ''}`, {
-      headers: { Authorization: `Bearer ${getAccessToken()}` },
-    });
+    // `raw: true` → request() maneja el refresh 401 y devuelve la Response.
+    const res = (await request<never>(
+      `/facturas/exportar${qs ? `?${qs}` : ''}`,
+      { method: 'GET', raw: true },
+    )) as unknown as Response;
     if (!res.ok) throw new Error('No se pudo exportar el CSV');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);

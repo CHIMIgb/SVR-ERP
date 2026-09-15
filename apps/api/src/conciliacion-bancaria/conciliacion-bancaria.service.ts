@@ -681,17 +681,22 @@ export class ConciliacionBancariaService {
   private parseCsv(
     raw: string,
   ): { movimientos: MovimientoCsv[]; descartadas: DescarteCsv[] } {
-    const lineas = raw
-      .replace(/^\uFEFF/, '')
-      .split(/\r?\n/)
-      .filter((l) => l.trim().length > 0);
-    if (lineas.length === 0) return { movimientos: [], descartadas: [] };
+    // NO filtrar líneas vacías antes de numerar: `linea` debe ser el número
+    // físico de la fila en el archivo del banco, o el usuario no encuentra la
+    // fila que el reporte descarta. Las vacías se saltan sin contar.
+    const lineas = raw.replace(/^\uFEFF/, '').split(/\r?\n/);
 
     const movimientos: MovimientoCsv[] = [];
     const descartadas: DescarteCsv[] = [];
+    let headerVisto = false;
     for (let i = 0; i < lineas.length; i++) {
-      // Header opcional: primera línea con "fecha" o "descripcion" se ignora.
-      if (i === 0 && /fecha|descripcion/i.test(lineas[i])) continue;
+      if (!lineas[i].trim()) continue;
+      // Header opcional: la primera línea no vacía con "fecha"/"descripcion".
+      if (!headerVisto && /fecha|descripcion/i.test(lineas[i])) {
+        headerVisto = true;
+        continue;
+      }
+      headerVisto = true;
       const numLinea = i + 1;
 
       const campos = this.tokenizarCsv(lineas[i]).map((c) => c.trim());

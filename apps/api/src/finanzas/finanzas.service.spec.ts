@@ -118,7 +118,7 @@ describe('FinanzasService', () => {
         },
       ]);
 
-      const csv = await service.exportar({});
+      const csv = await service.exportar({}, 'user-1');
       expect(prisma.transacciones.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ eliminado_en: null }) }),
       );
@@ -127,6 +127,14 @@ describe('FinanzasService', () => {
       expect(csv).toContain('4000.5');
       // Escape RFC: comas y comillas dobles dentro de la descripción.
       expect(csv).toContain('"Descripción con, coma y ""comillas"""');
+      // Cada exportación queda auditada con el actor que la ejecutó.
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.TRANSACCION_EXPORTADA,
+          result: AuditResult.SUCCESS,
+          actorUserId: 'user-1',
+        }),
+      );
     });
   });
 

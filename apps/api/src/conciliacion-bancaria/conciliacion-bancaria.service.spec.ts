@@ -413,6 +413,33 @@ describe('ConciliacionBancariaService', () => {
       });
     });
 
+    it('debe reportar el número de LÍNEA FÍSICA del archivo aunque haya líneas vacías (Blocker menor #1)', async () => {
+      const csv =
+        '2026-02-31,Febrero imposible,100,\n' + // línea 1: FECHA_INVALIDA
+        '\n' + // línea 2: vacía (no se numera, no se descarta)
+        '2026-04-30,Abril válido,,300\n' + // línea 3: válida
+        '\n' + // línea 4: vacía
+        'basura,sin monto,,\n'; // línea 5: MONTO_INVALIDO
+      prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 1 });
+      const result = await service.cargarLote(CUENTA_ID, { csv }, USER_ID);
+      expect(result).toEqual({
+        totalMovimientos: 1,
+        insertados: 1,
+        duplicados: 0,
+        descartadas: [
+          { linea: 1, motivo: 'FECHA_INVALIDA' },
+          { linea: 5, motivo: 'MONTO_INVALIDO' },
+        ],
+      });
+      const data = prisma.movimientos_bancarios.createMany.mock.calls[
+        prisma.movimientos_bancarios.createMany.mock.calls.length - 1
+      ][0].data;
+      expect(data[0]).toMatchObject({
+        descripcion: 'Abril válido',
+        fecha: new Date('2026-04-30T00:00:00'),
+      });
+    });
+
     it('debe mantener el layout de 4 columnas sin unir montos legítimos', async () => {
       const csv = '2026-09-01,Depósito A,1000,\n2026-09-02,Retiro B,,500\n';
       prisma.movimientos_bancarios.createMany.mockResolvedValue({ count: 2 });
