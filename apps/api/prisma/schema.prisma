@@ -92,6 +92,7 @@ model articulos_inventario {
   movimientos_inventario                            movimientos_inventario[]
   articulos_precio                                  articulos_precio[]
   ventas_items                                      ventas_items[]
+  ordenes_compra_items                             ordenes_compra_items[]
 
   @@index([categoria_id])
   @@index([proveedor_id])
@@ -990,9 +991,35 @@ model ordenes_compra {
   proveedores                                 proveedores         @relation(fields: [proveedor_id], references: [id])
   users_ordenes_compra_actualizado_porTousers users?              @relation("ordenes_compra_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_ordenes_compra_actualizado_por")
   users_ordenes_compra_creado_porTousers      users?              @relation("ordenes_compra_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_ordenes_compra_creado_por")
+  ordenes_compra_items                        ordenes_compra_items[]
 
   @@index([proveedor_id, estado])
   @@index([fecha])
+}
+
+/// Líneas/detalle de una orden de compra. `articulo_id` es nullable a propósito:
+/// (a) artículo ya catalogado → se vincula y se actualiza stock al recibir;
+/// (b) artículo nuevo → se crea al recibir usando `nombre` como base.
+model ordenes_compra_items {
+  id                String                @id @db.Uuid
+  orden_compra_id   String                @db.Uuid
+  articulo_id       String?               @db.Uuid // NULO si aún no está catalogado
+  nombre            String // Snapshot SIEMPRE (aunque exista articulo_id)
+  cantidad          Decimal               @db.Decimal(10, 2)
+  cantidad_recibida Decimal               @default(0) @db.Decimal(10, 2) // permite recepción parcial futura
+  precio_unitario   Decimal               @db.Decimal(12, 2)
+  activo            Boolean               @default(true)
+  creado_en         DateTime              @default(now()) @db.Timestamptz()
+  actualizado_en    DateTime              @db.Timestamptz()
+  actualizado_por   String?               @db.Uuid
+  creado_por        String?               @db.Uuid
+  eliminado_en      DateTime?             @db.Timestamptz()
+
+  ordenes_compra     ordenes_compra         @relation(fields: [orden_compra_id], references: [id])
+  articulos_inventario articulos_inventario? @relation(fields: [articulo_id], references: [id])
+
+  @@index([orden_compra_id])
+  @@index([articulo_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2214,6 +2241,7 @@ enum AuditAction {
   ORDEN_COMPRA_ACTUALIZADA
   ORDEN_COMPRA_ELIMINADA
   ORDEN_COMPRA_ESTADO_CAMBIADO
+  ORDEN_COMPRA_RECIBIDA
   PAGO_PROVEEDOR_REGISTRADO
   CXC_CREADA
   CXC_ACTUALIZADA
