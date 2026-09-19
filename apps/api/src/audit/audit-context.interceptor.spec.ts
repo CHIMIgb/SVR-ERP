@@ -47,7 +47,7 @@ describe('AuditContextInterceptor', () => {
 
   it('should populate ipAddress, userAgent, sessionId, endpoint, method and JWT info from request', (done) => {
     const req = mockRequest(
-      { id: 'user-1', email: 'admin@svr.com', nombre: 'Carlos SVR', sessionId: 'session-1', jti: 'jti-1', iat: 1756000000 },
+      { id: 'user-1', email: 'admin@svr.com', nombre: 'Carlos SVR', sessionId: 'e5e854bf-28e8-47f5-8f58-bc5389e82771', jti: 'jti-1', iat: 1756000000 },
       '192.168.1.1',
       'Mozilla/5.0',
       'POST',
@@ -63,7 +63,7 @@ describe('AuditContextInterceptor', () => {
         expect(ctx).toMatchObject({
           ipAddress: '192.168.1.1',
           userAgent: 'Mozilla/5.0',
-          sessionId: 'session-1',
+          sessionId: 'e5e854bf-28e8-47f5-8f58-bc5389e82771',
           endpoint: '/api/incidentes',
           method: 'POST',
           jwtUserId: 'user-1',
@@ -132,7 +132,7 @@ describe('AuditContextInterceptor', () => {
     interceptor.intercept(context, next).subscribe();
   });
 
-  it('should reuse X-Request-Id and X-Correlation-Id headers when present', (done) => {
+  it('should reuse X-Request-Id and X-Correlation-Id headers when present and well-formed UUIDs', (done) => {
     const req = mockRequest(
       undefined,
       '10.0.0.1',
@@ -140,15 +140,55 @@ describe('AuditContextInterceptor', () => {
       'GET',
       '/x',
       undefined,
-      { headers: { 'x-request-id': 'req-externo', 'x-correlation-id': 'corr-externa' } },
+      { headers: { 'x-request-id': '80907b87-7e98-4f87-a361-104a256a2cc6', 'x-correlation-id': 'a1b2c3d4-0000-4000-8000-000000000001' } },
     );
     const context = createContext(req);
 
     const next: CallHandler = {
       handle: () => {
         const ctx = auditContext.getContext();
-        expect(ctx?.requestId).toBe('req-externo');
-        expect(ctx?.correlationId).toBe('corr-externa');
+        expect(ctx?.requestId).toBe('80907b87-7e98-4f87-a361-104a256a2cc6');
+        expect(ctx?.correlationId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
+        return { subscribe: () => done() } as never;
+      },
+    };
+
+    interceptor.intercept(context, next).subscribe();
+  });
+
+  it('should sanitize non-UUID X-Request-Id / X-Correlation-Id headers to avoid silent audit INSERT failures', (done) => {
+    const req = mockRequest(
+      undefined,
+      '10.0.0.1',
+      'UA',
+      'GET',
+      '/x',
+      undefined,
+      { headers: { 'x-request-id': 'req-12345', 'x-correlation-id': 'corr-externa' } },
+    );
+    const context = createContext(req);
+
+    const next: CallHandler = {
+      handle: () => {
+        const ctx = auditContext.getContext();
+        expect(ctx?.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+        expect(ctx?.requestId).not.toBe('req-12345');
+        // Sin X-Correlation-Id válido, cae al requestId generado (también UUID)
+        expect(ctx?.correlationId).toBe(ctx?.requestId);
+        return { subscribe: () => done() } as never;
+      },
+    };
+
+    interceptor.intercept(context, next).subscribe();
+  });
+
+  it('should drop sessionId that is not a valid UUID', (done) => {
+    const req = mockRequest({ id: 'user-1', sessionId: 'sesion-mal-formada' }, '10.0.0.1', 'UA', 'GET', '/x');
+    const context = createContext(req);
+
+    const next: CallHandler = {
+      handle: () => {
+        expect(auditContext.getContext()?.sessionId).toBeUndefined();
         return { subscribe: () => done() } as never;
       },
     };

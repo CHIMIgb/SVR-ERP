@@ -17,6 +17,7 @@ describe('BitacorasRentaController', () => {
     create: jest.fn().mockResolvedValue(mockBitacora),
     update: jest.fn().mockResolvedValue(mockBitacora),
     remove: jest.fn().mockResolvedValue({ message: 'Bitácora de renta eliminada exitosamente' }),
+    facturar: jest.fn().mockResolvedValue({ cuenta: { id: 'cxc-uuid-1' }, bitacora: { id: 'bit-uuid-1', estadoCobro: 'Facturado' } }),
   };
 
   beforeEach(async () => {
@@ -58,5 +59,11 @@ describe('BitacorasRentaController', () => {
   it('remove passes the userId from the JWT request', async () => {
     await controller.remove('bit-uuid-1', mockRequest);
     expect(service.remove).toHaveBeenCalledWith('bit-uuid-1', 'user-1');
+  });
+
+  it('facturar pasa el userId del JWT al service', async () => {
+    const result = await controller.facturar('bit-uuid-1', mockRequest);
+    expect(service.facturar).toHaveBeenCalledWith('bit-uuid-1', 'user-1');
+    expect(result.cuenta.id).toBe('cxc-uuid-1');
   });
 });

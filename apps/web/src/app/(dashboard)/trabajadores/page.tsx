@@ -504,6 +504,7 @@ export default function TrabajadoresPage() {
           trabajador={selectedWorkerForBitacora}
           maquinaria={maquinaria}
           puedeCrear={puedeCrear}
+          puedeEditar={puedeEditar}
           onBitacoraCreada={() => fetchTrabajadores(pagination.page, search, selectedRole)}
         />
       )}

@@ -96,6 +96,7 @@ export default function CotizacionesPage() {
   const [estadoOpen, setEstadoOpen] = useState(false);
   const [selectedEstado, setSelectedEstado] = useState<'ACEPTADA' | 'RECHAZADA'>('ACEPTADA');
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [generarFactura, setGenerarFactura] = useState(false);
   const [selected, setSelected] = useState<CotizacionDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -205,6 +206,7 @@ export default function CotizacionesPage() {
     setSelected(item);
     setSelectedEstado(next);
     setMotivoRechazo('');
+    setGenerarFactura(false);
     setEstadoOpen(true);
   }, []);
 
@@ -274,12 +276,22 @@ export default function CotizacionesPage() {
     setSubmitting(true);
     const actionLabel = esRechazo ? 'rechazada' : 'aceptada';
     try {
-      const res = await cotizacionesApi.cambiarEstado(selected.id, {
-        estado: selectedEstado,
-        ...(motivo ? { motivoRechazo: motivo } : {}),
-      });
+      // Si el usuario marcó "Generar factura", facturar() acepta la cotización
+      // y crea factura + CxC en una sola transacción.
+      const res = generarFactura && !esRechazo
+        ? await cotizacionesApi.facturar(selected.id)
+        : await cotizacionesApi.cambiarEstado(selected.id, {
+            estado: selectedEstado,
+            ...(motivo ? { motivoRechazo: motivo } : {}),
+          });
       if (res.success) {
-        showToast(`Cotización ${selected.codigo ?? ''} ${actionLabel}.`, 'success');
+        const facturada = generarFactura && !esRechazo;
+        showToast(
+          facturada
+            ? `Cotización ${selected.codigo ?? ''} aceptada y facturada.`
+            : `Cotización ${selected.codigo ?? ''} ${actionLabel}.`,
+          'success',
+        );
         setEstadoOpen(false);
         setSelected(null);
         refresh();
@@ -291,7 +303,7 @@ export default function CotizacionesPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [selected, selectedEstado, motivoRechazo, showToast, refresh]);
+  }, [selected, selectedEstado, motivoRechazo, generarFactura, showToast, refresh]);
 
   // ── Editar cotización ──
   const handleEditar = useCallback(async () => {
@@ -619,7 +631,7 @@ export default function CotizacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Monto (MXN)" required>
+          <ModalField label="Subtotal (MXN, antes de IVA)" required>
             <input
               type="number"
               className={modalInputClass}
@@ -629,6 +641,9 @@ export default function CotizacionesPage() {
               value={form.monto}
               onChange={(e) => setForm({ ...form, monto: e.target.value })}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              La factura se emite por este monto + IVA 16% (se aplica al aceptar con factura).
+            </p>
           </ModalField>
 
           <ModalField label="Fecha" required>
@@ -677,7 +692,7 @@ export default function CotizacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Monto (MXN)" required>
+          <ModalField label="Subtotal (MXN, antes de IVA)" required>
             <input
               type="number"
               className={modalInputClass}
@@ -687,6 +702,9 @@ export default function CotizacionesPage() {
               value={editForm.monto}
               onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              La factura se emite por este monto + IVA 16%.
+            </p>
           </ModalField>
 
           <ModalField label="Fecha" required>
@@ -803,6 +821,24 @@ export default function CotizacionesPage() {
                     onChange={(e) => setMotivoRechazo(e.target.value)}
                   />
                 </ModalField>
+              </div>
+            )}
+            {selectedEstado === 'ACEPTADA' && (
+              <div className="w-full mt-2 text-left">
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:border-primary/40 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={generarFactura}
+                    onChange={(e) => setGenerarFactura(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-primary"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-800">Generar factura</span>
+                    <span className="block text-xs text-slate-500">
+                      Acepta la cotización y crea la factura con su cuenta por cobrar automáticamente.
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
             </>

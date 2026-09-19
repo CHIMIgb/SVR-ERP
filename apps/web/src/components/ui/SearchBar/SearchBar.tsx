@@ -206,7 +206,7 @@ export function FilterPanel({
           </div>
         ))}
 
-        {hasValues && (
+        {hasValues && onClear && (
           <div className="flex items-end sm:items-center">
             <button
               onClick={onClear}

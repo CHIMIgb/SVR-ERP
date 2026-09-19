@@ -1,7 +1,9 @@
 import {
   IsDateString,
   IsEnum,
+  IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   Matches,
@@ -34,6 +36,19 @@ export class UpdateReporteCampoDto {
   @IsOptional()
   @IsUUID()
   obraId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  montoServicio?: number;
 
   @IsOptional()
   @IsDateString()

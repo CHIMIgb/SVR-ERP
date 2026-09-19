@@ -26,6 +26,14 @@ describe('ClientesController', () => {
   const mockService = {
     findAll: jest.fn().mockResolvedValue(mockResult),
     findOne: jest.fn().mockResolvedValue(mockCliente),
+    consolidado: jest.fn().mockResolvedValue({
+      cliente: mockCliente,
+      saldoTotal: 6000,
+      cuentasPorCobrar: [],
+      facturas: [],
+      cobros: [],
+      cotizaciones: [],
+    }),
     create: jest.fn().mockResolvedValue(mockCliente),
     update: jest.fn().mockResolvedValue(mockCliente),
     remove: jest.fn().mockResolvedValue({ message: 'Cliente eliminado exitosamente' }),
@@ -75,6 +83,15 @@ describe('ClientesController', () => {
       const result = await controller.findOne(mockCliente.id);
       expect(result.id).toBe(mockCliente.id);
       expect(service.findOne).toHaveBeenCalledWith(mockCliente.id);
+    });
+  });
+
+  describe('consolidado', () => {
+    it('should return el estado de cuenta del cliente', async () => {
+      const result = await controller.consolidado(mockCliente.id);
+      expect(service.consolidado).toHaveBeenCalledWith(mockCliente.id);
+      expect(result.saldoTotal).toBe(6000);
+      expect(result.cliente).toBeDefined();
     });
   });
 

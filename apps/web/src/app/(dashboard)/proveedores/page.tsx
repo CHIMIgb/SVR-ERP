@@ -1,495 +1,1378 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus, Search, Truck, FileText, CheckCircle2,
-  Clock, AlertCircle, ChevronRight, X, DollarSign,
-  Package, Phone, Mail, Building2, CreditCard
+  Plus, FileText, Pencil, Trash2, CreditCard, AlertCircle, XCircle, Eye, CheckCircle2,
+  Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal,
 } from 'lucide-react';
-import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import {
+  proveedoresApi, ordenesCompraApi,
+  type ProveedorDTO, type OrdenCompraDTO, type EstadoCuentaResumenDTO,
+  type LedgerDetalleDTO, type EstadoOrdenApi,
+} from '@/lib/api';
 
-// ─── Data types ────────────────────────────────────────────────────────────────
-interface Proveedor {
-  id: string;
-  nombre: string;
-  empresa: string;
-  telefono: string;
-  correo: string;
-  categoria: 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
-  saldoPendiente: number;
-  totalCompras: number;
-}
+// ─── Tipos UI ────────────────────────────────────────────────────────────────
+type CategoriaProveedor = 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
+type EstadoOrden = 'Pendiente' | 'Aprobada' | 'Recibida' | 'Cancelada';
 
-interface OrdenCompra {
-  id: string;
-  proveedorId: string;
-  proveedorNombre: string;
-  descripcion: string;
-  monto: number;
-  fecha: string;
-  estado: 'Pendiente' | 'Aprobada' | 'Recibida' | 'Cancelada';
-  pagado: number;
-}
-
-// ─── Mock data ─────────────────────────────────────────────────────────────────
-const proveedoresIniciales: Proveedor[] = [
-  { id: 'PV001', nombre: 'Carlos Herrera', empresa: 'Refacciones CAT México', telefono: '555-1100', correo: 'cherrera@catmex.com', categoria: 'Refacciones', saldoPendiente: 12500, totalCompras: 85000 },
-  { id: 'PV002', nombre: 'Daniela Ríos', empresa: 'Lubricantes Especializados', telefono: '555-2233', correo: 'drios@lubrispec.com', categoria: 'Refacciones', saldoPendiente: 4200, totalCompras: 32000 },
-  { id: 'PV003', nombre: 'Jorge Sánchez', empresa: 'Diésel del Norte', telefono: '555-3344', correo: 'jsanchez@diesel.com', categoria: 'Combustible', saldoPendiente: 0, totalCompras: 145000 },
-  { id: 'PV004', nombre: 'Lucía Morales', empresa: 'Michelin México', telefono: '555-4455', correo: 'lmorales@michelin.mx', categoria: 'Refacciones', saldoPendiente: 34000, totalCompras: 68000 },
-];
-
-const ordenesIniciales: OrdenCompra[] = [
-  { id: 'OC001', proveedorId: 'PV001', proveedorNombre: 'Refacciones CAT México', descripcion: 'Filtros de aceite x12 + filtros de aire x6', monto: 8400, fecha: '2026-08-10', estado: 'Recibida', pagado: 8400 },
-  { id: 'OC002', proveedorId: 'PV004', proveedorNombre: 'Michelin México', descripcion: 'Llantas 11R22.5 x4 para volteo', monto: 34000, fecha: '2026-08-12', estado: 'Aprobada', pagado: 0 },
-  { id: 'OC003', proveedorId: 'PV002', proveedorNombre: 'Lubricantes Especializados', descripcion: 'Aceite hidráulico SAE 10W x20 galones', monto: 4200, fecha: '2026-08-14', estado: 'Pendiente', pagado: 0 },
-  { id: 'OC004', proveedorId: 'PV001', proveedorNombre: 'Refacciones CAT México', descripcion: 'Manguera hidráulica 1" x10m + conectores', monto: 12500, fecha: '2026-08-15', estado: 'Pendiente', pagado: 0 },
-];
-
-const categoriaColor: Record<string, string> = {
-  Refacciones: 'bg-blue-100 text-blue-700',
-  Combustible: 'bg-orange-100 text-orange-700',
-  Materiales: 'bg-green-100 text-green-700',
-  Servicios: 'bg-purple-100 text-purple-700',
-  Otros: 'bg-slate-100 text-slate-600',
+/** Mapeo estado API (backend) → etiqueta UI (es-MX). */
+const ESTADO_LABEL: Record<EstadoOrdenApi, EstadoOrden> = {
+  PENDIENTE: 'Pendiente',
+  APROBADA: 'Aprobada',
+  RECIBIDA: 'Recibida',
+  CANCELADA: 'Cancelada',
 };
 
-const estadoConfig: Record<string, { color: string; icon: React.ReactNode }> = {
-  Pendiente: { color: 'bg-yellow-100 text-yellow-700', icon: <Clock className="w-3 h-3" /> },
-  Aprobada: { color: 'bg-blue-100 text-blue-700', icon: <CheckCircle2 className="w-3 h-3" /> },
-  Recibida: { color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-3 h-3" /> },
-  Cancelada: { color: 'bg-red-100 text-red-700', icon: <X className="w-3 h-3" /> },
+// ─── Constantes ───────────────────────────────────────────────────────────────
+const PAGE_SIZE = 8;
+
+const CATEGORIAS: CategoriaProveedor[] = ['Refacciones', 'Combustible', 'Materiales', 'Servicios', 'Otros'];
+const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MIXTO'] as const;
+
+const badgeVariant: Record<CategoriaProveedor, 'info' | 'warning' | 'success' | 'neutral' | 'primary'> = {
+  Refacciones: 'info',
+  Combustible: 'warning',
+  Materiales: 'success',
+  Servicios: 'neutral',
+  Otros: 'primary',
 };
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n);
+const estadoVariant: Record<EstadoOrden, 'warning' | 'info' | 'success' | 'error'> = {
+  Pendiente: 'warning',
+  Aprobada: 'info',
+  Recibida: 'success',
+  Cancelada: 'error',
+};
 
-// ─── Page ──────────────────────────────────────────────────────────────────────
+// ─── Estado inicial de formularios ────────────────────────────────────────────
+const emptyProvForm = {
+  nombre: '',
+  rfc: '',
+  telefono: '',
+  correo: '',
+  categoria: 'Refacciones' as CategoriaProveedor,
+};
+
+const emptyOcForm = {
+  proveedorId: '',
+  descripcion: '',
+  monto: '',
+};
+
 export default function ProveedoresPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
+
+  // ── Permisos RBAC ──
+  const vista = user?.vistas?.find((v) => v.ruta === '/proveedores');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
+  const puedeEliminar = vista?.puedeEliminar ?? false;
+
+  // ── Datos ──
+  const [proveedores, setProveedores] = useState<ProveedorDTO[]>([]);
+  const [paginationProv, setPaginationProv] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [ordenes, setOrdenes] = useState<OrdenCompraDTO[]>([]);
+  const [paginationOC, setPaginationOC] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [resumen, setResumen] = useState<EstadoCuentaResumenDTO[]>([]);
+  const [proveedoresCatalogo, setProveedoresCatalogo] = useState<ProveedorDTO[]>([]);
+  const [ledger, setLedger] = useState<LedgerDetalleDTO | null>(null);
+  const [stats, setStats] = useState({ porPagar: 0, ordenesActivas: 0, totalCompras: 0 });
+
+  // ── UI state ──
   const [tab, setTab] = useState<'proveedores' | 'ordenes' | 'estados'>('proveedores');
-  const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales);
-  const [ordenes, setOrdenes] = useState<OrdenCompra[]>(ordenesIniciales);
   const [search, setSearch] = useState('');
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [pageEstados, setPageEstados] = useState(1);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoaded = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Modals
-  const [modalProv, setModalProv] = useState(false);
-  const [modalOC, setModalOC] = useState(false);
-  const [modalAbono, setModalAbono] = useState<OrdenCompra | null>(null);
+  // ── Modales ──
+  const [provModal, setProvModal] = useState(false);
+  const [editProvId, setEditProvId] = useState<string | null>(null);
+  const [provForm, setProvForm] = useState(emptyProvForm);
+  const [deleteProv, setDeleteProv] = useState<ProveedorDTO | null>(null);
+  const [ocModal, setOcModal] = useState(false);
+  const [ocForm, setOcForm] = useState(emptyOcForm);
+  const [abonoOC, setAbonoOC] = useState<OrdenCompraDTO | null>(null);
+  const [abonoForm, setAbonoForm] = useState({ monto: '', metodoPago: 'EFECTIVO' as string });
+  const [cancelOC, setCancelOC] = useState<OrdenCompraDTO | null>(null);
+  const [motivoCancelacion, setMotivoCancelacion] = useState('');
+  const [confirmCambio, setConfirmCambio] = useState<{ orden: OrdenCompraDTO; estado: 'APROBADA' | 'RECIBIDA' } | null>(null);
+  const [deleteOC, setDeleteOC] = useState<OrdenCompraDTO | null>(null);
+  const [detalleProv, setDetalleProv] = useState<EstadoCuentaResumenDTO | null>(null);
 
-  const [formProv, setFormProv] = useState({ nombre: '', empresa: '', telefono: '', correo: '', categoria: 'Refacciones' });
-  const [formOC, setFormOC] = useState({ proveedorId: '', descripcion: '', monto: '' });
-  const [montoAbono, setMontoAbono] = useState('');
+  // ── Helpers de datos (resumen por proveedor) ──
+  const resumenPorProv = useMemo(() => {
+    const map = new Map<string, EstadoCuentaResumenDTO>();
+    resumen.forEach((r) => map.set(r.proveedorId, r));
+    return map;
+  }, [resumen]);
 
-  // Stats
-  const totalPendiente = proveedores.reduce((a, p) => a + p.saldoPendiente, 0);
-  const totalCompras = proveedores.reduce((a, p) => a + p.totalCompras, 0);
-  const ordenesActivas = ordenes.filter(o => o.estado === 'Pendiente' || o.estado === 'Aprobada').length;
+  const saldoProveedor = (proveedorId: string) => resumenPorProv.get(proveedorId)?.saldo ?? 0;
+  const totalComprado = (proveedorId: string) => resumenPorProv.get(proveedorId)?.total ?? 0;
 
-  const filteredProv = proveedores.filter(p =>
-    p.empresa.toLowerCase().includes(search.toLowerCase()) ||
-    p.nombre.toLowerCase().includes(search.toLowerCase())
-  );
+  // ── Estados de cuenta: búsqueda + filtro + paginación client-side ──
+  // (el endpoint /estados-cuenta devuelve todo el resumen; se filtra en el cliente)
+  const resumenFiltrado = useMemo(() => {
+    let rows = resumen;
+    const q = search.trim().toLowerCase();
+    if (q) rows = rows.filter((r) => r.proveedor.toLowerCase().includes(q));
+    const situacion = filterValues.situacion;
+    if (situacion === 'con_saldo') rows = rows.filter((r) => r.saldo > 0);
+    else if (situacion === 'saldado') rows = rows.filter((r) => r.saldo === 0);
+    return rows;
+  }, [resumen, search, filterValues]);
 
-  const filteredOC = ordenes.filter(o =>
-    o.descripcion.toLowerCase().includes(search.toLowerCase()) ||
-    o.proveedorNombre.toLowerCase().includes(search.toLowerCase())
-  );
+  const resumenPagina = useMemo(() => {
+    const start = (pageEstados - 1) * PAGE_SIZE;
+    return resumenFiltrado.slice(start, start + PAGE_SIZE);
+  }, [resumenFiltrado, pageEstados]);
 
-  const handleNuevoProveedor = () => {
-    if (!formProv.nombre.trim() || !formProv.empresa.trim()) {
-      showToast('Nombre y empresa son obligatorios.', 'error');
-      return;
+  const totalPagesEstados = Math.max(1, Math.ceil(resumenFiltrado.length / PAGE_SIZE));
+
+  // ── Carga de datos (patrón /inventario: initialLoading + refreshing) ──
+  const fetchProveedores = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await proveedoresApi.listar({
+      search: searchVal || undefined,
+      categoria: filters?.categoria || undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setProveedores(res.data.items);
+      setPaginationProv(res.data.pagination);
+    } else {
+      showToast('Error al cargar proveedores.', 'error');
     }
-    const nuevo: Proveedor = {
-      id: `PV${Date.now()}`,
-      nombre: formProv.nombre,
-      empresa: formProv.empresa,
-      telefono: formProv.telefono,
-      correo: formProv.correo,
-      categoria: formProv.categoria as Proveedor['categoria'],
-      saldoPendiente: 0,
-      totalCompras: 0,
+  }, [showToast]);
+
+  const fetchOrdenes = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await ordenesCompraApi.listar({
+      search: searchVal || undefined,
+      estado: filters?.estado as EstadoOrdenApi | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setOrdenes(res.data.items);
+      setPaginationOC(res.data.pagination);
+    } else {
+      showToast('Error al cargar órdenes de compra.', 'error');
+    }
+  }, [showToast]);
+
+  const fetchResumen = useCallback(async () => {
+    const res = await proveedoresApi.estadosCuenta();
+    if (res.success && res.data) setResumen(res.data);
+  }, []);
+
+  const fetchCatalogo = useCallback(async () => {
+    const res = await proveedoresApi.listar({ page: 1, limit: 100 });
+    if (res.success && res.data) setProveedoresCatalogo(res.data.items);
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    const [res, pend, aprob] = await Promise.all([
+      proveedoresApi.estadosCuenta(),
+      ordenesCompraApi.listar({ estado: 'PENDIENTE', page: 1, limit: 1 }),
+      ordenesCompraApi.listar({ estado: 'APROBADA', page: 1, limit: 1 }),
+    ]);
+    const suma = (rows: EstadoCuentaResumenDTO[], key: 'total' | 'pagado' | 'saldo') =>
+      rows.reduce((acc, r) => acc + r[key], 0);
+    setStats({
+      porPagar: res.success && res.data ? suma(res.data, 'saldo') : 0,
+      totalCompras: res.success && res.data ? suma(res.data, 'total') : 0,
+      ordenesActivas:
+        (pend.success ? pend.data.pagination.total : 0) +
+        (aprob.success ? aprob.data.pagination.total : 0),
+    });
+  }, []);
+
+  useEffect(() => {
+    const inicial = async () => {
+      setInitialLoading(true);
+      try {
+        await Promise.all([
+          fetchProveedores(1),
+          fetchOrdenes(1),
+          fetchResumen(),
+          fetchCatalogo(),
+          fetchStats(),
+        ]);
+      } catch {
+        showToast('No se pudo conectar con el servidor.', 'error');
+      } finally {
+        hasLoaded.current = true;
+        setInitialLoading(false);
+      }
     };
-    setProveedores(prev => [nuevo, ...prev]);
-    setModalProv(false);
-    setFormProv({ nombre: '', empresa: '', telefono: '', correo: '', categoria: 'Refacciones' });
-    showToast(`✅ Proveedor "${formProv.empresa}" agregado.`, 'success');
+    inicial();
+  }, [fetchProveedores, fetchOrdenes, fetchResumen, fetchCatalogo, fetchStats, showToast]);
+
+  /** Refetch tras una mutación: datos visibles + resumen + stats. */
+  const refetchAll = useCallback(async () => {
+    if (!hasLoaded.current) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchProveedores(paginationProv.page, search, filterValues),
+        fetchOrdenes(paginationOC.page, search, filterValues),
+        fetchResumen(),
+        fetchCatalogo(),
+        fetchStats(),
+      ]);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchProveedores, fetchOrdenes, fetchResumen, fetchCatalogo, fetchStats,
+    paginationProv.page, paginationOC.page, search, filterValues, showToast]);
+
+  // ── Filtros por tab ──
+  const activeFilters: ActiveFilter[] = useMemo(
+    () =>
+      Object.entries(filterValues)
+        .filter(([, v]) => v)
+        .map(([key, value]) => ({
+          key,
+          label: key === 'categoria' ? 'Categoría' : key === 'estado' ? 'Estado' : 'Situación',
+          value,
+        })),
+    [filterValues],
+  );
+
+  const filterFields: FilterField[] =
+    tab === 'proveedores'
+      ? [{ key: 'categoria', label: 'Categoría', type: 'select', options: CATEGORIAS.map((c) => ({ value: c, label: c })) }]
+      : tab === 'ordenes'
+        ? [{ key: 'estado', label: 'Estado', type: 'select', options: (Object.keys(ESTADO_LABEL) as EstadoOrdenApi[]).map((e) => ({ value: e, label: ESTADO_LABEL[e] })) }]
+        : [{ key: 'situacion', label: 'Situación', type: 'select', options: [{ value: 'con_saldo', label: 'Con saldo' }, { value: 'saldado', label: 'Saldado' }] }];
+
+  const handleSearch = (val?: string) => {
+    const q = val ?? search;
+    if (tab === 'proveedores') fetchProveedores(1, q, filterValues);
+    else if (tab === 'ordenes') fetchOrdenes(1, q, filterValues);
+    else setPageEstados(1);
   };
 
-  const handleNuevaOC = () => {
-    if (!formOC.proveedorId || !formOC.descripcion.trim() || !formOC.monto) {
+  const handleFilterChange = (key: string, value: string) => {
+    const next = { ...filterValues };
+    if (value) next[key] = value;
+    else delete next[key];
+    setFilterValues(next);
+    if (tab === 'proveedores') fetchProveedores(1, search, next);
+    else if (tab === 'ordenes') fetchOrdenes(1, search, next);
+    else setPageEstados(1);
+  };
+
+  const handleClearFilters = () => {
+    setFilterValues({});
+    if (tab === 'proveedores') fetchProveedores(1, search, {});
+    else if (tab === 'ordenes') fetchOrdenes(1, search, {});
+    else setPageEstados(1);
+  };
+
+  // ── Handlers: proveedor ──
+  const openCreateProv = () => {
+    setEditProvId(null);
+    setProvForm(emptyProvForm);
+    setProvModal(true);
+  };
+
+  const openEditProv = (p: ProveedorDTO) => {
+    setEditProvId(p.id);
+    setProvForm({
+      nombre: p.nombre,
+      rfc: p.rfc ?? '',
+      telefono: p.telefono ?? '',
+      correo: p.correo ?? '',
+      categoria: (p.categoria as CategoriaProveedor) || 'Otros',
+    });
+    setProvModal(true);
+  };
+
+  const handleGuardarProveedor = useCallback(async () => {
+    if (!provForm.nombre.trim()) {
+      showToast('El nombre del proveedor es obligatorio.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload = {
+        nombre: provForm.nombre.trim(),
+        rfc: provForm.rfc.trim() || undefined,
+        telefono: provForm.telefono.trim() || undefined,
+        correo: provForm.correo.trim() || undefined,
+        categoria: provForm.categoria,
+      };
+      const res = editProvId
+        ? await proveedoresApi.actualizar(editProvId, payload)
+        : await proveedoresApi.crear(payload);
+      if (res.success) {
+        showToast(
+          editProvId ? 'Proveedor actualizado correctamente.' : 'Proveedor agregado correctamente.',
+          'success',
+        );
+        setProvModal(false);
+        refetchAll();
+      } else {
+        showToast(res.error?.message || 'Error al guardar proveedor.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [provForm, editProvId, showToast, refetchAll]);
+
+  const handleEliminarProveedor = useCallback(async () => {
+    if (!deleteProv) return;
+    setSubmitting(true);
+    try {
+      const res = await proveedoresApi.eliminar(deleteProv.id);
+      if (res.success) {
+        showToast('Proveedor eliminado.', 'success');
+        setDeleteProv(null);
+        refetchAll();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar proveedor.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [deleteProv, showToast, refetchAll]);
+
+  // ── Handlers: órdenes de compra ──
+  const handleCrearOrden = useCallback(async () => {
+    if (!ocForm.proveedorId || !ocForm.descripcion.trim() || !ocForm.monto) {
       showToast('Todos los campos son obligatorios.', 'error');
       return;
     }
-    const prov = proveedores.find(p => p.id === formOC.proveedorId)!;
-    const nueva: OrdenCompra = {
-      id: `OC${Date.now()}`,
-      proveedorId: formOC.proveedorId,
-      proveedorNombre: prov.empresa,
-      descripcion: formOC.descripcion,
-      monto: parseFloat(formOC.monto),
-      fecha: new Date().toISOString().split('T')[0],
-      estado: 'Pendiente',
-      pagado: 0,
-    };
-    setOrdenes(prev => [nueva, ...prev]);
-    setProveedores(prev => prev.map(p =>
-      p.id === formOC.proveedorId
-        ? { ...p, saldoPendiente: p.saldoPendiente + parseFloat(formOC.monto), totalCompras: p.totalCompras + parseFloat(formOC.monto) }
-        : p
-    ));
-    setModalOC(false);
-    setFormOC({ proveedorId: '', descripcion: '', monto: '' });
-    showToast(`✅ Orden de compra creada correctamente.`, 'success');
-  };
+    const monto = parseFloat(ocForm.monto);
+    if (!monto || monto <= 0) {
+      showToast('Ingresa un monto válido.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await ordenesCompraApi.crear({
+        proveedorId: ocForm.proveedorId,
+        descripcion: ocForm.descripcion.trim(),
+        monto,
+      });
+      if (res.success) {
+        showToast('Orden de compra creada correctamente.', 'success');
+        setOcModal(false);
+        setOcForm(emptyOcForm);
+        refetchAll();
+      } else {
+        showToast(res.error?.message || 'Error al crear la orden.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [ocForm, showToast, refetchAll]);
 
-  const handleAbono = () => {
-    if (!modalAbono) return;
-    const abono = parseFloat(montoAbono);
-    if (!abono || abono <= 0) { showToast('Ingresa un monto válido.', 'error'); return; }
-    const pendiente = modalAbono.monto - modalAbono.pagado;
-    if (abono > pendiente) { showToast(`El abono no puede superar el saldo pendiente (${fmt(pendiente)}).`, 'error'); return; }
+  const handleAbono = useCallback(async () => {
+    if (!abonoOC) return;
+    const abono = parseFloat(abonoForm.monto);
+    if (!abono || abono <= 0) {
+      showToast('Ingresa un monto válido.', 'error');
+      return;
+    }
+    if (abono > abonoOC.saldo) {
+      showToast(`El abono no puede superar el saldo pendiente (${formatCurrency(abonoOC.saldo)}).`, 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await proveedoresApi.abonar(abonoOC.proveedorId, {
+        ordenCompraId: abonoOC.id,
+        monto: abono,
+        metodoPago: abonoForm.metodoPago,
+      });
+      if (res.success) {
+        showToast(`Abono de ${formatCurrency(abono)} registrado.`, 'success');
+        setAbonoOC(null);
+        setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' });
+        refetchAll();
+      } else {
+        showToast(res.error?.message || 'Error al registrar el abono.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [abonoOC, abonoForm, showToast, refetchAll]);
 
-    setOrdenes(prev => prev.map(o => {
-      if (o.id !== modalAbono.id) return o;
-      const nuevoPagado = o.pagado + abono;
-      return { ...o, pagado: nuevoPagado, estado: nuevoPagado >= o.monto ? 'Recibida' : o.estado };
-    }));
-    setProveedores(prev => prev.map(p =>
-      p.id === modalAbono.proveedorId
-        ? { ...p, saldoPendiente: Math.max(0, p.saldoPendiente - abono) }
-        : p
-    ));
-    setMontoAbono('');
-    setModalAbono(null);
-    showToast(`✅ Abono de ${fmt(abono)} registrado.`, 'success');
-  };
+  const handleCambiarEstado = useCallback(
+    async (orden: OrdenCompraDTO, estado: EstadoOrdenApi, motivo?: string) => {
+      setSubmitting(true);
+      try {
+        const res = await ordenesCompraApi.cambiarEstado(orden.id, { estado, motivo });
+        if (res.success) {
+          showToast(`Orden ${res.data.folio} marcada como ${ESTADO_LABEL[estado]}.`, 'success');
+          setCancelOC(null);
+          setConfirmCambio(null);
+          setMotivoCancelacion('');
+          refetchAll();
+        } else {
+          showToast(res.error?.message || 'Error al cambiar el estado.', 'error');
+        }
+      } catch {
+        showToast('No se pudo conectar con el servidor.', 'error');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [showToast, refetchAll],
+  );
+
+  const handleEliminarOrden = useCallback(async () => {
+    if (!deleteOC) return;
+    setSubmitting(true);
+    try {
+      const res = await ordenesCompraApi.eliminar(deleteOC.id);
+      if (res.success) {
+        showToast('Orden de compra eliminada.', 'success');
+        setDeleteOC(null);
+        refetchAll();
+      } else {
+        showToast(res.error?.message || 'Error al eliminar la orden.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [deleteOC, showToast, refetchAll]);
+
+  // ── Handler: ledger (estados de cuenta) ──
+  // La modal se abre SOLO cuando el ledger ya fue cargado: evita el
+  // parpadeo de "modal vacía" que se veía al abrirla durante el fetch.
+  const openLedger = useCallback(async (r: EstadoCuentaResumenDTO) => {
+    try {
+      const res = await proveedoresApi.ledger(r.proveedorId);
+      if (!res.success) {
+        showToast(res.error?.message || 'Error al cargar el estado de cuenta.', 'error');
+        return;
+      }
+      setLedger(res.data);
+      setDetalleProv(r);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    }
+  }, [showToast]);
+
+  // ── Columnas DataTable: proveedores ──
+  const proveedorColumns: Column<ProveedorDTO>[] = [
+    {
+      key: 'nombre',
+      header: 'Proveedor',
+      render: (p) => (
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xs shrink-0">
+            {p.nombre[0]}
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-slate-900 text-xs truncate">{p.nombre}</p>
+            <p className="text-[10px] text-slate-500 font-medium truncate">{p.correo || '—'}</p>
+          </div>
+        </div>
+      ),
+    },
+    { key: 'rfc', header: 'RFC', render: (p) => <span className="text-xs font-medium text-slate-500">{p.rfc ?? '—'}</span> },
+    { key: 'telefono', header: 'Teléfono', render: (p) => <span className="text-xs font-medium text-slate-600">{p.telefono ?? '—'}</span> },
+    {
+      key: 'categoria',
+      header: 'Categoría',
+      render: (p) => (
+        <Badge variant={badgeVariant[(p.categoria as CategoriaProveedor)] ?? 'neutral'} size="sm">
+          {p.categoria}
+        </Badge>
+      ),
+    },
+    {
+      key: 'saldo',
+      header: 'Saldo Pendiente',
+      align: 'right',
+      render: (p) => {
+        const saldo = saldoProveedor(p.id);
+        return (
+          <span className={`text-xs font-black ${saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {formatCurrency(saldo)}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'total',
+      header: 'Total Compras',
+      align: 'right',
+      render: (p) => <span className="text-xs font-black text-slate-700">{formatCurrency(totalComprado(p.id))}</span>,
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'center',
+      minWidth: '180px',
+      nowrap: true,
+      render: (p) => (
+        <div className="flex items-center justify-center gap-1">
+          {puedeEditar && (
+            <Button variant="warning" size="sm" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => openEditProv(p)}>
+              Editar
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button variant="danger" size="sm" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => setDeleteProv(p)}>
+              Eliminar
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  // ── Columnas DataTable: órdenes ──
+  const ordenColumns: Column<OrdenCompraDTO>[] = [
+    { key: 'folio', header: 'Folio', render: (o) => <span className="font-black text-primary text-xs">{o.folio}</span> },
+    {
+      key: 'proveedor',
+      header: 'Proveedor',
+      render: (o) => (
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs shrink-0">
+            {(o.proveedor ?? '?')[0]}
+          </div>
+          <span className="font-bold text-slate-700 text-xs">{o.proveedor ?? '—'}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'descripcion',
+      header: 'Descripción',
+      render: (o) => <p className="text-xs text-slate-600 font-medium max-w-[220px] truncate">{o.descripcion}</p>,
+    },
+    { key: 'fecha', header: 'Fecha', render: (o) => <span className="text-xs font-medium text-slate-500">{o.fecha.slice(0, 10)}</span> },
+    { key: 'monto', header: 'Monto', align: 'right', render: (o) => <span className="text-xs font-black text-slate-900">{formatCurrency(o.monto)}</span> },
+    {
+      key: 'pagado',
+      header: 'Pagado',
+      align: 'right',
+      render: (o) => (
+        <div>
+          <div className="font-black text-green-600 text-xs">{formatCurrency(o.pagado)}</div>
+          {o.saldo > 0 && (
+            <div className="text-[10px] text-red-500 font-bold">Resta: {formatCurrency(o.saldo)}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      align: 'center',
+      render: (o) => (
+        <div className="flex justify-center">
+          <Badge variant={estadoVariant[ESTADO_LABEL[o.estado]]} size="sm">
+            {ESTADO_LABEL[o.estado]}
+          </Badge>
+        </div>
+      ),
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'center',
+      minWidth: '340px',
+      nowrap: true,
+      render: (o) => {
+        const activa = o.estado === 'PENDIENTE' || o.estado === 'APROBADA';
+        return (
+          <div className="flex items-center justify-center gap-1">
+            {o.saldo > 0 && puedeEditar && (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<CreditCard className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' });
+                  setAbonoOC(o);
+                }}
+              >
+                Abonar
+              </Button>
+            )}
+            {o.estado === 'PENDIENTE' && puedeEditar && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                onClick={() => setConfirmCambio({ orden: o, estado: 'APROBADA' })}
+              >
+                Aprobar
+              </Button>
+            )}
+            {o.estado === 'APROBADA' && puedeEditar && (
+              <Button
+                variant="success"
+                size="sm"
+                icon={<Truck className="w-3.5 h-3.5" />}
+                onClick={() => setConfirmCambio({ orden: o, estado: 'RECIBIDA' })}
+              >
+                Recibir
+              </Button>
+            )}
+            {activa && puedeEditar && (
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<XCircle className="w-3.5 h-3.5" />}
+                disabled={o.pagado > 0}
+                title={
+                  o.pagado > 0
+                    ? 'No se puede cancelar: la orden ya tiene abonos registrados.'
+                    : 'Cancelar orden de compra'
+                }
+                onClick={() => {
+                  setMotivoCancelacion('');
+                  setCancelOC(o);
+                }}
+              >
+                Cancelar
+              </Button>
+            )}
+            {o.pagado === 0 && puedeEliminar && (
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                title="Eliminar orden de compra"
+                onClick={() => setDeleteOC(o)}
+              >
+                Eliminar
+              </Button>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
+  // ── Columnas DataTable: estados de cuenta (resumen por proveedor) ──
+  const estadoResumenColumns: Column<EstadoCuentaResumenDTO>[] = [
+    {
+      key: 'proveedor',
+      header: 'Proveedor',
+      render: (r) => (
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xs shrink-0">
+            {r.proveedor[0]}
+          </div>
+          <p className="font-bold text-slate-900 text-xs truncate">{r.proveedor}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'operaciones',
+      header: 'Estado de Cuenta',
+      align: 'center',
+      minWidth: '140px',
+      nowrap: true,
+      render: (r) => (
+        <div className="flex justify-center">
+          <Button variant="info" size="sm" icon={<Eye className="w-3.5 h-3.5" />} onClick={() => openLedger(r)}>
+            Ver
+          </Button>
+        </div>
+      ),
+    },
+    { key: 'total', header: 'Total Compras', align: 'right', render: (r) => <span className="text-xs font-black text-slate-700">{formatCurrency(r.total)}</span> },
+    { key: 'pagado', header: 'Pagado', align: 'right', render: (r) => <span className="text-xs font-black text-green-600">{formatCurrency(r.pagado)}</span> },
+    {
+      key: 'saldo',
+      header: 'Saldo Pendiente',
+      align: 'right',
+      render: (r) => (
+        <span className={`text-xs font-black ${r.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
+          {formatCurrency(r.saldo)}
+        </span>
+      ),
+    },
+  ];
+
+  // ── Columnas DataTable: ledger detalle de un proveedor ──
+  const ledgerColumns: Column<LedgerDetalleDTO['movimientos'][number]>[] = [
+    { key: 'fecha', header: 'Fecha', render: (r) => <span className="text-xs font-medium text-slate-500">{r.fecha.slice(0, 10)}</span> },
+    { key: 'folio', header: 'Folio', render: (r) => <span className="font-black text-primary text-xs">{r.folio}</span> },
+    { key: 'concepto', header: 'Concepto', render: (r) => <p className="text-xs text-slate-600 font-medium max-w-[200px] truncate">{r.concepto}</p> },
+    { key: 'cargo', header: 'Cargo', align: 'right', render: (r) => <span className="text-xs font-bold text-slate-700">{formatCurrency(r.cargo)}</span> },
+    { key: 'abono', header: 'Abono', align: 'right', render: (r) => <span className="text-xs font-bold text-green-600">{formatCurrency(r.abono)}</span> },
+    {
+      key: 'saldo',
+      header: 'Saldo',
+      align: 'right',
+      render: (r) => (
+        <span className={`text-xs font-black ${r.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
+          {formatCurrency(r.saldo)}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Proveedores</h1>
-          <p className="text-slate-500 font-medium">Órdenes de compra, pagos y estados de cuenta.</p>
-        </div>
-        <div className="flex gap-3">
-          <button className="btn-primary flex items-center gap-2" onClick={() => setModalOC(true)}>
-            <FileText className="w-4 h-4" /> Nueva Orden
-          </button>
-          <button
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 font-bold text-sm hover:bg-slate-50 transition-all"
-            onClick={() => setModalProv(true)}
-          >
-            <Plus className="w-4 h-4" /> Proveedor
-          </button>
-        </div>
-      </div>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Proveedores"
+        subtitle="Órdenes de compra, pagos y estados de cuenta."
+        action={
+          puedeCrear ? (
+            <div className="flex flex-wrap gap-3">
+              <Button variant="primary" icon={<FileText className="w-4 h-4" />} onClick={() => { setOcForm(emptyOcForm); setOcModal(true); }}>
+                Nueva Orden
+              </Button>
+              <Button variant="outline" icon={<Plus className="w-4 h-4" />} onClick={openCreateProv}>
+                Proveedor
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="card border-l-4 border-l-red-500 py-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Por Pagar</p>
-              <h4 className="text-xl font-black text-slate-900">{fmt(totalPendiente)}</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-primary py-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-orange-50 text-primary rounded-xl flex items-center justify-center">
-              <Package className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Órdenes Activas</p>
-              <h4 className="text-xl font-black text-slate-900">{ordenesActivas}</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-green-500 py-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-50 text-green-600 rounded-xl flex items-center justify-center">
-              <DollarSign className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Compras</p>
-              <h4 className="text-xl font-black text-slate-900">{fmt(totalCompras)}</h4>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-        {(['proveedores', 'ordenes', 'estados'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all capitalize ${tab === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            {t === 'ordenes' ? 'Órdenes de Compra' : t === 'estados' ? 'Estados de Cuenta' : 'Proveedores'}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={tab === 'proveedores' ? 'Buscar proveedor...' : 'Buscar orden...'}
-          className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-primary/50 transition-all text-sm font-medium"
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <StatsCard
+          icon={<Wallet className="w-6 h-6" />}
+          value={formatCurrency(stats.porPagar)}
+          label="Por Pagar"
+          color={stats.porPagar > 0 ? 'error' : 'success'}
+        />
+        <StatsCard
+          icon={<ClipboardList className="w-6 h-6" />}
+          value={`${stats.ordenesActivas} activas`}
+          label="Órdenes Activas"
+          color="info"
+        />
+        <StatsCard
+          icon={<ShoppingCart className="w-6 h-6" />}
+          value={formatCurrency(stats.totalCompras)}
+          label="Total Compras"
+          color="neutral"
         />
       </div>
 
-      {/* ─── PROVEEDORES TAB ──────────────────────────────────────────────────── */}
-      {tab === 'proveedores' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProv.map(p => (
-            <div key={p.id} className="card group hover:border-primary/30">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-lg">
-                    {p.empresa[0]}
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-900 leading-tight text-sm">{p.empresa}</h3>
-                    <p className="text-xs text-slate-500 font-medium">{p.nombre}</p>
-                  </div>
-                </div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${categoriaColor[p.categoria]}`}>
-                  {p.categoria}
-                </span>
-              </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2 text-slate-500 text-xs">
-                  <Phone className="w-3.5 h-3.5" /> {p.telefono}
-                </div>
-                <div className="flex items-center gap-2 text-slate-500 text-xs">
-                  <Mail className="w-3.5 h-3.5" /> {p.correo}
-                </div>
-              </div>
-
-              <div className="bg-slate-50 rounded-xl p-3 space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500 font-medium">Saldo pendiente</span>
-                  <span className={`font-black ${p.saldoPendiente > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {fmt(p.saldoPendiente)}
+      {/* Tabs */}
+      <Tabs
+        tabs={[
+          { key: 'proveedores', label: 'Proveedores', icon: <Truck className="w-4 h-4" />, count: paginationProv.total },
+          { key: 'ordenes', label: 'Órdenes de Compra', icon: <FileText className="w-4 h-4" />, count: paginationOC.total },
+          { key: 'estados', label: 'Estados de Cuenta', icon: <Wallet className="w-4 h-4" />, count: resumen.length },
+        ]}
+        value={tab}
+        onChange={(key) => {
+          setTab(key as 'proveedores' | 'ordenes' | 'estados');
+          setSearch('');
+          setFilterValues({});
+          setShowFilters(false);
+          setPageEstados(1);
+        }}
+      >
+        {/* ─── PROVEEDORES ─────────────────────────────────────────────── */}
+        <TabPanel tabKey="proveedores">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar proveedor por nombre o RFC..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
                   </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500 font-medium">Total compras</span>
-                  <span className="font-black text-slate-700">{fmt(p.totalCompras)}</span>
-                </div>
-              </div>
+                )}
+              </Button>
             </div>
-          ))}
-          {filteredProv.length === 0 && (
-            <div className="col-span-3 text-center py-16 text-slate-400 font-medium">
-              No se encontraron proveedores.
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ─── ÓRDENES TAB ─────────────────────────────────────────────────────── */}
-      {tab === 'ordenes' && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Folio</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Proveedor</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
-                  <th className="text-right px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
-                  <th className="text-right px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pagado</th>
-                  <th className="text-center px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
-                  <th className="px-6 py-4" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filteredOC.map(o => {
-                  const cfg = estadoConfig[o.estado];
-                  const pendiente = o.monto - o.pagado;
-                  return (
-                    <tr key={o.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-black text-primary text-xs">{o.id}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs shrink-0">
-                            {o.proveedorNombre[0]}
-                          </div>
-                          <span className="font-bold text-slate-700 text-xs">{o.proveedorNombre}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-600 font-medium max-w-xs">
-                        <p className="truncate text-xs">{o.descripcion}</p>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500 font-medium text-xs">{o.fecha}</td>
-                      <td className="px-6 py-4 text-right font-black text-slate-900">{fmt(o.monto)}</td>
-                      <td className="px-6 py-4 text-right">
-                        <div>
-                          <div className="font-black text-green-600 text-sm">{fmt(o.pagado)}</div>
-                          {pendiente > 0 && <div className="text-[10px] text-red-500 font-bold">Resta: {fmt(pendiente)}</div>}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex justify-center">
-                          <span className={`flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full ${cfg.color}`}>
-                            {cfg.icon} {o.estado}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {pendiente > 0 && (
-                          <button
-                            onClick={() => setModalAbono(o)}
-                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
-                          >
-                            <CreditCard className="w-3 h-3" /> Abonar
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <ActiveFilters
+              filters={activeFilters}
+              onRemove={(key) => handleFilterChange(key, '')}
+              onClearAll={handleClearFilters}
+            />
+
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
+
+            {initialLoading ? (
+              <EmptyState title="Cargando proveedores..." subtitle="Espera un momento." />
+            ) : proveedores.length === 0 ? (
+              <EmptyState
+                title="Sin proveedores"
+                subtitle="No se encontraron proveedores para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={proveedorColumns}
+                  data={proveedores}
+                  keyExtractor={(p) => p.id}
+                  emptyText="No se encontraron proveedores."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={paginationProv.page}
+                  totalPages={paginationProv.totalPages}
+                  totalRecords={paginationProv.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(page) => fetchProveedores(page, search, filterValues)}
+                />
+              </>
+            )}
           </div>
+        </TabPanel>
+
+        {/* ─── ÓRDENES DE COMPRA ───────────────────────────────────────── */}
+        <TabPanel tabKey="ordenes">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar folio, proveedor o descripción..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <ActiveFilters
+              filters={activeFilters}
+              onRemove={(key) => handleFilterChange(key, '')}
+              onClearAll={handleClearFilters}
+            />
+
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
+
+            {initialLoading ? (
+              <EmptyState title="Cargando órdenes..." subtitle="Espera un momento." />
+            ) : ordenes.length === 0 ? (
+              <EmptyState
+                title="Sin órdenes de compra"
+                subtitle="No se encontraron órdenes para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={ordenColumns}
+                  data={ordenes}
+                  keyExtractor={(o) => o.id}
+                  emptyText="No se encontraron órdenes de compra."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={paginationOC.page}
+                  totalPages={paginationOC.totalPages}
+                  totalRecords={paginationOC.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(page) => fetchOrdenes(page, search, filterValues)}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+
+        {/* ─── ESTADOS DE CUENTA ───────────────────────────────────────── */}
+        <TabPanel tabKey="estados">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar proveedor..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <ActiveFilters
+              filters={activeFilters}
+              onRemove={(key) => handleFilterChange(key, '')}
+              onClearAll={handleClearFilters}
+            />
+
+            {showFilters && (
+              <FilterPanel
+                filters={filterFields}
+                values={filterValues}
+                onChange={handleFilterChange}
+                onClear={handleClearFilters}
+              />
+            )}
+
+            {resumenFiltrado.length === 0 ? (
+              <EmptyState
+                title="Sin estados de cuenta"
+                subtitle="No se encontraron proveedores con operaciones para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 font-medium">
+                  Usa el botón <span className="font-bold">Ver</span> de cada proveedor para consultar su estado de cuenta completo (saldo corrido por operación).
+                </p>
+                <DataTable
+                  columns={estadoResumenColumns}
+                  data={resumenPagina}
+                  keyExtractor={(r) => r.proveedorId}
+                  emptyText="Sin proveedores con operaciones."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={pageEstados}
+                  totalPages={totalPagesEstados}
+                  totalRecords={resumenFiltrado.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPageEstados}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+      </Tabs>
+
+      {/* Indicador de refetch */}
+      {refreshing && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg">
+          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          Sincronizando...
         </div>
       )}
 
-      {/* ─── ESTADOS DE CUENTA TAB ───────────────────────────────────────────── */}
-      {tab === 'estados' && (
-        <div className="space-y-4">
-          {proveedores.map(p => {
-            const ocs = ordenes.filter(o => o.proveedorId === p.id);
-            if (ocs.length === 0) return null;
-            return (
-              <div key={p.id} className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black">
-                      {p.empresa[0]}
-                    </div>
-                    <div>
-                      <h3 className="font-black text-slate-900">{p.empresa}</h3>
-                      <p className="text-xs text-slate-500">{ocs.length} operaciones</p>
-                    </div>
+      {/* ─── Modal Nuevo/Editar Proveedor ───────────────────────────────── */}
+      <FormModal
+        open={provModal}
+        onClose={() => setProvModal(false)}
+        onCancel={() => setProvModal(false)}
+        title={editProvId ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+        subtitle={editProvId ? 'Actualiza los datos del proveedor.' : 'Registrar un nuevo proveedor.'}
+        submitLabel={editProvId ? 'Guardar Cambios' : 'Agregar Proveedor'}
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleGuardarProveedor}
+      >
+        <ModalField label="Nombre / Razón social" required>
+          <input
+            type="text"
+            className={modalInputClass}
+            placeholder="Refacciones CAT México"
+            value={provForm.nombre}
+            onChange={(e) => setProvForm({ ...provForm, nombre: e.target.value })}
+          />
+        </ModalField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="RFC">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="XXX000000XX0"
+              value={provForm.rfc}
+              onChange={(e) => setProvForm({ ...provForm, rfc: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Categoría">
+            <select
+              className={modalSelectClass}
+              value={provForm.categoria}
+              onChange={(e) => setProvForm({ ...provForm, categoria: e.target.value as CategoriaProveedor })}
+            >
+              {CATEGORIAS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </ModalField>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Teléfono">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="555-0000"
+              value={provForm.telefono}
+              onChange={(e) => setProvForm({ ...provForm, telefono: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Correo">
+            <input
+              type="email"
+              className={modalInputClass}
+              placeholder="correo@empresa.com"
+              value={provForm.correo}
+              onChange={(e) => setProvForm({ ...provForm, correo: e.target.value })}
+            />
+          </ModalField>
+        </div>
+      </FormModal>
+
+      {/* ─── Modal Nueva Orden de Compra ───────────────────────────────── */}
+      <FormModal
+        open={ocModal}
+        onClose={() => setOcModal(false)}
+        onCancel={() => setOcModal(false)}
+        title="Nueva Orden de Compra"
+        subtitle="Registrar una nueva orden para un proveedor."
+        submitLabel="Crear Orden"
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleCrearOrden}
+      >
+        <ModalField label="Proveedor" required>
+          <select
+            className={modalSelectClass}
+            value={ocForm.proveedorId}
+            onChange={(e) => setOcForm({ ...ocForm, proveedorId: e.target.value })}
+          >
+            <option value="">Seleccionar proveedor...</option>
+            {proveedoresCatalogo.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+        </ModalField>
+        <ModalField label="Descripción" required>
+          <input
+            type="text"
+            className={modalInputClass}
+            placeholder="Filtros de aceite x12, aceite SAE 15W-40..."
+            value={ocForm.descripcion}
+            onChange={(e) => setOcForm({ ...ocForm, descripcion: e.target.value })}
+          />
+        </ModalField>
+        <ModalField label="Monto Total (MXN)" required>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className={modalInputClass}
+            placeholder="5000"
+            value={ocForm.monto}
+            onChange={(e) => setOcForm({ ...ocForm, monto: e.target.value })}
+          />
+        </ModalField>
+      </FormModal>
+
+      {/* ─── Modal Abono ────────────────────────────────────────────────── */}
+      <FormModal
+        open={!!abonoOC}
+        onClose={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
+        onCancel={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
+        title="Registrar Abono"
+        subtitle="Aplicar un pago parcial o total a la orden."
+        submitLabel="Registrar Pago"
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleAbono}
+      >
+        {abonoOC && (
+          <div className="bg-slate-50 rounded-xl p-4 space-y-1 text-sm">
+            <p className="font-bold text-slate-700">{abonoOC.proveedor ?? '—'}</p>
+            <p className="text-slate-500 text-xs">{abonoOC.folio} — {abonoOC.descripcion}</p>
+            <div className="flex justify-between mt-2 pt-2 border-t border-slate-200">
+              <span className="text-slate-500 text-xs">Pendiente por pagar</span>
+              <span className="font-black text-red-600">{formatCurrency(abonoOC.saldo)}</span>
+            </div>
+          </div>
+        )}
+        <ModalField label="Monto a Abonar (MXN)" required>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className={modalInputClass}
+            placeholder="0.00"
+            value={abonoForm.monto}
+            onChange={(e) => setAbonoForm({ ...abonoForm, monto: e.target.value })}
+          />
+        </ModalField>
+        <ModalField label="Método de Pago">
+          <select
+            className={modalSelectClass}
+            value={abonoForm.metodoPago}
+            onChange={(e) => setAbonoForm({ ...abonoForm, metodoPago: e.target.value })}
+          >
+            {MEDIOS_PAGO.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </ModalField>
+      </FormModal>
+
+      {/* ─── Modal Confirmar Aprobar / Recibir ─────────────────────────── */}
+      <FormModal
+        open={!!confirmCambio}
+        onClose={() => setConfirmCambio(null)}
+        onCancel={() => setConfirmCambio(null)}
+        title={confirmCambio?.estado === 'APROBADA' ? 'Aprobar Orden de Compra' : 'Recibir Orden de Compra'}
+        subtitle={
+          confirmCambio?.estado === 'APROBADA'
+            ? 'Autoriza el compromiso de pago con el proveedor.'
+            : 'Punto sin retorno: se genera la cuenta por pagar.'
+        }
+        submitLabel={confirmCambio?.estado === 'APROBADA' ? 'Sí, Aprobar' : 'Sí, Recibir'}
+        cancelLabel="Volver"
+        isSubmitting={submitting}
+        onSubmit={() => {
+          if (confirmCambio) handleCambiarEstado(confirmCambio.orden, confirmCambio.estado);
+        }}
+      >
+        {confirmCambio && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div
+              className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${
+                confirmCambio.estado === 'APROBADA' ? 'bg-blue-100' : 'bg-amber-100'
+              }`}
+            >
+              {confirmCambio.estado === 'APROBADA' ? (
+                <CheckCircle2 className="w-7 h-7 text-blue-600" />
+              ) : (
+                <Truck className="w-7 h-7 text-amber-600" />
+              )}
+            </div>
+            {confirmCambio.estado === 'APROBADA' ? (
+              <>
+                <p className="text-sm text-slate-700 mb-1">¿Confirmas la aprobación de la orden?</p>
+                <p className="font-black text-slate-900 text-lg mb-1">{confirmCambio.orden.folio}</p>
+                <p className="font-black text-red-600 text-xl mb-2">{formatCurrency(confirmCambio.orden.monto)}</p>
+                <p className="text-xs text-slate-500">
+                  Se autoriza el compromiso de pago. La orden podrá cancelarse antes de recibirse (si no tiene abonos).
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-slate-700 mb-1">¿Confirmas la recepción de la mercancía?</p>
+                <p className="font-black text-slate-900 text-lg mb-1">{confirmCambio.orden.folio}</p>
+                <p className="font-black text-red-600 text-xl mb-2">{formatCurrency(confirmCambio.orden.monto)}</p>
+                <p className="text-xs text-slate-500">
+                  Esto genera la cuenta por pagar por el total y{' '}
+                  <span className="font-bold">la orden ya no podrá cancelarse</span>.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+      </FormModal>
+
+      {/* ─── Modal Cancelar Orden ──────────────────────────────────────── */}
+      <FormModal
+        open={!!cancelOC}
+        onClose={() => setCancelOC(null)}
+        onCancel={() => setCancelOC(null)}
+        title="Cancelar Orden de Compra"
+        subtitle="La orden quedará cancelada y no podrá recibir abonos."
+        submitLabel="Sí, Cancelar"
+        cancelLabel="Volver"
+        isSubmitting={submitting}
+        onSubmit={() => cancelOC && handleCambiarEstado(cancelOC, 'CANCELADA', motivoCancelacion.trim() || undefined)}
+      >
+        {cancelOC && (
+          <div className="flex flex-col items-center text-center py-2">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <XCircle className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de cancelar la orden?</p>
+            <p className="font-black text-slate-900 text-lg mb-3">{cancelOC.folio}</p>
+            <ModalField label="Motivo de cancelación" required>
+              <input
+                type="text"
+                className={modalInputClass}
+                placeholder="Ej. Error en la requisición, proveedor sin stock..."
+                value={motivoCancelacion}
+                onChange={(e) => setMotivoCancelacion(e.target.value)}
+              />
+            </ModalField>
+          </div>
+        )}
+      </FormModal>
+
+      {/* ─── Modal Confirmar Eliminación de Proveedor ──────────────────── */}
+      <FormModal
+        open={!!deleteProv}
+        onClose={() => setDeleteProv(null)}
+        onCancel={() => setDeleteProv(null)}
+        title="Eliminar Proveedor"
+        subtitle="Esta acción no se puede deshacer."
+        submitLabel="Sí, Eliminar"
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleEliminarProveedor}
+      >
+        {deleteProv && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar el proveedor?</p>
+            <p className="font-black text-slate-900 text-lg mb-2">{deleteProv.nombre}</p>
+            <p className="text-xs text-slate-500">
+              El proveedor no podrá eliminarse si tiene cuentas por pagar pendientes.
+            </p>
+          </div>
+        )}
+      </FormModal>
+
+      {/* ─── Modal Confirmar Eliminación de Orden ──────────────────────── */}
+      <FormModal
+        open={!!deleteOC}
+        onClose={() => setDeleteOC(null)}
+        onCancel={() => setDeleteOC(null)}
+        title="Eliminar Orden de Compra"
+        subtitle="Esta acción no se puede deshacer."
+        submitLabel="Sí, Eliminar"
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleEliminarOrden}
+      >
+        {deleteOC && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar la orden?</p>
+            <p className="font-black text-slate-900 text-lg mb-2">{deleteOC.folio}</p>
+            <p className="text-xs text-slate-500">
+              Solo pueden eliminarse órdenes sin pagos registrados.
+            </p>
+          </div>
+        )}
+      </FormModal>
+
+      {/* ─── Modal Estado de Cuenta (ledger detalle) ───────────────────── */}
+      <Modal open={!!detalleProv} onClose={() => setDetalleProv(null)} size="lg">
+        {detalleProv && (
+          <>
+            <ModalHeader
+              title={detalleProv.proveedor}
+              subtitle="Estado de cuenta — saldo corrido por operación."
+              onClose={() => setDetalleProv(null)}
+            />
+            <ModalBody>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total compras</p>
+                    <p className="text-lg font-black text-slate-900">
+                      {formatCurrency(ledger?.totales.cargo ?? detalleProv.total)}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo pendiente</p>
-                    <p className={`text-lg font-black ${p.saldoPendiente > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {fmt(p.saldoPendiente)}
+                  <div className="bg-green-50 rounded-xl p-3">
+                    <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Pagado</p>
+                    <p className="text-lg font-black text-green-700">
+                      {formatCurrency(ledger?.totales.abono ?? detalleProv.pagado)}
+                    </p>
+                  </div>
+                  <div className="bg-red-50 rounded-xl p-3">
+                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Saldo pendiente</p>
+                    <p className={`text-lg font-black ${detalleProv.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {formatCurrency(ledger?.totales.saldo ?? detalleProv.saldo)}
                     </p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  {ocs.map(o => (
-                    <div key={o.id} className="flex items-center justify-between py-2 border-t border-slate-50 text-sm">
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-black text-slate-400">{o.fecha}</span>
-                        <span className="text-slate-700 font-medium text-xs">{o.descripcion}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-bold text-slate-900">{fmt(o.monto)}</span>
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${estadoConfig[o.estado].color}`}>
-                          {o.estado}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between">
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total compras</span>
-                  <span className="font-black text-slate-900">{fmt(p.totalCompras)}</span>
-                </div>
+                {ledger ? (
+                  <DataTable
+                    columns={ledgerColumns}
+                    data={ledger.movimientos}
+                    keyExtractor={(r) => r.folio}
+                    emptyText="Sin operaciones registradas."
+                    maxBodyHeight="320px"
+                  />
+                ) : null}
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ─── Modal Nuevo Proveedor ─────────────────────────────────────────────── */}
-      <Modal isOpen={modalProv} onClose={() => setModalProv(false)} onConfirm={handleNuevoProveedor} title="Nuevo Proveedor" confirmLabel="Agregar Proveedor">
-        <ModalField label="Empresa *">
-          <input className={inputClass} placeholder="Refacciones CAT México" value={formProv.empresa} onChange={e => setFormProv({ ...formProv, empresa: e.target.value })} />
-        </ModalField>
-        <ModalField label="Contacto *">
-          <input className={inputClass} placeholder="Nombre del contacto" value={formProv.nombre} onChange={e => setFormProv({ ...formProv, nombre: e.target.value })} />
-        </ModalField>
-        <ModalField label="Categoría">
-          <select className={selectClass} value={formProv.categoria} onChange={e => setFormProv({ ...formProv, categoria: e.target.value })}>
-            <option>Refacciones</option>
-            <option>Combustible</option>
-            <option>Materiales</option>
-            <option>Servicios</option>
-            <option>Otros</option>
-          </select>
-        </ModalField>
-        <ModalField label="Teléfono">
-          <input className={inputClass} placeholder="555-0000" value={formProv.telefono} onChange={e => setFormProv({ ...formProv, telefono: e.target.value })} />
-        </ModalField>
-        <ModalField label="Correo">
-          <input type="email" className={inputClass} placeholder="correo@empresa.com" value={formProv.correo} onChange={e => setFormProv({ ...formProv, correo: e.target.value })} />
-        </ModalField>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="primary" onClick={() => setDetalleProv(null)}>
+                Cerrar
+              </Button>
+            </ModalFooter>
+          </>
+        )}
       </Modal>
-
-      {/* ─── Modal Nueva Orden de Compra ───────────────────────────────────────── */}
-      <Modal isOpen={modalOC} onClose={() => setModalOC(false)} onConfirm={handleNuevaOC} title="Nueva Orden de Compra" confirmLabel="Crear Orden">
-        <ModalField label="Proveedor *">
-          <select className={selectClass} value={formOC.proveedorId} onChange={e => setFormOC({ ...formOC, proveedorId: e.target.value })}>
-            <option value="">Seleccionar proveedor...</option>
-            {proveedores.map(p => <option key={p.id} value={p.id}>{p.empresa}</option>)}
-          </select>
-        </ModalField>
-        <ModalField label="Descripción *">
-          <input className={inputClass} placeholder="Filtros de aceite x12, aceite SAE 15W-40..." value={formOC.descripcion} onChange={e => setFormOC({ ...formOC, descripcion: e.target.value })} />
-        </ModalField>
-        <ModalField label="Monto Total (MXN) *">
-          <input type="number" className={inputClass} placeholder="5000" value={formOC.monto} onChange={e => setFormOC({ ...formOC, monto: e.target.value })} />
-        </ModalField>
-      </Modal>
-
-      {/* ─── Modal Abono ──────────────────────────────────────────────────────── */}
-      {modalAbono && (
-        <Modal
-          isOpen={!!modalAbono}
-          onClose={() => { setModalAbono(null); setMontoAbono(''); }}
-          onConfirm={handleAbono}
-          title="Registrar Abono"
-          confirmLabel="Registrar Pago"
-        >
-          <div className="bg-slate-50 rounded-xl p-4 space-y-1 text-sm">
-            <p className="font-bold text-slate-700">{modalAbono.proveedorNombre}</p>
-            <p className="text-slate-500 text-xs">{modalAbono.descripcion}</p>
-            <div className="flex justify-between mt-2 pt-2 border-t border-slate-200">
-              <span className="text-slate-500 text-xs">Pendiente por pagar</span>
-              <span className="font-black text-red-600">{fmt(modalAbono.monto - modalAbono.pagado)}</span>
-            </div>
-          </div>
-          <ModalField label="Monto a Abonar (MXN) *">
-            <input
-              type="number"
-              className={inputClass}
-              placeholder="0.00"
-              value={montoAbono}
-              onChange={e => setMontoAbono(e.target.value)}
-            />
-          </ModalField>
-        </Modal>
-      )}
     </div>
   );
 }
