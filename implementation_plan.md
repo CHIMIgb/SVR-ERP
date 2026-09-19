@@ -1,552 +1,661 @@
-# Plan de Implementación — Fase 3: Módulo Facturas + Cotización → Factura → CxC
+# Plan de Implementación — Fase 7: Recepción de Órdenes de Compra → Alta/Actualización en Inventario
 
 ## Estado del Proyecto
 
 ```
-Fase 1 ✅ (2-3 días): migración + módulo cobranza + seed + tests
-Fase 2 ✅:            conectar frontend a API real (cobranza.page.tsx)
-Fase 3 📋:  módulo facturas → cotización aceptada → CxC           ← ESTE PLAN
-Fase 4:     proyecto en CxC + bitácora → CxC
-Fase 5:     reportes consolidados y conciliación
+Fase 1 ✅:  migración + módulo cobranza + seed + tests
+Fase 2 ✅:  conectar frontend a API real (cobranza)
+Fase 3 ✅:  módulo facturas → cotización aceptada → CxC  (respaldo: implementation_plan_fase3_facturas_backup.md)
+Fase 4-6 ✅: proyectos/CxC, reportes, conciliación
+Fase 7 📋:  recepción de OC → alta automática en /inventario   ← ESTE PLAN
 ```
 
-Cadena de valor: **cotización → aceptar → factura + CxC → cobro → ingreso finanzas**
+Cadena de valor a cerrar: **requisición → orden de compra (con líneas) → aprobación → recepción física → alta/actualización de stock en inventario → CxP**
+
+---
+
+## 0. Vinculación obligatoria con `AGENTS.md`
+
+> **⚠️ Este plan queda vinculado a la raíz del repositorio: `AGENTS.md`.**
+> **TODAS las reglas, estándares y restricciones ahí documentadas son de cumplimiento
+> obligatorio para cada una de las tareas T1–T9 de esta fase.** Ninguna tarea se considera
+> terminada si viola alguna de ellas.
+
+**Fuente de la verdad:** `AGENTS.md` (raíz del repo) + `audit-service-guide.md` (mencionado
+explícitamente en "Estándar Obligatorio de Endpoints y Vistas CRUD").
+
+### Reglas globales que aplican directamente a esta fase
+
+**1. Estándar obligatorio de endpoints (Backend — `AGENTS.md` § "Estándar Obligatorio"):**
+Todo endpoint del API debe cumplir los 4 requisitos de seguridad/auditoría:
+1. Token JWT válido (`JwtAuthGuard`) — **aplicará a `POST /ordenes-compra/:id/recibir`**.
+2. Verificación de blacklist del token (automática vía `JwtStrategy`).
+3. Auditoría de operaciones exitosas (`AuditService.log` con `SUCCESS`).
+4. Auditoría de fallos de negocio en mutaciones (`result: FAIL` + `error_code` antes de
+   lanzar la excepción — patrón `fallir()`, como en `criba.service.ts` / `proveedores.service.ts`).
+Referencia viva del estándar completo: `apps/api/src/criba/`.
+
+**2. RBAC obligatorio:** `@UseGuards(JwtAuthGuard, PermissionsGuard)` +
+`@RequirePermission('comercial', 'proveedores', …)` en cada endpoint modificado/nuevo.
+
+**3. Regla de Plantilla de Vistas CRUD:** toda vista nueva/refactorizada toma `/inventario` como
+plantilla base (`PageHeader`, `StatsCard`, `SearchBar`/`FilterPanel`, `DataTable`, `Pagination`,
+`FormModal`, permisos vía `useAuth().user.vistas`). **Nunca re-implementar lo que ya existe.**
+
+**4. Testing obligatorio (AGENTS.md § "Testing — Mandatory Rule"):**
+- Cualquier función o módulo nuevo **debe incluir unit tests** (`*.spec.ts`).
+- Cualquier prueba de logs de auditoría (`registro_auditoria`) **debe ser integration test**
+  (`*.integration.spec.ts`, corrido con `npm run test:integration`), sin mocks de Prisma/Audit,
+  con cleanup FK-safe y dejando los registros de auditoría (inmutables).
+- AAA pattern, aislamiento entre tests, `describe()` por método.
+
+**5. Soft deletes y auditoría en BD (`eliminado_en`, `creado_por`, `actualizado_por`, etc.):**
+nunca delete físico; mantener consistencia al marcar líneas de OC como inactivas.
+
+**6. Prisma:** UUIDs `@db.Uuid`, snake_case en columnas, migraciones vía flujo manual
+documentado en §2.1 (nunca `prisma migrate dev` — shadow DB falla con el seed RBAC),
+`schema.prisma` está en `apps/api/prisma/`, config en `apps/api/prisma.config.ts` (no en schema).
+
+**7. Frontend — Responsive como regla #1:** todo lo que se agregue en `/proveedores`
+(modales, editor de líneas, tabla de recepción) **debe ser responsive**: breakpoints `sm:`,
+`md:`, `lg:`; tablas con scroll horizontal en móvil; modales adaptándose a pantallas pequeñas;
+formularios apilándose en móvil.
+
+**8. Frontend — Sin claves duplicadas:** antes de cada `.map()` que renderice JSX (editor de
+líneas, modal de recepción) verificar unicidad de `key`; correr `npx tsc --noEmit` después.
+
+**9. Frontend — Usar los componentes UI existentes (no re-implementar):** `FormModal`,
+`ModalField`, `modalInputClass`/`modalSelectClass`, `DataTable`, `Badge`, `Button`, `Tabs`,
+`SearchBar`/`FilterPanel`, `EmptyState`, `Pagination`, `StatsCard`, `PageHeader`. Importar
+`formatCurrency` desde `@svr-erp/shared/utils/currency` (nada de `Intl.NumberFormat` inline).
+`cn()` desde `@/lib/utils`.
+
+**10. Documentación de componentes (AGENTS.md § "DOCUMENT EVERYTHING"):** si esta fase creara
+algún componente nuevo en `src/components/ui/`, debe documentarse en `COMPONENTS.md` con Props
+table, ejemplo de import/uso y secciones "When to use" / "When NOT to use". Se prefiere NO crear
+componentes nuevos (el editor de líneas y el modal de recepción viven dentro de
+`proveedores/page.tsx` reutilizando componentes existentes).
+
+**11. Prohibido CSS inline (`style={{…}}`)** salvo los 3 casos permitidos de AGENTS.md
+(mostré fixed/z-index dinámico/width-height runtime). Todo lo demás en clases Tailwind.
+
+**12. Idioma:** toda cadena visible al usuario en **español (México)**; moneda `es-MX`/`MXN`.
+
+Si una tarea de esta fase contradice alguna regla de `AGENTS.md`, **primero se consulta con el
+Tech Lead (este rol)** antes de proceder.
 
 ---
 
 ## 1. Resumen del Requerimiento
 
-La Fase 3 cierra el ciclo **C2 → C1**: construir el módulo `facturas` (NestJS) y
-conectarlo con las cotizaciones para que al aceptar una cotización se genere
-automáticamente una **factura** con sus conceptos y una **cuenta por cobrar** (CxC)
-ligada a ella.
+El usuario solicita que **al recibir una orden de compra**, esta se dé de alta automáticamente en
+`/inventario`; es decir:
+- Si el producto **ya existe** en `articulos_inventario` → **actualizar stock** sumando la cantidad recibida.
+- Si el producto **no existe** → **crear el artículo** en inventario con su stock inicial.
 
-**Estado actual:**
-- Las tablas `facturas` y `factura_conceptos` **ya existen** en Prisma schema (modelado completo).
-- Las tablas `cuentas_por_cobrar` y `pagos` ya están operativas (Fase 1-2).
-- **No existe** módulo NestJS para facturas, ni vista `/facturas` en el frontend.
-- Las cotizaciones tienen backend completo (`CotizacionesService.cambiarEstado`) y frontend conectado a API.
-- El endpoint `cambiarEstado` solo cambia `PENDIENTE → ACEPTADA/RECHAZADA`, sin generar factura.
+**Estado actual verificado en código:**
+- `ordenes_compra` es una **tabla cabecera sin líneas de detalle** (`proveedor_id`, `descripcion` como texto libre, `monto`, `pagado`, `estado`). El sistema no sabe *qué* artículos ni *en qué cantidades* se compraron.
+- `movimientos_inventario` **ya tiene los campos de trazabilidad** `referencia_tipo` y `referencia_id` (string/UUID opcionales), diseñados para vincular movimientos de stock con un documento origen. `InventarioService.crearMovimiento` ya actualiza stock + inserta movimiento en transacción.
+- `cambiarEstadoOrden` al pasar a `RECIBIDA` **no toca inventario**.
+- **Bug de coherencia detectado:** `registrarAbono` (línea ~917 de `proveedores.service.ts`) fuerza `estado = RECIBIDA` cuando `pagado >= monto`. Esto significa que hoy una OC "se recibe" al pagarse al 100%, no cuando llega la mercancía. Debe desacoplarse: **el stock refleja la recepción física; el dinero refleja el flujo de caja**.
 
-**Objetivo:** Al aceptar una cotización, la UI ofrezca la opción de generar factura + CxC
-en una sola transacción atómica.
+**Objetivo:** Structurar la OC con líneas de partida y crear un endpoint de **recepción dedicado y atómico** que:
+1. Actualice stock de artículos existentes (+ movimiento `ENTRADA` con referencia a la OC).
+2. Cree artículos nuevos (alta automática controlada) con su stock inicial (+ movimiento `ENTRADA`).
+3. Marque la OC como `RECIBIDA`.
+4. Audite toda la operación.
 
 ---
 
 ## 2. Impacto Backend
 
-### 2.1 Schema Prisma — migración aditiva `facturas_cotizacion_link`
+### 2.1 Schema Prisma — migración aditiva `ordenes_compra_items_recepcion`
+
+Nueva tabla de **detalle líneas** de la orden de compra. `articulo_id` es **nullable** a propósito
+para soportar dos escenarios: (a) artículo ya catalogado → se vincula y se actualiza stock;
+(b) artículo nuevo → se crea al recibir usando `nombre` como base.
 
 ```prisma
-// 1. facturas → vínculo opcional con cotización (trazabilidad)
-model facturas {
-  cotizacion_id String?     @db.Uuid
-  cotizaciones  cotizaciones? @relation(fields: [cotizacion_id], references: [id])
-  @@index([cotizacion_id])
-}
+model ordenes_compra_items {
+  id                String   @id @db.Uuid
+  orden_compra_id   String   @db.Uuid
+  articulo_id       String?  @db.Uuid          // NULO si aún no está catalogado
+  nombre            String                      // Snapshot SIEMPRE (aunque exista articulo_id)
+  cantidad          Decimal  @db.Decimal(10, 2)
+  cantidad_recibida Decimal  @default(0) @db.Decimal(10, 2) // permite recepción parcial futura
+  precio_unitario   Decimal  @db.Decimal(12, 2)
+  activo            Boolean  @default(true)
+  creado_en         DateTime @default(now()) @db.Timestamptz()
+  actualizado_en    DateTime @db.Timestamptz()
+  actualizado_por   String?  @db.Uuid
+  creado_por        String?  @db.Uuid
+  eliminado_en      DateTime? @db.Timestamptz()
 
-// 2. Enum AuditAction — acciones nuevas
-//    FACTURA_CREADA, FACTURA_ACTUALIZADA, FACTURA_TIMBRADA,
-//    FACTURA_CANCELADA, COTIZACION_FACTURADA
+  ordenes_compra     ordenes_compra     @relation(fields: [orden_compra_id], references: [id])
+  articulos_inventario articulos_inventario? @relation(fields: [articulo_id], references: [id])
+
+  @@index([orden_compra_id])
+  @@index([articulo_id])
+}
 ```
 
-- Severidades en `audit.constants.ts`: INFO para creación/timbrado, WARNING para cancelaciones.
-- ✋ **Entorno**: `prisma migrate dev` no funciona (shadow DB falla aplicando el seed
-  RBAC). Flujo manual: `prisma migrate diff --from-config-datasource
-  --to-schema prisma/schema.prisma --script` → `prisma db execute --file <migración.sql>`
-  → INSERT en `_prisma_migrations` (checksum sha256, `applied_steps_count` 1) →
-  `prisma generate`.
+**Relaciones inversas a agregar:**
+- En `ordenes_compra`: `ordenes_compra_items ordenes_compra_items[]`
+- En `articulos_inventario`: `ordenes_compra_items ordenes_compra_items[]`
+
+**Enum `AuditAction` — acción de auditoría nueva:**
+```
+ORDEN_COMPRA_RECIBIDA
+```
+
+**Cambio semántico en `monto`:** el `monto` de la OC pasa a **derivarse de la suma de las líneas**
+(`Σ cantidad × precio_unitario`). La columna `monto` se conserva (compatibilidad con `cuentas_por_pagar`),
+pero ya no será capturada por el frontend: se recalcula en el backend.
 
 #### Migración SQL esperada
 
+✋ **Entorno:** `prisma migrate dev` no funciona (la shadow DB falla aplicando el seed RBAC).
+Flujo manual documentado en Phase 3: `prisma migrate diff --from-config-datasource
+--to-schema prisma/schema.prisma --script` → `prisma db execute --file <migración.sql>`
+→ INSERT en `_prisma_migrations` (checksum sha256, `applied_steps_count` 1) → `prisma generate`.
+
 ```sql
--- SVR-ERP: Fase 3 — Módulo facturas + link cotización
--- Aditiva: facturas.cotizacion_id + acciones de auditoría + permisos + vista
+-- SVR-ERP: Fase 7 — Recepción de OC → Inventario
+-- Migración aditiva: tabla líneas de OC + AuditAction + relación
 
 -- 1. AuditAction
-ALTER TYPE "AuditAction" ADD VALUE 'FACTURA_CREADA';
-ALTER TYPE "AuditAction" ADD VALUE 'FACTURA_ACTUALIZADA';
-ALTER TYPE "AuditAction" ADD VALUE 'FACTURA_TIMBRADA';
-ALTER TYPE "AuditAction" ADD VALUE 'FACTURA_CANCELADA';
-ALTER TYPE "AuditAction" ADD VALUE 'COTIZACION_FACTURADA';
+ALTER TYPE "AuditAction" ADD VALUE 'ORDEN_COMPRA_RECIBIDA';
 
--- 2. Link facturas → cotizaciones
-ALTER TABLE "facturas" ADD COLUMN "cotizacion_id" UUID;
-CREATE INDEX "facturas_cotizacion_id_idx" ON "facturas"("cotizacion_id");
-ALTER TABLE "facturas" ADD CONSTRAINT "facturas_cotizacion_id_fkey"
-  FOREIGN KEY ("cotizacion_id") REFERENCES "cotizaciones"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- 2. Tabla ordenes_compra_items
+CREATE TABLE "ordenes_compra_items" (
+  "id"                UUID NOT NULL,
+  "orden_compra_id"   UUID NOT NULL,
+  "articulo_id"       UUID,
+  "nombre"            TEXT NOT NULL,
+  "cantidad"          DECIMAL(10,2) NOT NULL,
+  "cantidad_recibida" DECIMAL(10,2) NOT NULL DEFAULT 0,
+  "precio_unitario"   DECIMAL(12,2) NOT NULL,
+  "activo"            BOOLEAN NOT NULL DEFAULT true,
+  "creado_en"         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "actualizado_en"    TIMESTAMPTZ NOT NULL,
+  "actualizado_por"   UUID,
+  "creado_por"        UUID,
+  "eliminado_en"      TIMESTAMPTZ,
+  CONSTRAINT "ordenes_compra_items_pkey" PRIMARY KEY ("id")
+);
 
--- 3. Permisos del módulo facturas (comercial)
-INSERT INTO "permissions" ("id", "modulo", "recurso", "accion", "descripcion", "activo", "creado_en", "actualizado_en") VALUES
-  ('<uuid-1>', 'comercial', 'facturas', 'ver',     'Ver facturas',           true, NOW(), NOW()),
-  ('<uuid-2>', 'comercial', 'facturas', 'crear',   'Crear facturas',         true, NOW(), NOW()),
-  ('<uuid-3>', 'comercial', 'facturas', 'editar',  'Editar facturas',        true, NOW(), NOW()),
-  ('<uuid-4>', 'comercial', 'facturas', 'eliminar','Eliminar facturas',      true, NOW(), NOW()),
-  ('<uuid-5>', 'comercial', 'facturas', 'exportar','Exportar facturas',      true, NOW(), NOW());
+-- 3. Índices
+CREATE INDEX "ordenes_compra_items_orden_compra_id_idx" ON "ordenes_compra_items"("orden_compra_id");
+CREATE INDEX "ordenes_compra_items_articulo_id_idx"     ON "ordenes_compra_items"("articulo_id");
 
--- 4. Asignar todos los permisos al rol Administrador
-INSERT INTO "role_permissions" ("rol_id", "permiso_id", "creado_en")
-SELECT r."id", p."id", NOW()
-FROM "roles" r, "permissions" p
-WHERE r."nombre" = 'Administrador'
-  AND p."modulo" = 'comercial' AND p."recurso" = 'facturas';
-
--- 5. Vista /facturas para el sidebar
-INSERT INTO "vistas" ("id", "nombre", "descripcion", "ruta", "icono", "orden",
-  "es_menu", "es_visible", "requiere_auth", "target", "badges", "metadata",
-  "activo", "creado_en", "actualizado_en") VALUES
-  ('<uuid-vista>', 'Facturas', 'Gestión de facturación y comprobantes fiscales',
-   '/facturas', 'Receipt', 16, true, true, true, '_self', '[]', '{}', true, NOW(), NOW());
-
--- 6. Asignar vista al Administrador
-INSERT INTO "role_vistas" ("id", "rol_id", "vista_id", "puede_ver", "puede_crear",
-  "puede_editar", "puede_eliminar", "puede_exportar", "asignado_en", "activo")
-SELECT '<uuid-rv>', r."id", v."id", true, true, true, true, true, NOW(), true
-FROM "roles" r, "vistas" v
-WHERE r."nombre" = 'Administrador' AND v."ruta" = '/facturas';
+-- 4. FK
+ALTER TABLE "ordenes_compra_items" ADD CONSTRAINT "ordenes_compra_items_orden_compra_id_fkey"
+  FOREIGN KEY ("orden_compra_id") REFERENCES "ordenes_compra"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ordenes_compra_items" ADD CONSTRAINT "ordenes_compra_items_articulo_id_fkey"
+  FOREIGN KEY ("articulo_id") REFERENCES "articulos_inventario"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ```
 
-### 2.2 Módulo NestJS `apps/api/src/facturas/`
+> **No se requieren nuevos permisos** en `permissions`/`vistas`: la recepción reutiliza
+> `comercial.proveedores.editar` y la ruta `/proveedores` ya existe (RBAC.md línea 241).
 
-```
-facturas/
-  dto/
-    crear-factura.dto.ts          # clienteId, cotizacionId?, serie?, formaPago, metodoPago, usoCfdi,
-                                  # fechaEmision?, fechaVencimiento?, conceptos[]
-    actualizar-factura.dto.ts     # serie?, formaPago?, metodoPago?, usoCfdi?, fechaVencimiento?
-    cambiar-estado-factura.dto.ts # estado (TIMBRADA | CANCELADA), motivoCancelacion?
-    crear-concepto.dto.ts         # cantidad, unidad, descripcion, valorUnitario, descuento?, impuestoTasa?
-    actualizar-concepto.dto.ts    # cantidad?, unidad?, descripcion?, valorUnitario?, descuento?, impuestoTasa?
-    listar-facturas.query.ts      # estado?, clienteId?, search?, page?, limit?
-  facturas.module.ts
-  facturas.controller.ts
-  facturas.service.ts
-  facturas.service.spec.ts
-  facturas.controller.spec.ts
-  facturas.integration.spec.ts
+### 2.2 Auditoría — `audit.constants.ts`
+
+Agregar severidad para la nueva acción:
+
+```ts
+ORDEN_COMPRA_RECIBIDA: 'INFO',
 ```
 
-### 2.3 Endpoints
+### 2.3 Refactor `InventarioService` — lógica transaccional reutilizable
 
-#### Módulo facturas (`/api/facturas`)
+Para que la recepción sea **atómica** (si falla una línea, no se toca nada), la lógica core de
+`crearMovimiento` debe aceptar un `Prisma.TransactionClient`. Se extrae:
 
-| Método | Ruta | Permiso (`comercial.facturas`) | Acción |
-|--------|------|------------------------------|--------|
-| GET | `/api/facturas` | `ver` | Lista paginada con filtros (estado, cliente, búsqueda) |
-| GET | `/api/facturas/stats` | `ver` | total, pendientes, emitidas, pagadas, totalFacturado |
-| GET | `/api/facturas/:id` | `ver` | Detalle factura + conceptos + datos cliente |
-| POST | `/api/facturas` | `crear` | Crear factura con conceptos (transacción) |
-| PATCH | `/api/facturas/:id` | `editar` | Editar datos generales (solo estado PENDIENTE) |
-| PATCH | `/api/facturas/:id/estado` | `editar` | Cambiar estado: TIMBRADA / CANCELADA |
-| DELETE | `/api/facturas/:id` | `eliminar` | Soft delete (solo PENDIENTE, sin CxC asociada) |
-| GET | `/api/facturas/exportar` | `exportar` | CSV de la facturación |
-| POST | `/api/facturas/:id/conceptos` | `editar` | Agregar concepto (recalcula totales) |
-| PATCH | `/api/facturas/:id/conceptos/:conceptoId` | `editar` | Editar concepto (recalcula totales) |
-| DELETE | `/api/facturas/:id/conceptos/:conceptoId` | `editar` | Eliminar concepto (recalcula totales) |
+```ts
+// Nuevo método público (interno al módulo inventario):
+async aplicarEntrada(
+  tx: Prisma.TransactionClient,
+  params: {
+    articuloId: string;
+    cantidad: number;
+    motivo: string;
+    referenciaTipo?: string;
+    referenciaId?: string;
+    creadoPor: string;
+  },
+): Promise<{ stockAnterior: number; stockResultante: number }>
+```
 
-#### Endpoint integración cotización → factura + CxC
+- Actualiza `articulos_inventario.stock` (suma) y crea `movimientos_inventario` (`tipo: 'ENTRADA'`,
+  `stock_resultante`, `referencia_tipo`, `referencia_id`, `motivo`).
+- `crearMovimiento` (endpoint público actual) delegará a `aplicarEntrada` dentro de su propia
+  `$transaction` sin perder comportamiento (auditorías de cruce de umbral `STOCK_BAJO_*`).
+- El `documented stock-resultante` y las auditorías `MOVIMIENTO_REGISTRADO` se conservan.
 
-| Método | Ruta | Permiso | Acción |
+### 2.4 DTOs — carpetas `apps/api/src/proveedores/dto/`
+
+**`create-orden-compra.dto.ts` (modificado):**
+
+```ts
+export class OrdenCompraItemInput {
+  @IsOptional()
+  @IsUUID()
+  articuloId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  nombre?: string;   // OBLIGATORIO si articuloId no viene
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  cantidad!: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  precioUnitario!: number;
+}
+
+export class CreateOrdenCompraDto {
+  @IsUUID()
+  proveedorId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  descripcion?: string;   // AHORA OPCIONAL — se deriva de las líneas si no viene
+
+  @IsOptional()
+  @IsDateString()
+  fecha?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => OrdenCompraItemInput)
+  items!: OrdenCompraItemInput[];
+}
+```
+
+Regla de negocio: si `articuloId` viene → se ignora la validación de `nombre` (se trae del catálogo);
+si no viene → `nombre` obligatorio (`@ValidateIf` en el DTO).
+
+**`recibir-orden-compra.dto.ts` (nuevo):**
+
+```ts
+export class DataArticuloNuevo {
+  /** índice de la línea a la que aplica (0-based) */
+  @IsInt()
+  @Min(0)
+  lineaIndex!: number;
+
+  @IsUUID()
+  categoriaId!: string;
+
+  @IsUUID()
+  unidadId!: string;
+}
+
+export class RecibirOrdenCompraDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DataArticuloNuevo)
+  nuevosArticulos: DataArticuloNuevo[] = [];  // solo para líneas sin articuloId
+}
+```
+
+**`update-orden-compra.dto.ts` (modificado):** aceptar `items?` (edición de líneas en
+PENDIENTE/APROBADA) que recalcula `monto`; mantener compatibilidad con `descripcion`/`monto` actual.
+
+### 2.5 Endpoints
+
+| Método | Ruta | Permiso | Cambio |
 |--------|------|---------|--------|
-| POST | `/api/cotizaciones/:id/facturar` | `comercial.cotizaciones.editar` | Aceptar cotización + crear factura + crear CxC |
+| POST | `/api/ordenes-compra` | `comercial.proveedores.crear` | **Modificado** — crea cabecera + líneas + CxP; `monto` derivado de la suma de líneas |
+| PATCH | `/api/ordenes-compra/:id` | `comercial.proveedores.editar` | **Modificado** — permite editar líneas (PENDIENTE/APROBADA), recalcula `monto` |
+| POST | `/api/ordenes-compra/:id/cambiar-estado` | `comercial.proveedores.editar` | **Modificado** — **ya NO acepta transición a RECIBIDA** (solo `PENDIENTE→APROBADA`, `PENDIENTE→CANCELADA`, `APROBADA→CANCELADA`) |
+| POST | `/api/ordenes-compra/:id/recibir` | `comercial.proveedores.editar` | **NUEVO** — recepción física atómica (gatillo único de alta en inventario) |
+| DELETE | `/api/ordenes-compra/:id` | `comercial.proveedores.eliminar` | **Modificado** — al soft-delete cabecera, marcar `activo=false` en sus líneas |
 
-### 2.4 Estados de Factura
+### 2.6 Transición de estados (máquina corregida)
 
-> **Nota (verificada en BD):** El check constraint `chk_facturas_estado` de la tabla
-> `facturas` solo admite: `PENDIENTE`, `TIMBRADA`, `CANCELADA`, `PAGADA`. **No existe
-> `EMITIDA`** — el estado tras timbrar es `TIMBRADA`. Todos los endpoints y la UI
-> deben usar estos 4 estados exactos (el DTO `@IsIn` debe reflejarlos).
-
-```
-PENDIENTE  → Editable (agregar/editar conceptos, editar datos generales)
-TIMBRADA    → CFDI timbrado (inmutable, solo consulta)
-PAGADA     → Saldo = 0 (actualizada automáticamente por cobranza)
-CANCELADA  → Anulada con motivo (inmutable)
-```
-
-**Transiciones válidas:**
-- `PENDIENTE → TIMBRADA` (timbrar)
-- `PENDIENTE → CANCELADA` (cancelar antes de timbrar)
-- `TIMBRADA → PAGADA` (automática, cuando CxC se salda)
-- `TIMBRADA → CANCELADA` (requiere nota de crédito futura — Fase 5)
-
-### 2.5 Crear Factura — transacción crítica
-
-```
-prisma.$transaction([
-  1. Validar cliente existe y está activo
-  2. Generar código secuencial: FAC-YYYY-NNNN
-  3. Crear factura con subtotal/impuestos/total = 0 (se recalcula con conceptos)
-  4. Crear factura_conceptos asociados (recalculando importe = cantidad * valorUnitario - descuento)
-  5. Recalcular subtotal = SUM(importes), impuestos = SUM(impuesto_importe), total = subtotal + impuestos
-  6. Actualizar factura con totales recalculados
-  7. AuditService.log(SUCCESS, FACTURA_CREADA, metadata)
-])
+```ts
+const TRANSICIONES: Record<EstadoOrdenCompra, EstadoOrdenCompra[]> = {
+  PENDIENTE: ['APROBADA', 'CANCELADA'],
+  APROBADA: ['CANCELADA'],                 // RECIBIDA ya NO pasa por aquí
+  RECIBIDA: [],
+  CANCELADA: [],
+};
 ```
 
-### 2.6 Agregar/Eliminar Concepto — recálculo en cascada
+La recepción se dispara **exclusivamente** vía `POST /:id/recibir`. Reglas de negocio adicionales:
+- Solo se puede recibir una OC en estado `APROBADA` (no PENDIENTE, no RECIBIDA, no CANCELADA).
+- **Desacople pago/recepción:** `registrarAbono` deja de forzar `estado = RECIBIDA` al completar el
+  pago. Solo actualiza `pagado` y el estado de la CxP (`PENDIENTE/PARCIAL/PAGADA`).
+- **Guard extra:** no se puede **cancelar** una OC ya recibida (RECIBIDA es terminal; ya está cubierto
+  por la máquina de transiciones).
+
+### 2.7 Recepción de OC — transacción crítica (el corazón de la fase)
 
 ```
-al agregar/editar/eliminar concepto:
-  1. Recalcular importe del concepto: cantidad * valorUnitario - descuento
-  2. Calcular impuesto_importe si tiene tasa
-  3. Recalcular totales de la factura:
-     subtotal = SUM(conceptos.importe)
-     impuestos = SUM(conceptos.impuesto_importe)
-     total = subtotal + impuestos
-  4. Actualizar factura.totales
-  5. Si factura tiene CxC asociada → validar CxC.monto = factura.total
-     (si hay diferencia: fallir() FACTURA_CON_CXC_MODIFICADA)
-```
+POST /api/ordenes-compra/:id/recibir
+RecibirOrdenCompraDto { nuevosArticulos: [{ lineaIndex, categoriaId, unidadId }] }
 
-### 2.7 Cotización → Factura + CxC — transacción integradora
-
-```
-POST /api/cotizaciones/:id/facturar
-prisma.$transaction([
-  1. Validar cotización existe, estado = PENDIENTE, eliminado_en = null
-  2. Validar cliente de la cotización existe y está activo
-  3. Actualizar cotización: estado = ACEPTADA, actualizado_por, actualizado_en
-  4. Generar código factura: FAC-YYYY-NNNN
-  5. Crear factura:
-     - cliente_id = cotizacion.cliente_id
-     - cotizacion_id = cotizacion.id
-     - subtotal = cotizacion.monto (sin impuestos inicialmente)
-     - impuestos = 0 (se calculan si se agregan conceptos con IVA)
-     - total = cotizacion.monto
-     - estado = PENDIENTE
-  6. Crear factura_concepto:
-     - descripcion = cotizacion.descripcion
-     - cantidad = 1
-     - unidad = "Servicio" (default)
-     - valor_unitario = cotizacion.monto
-     - importe = cotizacion.monto
-  7. Crear cuentas_por_cobrar:
-     - cliente_id = cotizacion.cliente_id
-     - factura_id = factura.id
-     - monto = factura.total
-     - fecha_vencimiento = hoy + 30 días (default)
-     - estado = PENDIENTE
-  8. AuditService.log(SUCCESS, COTIZACION_FACTURADA, metadata con facturaId + cxcId)
-])
+prisma.$transaction(async (tx) => {
+  1. Validar OC existe, estado = APROBADA, eliminado_en = null
+  2. Cargar líneas activas de la OC (ordenes_compra_items)
+  3. Si no hay líneas → fallir() ORDEN_SIN_LINEAS
+  4. Por cada línea:
+     a. cantidad_restante = cantidad - cantidad_recibida
+     b. Si cantidad_restante <= 0 → saltar (línea ya recibida)
+     c. CASO A: articulo_id existe → tx.articulos_inventario.update({ stock: { increment: cantidad_restante } })
+        + crear movimientos_inventario ENTRADA (referencia_tipo='ORDEN_COMPRA', referencia_id=orden.id,
+          motivo=`Recepción de {folio}`)
+     d. CASO B: articulo_id es NULL → alto artículo:
+        - Buscar DataArticuloNuevo por lineaIndex (si falta → fallir() ARTICULO_NUEVO_SIN_CATALOGO)
+        - Generar codigo único (ej. ART-YYYYMMDD-XXXXX) — validar P2002
+        - tx.articulos_inventario.create({ nombre: linea.nombre, proveedor_id: orden.proveedor_id,
+            categoria/unidad del DTO, stock = cantidad_restante, stock_minimo = 0,
+            precio_unitario = linea.precio_unitario })
+        - Actualizar linea.articulo_id = nuevoArt.id
+        - Crear movimientos_inventario ENTRADA con referencia OC
+     e. Actualizar linea: cantidad_recibida = cantidad (recepción total), actualizado_en/por
+  5. Actualizar cabecera: estado = RECIBIDA, actualizado_por, actualizado_en
+     (CxP NO cambia: sigue PENDIENTE/PARCIAL hasta pagarse)
+  6. Auditorías: ORDEN_COMPRA_RECIBIDA (SUCCESS), ARTICULO_CREADO (por cada alta),
+     MOVIMIENTO_REGISTRADO (por cada línea) — SIEMPRE dentro del try del transaction
+})
 ```
 
 **Error codes posibles:**
-- `COTIZACION_NO_ENCONTRADA` — 404
-- `COTIZACION_YA_FACTURADA` — 400 (ya tiene factura asociada)
-- `COTIZACION_NO_PENDIENTE` — 400 (ya fue aceptada/rechazada)
-- `CLIENTE_NO_ENCONTRADO` — 400
+- `ORDEN_COMPRA_NO_ENCONTRADA` — 404
+- `ORDEN_NO_RECEPCIONABLE` — 400 (estado ≠ APROBADA)
+- `ORDEN_SIN_LINEAS` — 400
+- `ARTICULO_NUEVO_SIN_CATALOGO` — 400 (línea nueva sin categoría/unidad en el DTO)
+- `ARTICULO_DUPLICADO_CODIGO` — 409 (fallback de código generado, patrón P2002 ya usado)
 
-### 2.8 Stats (para las 4 StatsCard del frontend)
+> **Diseño de integración:** `ProveedoresModule` importa `InventarioModule` (que ya exporta
+> `InventarioService`) para usar `aplicarEntrada` con el `tx`. Los DTOs de catálogo garantizan que
+> el alta de artículos nuevos **nunca** sea automática "a ciegas": el usuario elige categoría/unidad
+> en el modal de recepción.
 
+### 2.8 `serializeOrden` — incluir líneas
+
+```ts
+private serializeOrden(orden: any) {
+  return {
+    // ...campos actuales...
+    items: (orden.ordenes_compra_items ?? [])
+      .filter((i) => i.eliminado_en === null && i.activo)
+      .map((i) => ({
+        id: i.id,
+        articuloId: i.articulo_id,
+        nombre: i.nombre,
+        cantidad: Number(i.cantidad),
+        cantidadRecibida: Number(i.cantidad_recibida),
+        precioUnitario: Number(i.precio_unitario),
+      })),
+  };
+}
 ```
-total          = COUNT(facturas activas)
-pendientes     = COUNT(facturas WHERE estado = PENDIENTE)
-emitidas       = COUNT(facturas WHERE estado = TIMBRADA)
-pagadas        = COUNT(facturas WHERE estado = PAGADA)
-totalFacturado = SUM(facturas.total) WHERE estado IN (TIMBRADA, PAGADA)
-```
 
-### 2.9 Seed `apps/api/scripts/seed-facturas.ts`
+Y `findAllOrdenes`/`findOneOrden` incluyen `ordenes_compra_items` (activas) en el `include`.
 
-- ~6 facturas ligadas a clientes existentes:
-  - 2 PENDIENTE (una con 3 conceptos, otra con 1)
-  - 2 TIMBRADA (con CxC asociada y pagos parciales)
-  - 1 PAGADA (CxC saldada, 2 pagos completos)
-  - 1 CANCELADA (motivo: "Error en datos fiscales")
-- ~12 factura_conceptos distribuidos (variedad de servicios/material)
-- 3 cuentas_por_cobrar ligadas a las facturas TIMBRADA/PAGADA
-- ~6 pagos contra esas CxC + transacciones INGRESO en finanzas
-- 1 factura ligada a cotización existente (cotizacion_id = cotización del seed)
-- Idempotente (upsert por código), fuente `SYSTEM` en auditoría
+### 2.9 Seed opcional `apps/api/scripts/seed-ordenes-items.ts` (solo desarrollo/test)
 
-### 2.10 Estándar obligatorio (AGENTS.md) en cada endpoint
-
-1. `JwtAuthGuard` + `PermissionsGuard` con `@RequirePermission('comercial', 'facturas', 'ver'|'crear'|'editar'|'eliminar'|'exportar')`.
-2. Blacklist de token automática (JwtStrategy → `token_blacklist` por `jti`).
-3. Auditoría SUCCESS en todas las mutaciones (`AuditService.log`).
-4. Patrón `fallir()` en fallos de negocio con `result: 'FAIL'` + `error_code` antes de lanzar la excepción.
-5. Soft deletes: `activo = false`, nunca `delete` físico.
-6. DTOs estrictos `class-validator` (`@IsUUID()`, `@IsPositive()`, `@IsIn(…)`).
-7. `AuditContextInterceptor` ya captura metadata/IP/session por HTTP.
+- 2 OC existentes reciben líneas (una con artículos catalogados, otra con un artículo "nuevo").
+- Probar el endpoint de recepción en ambos escenarios de forma idempotente.
 
 ---
 
 ## 3. Impacto Frontend
 
-### 3.1 Nueva vista `/facturas`
-
-Patrón: **inventario/proveedores** (CRUD estándar con tabla, filtros, paginación, modales).
-
-```
-apps/web/src/app/(dashboard)/facturas/page.tsx
-```
-
-**Estructura de la vista:**
-- `PageHeader` + botón "Nueva Factura" (`variant="primary"`)
-- 4 `StatsCard`: Total, Pendientes, Emitidas, Total Facturado
-- `SearchBar` + botón Filtros + chips activos + panel de filtros (estado, cliente)
-- `DataTable` con columnas:
-  - Código / Cliente
-  - Serie + Folio
-  - Subtotal / IVA / Total
-  - Estado (badge)
-  - Fecha emisión
-  - Acciones (Ver, Editar, Timbrar, Cancelar)
-- `Pagination` server-side
-- `FormModal` para crear/editar factura
-- `FormModal` para agregar/editar conceptos
-- Modal de detalle (factura + conceptos + CxC asociada si existe)
-- Botón Exportar CSV
-
-**Permisos RBAC vía `useAuth().user.vistas`:**
-```ts
-const vista = user?.vistas?.find(v => v.ruta === '/facturas');
-const puedeCrear  = vista?.puedeCrear  ?? false;
-const puedeEditar = vista?.puedeEditar ?? false;
-const puedeEliminar = vista?.puedeEliminar ?? false;
-const puedeExportar = vista?.puedeExportar ?? false;
-```
-
-### 3.2 Modificar `/cotizaciones` — botón "Facturar"
-
-En el modal de confirmación de aceptar cotización (`estadoOpen`), agregar un checkbox:
-
-```
-☐ Generar factura y cuenta por cobrar
-```
-
-- Si está marcado → `POST /cotizaciones/:id/facturar` (transacción completa)
-- Si NO está marcado → `PATCH /cotizaciones/:id/estado` (solo cambia estado, comportamiento actual)
-
-El checkbox solo aparece cuando `selectedEstado === 'ACEPTADA'`.
-
-### 3.3 Agregar ruta al Sidebar
+### 3.1 `apps/web/src/lib/api.ts` — contratos
 
 ```ts
-// En ROUTE_META:
-"/facturas": { group: "Comercial", badge: "NUEVO" },
-
-// En la vista de BD (seed):
-// icono: "Receipt", orden: 16 (entre cotizaciones y finanzas)
-```
-
-### 3.4 API Client en `apps/web/src/lib/api.ts`
-
-```ts
-// Tipos
-export interface FacturaDTO {
+export interface OrdenCompraItemDTO {
   id: string;
-  codigo: string;
-  serie: string | null;
-  folio: string | null;
-  clienteId: string;
-  clienteNombre?: string;
-  clienteEmpresa?: string;
-  cotizacionId: string | null;
-  cotizacionCodigo?: string | null;
-  subtotal: number;
-  impuestos: number;
-  total: number;
-  moneda: string;
-  formaPago: string | null;
-  metodoPago: string | null;
-  usoCfdi: string | null;
-  estado: 'Pendiente' | 'Emitida' | 'Pagada' | 'Cancelada';
-  fechaEmision: string;
-  fechaVencimiento: string | null;
-  timbradoEn: string | null;
-  xmlUrl: string | null;
-  pdfUrl: string | null;
-  activo: boolean;
-  creadoEn: string;
-  conceptos?: FacturaConceptoDTO[];
-}
-
-export interface FacturaConceptoDTO {
-  id: string;
+  articuloId: string | null;
+  nombre: string;
   cantidad: number;
-  unidad: string;
-  descripcion: string;
-  valorUnitario: number;
-  importe: number;
-  descuento: number;
-  impuestoTasa: number | null;
-  impuestoImporte: number | null;
+  cantidadRecibida: number;
+  precioUnitario: number;
 }
 
-export interface FacturaCreateInput {
-  clienteId: string;
-  cotizacionId?: string;
-  serie?: string;
-  formaPago?: string;
-  metodoPago?: string;
-  usoCfdi?: string;
-  fechaVencimiento?: string;
-  conceptos: {
-    cantidad: number;
-    unidad: string;
-    descripcion: string;
-    valorUnitario: number;
-    descuento?: number;
-    impuestoTasa?: number;
-  }[];
+// Ampliar OrdenCompraDTO:
+export interface OrdenCompraDTO {
+  // ... campos actuales ...
+  items?: OrdenCompraItemDTO[];
 }
 
-export interface FacturaStats {
-  total: number;
-  pendientes: number;
-  emitidas: number;
-  pagadas: number;
-  totalFacturado: number;
+export interface OrdenCompraItemInput {
+  articuloId?: string;
+  nombre?: string;
+  cantidad: number;
+  precioUnitario: number;
 }
 
-// API Client
-export const facturasApi = {
-  listar:    (params?)          => apiClient.get<Paginated<FacturaDTO>>('/facturas', { params }),
-  stats:     ()                 => apiClient.get<FacturaStats>('/facturas/stats'),
-  obtener:   (id)               => apiClient.get<FacturaDTO>(`/facturas/${id}`),
-  crear:     (data)             => apiClient.post<FacturaDTO>('/facturas', data),
-  actualizar:(id, data)         => apiClient.patch<FacturaDTO>(`/facturas/${id}`, data),
-  cambiarEstado: (id, data)     => apiClient.patch<FacturaDTO>(`/facturas/${id}/estado`, data),
-  eliminar:  (id)               => apiClient.delete(`/facturas/${id}`),
-  exportar:  (params?)          => apiClient.get('/facturas/exportar', { params, responseType: 'blob' }),
-  agregarConcepto: (id, data)   => apiClient.post(`/facturas/${id}/conceptos`, data),
-  editarConcepto: (id, cId, data) => apiClient.patch(`/facturas/${id}/conceptos/${cId}`, data),
-  eliminarConcepto: (id, cId)   => apiClient.delete(`/facturas/${id}/conceptos/${cId}`),
-};
+export interface OrdenCompraCreateInput {
+  proveedorId: string;
+  descripcion?: string;
+  monto?: number;          // ya no se envía; backend lo deriva (se respeta por compatibilidad)
+  fecha?: string;
+  items: OrdenCompraItemInput[];
+}
 
-// En cotizacionesApi, agregar:
-export const cotizacionesApi = {
-  // ... existente
-  facturar: (id) => apiClient.post(`/cotizaciones/${id}/facturar`),
-};
+// Nuevo en ordenesCompraApi:
+recibir: (id, data?: { nuevosArticulos?: { lineaIndex: number; categoriaId: string; unidadId: string }[] })
+  => apiClient.post<OrdenCompraDTO>(`/ordenes-compra/${id}/recibir`, data ?? { nuevosArticulos: [] }),
 ```
 
+### 3.2 `/proveedores` — Modal "Nueva Orden de Compra" (de cabecera a detalle)
+
+Reemplazar el formulario actual (proveedor + descripción + monto) por un **editor de líneas**:
+
+```
+Proveedor            [select]                          (requerido)
+Filas de la OC:
+┌──────────────────────────────────────────────────────────────┐
+│ Artículo (select catálogo | "Nuevo artículo")  Cant  P.U.    │
+│ ─ Artículo existente: nombre + precio precargados            │
+│ ─ Nuevo: campo nombre libre (se completa al recibir)         │
+│ [+ Agregar línea]                                            │
+└──────────────────────────────────────────────────────────────┘
+Total calculado: $X,XXX.XX           [Crear Orden]
+```
+
+- Precarga opciones del catálogo de inventario: `inventarioApi.catalogos()` → artículos activos
+  (map a `{ id, nombre, precioUnitario, unidad }`).
+- Al elegir un artículo existente → se autocompleta `nombre` y `precioUnitario` en la línea.
+- `Total` = Σ cantidad × precioUnitario (mostrado, calculado localmente con `formatCurrency`).
+- El `monto` ya **no se captura**.
+- Validación client-side: al menos 1 línea con cantidad > 0 y (articuloId o nombre).
+
+### 3.3 `/proveedores` — Modal de Recepción (sustituye el confirm simple "Recibir")
+
+El botón "Recibir" (estado APROBADA) abre un **modal de recepción** en lugar del `confirmCambio` simple:
+
+```
+Recepción de {folio} — {proveedor}
+┌───────────────────────────────────────────────────────┐
+│ Artículo                Cant  P.U.      Subs          │
+│ ✔ Filtro de aceite x12  [12]  $120.00   $1,440.00     │  art. existente
+│ ✚ Material nuevo        [50]  $30.00    $1,500.00     │  art. NUEVO
+│    Categoría: [select]  Unidad: [select]              │
+└───────────────────────────────────────────────────────┘
+Se darán de alta 1 artículo y se actualizará el stock de 1 en /inventario.
+[Cancelar]  [Confirmar recepción y registrar en inventario]
+```
+
+- Líneas con `articuloId` → solo muestra información (cantidad = cantidad recibida total).
+- Líneas sin `articuloId` → selectores de **categoría** y **unidad** (de `inventarioApi.catalogos()`),
+  obligatorios para confirmar.
+- Confirmar → `ordenesCompraApi.recibir(id, { nuevosArticulos: [...líneas nuevas con categoría/unidad] })`.
+- Toast de éxito con resumen: "Recepción registrada: N artículos dados de alta, M actualizados."
+- Una OC ya recibida deja de mostrar el botón "Recibir" (estado RECIBIDA → terminal).
+
+### 3.4 Estado visual y acciones en la tabla de OC
+
+- Mantener la columna "Estado" con `Badge`.
+- En estado `APROBADA`, el botón "Recibir" abre el modal de recepción (no el confirm simple).
+- `PENDIENTE → Aprobar` se mantiene.
+- `Cancelar` se mantiene para PENDIENTE/APROBADA sin pagos.
+- En `RECIBIDA`, opcionalmente mostrar tooltip/icono que indica "Stock registrado en inventario".
+
+### 3.5 `/inventario` — sin cambios de CRUD; kill del botón "Pedir" como vía principal
+
+- El botón "Pedir" (movimiento ENTRADA manual) **se conserva** pero pasa a ser de ajuste/recepción
+  manual con motivo libre; el flujo canónico de compra entra vía `/proveedores`.
+- Fase opcional futura: aprovechar `movimientos_inventario.referencia_tipo = 'ORDEN_COMPRA'` para
+  hacer kardex por OC (filtro de trazabilidad). **No bloqueado por esta fase.**
+
 ---
 
-## 4. Sub-fases de Implementación
+## 4. Sub-fases de Implementación (orden de ejecución)
 
-### 4.1 Sub-fase 3a: Schema + Migración + Seed (backend)
-
-**Archivos a crear/modificar:**
-1. `apps/api/prisma/schema.prisma` — agregar `cotizacion_id` a `facturas`, nuevos AuditActions
-2. `apps/api/prisma/migrations/20260920000000_facturas_cotizacion_link/migration.sql`
-3. `apps/api/scripts/seed-facturas.ts`
-4. `apps/api/src/audit/audit.constants.ts` — agregar severidades para nuevas acciones
-5. Registrar migración en `_prisma_migrations`
-
-**Entregable:** Migración aplicada, `prisma generate` ejecutado, seed funcional.
-
-### 4.2 Sub-fase 3b: Módulo Facturas NestJS (backend)
-
-**Archivos a crear:**
-1. `apps/api/src/facturas/facturas.module.ts`
-2. `apps/api/src/facturas/facturas.controller.ts`
-3. `apps/api/src/facturas/facturas.service.ts`
-4. `apps/api/src/facturas/dto/crear-factura.dto.ts`
-5. `apps/api/src/facturas/dto/actualizar-factura.dto.ts`
-6. `apps/api/src/facturas/dto/cambiar-estado-factura.dto.ts`
-7. `apps/api/src/facturas/dto/crear-concepto.dto.ts`
-8. `apps/api/src/facturas/dto/actualizar-concepto.dto.ts`
-9. `apps/api/src/facturas/dto/listar-facturas.query.ts`
-10. `apps/api/src/facturas/facturas.service.spec.ts`
-11. `apps/api/src/facturas/facturas.controller.spec.ts`
-12. `apps/api/src/facturas/facturas.integration.spec.ts`
-
+### 4.1 T1 — Schema + Migración (backend) ✅
 **Archivos a modificar:**
-1. `apps/api/src/app.module.ts` — registrar `FacturasModule`
+1. `apps/api/prisma/schema.prisma` — modelo `ordenes_compra_items` + back-relations + enum `ORDEN_COMPRA_RECIBIDA`
+2. Migración manual: SQL aditivo + registrar en `_prisma_migrations`
+3. `apps/api/src/audit/audit.constants.ts` — severidad `ORDEN_COMPRA_RECIBIDA: 'INFO'`
+4. `npx prisma generate`
 
-**Entregable:** CRUD completo, tests unitarios e integración pasando.
+**Entregable:** Migración aplicada, schema actualizado, `prisma generate` OK.
 
-### 4.3 Sub-fase 3c: Integración Cotización → Factura + CxC (backend)
+**Hecho (2026-09-19):**
+- Schema: modelo `ordenes_compra_items` (13 campos + boyeros audits/FK) insertado tras `ordenes_compra`;
+  back-relations añadidas en `ordenes_compra` y `articulos_inventario`; enum `AuditAction` += `ORDEN_COMPRA_RECIBIDA`.
+- `audit.constants.ts`: `ORDEN_COMPRA_RECIBIDA: 'INFO'` (Record completo, tsc OK).
+- Migración `20260930000000_ordenes_compra_items_recepcion` creada, aplicada con
+  `prisma db execute` y registrada en `_prisma_migrations` (`applied_steps_count=1`,
+  checksum `bb3e9249…ad33`). Tabla verificada: 13 columnas + PK + índices + 2 FK
+  (OC → RESTRICT/CASCADE, artículo → SET NULL/CASCADE). Enum BD ahora 123 valores.
+- `npx prisma generate` OK (v7.9.1). `npx tsc --noEmit` OK. Tests audit: 29/29 PASS.
+- ⚠️ Hallazgo (no bloqueante): `20260929000000_transaccion_exportada` está aplicada en BD
+  pero **no registrada** en `_prisma_migrations` (el enum ya tenía el valor). No se corrigió en
+  T1 por quedar fuera de alcance. Diferencia con schema: FK `incidentes.reportado_por` (drift
+  pre-existente detectado por `prisma migrate diff`; no se tocó).
 
-**Archivos a crear/modificar:**
-1. `apps/api/src/clientes/cotizaciones.service.ts` — agregar método `facturar(id, userId)`
-2. `apps/api/src/clientes/cotizaciones-global.controller.ts` — agregar endpoint `POST /:id/facturar`
-3. `apps/api/src/clientes/dto/facturar-cotizacion.dto.ts` — DTO vacío (solo validación de ruta)
-4. Tests unitarios e integración para el nuevo endpoint
-
-**Entregable:** `POST /cotizaciones/:id/facturar` funcional con transacción atómica.
-
-### 4.4 Sub-fase 3d: Frontend Facturas + Integración Cotizaciones
-
-**Archivos a crear:**
-1. `apps/web/src/app/(dashboard)/facturas/page.tsx`
-
+### 4.2 T2 — Refactor transaccional de Inventario (backend)
 **Archivos a modificar:**
-1. `apps/web/src/lib/api.ts` — agregar `facturasApi` + tipos
-2. `apps/web/src/app/(dashboard)/cotizaciones/page.tsx` — checkbox "Generar factura" en modal aceptar
-3. `apps/web/src/components/layout/Sidebar.tsx` — agregar `/facturas` a `ROUTE_META`
-4. `apps/web/COMPONENTS.md` — documentar si se crean componentes nuevos
+1. `apps/api/src/inventario/inventario.service.ts` — extraer `aplicarEntrada(tx, params)`; delegar `crearMovimiento`
+2. `apps/api/src/inventario/inventario.service.spec.ts` — ajustar/registrar tests del nuevo método
 
-**Entregable:** Vista `/facturas` conectada a API, flujo de cotización → factura funcional.
+**Entregable:** `aplicarEntrada` probado; `crearMovimiento` conserva comportamiento.
+
+### 4.3 T3 — Proveedores: DTOs + createOrden con líneas + desacople pago (backend)
+**Archivos a modificar/crear:**
+1. `apps/api/src/proveedores/dto/create-orden-compra.dto.ts` — items
+2. `apps/api/src/proveedores/dto/update-orden-compra.dto.ts` — items opcionales
+3. `apps/api/src/proveedores/dto/recibir-orden-compra.dto.ts` — NUEVO
+4. `apps/api/src/proveedores/dto/cambiar-estado-orden.dto.ts` — sin cambios (estado enum)
+5. `apps/api/src/proveedores/proveedores.service.ts` — `createOrden` con líneas + recalcular monto; `updateOrden`; `removeOrden` soft-delete líneas; `TRANSICIONES` sin RECIBIDA; `registrarAbono` **sin** forzar RECIBIDA; `serializeOrden` con items
+6. `apps/api/src/proveedores/proveedores.controller.ts` — endpoint `POST :id/recibir`
+
+**Entregable:** OC se crea con líneas; el pago ya no dispara RECIBIDA.
+
+### 4.4 T4 — Recepción de OC: método `recibirOrden` (backend)
+**Archivos a modificar:**
+1. `apps/api/src/proveedores/proveedores.service.ts` — `recibirOrden(id, dto, userId)` con la transacción crítica del §2.7
+2. `apps/api/src/proveedores/proveedores.module.ts` — importar `InventarioModule`
+3. `apps/api/src/app.module.ts` — confirmar orden de imports (sin cambios funcionales)
+
+**Entregable:** `POST /ordenes-compra/:id/recibir` funcional y atómico.
+
+### 4.5 T5 — Tests backend (unit + integration)
+**Archivos a crear/modificar:**
+1. `apps/api/src/proveedores/proveedores.service.spec.ts` — `createOrden` con líneas, `recibirOrden` (art. existente, art. nuevo, errores), `registrarAbono` ya no fuerza RECIBIDA
+2. `apps/api/src/proveedores/proveedores.controller.spec.ts` — endpoint recibir
+3. `apps/api/src/proveedores/proveedores.integration.spec.ts` — flujo real: crear OC con líneas → aprobar → recibir → stock actualizado + movimiento con `referencia_tipo='ORDEN_COMPRA'`
+4. `apps/api/src/inventario/inventario.integration.spec.ts` — ajustes si aplican
+
+**Entregable:** `npx tsc --noEmit`, `npm run lint`, tests unitarios e integración pasando.
+
+### 4.6 T6 — Frontend: contratos API (`api.ts`)
+**Archivos a modificar:**
+1. `apps/web/src/lib/api.ts` — `OrdenCompraItemDTO`, inputs, `ordenesCompraApi.recibir`
+2. `apps/web/src/lib/formatters.ts` — revisar formateo (sin cambios esperados)
+
+**Entregable:** Contratos espejo actualizados (TypeScript compila).
+
+### 4.7 T7 — Frontend: Modal "Nueva Orden" con líneas
+**Archivos a modificar:**
+1. `apps/web/src/app/(dashboard)/proveedores/page.tsx` — state de líneas (`ocItems[]`), catálogo de artículos, tabla inline de partidas, total calculado, `handleCrearOrden` manda `items`
+
+**Entregable:** Crear OC con líneas desde la UI.
+
+### 4.8 T8 — Frontend: Modal de recepción
+**Archivos a modificar:**
+1. `apps/web/src/app/(dashboard)/proveedores/page.tsx` — `recepcionOpen`, catálogos categorías/unidades, modal de recepción, `handleRecibir` → `ordenesCompraApi.recibir`
+2. `apps/web/src/components/ui/Modal.tsx` — solo reuso (sin cambios esperados)
+
+**Entregable:** Botón "Recibir" abre modal con categoría/unidad para artículos nuevos; al confirmar, stock se refleja en `/inventario`.
+
+### 4.9 T9 — Validación E2E + entornos
+- Probar flujo completo en `dev`: crear OC con 2 líneas (1 existente, 1 nueva) → aprobar → recibir
+  → verificar `/inventario` (stock sumado y artículo nuevo).
+- Verificar que **pagar al 100% ya NO marca RECIBIDA** (desacople).
+- Verificar `registro_auditoria`: `ORDEN_COMPRA_RECIBIDA`, `MOVIMIENTO_REGISTRADO`, `ARTICULO_CREADO`.
+- Turbopack: si el modal de líneas "rompe" la hidratación → reiniciar `dev`, ajustar boundaries.
 
 ---
 
-## 5. Testing — obligatorio (AGENTS.md)
+## 5. Testing (obligatorio, AGENTS.md)
 
-### 5.1 Unit Tests (`facturas.service.spec.ts`)
+### 5.1 Unit Tests (`proveedores.service.spec.ts`)
+- `createOrden` — éxito con items, falla sin items, monto derivado correcto, proveedor no encontrado, folio duplicado (P2002)
+- `recibirOrden` — artículo existente (stock incrementa), artículo nuevo (crea artículo + codigo), sin lineas, OC no APROBADA, línea nueva sin catálogo
+- `registrarAbono` — **pago completo ya NO cambia estado a RECIBIDA**
+- `updateOrden` — edición de líneas recalcula monto; monto menor a pagado rechazado
+- `cambiarEstadoOrden` — `APROBADA → RECIBIDA` **rechazada** (transición inválida)
 
-Cada método público del servicio con ≥ 1 test:
-- `findAll` — filtros, paginación, búsqueda
-- `findOne` — éxito, no encontrado
-- `crear` — éxito con conceptos, cliente no encontrado, código duplicado
-- `actualizar` — éxito, factura no editable (ya emitida/pagada)
-- `cambiarEstado` — PENDIENTE→TIMBRADA, PENDIENTE→CANCELADA, transición inválida
-- `eliminar` — éxito, factura con CxC no se puede eliminar
-- `agregarConcepto` — éxito, recálculo de totales
-- `editarConcepto` — éxito, recálculo
-- `eliminarConcepto` — éxito, no dejar factura sin conceptos
-- `stats` — conteos correctos
-- `exportar` — CSV con BOM
+### 5.2 Integration Tests (`proveedores.integration.spec.ts`)
+1. Crear OC con líneas → audit `ORDEN_COMPRA_CREADA` → líneas en BD
+2. Aprobar OC → recibir con artículo existente → `stock = stockAnterior + cantidad` y movimiento con `referencia_tipo='ORDEN_COMPRA'`
+3. Recibir con artículo nuevo → `articulos_inventario` creado + movimiento ENTRADA + `cantidad_recibida = cantidad`
+4. FAIL: recibir OC en estado PENDIENTE → audit FAIL `ORDEN_NO_RECEPCIONABLE`
+5. Limpieza FK-safe: líneas → movimientos → artículos nuevos → CxP → OC → proveedores (los artículos catalogados originales restauran stock)
 
-### 5.2 Unit Tests (`facturas.controller.spec.ts`)
-
-Cada endpoint con ≥ 1 test verificando:
-- Llamada correcta al servicio
-- Status code (200, 201, 404)
-- Extracción de userId del request
-
-### 5.3 Integration Tests (`facturas.integration.spec.ts`)
-
-Flujos reales en PostgreSQL:
-1. **Crear factura + conceptos** → verificar `FACTURA_CREADA` en `registro_auditoria`
-2. **Timbrar factura** → verificar `FACTURA_TIMBRADA` + estado TIMBRADA
-3. **Cotización → Facturar** → verificar `COTIZACION_FACTURADA` + factura creada + CxC creada
-4. **Cancelar factura** → verificar `FACTURA_CANCELADA` + estado CANCELADA
-5. **FAIL: cliente no encontrado** → verificar `FAIL` + `error_code`
-6. **FAIL: factura con CxC no editable** → verificar `FAIL` + `FACTURA_CON_CXC`
-
-Limpieza en orden FK-safe: conceptos → pagos → CxC → facturas → cotizaciones (de test).
-`registro_auditoria` es inmutable (se deja).
-
-### 5.4 Verificación
-
+### 5.3 Verificación
 ```bash
-npx tsc --noEmit          # Sin errores de tipo
-npm run lint              # Sin warnings de ESLint
-npm run test              # Todos los unit tests pasando
-npm run test:integration  # Todos los integration tests pasando
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:integration
 ```
 
 ---
 
 ## 6. Validación y Riesgos
 
-1. **Estado de factura tras cobro**: Cuando el módulo de cobranza registra un pago contra una CxC que tiene factura, la factura debe cambiar `TIMBRADA → PAGADA` automáticamente. Esto requiere modificar `CobranzaService.registrarCobro` para detectar si la CxC tiene `factura_id` y actualizar el estado de la factura. **Riesgo bajo** — es un `UPDATE` adicional en la misma transacción.
+1. **Desacople pago ↔ recepción (riesgo de negocio alto, controlado):** el cambio de
+   `registrarAbono` hará que una OC 100% pagada permanezca `APROBADA` hasta recibirla físicamente.
+   Es el comportamiento correcto (stock = mercancía física); se documenta en el modal de abono y en el
+   modal de recepción con copy claro.
 
-2. **Factura editable vs CxC existente**: Si una factura ya tiene CxC asociada, NO se deben editar conceptos (podría desincronizar montos). El servicio debe verificar `cuentas_por_cobrar.factura_id` antes de permitir modificaciones. **Error code:** `FACTURA_CON_CXC`.
+2. **Artículos nuevos necesitan categoría/unidad:** nunca se crea un artículo "a ciegas". El modal de
+   recepción exige esos datos. Si un artículo nuevo se capturó por error, la acción correcta es
+   eliminar la línea (soft delete) antes de recibir, o ajustar stock manualmente después.
 
-3. **Cálculo de impuestos**: El IVA (16%) se calcula por concepto, no global. Cada concepto puede tener `impuesto_tasa` (null = exento). `impuesto_importe = importe * tasa`. La factura suma todos los impuestos. **Sin riesgo** — es aritmética pura.
+3. **Monto derivado vs CxP existente:** `cuentas_por_pagar.monto` se conserva derivado de la suma de
+   líneas. El `registrarAbono` valida `monto` de cabecera; al editar líneas en PENDIENTE/APROBADA se
+   recalcula la cabecera y CxP en el mismo `$transaction` (patrón ya usado en `updateOrden`).
 
-4. **Código secuencial FAC-YYYY-NNNN**: Se genera con `SELECT COUNT(*) + 1` de facturas del año actual. Bajo concurrencia, usar `SELECT MAX(folio::int)` o `uuid_generate_v4()` como fallback. **Riesgo bajo** — uso interno, no CRM público.
+4. **Concurrencia de folio/código:** el código de artículo generado en recepción usa el mismo patrón
+   defensivo P2002 ya probado (`generarFolioOrden` / `generarCodigoAbono`).
 
-5. **Plantilla cobranza**: El módulo facturas replica el patrón probado de cobranza (auditoría, DTOs, transacciones, tests) — minimiza riesgo de implementación.
+5. **Migración manual por shadow DB:** no usar `prisma migrate dev`; seguir el flujo manual de Fase 3
+   (`migrate diff` → `db execute` → `_prisma_migrations` → `generate`). Riesgo de error humano
+   mitigado por el SQL cerrado de §2.1.
 
-6. **Frontend sin catálogo de conceptos**: Los conceptos se crean inline en el modal de factura (sin endpoint separado de catálogo). Es suficiente para la Fase 3; se puede refinar en Fase 5 si se necesitan plantillas de facturación recurrente.
+6. **Turbopack / hidratación:** el modal de líneas tiene más estado; se probará el flujo completo en
+   `dev`. Si hay pánicos de hidratación, reiniciar el proceso y reducir state lifting.
 
-7. **Monorepo**: DTOs viven en el backend; el frontend espeja los contratos en `api.ts` (consistente con cobranza/proveedores). Validar la fuente en el backend siempre.
+7. **Compatibilidad de datos existentes:** las OC ya creadas no tienen líneas. No se migran
+   retroactivamente (sería parsear texto, prohibido). Solo se listan con `items: []`; el flujo de
+   recepción aplica a OC nuevas. Si el usuario quiere recibir una OC vieja, debe crear una nueva.
 
 ---
 
@@ -554,8 +663,13 @@ npm run test:integration  # Todos los integration tests pasando
 
 | Sub-fase | Descripción | Estimación |
 |----------|-------------|------------|
-| 3a | Schema + Migración + Seed | 0.5 día |
-| 3b | Módulo Facturas NestJS + Tests | 2 días |
-| 3c | Integración Cotización → Factura + CxC | 0.5 día |
-| 3d | Frontend Facturas + Integración Cotizaciones | 1.5 días |
-| **Total** | | **~4.5 días** |
+| T1 | Schema + Migración + `prisma generate` | 0.5 día |
+| T2 | Refactor `InventarioService.aplicarEntrada` | 0.5 día |
+| T3 | DTOs + `createOrden` con líneas + desacople pago | 1 día |
+| T4 | `recibirOrden` (transacción atómica) | 1 día |
+| T5 | Tests backend (unit + integration) | 1 día |
+| T6 | Contratos `api.ts` | 0.5 día |
+| T7 | Modal Nueva OC con líneas | 1 día |
+| T8 | Modal de recepción | 1 día |
+| T9 | Validación E2E + entornos/Turbopack | 0.5 día |
+| **Total** | | **~7 días** |
