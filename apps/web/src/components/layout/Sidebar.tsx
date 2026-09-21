@@ -31,6 +31,7 @@ import {
   Loader2,
   Shield,
   ReceiptText,
+  Receipt,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -66,6 +67,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   CreditCard,
   Layers,
   ReceiptText,
+  Receipt,
 };
 
 interface RouteMeta {
@@ -93,6 +95,7 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/incidentes": { group: "Operaciones" },
   "/clientes": { group: "Comercial" },
   "/cotizaciones": { group: "Comercial" },
+  "/facturas": { group: "Comercial", badge: "NUEVO" },
   "/finanzas": { group: "Comercial" },
   "/proveedores": { group: "Comercial", badge: "NUEVO" },
   "/ventas": { group: "Comercial" },

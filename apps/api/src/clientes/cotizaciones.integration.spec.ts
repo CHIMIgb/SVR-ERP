@@ -28,6 +28,7 @@ describe('Cotizaciones Audit (Real DB)', () => {
   let service: CotizacionesService;
 
   const createdClienteIds: string[] = [];
+  const createdFacturaIds: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -51,8 +52,14 @@ describe('Cotizaciones Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
+    // FK-safe: conceptos de factura → CxC → facturas → cotizaciones → clientes.
+    for (const facturaId of createdFacturaIds) {
+      await prisma.factura_conceptos.deleteMany({ where: { factura_id: facturaId } });
+      await prisma.cuentas_por_cobrar.deleteMany({ where: { factura_id: facturaId } });
+      await prisma.facturas.deleteMany({ where: { id: facturaId } });
+    }
     if (createdClienteIds.length > 0) {
-      // FK-safe: primer las cotizaciones, luego los clientes
+      // primer las cotizaciones, luego los clientes
       await prisma.cotizaciones.deleteMany({
         where: { cliente_id: { in: createdClienteIds } },
       });
@@ -303,6 +310,174 @@ describe('Cotizaciones Audit (Real DB)', () => {
       expect(stats).toHaveProperty('rechazadas');
       expect(stats).toHaveProperty('montoAceptado');
       expect(typeof stats.total).toBe('number');
+    });
+  });
+
+  describe('FACTURAR', () => {
+    it('debe facturar cotización y crear factura + CxC + audits', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `A facturar ${TEST_ID}`, monto: 75000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+
+      const resultado = await service.facturar(cotizacion.id, ACTOR_USER_ID);
+
+      // 1. Factura creada y ligada a la cotización
+      expect(resultado.factura.codigo).toMatch(/^FAC-\d{4}-\d{4}$/);
+      createdFacturaIds.push(resultado.factura.id);
+
+      const factura = await prisma.facturas.findUnique({
+        where: { id: resultado.factura.id },
+        include: { factura_conceptos: true, cuentas_por_cobrar: true },
+      });
+      expect(factura).not.toBeNull();
+      expect(factura!.cotizacion_id).toBe(cotizacion.id);
+      expect(factura!.cliente_id).toBe(cliente.id);
+      expect(Number(factura!.total)).toBe(87000);
+      expect(Number(factura!.impuestos)).toBe(12000);
+      expect(factura!.estado).toBe('PENDIENTE');
+      expect(factura!.factura_conceptos).toHaveLength(1);
+      expect(factura!.factura_conceptos[0].descripcion).toBe(`A facturar ${TEST_ID}`);
+      // Desglose de IVA consistente (tasa 16% con importe acorde, no 0).
+      expect(Number(factura!.factura_conceptos[0].impuesto_tasa)).toBe(0.16);
+      expect(Number(factura!.factura_conceptos[0].impuesto_importe)).toBe(12000);
+
+      // 2. CxC creada por el total (con IVA) con vencimiento +30 días
+      const cxc = factura!.cuentas_por_cobrar;
+      expect(cxc).not.toBeNull();
+      expect(Number(cxc!.monto)).toBe(87000);
+      expect(Number(cxc!.monto_pagado)).toBe(0);
+      expect(cxc!.estado).toBe('PENDIENTE');
+      const vencimientoEsperado = new Date();
+      vencimientoEsperado.setDate(vencimientoEsperado.getDate() + 30);
+      expect(cxc!.fecha_vencimiento!.toISOString().split('T')[0]).toBe(
+        vencimientoEsperado.toISOString().split('T')[0],
+      );
+
+      // 3. Cotización quedó ACEPTADA
+      const cotizacionBd = await prisma.cotizaciones.findUnique({
+        where: { id: cotizacion.id },
+      });
+      expect(cotizacionBd!.estado).toBe(EstadoCotizacion.ACEPTADA);
+
+      // 4. Audit COTIZACION_FACTURADA SUCCESS
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.COTIZACION_FACTURADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+      expect(audit!.result).toBe('SUCCESS');
+      const newValue = audit!.new_value as Record<string, unknown> | null;
+      expect(newValue?.facturaId).toBe(resultado.factura.id);
+    });
+
+    it('debe fallar COTIZACION_NO_PENDIENTE y auditar FAIL', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `No facturable ${TEST_ID}`, monto: 1000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+      await service.cambiarEstado(
+        cotizacion.id,
+        { estado: EstadoCotizacion.RECHAZADA, motivoRechazo: 'Prueba integración' },
+        ACTOR_USER_ID,
+      );
+
+      await expect(service.facturar(cotizacion.id, ACTOR_USER_ID)).rejects.toThrow();
+
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.COTIZACION_FACTURADA,
+          entity_id: cotizacion.id,
+          result: 'FAIL',
+          error_code: 'COTIZACION_NO_PENDIENTE',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+    });
+
+    it('debe facturar UNA sola vez ante doble llamada concurrente y auditar FAIL al perdedor', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Carrera doble ${TEST_ID}`, monto: 50000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+
+      const resultados = await Promise.allSettled([
+        service.facturar(cotizacion.id, ACTOR_USER_ID),
+        service.facturar(cotizacion.id, ACTOR_USER_ID),
+      ]);
+
+      const ganadores = resultados.filter((r) => r.status === 'fulfilled');
+      const perdedores = resultados.filter((r) => r.status === 'rejected');
+      expect(ganadores).toHaveLength(1);
+      expect(perdedores).toHaveLength(1);
+
+      // Una sola factura y una sola CxC para la cotización.
+      const facturas = await prisma.facturas.findMany({
+        where: { cotizacion_id: cotizacion.id },
+      });
+      expect(facturas).toHaveLength(1);
+      createdFacturaIds.push(facturas[0].id);
+
+      const cxcCount = await prisma.cuentas_por_cobrar.count({
+        where: { factura_id: facturas[0].id },
+      });
+      expect(cxcCount).toBe(1);
+
+      // El perdedor audita FAIL. El código depende del timing: si la lectura
+      // previa alcanzó a ver el commit del ganador → NO_PENDIENTE (pre-check);
+      // si ambas entraron a la transacción → YA_FACTURADA (guard transicional).
+      // Lo invariante: exactamente un FAIL para la misma cotización.
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.COTIZACION_FACTURADA,
+          entity_id: cotizacion.id,
+          result: 'FAIL',
+          error_code: { in: ['COTIZACION_YA_FACTURADA', 'COTIZACION_NO_PENDIENTE'] },
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+    });
+
+    it('debe asignar folios únicos al facturar cotizaciones distintas en paralelo', async () => {
+      const cliente = await createCliente();
+      const c1 = await service.create(
+        cliente.id,
+        { descripcion: `Folio A ${TEST_ID}`, monto: 10000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+      const c2 = await service.create(
+        cliente.id,
+        { descripcion: `Folio B ${TEST_ID}`, monto: 20000, fecha: '2026-08-26' },
+        ACTOR_USER_ID,
+      );
+
+      const resultados = await Promise.allSettled([
+        service.facturar(c1.id, ACTOR_USER_ID),
+        service.facturar(c2.id, ACTOR_USER_ID),
+      ]);
+
+      const ganadores = resultados.filter((r) => r.status === 'fulfilled') as Array<
+        PromiseFulfilledResult<{ factura: { codigo: string } }>
+      >;
+      expect(ganadores).toHaveLength(2);
+
+      const codigos = ganadores.map((r) => r.value.factura.codigo);
+      expect(new Set(codigos).size).toBe(2);
+      codigos.forEach((codigo) => expect(codigo).toMatch(/^FAC-\d{4}-\d{4}$/));
+
+      const facturas = await prisma.facturas.findMany({
+        where: { cotizacion_id: { in: [c1.id, c2.id] } },
+      });
+      expect(facturas).toHaveLength(2);
+      facturas.forEach((f) => createdFacturaIds.push(f.id));
     });
   });
 });

@@ -1,10 +1,14 @@
-import { IsOptional, IsString, Min } from 'class-validator';
+import { IsBooleanString, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class QueryClientesDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsBooleanString()
+  activo?: string;
 
   @IsOptional()
   @Type(() => Number)

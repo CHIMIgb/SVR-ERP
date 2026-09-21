@@ -23,7 +23,11 @@ import { AsistenciaModule } from './asistencia/asistencia.module';
 import { NominaModule } from './nomina/nomina.module';
 import { GpsModule } from './gps/gps.module';
 import { FinanzasModule } from './finanzas/finanzas.module';
+import { ConciliacionBancariaModule } from './conciliacion-bancaria/conciliacion-bancaria.module';
 import { VentasModule } from './ventas/ventas.module';
+import { ProveedoresModule } from './proveedores/proveedores.module';
+import { CobranzaModule } from './cobranza/cobranza.module';
+import { FacturasModule } from './facturas/facturas.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -70,8 +74,14 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AsistenciaModule,
     NominaModule,
     GpsModule,
+    // Antes que FinanzasModule: /finanzas/bancos|cuentas|movimientos estáticos
+    // deben ganar sobre @Get(':id') de FinanzasController.
+    ConciliacionBancariaModule,
     FinanzasModule,
     VentasModule,
+    ProveedoresModule,
+    CobranzaModule,
+    FacturasModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController

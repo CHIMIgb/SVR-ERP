@@ -12,6 +12,25 @@
 
 ---
 
+## 0. Fases ejecutadas — ciclo de dinero (plan `implementation_plan copy.md`)
+
+Estado real del plan de integración cobranza/finanzas. **Todas ejecutadas** en la rama
+`proveedores-cobranza` (pendiente de PR a `main`):
+
+| Fase | Alcance | Estado |
+|------|---------|--------|
+| Fase 1 | migración + módulo cobranza + seed + tests | ✅ Realizada |
+| Fase 2 | conectar frontend a API real (`cobranza.page.tsx`) | ✅ Realizada |
+| Fase 3 (C2 → C1) | módulo facturas → cotización aceptada → CxC | ✅ Realizada |
+| Fase 4 (O1, O2, O3) | proyecto en CxC + bitácora → CxC | ✅ Realizada |
+| Fase 5 (C4-C7, O4-O5) | reportes consolidados y conciliación | ✅ Realizada (O4 movida a Fase 6) |
+
+> **O4 (margen/utilidad por proyecto)** se movió a una **Fase 6** independiente
+> (`implementation_plan_fase6.md`): requiere preparación de datos de costo
+> (`articulos_inventario.costo_unitario` + desnormalización de facturas).
+
+---
+
 ## 1. Resumen ejecutivo
 
 Hoy, una cotización es una **bolsa de datos suelta**: se crea → se acepta/rechaza → **y
@@ -566,3 +585,167 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 > comparten el cruce con `transacciones` y el inventario. **P7** (precios por medida de
 > venta) puede ejecutarse en paralelo con cualquiera de ellos: es independiente del
 > módulo destino y desbloquea el catálogo de precios del POS.
+
+---
+
+## 8. Flujo completo de /cobranza — mapa de vistas relacionadas
+
+> **Contexto:** /cobranza es la vista **central del ciclo de tesorería comercial**: gestiona
+> los saldos de `cuentas_por_cobrar`, registra los cobros (`pagos`) y alimenta la caja.
+> Esta sección documenta con qué vistas convive y cómo fluye la información, para
+> ejecutar el backend de cobranza sin acoplar módulos equivocados.
+
+### 8.1 El ciclo de la información
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────────────────┐
+│ /cotizaciones│ ──►  │   /ventas    │ ──►  │     facturas (CFDI)     │
+│ (apruebas)   │      │ (POS/crédito)│      │  tabla `facturas`       │
+└─────────────┘      └─────────────┘      └───────────┬─────────────┘
+                                                      │ crea la deuda
+                                                      ▼
+┌─────────────┐                              ┌─────────────────────────┐
+│ /maquinaria │                              │  cuentas_por_cobrar     │ ◄──── /cobranza
+│ (flota/gps/ │ ────►  bitacoras_renta_      │  (tabla central: monto, │      (la vista que
+│  renta)     │          diaria              │   pagado, vencimiento,  │       gestiona todo)
+└─────────────┘                              │   estado)               │
+                                             └───────────┬─────────────┘
+                                                         │ Registrar cobro
+                                                         ▼
+┌─────────────┐                              ┌─────────────────────────┐
+│  /finanzas  │ ◄─────────────  pagos         │  /reportes + /documentos│
+│ (ingresos,  │   (tabla `pagos`: monto,      │  (CFDI timbrado,        │
+│  caja)      │    método, referencia)        │   comprobante CSV/PDF)  │
+└─────────────┘                              └─────────────────────────┘
+```
+
+### 8.2 Clasificación por módulos del sidebar
+
+**Módulo COMERCIAL — concentra TODO el ciclo de cobranza:**
+
+| Vista | Rol en el ciclo |
+|-------|-----------------|
+| `/clientes` | El deudor (toda CxC apunta a `cliente_id`) |
+| `/cotizaciones` | Origen: se aprueba → se convierte en venta |
+| `/ventas` (+ `/ventas/corte`) | Genera la factura; venta a crédito → nace la CxC |
+| `/finanzas` | Destino: el cobro entra como ingreso/caja |
+| `/proveedores` | Espejo inverso: cuentas por pagar |
+| `/cobranza` | La vista central del ciclo |
+
+**Módulo OPERACIONES — no gestiona cobranza, solo aporta contexto:**
+
+| Vista | Relación indirecta |
+|-------|--------------------|
+| `/proyectos` | Las obras/contratos que después se facturan y se cobran (la vista de cobranza muestra `obra`) |
+| `/inventario` | Los materiales vendidos = el costo detrás de cada factura |
+| `/operaciones`, `/reportes-campo`, `/criba`, `/incidentes` | Producción diaria — sin vínculo directo con CxC |
+
+**Grupo MAQUINARIA — origen del cargo por renta (ni Operaciones ni Comercial):**
+
+| Vista | Relación |
+|-------|----------|
+| `/maquinaria`, `/horometro`, `/mantenimiento`, `/combustible`, `/gps` | Las `bitacoras_renta_diaria` (cerradas) generan `cuentas_por_cobrar` vía `bitacora_id` — es el único origen del ciclo que no nace en Comercial |
+
+**Grupo SISTEMA — consumidores/registro:**
+
+| Vista | Relación |
+|-------|----------|
+| `/reportes` | Reportes de cartera, antigüedad de saldos (export CSV del tab activo) |
+| `/documentos` | CFDI de la factura/cobro (`facturas.xml_url / pdf_url`) |
+| `/configuracion` | Días de crédito, métodos de pago, condiciones |
+
+### 8.3 Flujo típico completo (crédito a cliente)
+
+1. `/cotizaciones` → se aprueba y se convierte en orden/venta.
+2. `/ventas` registra la venta a crédito → **factura** timbrada (CFDI).
+3. La factura crea `cuentas_por_cobrar` (monto = total, vencimiento = días de crédito).
+4. `/cobranza` la muestra con saldo y situación (al corriente / atraso leve / grave).
+5. El cliente paga → `/cobranza` → "Registrar cobro" → crea `pagos` y liquida `monto_pagado` (estado → SALDADO).
+6. `/finanzas` refleja el ingreso del cobro.
+7. `/documentos` guarda el comprobante/CFDI; `/reportes` lo agrega a cartera.
+
+### 8.4 Estado actual vs. pendiente
+
+- **Con API ya:** `/clientes`, `/ventas`, `/finanzas`, `/proveedores` (módulos NestJS).
+- **En Prisma pero sin endpoints aún:** `facturas`, `pagos`, `cuentas_por_cobrar`, `bitacoras_renta_diaria`.
+- **Eslabones faltantes del ciclo (backend de cobranza):**
+  1. **`ventas` → factura → `cuentas_por_cobrar`** (creación automática al facturar; hoy la factura no dispara CxC).
+  2. **`/cobranza` → `pagos`** (el "Registrar cobro" escribe en `pagos` y actualiza `cuentas_por_cobrar.monto_pagado/estado` en la misma transacción).
+  3. **Cierre del círculo en `/finanzas`**: el cobro alimenta la caja como ingreso.
+- **Frontend:** `/cobranza` reconstruida en **fase 1 (mock local)** con contrato DTO listo en `src/lib/api.ts` (`CuentaPorCobrarDTO`, `CobroDTO`, `VencimientoDTO`, `CobranzaStats`, `CobroCreateInput`) — listo para consumir el API real sin tocar la UI.
+
+---
+
+## 9. Futuro — Asignación vista → cuenta bancaria (conciliación automática)
+
+> **Estado:** ⏳ Pendiente — ninguna parte implementada. Surge del hueco real detectado en
+> el tab Conciliación de `/finanzas`: las `transacciones` (contabilidad general, creadas
+> automáticamente por cobros, reversiones y abonos) **no pertenecen a ninguna cuenta
+> bancaria**; el único puente banco ↔ contabilidad es la conciliación manual
+> (`movimientos_bancarios.transaccion_id` solo se llena al conciliar).
+
+**Idea del cliente:** en `/configuracion` se añadirá una asignación **1:1 vista → cuenta
+bancaria** (solo para vistas que manejan dinero: `/cobranza`, `/proveedores`, `/ventas`,
+`/finanzas`). Al registrar una operación en esa vista, el ERP generará
+**automáticamente el `movimiento_bancario`** en la cuenta asignada, de modo que el tab
+Conciliación solo necesite la **carga del CSV del banco** para confirmar.
+
+**Diseño propuesto (ajuste del arquitecto):**
+
+1. **Schema:** modelo nuevo `config_cuentas_origen` con `(origen, origen_id, cuenta_id)`
+   — permite asignación por vista y, a futuro, por cliente/proveedor (evita el cuello de
+   botella del 1:1 rígido por vista).
+2. **/configuracion:** tabla de asignación vista → cuenta (select de cuenta bancaria por
+   vista que maneja dinero) + **selector de cuenta en el modal** de cobro/abono (permite
+   "dejar caer" un movimiento en otra cuenta puntual; la config solo prellena).
+3. **Backend:** en el `$transaction` que crea la `transacciones` (cobro, reversión,
+   abono), crear también el `movimientos_bancarios` con la cuenta asignada y
+   `conciliado = false` (movimiento **esperado**, no conciliado).
+4. **Conciliación asistida:** al cargar el CSV, los movimientos esperados que coinciden
+   1:1 (misma cuenta, fecha, monto) con una línea del extracto se **auto-concilian**; el
+   resto queda pendiente como hoy.
+
+**Ventaja:** quita la duda "¿a qué cuenta cayó este dinero?" y reduce la conciliación a
+confirmar el extracto. **Riesgo controlado:** los movimientos automáticos son
+"esperados" (no conciliados) hasta que el CSV del banco los confirme — nunca se cuadra
+contra datos que el banco aún no reporta.
+
+---
+
+## 10. Futuro — Fecha de vencimiento en cuentas por pagar (CxP)
+
+**Contexto (hallazgo real en BD, sep 2026):** el Flujo Neto Proyectado de /finanzas
+clasifica por ventanas (Vencido, 0-30, 31-60, 61-90, +90, Sin vencimiento) usando
+`fecha_vencimiento` de `cuentas_por_cobrar` y `cuentas_por_pagar`. En la operación
+actual, **todas** las CxP tienen `fecha_vencimiento = NULL`, por lo que el total "Por
+pagar" (ej. $791,743.00) cae completo en "Sin vencimiento" y el desglose temporal
+muestra $0 en todas las ventanas. El de cobros sí funciona (la CxC nace con vencimiento
+desde el cobro).
+
+**Objetivo:**
+
+1. **Coherencia del Flujo Neto Proyectado:** que las CxP se distribuyan en las ventanas
+   reales (Vencido, 0-30, 31-60, 61-90, +90) y "Sin vencimiento" quede solo para lo que
+   genuinamente no tiene fecha comprometida.
+2. **Pagos en tiempo y forma a proveedores:** con la fecha de vencimiento registrada, el
+   sistema puede alertar con anticipación (KPIs/tabla "Por vencer en 7/15/30 días") y
+   priorizar pagos antes de que generen retrasos — en lugar de pagar reaccionando.
+
+**Diseño propuesto:**
+
+1. **Schema:** agregar `fecha_vencimiento` (nullable) a la orden de compra y propagarla a
+   `cuentas_por_pagar` al crear la CxP (misma fecha o un plazo configurable por
+   proveedor, p.ej. neto 15/30/60). Migración + backfill opcional desde `fecha` +
+   término para datos existentes.
+2. **UI /proveedores:** campo "Fecha de vencimiento" en el modal de orden de compra;
+   mostrarla en el estado de cuenta y en el ledger por proveedor.
+3. **/finanzas:** una vez haya fechas, el flujo proyectado por ventanas de "Por pagar"
+   usa la misma lógica que "Por cobrar"; las CxP sin fecha quedan solo en "Sin
+   vencimiento" (y se pueden marcar como dato incompleto).
+4. **Opcional (siguiente iteración):** alertas "A vencer en N días" y ordenamiento de
+   prioridad de pago por fecha de vencimiento, conectado con el módulo de finanzas y
+   tesorería.
+
+**Nota:** el KPI "Por pagar" de /proveedores ya se corrigió para excluir órdenes
+CANCELADAS (commit de pulido visual pre-PR, `proveedores.service.ts`), con lo que
+cuadra con el flujo neto. Esta sección cubre únicamente la granularidad temporal.

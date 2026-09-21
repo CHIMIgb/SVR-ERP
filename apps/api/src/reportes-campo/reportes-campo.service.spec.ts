@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import {
   EstadoReporteCampo,
   Prioridad,
@@ -48,6 +48,7 @@ describe('ReportesCampoService', () => {
         count: jest.fn().mockResolvedValue(1),
         create: jest.fn().mockResolvedValue(mockReporte),
         update: jest.fn().mockResolvedValue(mockReporte),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       maquinas: {
         findFirst: jest.fn().mockResolvedValue({ id: mockReporte.maquina_id }),
@@ -55,6 +56,13 @@ describe('ReportesCampoService', () => {
       obras: {
         findFirst: jest.fn().mockResolvedValue({ id: 'obra-1' }),
       },
+      clientes: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+      },
+      cuentas_por_cobrar: {
+        create: jest.fn().mockResolvedValue({ id: 'cxc-1' }),
+      },
+      $transaction: jest.fn(async (cb: (tx: any) => Promise<unknown>) => cb(prisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -331,6 +339,99 @@ describe('ReportesCampoService', () => {
         resueltos: 4,
         criticosActivos: 2,
       });
+    });
+  });
+
+  describe('facturar', () => {
+    /** Reporte RESUELTO con cliente + monto, listo para facturar. */
+    const resuelto = {
+      ...mockReporte,
+      estado: EstadoReporteCampo.RESUELTO,
+      cliente_id: 'cliente-1',
+      proyecto_id: 'proyecto-1',
+      monto_servicio: 8500.5,
+    };
+
+    it('factura un reporte resuelto y hace nacer la CxC en la misma transacción', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(resuelto);
+      prisma.clientes.findFirst.mockResolvedValue({ id: 'cliente-1' });
+
+      const result = await service.facturar('reporte-1', 'user-1');
+
+      // El guard usa updateMany con estado RESUELTO
+      const updateArgs = prisma.reportes_campo.updateMany.mock.calls[0][0];
+      expect(updateArgs.where).toEqual({ id: 'reporte-1', estado: EstadoReporteCampo.RESUELTO });
+      expect(updateArgs.data.estado).toBe(EstadoReporteCampo.FACTURADO);
+
+      // La CxC creada dentro de $transaction
+      const txCxc = prisma.cuentas_por_cobrar.create.mock.calls[0][0];
+      expect(txCxc.data.cliente_id).toBe('cliente-1');
+      expect(txCxc.data.proyecto_id).toBe('proyecto-1');
+      expect(Number(txCxc.data.monto)).toBe(8500.5);
+      expect(txCxc.data.estado).toBe('PENDIENTE');
+      expect(txCxc.data.fecha_vencimiento.getDate()).toBeGreaterThanOrEqual(new Date().getDate());
+
+      expect(result.cuenta).toMatchObject({
+        reporteId: 'reporte-1',
+        monto: 8500.5,
+        proyectoId: 'proyecto-1',
+        estado: 'PENDIENTE',
+      });
+      expect(result.reporte.estado).toBe('Facturado');
+
+      const audits = mockAudit.log.mock.calls.map((c: any) => c[0].action);
+      expect(audits).toContain(AuditAction.REPORTE_CAMPO_FACTURADO);
+      expect(audits).toContain(AuditAction.CXC_CREADA);
+    });
+
+    it('lanza 404 con audit FAIL si el reporte no existe', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+      await expect(service.facturar('reporte-x', 'user-1')).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_CAMPO_FACTURADO, result: AuditResult.FAIL, errorCode: 'REPORTE_NO_ENCONTRADO' }),
+      );
+    });
+
+    it('lanza 409 si el reporte no está RESUELTO', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(mockReporte); // estado VISTO
+      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'REPORTE_NO_RESUELTO' }),
+      );
+    });
+
+    it('lanza 409 si falta cliente o monto de servicio', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoReporteCampo.RESUELTO,
+        cliente_id: null,
+        monto_servicio: null,
+      });
+      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'DATOS_FACTURACION_INCOMPLETOS' }),
+      );
+    });
+
+    it('lanza 409 si el cliente está inactivo', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(resuelto);
+      prisma.clientes.findFirst.mockResolvedValue(null);
+      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'CLIENTE_INACTIVO' }),
+      );
+    });
+
+    it('lanza 409 en carrera de doble clic (updateMany count 0) y no crea CxC', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(resuelto);
+      prisma.clientes.findFirst.mockResolvedValue({ id: 'cliente-1' });
+      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'REPORTE_YA_FACTURADO' }),
+      );
+      expect(prisma.cuentas_por_cobrar.create).not.toHaveBeenCalled();
     });
   });
 });

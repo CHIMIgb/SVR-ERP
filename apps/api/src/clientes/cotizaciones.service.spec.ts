@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { AuditAction, AuditResult, EstadoCotizacion } from '@prisma/client';
+import { AuditAction, AuditResult, EstadoCotizacion, Prisma } from '@prisma/client';
 import { CotizacionesService } from './cotizaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,6 +12,11 @@ describe('CotizacionesService', () => {
   const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
 
   const mockClienteId = '550e8400-e29b-41d4-a716-446655440010';
+
+  const errorP2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+    code: 'P2002',
+    clientVersion: 'x',
+  });
 
   const mockCotizacion = {
     id: '490e8400-e29b-41d4-a716-446655440010',
@@ -42,6 +47,8 @@ describe('CotizacionesService', () => {
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { monto: 125000 } }),
       },
+      // mock base: cada test que factura lo sobrescribe con mockImplementation.
+      $transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -472,6 +479,210 @@ describe('CotizacionesService', () => {
         rechazadas: 1,
         montoAceptado: 125000,
       });
+    });
+  });
+
+  describe('facturar', () => {
+    const ID = mockCotizacion.id;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tx: any = {
+      cotizaciones: { updateMany: jest.fn(), findUnique: jest.fn() },
+      facturas: { count: jest.fn().mockResolvedValue(0), create: jest.fn() },
+      cuentas_por_cobrar: { create: jest.fn() },
+    };
+
+    it('debe facturar creando factura + concepto + CxC y auditar COTIZACION_FACTURADA', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 1 });
+      tx.facturas.create.mockImplementation(async ({ data }: any) => ({
+        id: data.id,
+        codigo: data.codigo,
+        total: data.total,
+        estado: data.estado,
+      }));
+      tx.cuentas_por_cobrar.create.mockImplementation(async ({ data }: any) => ({
+        id: data.id,
+        monto: data.monto,
+        fecha_vencimiento: data.fecha_vencimiento,
+      }));
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      const result = await service.facturar(ID, 'user-1');
+
+      expect(tx.cotizaciones.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: EstadoCotizacion.PENDIENTE }),
+          data: expect.objectContaining({ estado: EstadoCotizacion.ACEPTADA }),
+        }),
+      );
+      expect(tx.facturas.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cotizacion_id: ID,
+            cliente_id: mockClienteId,
+            subtotal: 125000,
+            impuestos: 20000,
+            total: 145000,
+            estado: 'PENDIENTE',
+          }),
+        }),
+      );
+      // Desglose de IVA consistente por concepto (tasa 16% con importe acorde).
+      const dataFactura = tx.facturas.create.mock.calls[0][0].data;
+      expect(dataFactura.factura_conceptos.create[0]).toEqual(
+        expect.objectContaining({
+          impuesto_tasa: 0.16,
+          impuesto_importe: 20000,
+        }),
+      );
+      expect(tx.cuentas_por_cobrar.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ monto: 145000, estado: 'PENDIENTE' }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COTIZACION_FACTURADA,
+          result: AuditResult.SUCCESS,
+          entityId: ID,
+        }),
+      );
+      expect(result.cotizacionId).toBe(ID);
+      expect(result.factura.codigo).toBe('FAC-2026-0001');
+    });
+
+    it('debe fallar COTIZACION_YA_FACTURADA si perdió la carrera de transición', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockClear();
+      tx.facturas.create.mockClear();
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 0 });
+      tx.cotizaciones.findUnique.mockResolvedValue({
+        estado: EstadoCotizacion.ACEPTADA,
+        facturas: [{ id: 'factura-ganadora' }],
+      });
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+
+      expect(tx.cotizaciones.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: EstadoCotizacion.PENDIENTE }),
+        }),
+      );
+      expect(tx.cotizaciones.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: ID } }),
+      );
+      expect(tx.facturas.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_YA_FACTURADA' }),
+      );
+    });
+
+    it('debe fallar COTIZACION_NO_PENDIENTE si perdió la carrera contra otro estado', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockClear();
+      tx.facturas.create.mockClear();
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 0 });
+      tx.cotizaciones.findUnique.mockResolvedValue({
+        estado: EstadoCotizacion.RECHAZADA,
+        facturas: [],
+      });
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+
+      expect(tx.facturas.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_NO_PENDIENTE' }),
+      );
+    });
+
+    it('debe fallar COTIZACION_NO_ENCONTRADA si no existe', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue(null);
+      await expect(service.facturar('missing', 'user-1')).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_NO_ENCONTRADA' }),
+      );
+    });
+
+    it('debe fallar COTIZACION_NO_PENDIENTE si ya fue decidida', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({ ...mockCotizacion, facturas: [] });
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_NO_PENDIENTE' }),
+      );
+    });
+
+    it('debe fallar COTIZACION_YA_FACTURADA si ya tiene factura', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [{ id: 'factura-1' }],
+      });
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'COTIZACION_YA_FACTURADA' }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('debe fallar CLIENTE_NO_ENCONTRADO si el cliente está inactivo', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue(null);
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CLIENTE_NO_ENCONTRADO' }),
+      );
+    });
+
+    it('debe reasignar folio al sufijo UUID en el intento final cuando el conteo+1 colisiona (Blocker #4)', async () => {
+      // El conteo nunca avanza (simula colisión persistente de count+1). Las
+      // iteraciones 0..N-1 generan el mismo codigo/folio; la última debe caer
+      // al respaldo UUID en AMBOS (codigo y folio), igual que el unique de
+      // serie+folio lo exige.
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 1 });
+      tx.facturas.count.mockResolvedValue(5); // conteo congelado → count+1 siempre colisiona
+      tx.facturas.create.mockRejectedValue(errorP2002);
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await expect(service.facturar(ID, 'user-1')).rejects.toThrow(
+        'No se pudo asignar un folio único a la factura',
+      );
+
+      // Último intento: folio = sufijo UUID, consistente con el codigo y
+      // distinto del count+1 ('000006') que ya colisionó.
+      const calls = tx.facturas.create.mock.calls;
+      const ultimo = calls[calls.length - 1][0].data;
+      expect(ultimo.folio).not.toBe('000006');
+      expect(ultimo.folio).toBe(ultimo.codigo.split('-').pop());
+      // Los intentos intermedios sí usaron el secuencial por conteo.
+      const penultimo = calls[calls.length - 2][0].data;
+      expect(penultimo.folio).toBe('000006');
     });
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, FileText, CheckCircle2, AlertCircle, Calendar, Loader2 } from 'lucide-react';
+import { Plus, FileText, CheckCircle2, AlertCircle, Calendar, Loader2, FileCheck2 } from 'lucide-react';
 import type { Maquina } from '@svr-erp/shared';
 import type { TrabajadorDTO, BitacoraRentaDTO } from '@/lib/api';
 import { bitacorasRentaApi } from '@/lib/api';
@@ -9,6 +9,7 @@ import { useToast } from '@/components/layout/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter, FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 interface BitacorasRentaModalProps {
   isOpen: boolean;
@@ -16,6 +17,8 @@ interface BitacorasRentaModalProps {
   trabajador?: TrabajadorDTO | null;
   maquinaria: Maquina[];
   puedeCrear?: boolean;
+  /** Habilita el botón "Facturar" de bitácoras LISTO_FACTURAR (RBAC rrhh.trabajadores.editar). */
+  puedeEditar?: boolean;
   onBitacoraCreada?: () => void;
 }
 
@@ -31,15 +34,19 @@ export default function BitacorasRentaModal({
   trabajador,
   maquinaria,
   puedeCrear,
+  puedeEditar,
   onBitacoraCreada,
 }: BitacorasRentaModalProps) {
   const { showToast } = useToast();
-  const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
   const [bitacoras, setBitacoras] = useState<BitacoraRentaDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  /** Bitácora LISTO_FACTURAR elegida para facturar (modal de confirmación, O3). */
+  const [facturarTarget, setFacturarTarget] = useState<BitacoraRentaDTO | null>(null);
+  const [facturando, setFacturando] = useState(false);
 
   const [form, setForm] = useState({
     maquinaId: trabajador?.maquinaAsignadaId ?? maquinaria[0]?.id ?? '',
@@ -95,11 +102,33 @@ export default function BitacorasRentaModal({
 
     if (res.success) {
       setCaptureModalOpen(false);
-      showToast(`Hoja de Bitácora ${res.data.folio} registrada (${fmt.format(res.data.importeTotalRenta)} a facturar).`, 'success');
+      showToast(`Hoja de Bitácora ${res.data.folio} registrada (${formatCurrency(res.data.importeTotalRenta)} a facturar).`, 'success');
       fetchBitacoras();
       onBitacoraCreada?.();
     } else {
       showToast(res.error.message, 'error');
+    }
+  };
+
+  /** Factura la bitácora LISTO_FACTURAR → crea la CxC en el backend (O3). */
+  const handleFacturar = async () => {
+    if (!facturarTarget) return;
+    setFacturando(true);
+    const res = await bitacorasRentaApi.facturar(facturarTarget.id);
+    setFacturando(false);
+
+    if (res.success) {
+      const { cuenta, bitacora } = res.data;
+      setFacturarTarget(null);
+      showToast(
+        `Bitácora ${bitacora.folio} facturada: CxC ${cuenta.folio} por ${formatCurrency(cuenta.monto)} (vence ${cuenta.fechaVencimiento}).`,
+        'success',
+      );
+      fetchBitacoras();
+      onBitacoraCreada?.();
+    } else {
+      showToast(res.error.message || 'No se pudo facturar la bitácora.', 'error');
+      fetchBitacoras();
     }
   };
 
@@ -131,7 +160,7 @@ export default function BitacorasRentaModal({
                 <div className="flex sm:flex-col items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 text-right">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Facturable</span>
                   <span className="text-xl font-black text-emerald-700">
-                    {fmt.format(bitacoras.reduce((s, b) => s + b.importeTotalRenta, 0))}
+                    {formatCurrency(bitacoras.reduce((s, b) => s + b.importeTotalRenta, 0))}
                   </span>
                 </div>
               </div>
@@ -166,10 +195,22 @@ export default function BitacorasRentaModal({
                       </div>
 
                       <div className="text-right">
-                        <span className="text-xs font-black text-slate-900">{fmt.format(b.importeTotalRenta)}</span>
+                        <span className="text-xs font-black text-slate-900">{formatCurrency(b.importeTotalRenta)}</span>
                         <span className="text-[10px] text-slate-400 ml-1">
                           ({b.horasEfectivas + b.horasExtras}h @ ${b.tarifaHoraRenta}/hr)
                         </span>
+                        {b.estadoCobro === 'Listo para Facturar' && puedeEditar && (
+                          <div className="mt-1.5">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={<FileCheck2 className="w-3.5 h-3.5" />}
+                              onClick={() => setFacturarTarget(b)}
+                            >
+                              Facturar
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -306,6 +347,42 @@ export default function BitacorasRentaModal({
             )}
           </div>
         </div>
+      </FormModal>
+
+      {/* ─── Modal: Confirmar facturación (O3) ─────────────────────────── */}
+      <FormModal
+        open={!!facturarTarget}
+        onClose={() => setFacturarTarget(null)}
+        title="Facturar hoja de bitácora"
+        subtitle="Se generará una cuenta por cobrar (CxC) pendiente a 30 días."
+        submitLabel="Confirmar Facturación"
+        cancelLabel="Cancelar"
+        onSubmit={handleFacturar}
+        isSubmitting={facturando}
+        size="sm"
+      >
+        {facturarTarget && (
+          <div className="space-y-3">
+            <div className="space-y-1.5 rounded-xl bg-slate-50 border border-slate-100 p-4 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-semibold text-xs">Hoja</span>
+                <span className="font-black text-slate-900">{facturarTarget.folio}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-semibold text-xs">Cliente</span>
+                <span className="font-semibold text-slate-800 truncate max-w-[220px]">{facturarTarget.cliente}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-semibold text-xs">Importe a facturar</span>
+                <span className="font-black text-emerald-700">{formatCurrency(facturarTarget.importeTotalRenta)}</span>
+              </div>
+            </div>
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
+              Esta acción marcará la bitácora como <strong>Facturada</strong> y creará la cuenta por cobrar
+              correspondiente. No se puede revertir.
+            </p>
+          </div>
+        )}
       </FormModal>
     </>
   );

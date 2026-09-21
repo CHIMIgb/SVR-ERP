@@ -1,439 +1,1164 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Search, DollarSign, AlertTriangle, CheckCircle2,
-  TrendingUp, Clock, ChevronRight, Plus, CreditCard,
-  Building2, CalendarDays, ReceiptText, FileText
+  Wallet, AlertTriangle, HandCoins, Building2, CreditCard, Eye, Undo2,
+  SlidersHorizontal, Download, CalendarClock, ReceiptText, X,
 } from 'lucide-react';
-import Modal, { ModalField, inputClass } from '@/components/layout/Modal';
+import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import {
+  cobranzaApi,
+  type CuentaPorCobrarDTO, type CobroDTO, type VencimientoDTO, type CobranzaStats,
+  type GrupoProyectoDTO,
+  type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
+} from '@/lib/api';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type EstadoCuenta = 'Al corriente' | 'Atraso leve' | 'Atraso grave' | 'Saldado';
+// ─── Constantes ───────────────────────────────────────────────────────────────
+const PAGE_SIZE = 8;
 
-interface CuentaCliente {
-  id: string;
-  cliente: string;
-  empresa: string;
-  obra: string;
-  totalObra: number;
-  totalCobrado: number;
-  fechaUltimoAbono: string;
-  diasCredito: number;
-  estado: EstadoCuenta;
-}
-
-interface Abono {
-  id: string;
-  cuentaId: string;
-  clienteNombre: string;
-  monto: number;
-  fecha: string;
-  referencia: string;
-  formaPago: 'Transferencia' | 'Cheque' | 'Efectivo';
-}
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const cuentasIniciales: CuentaCliente[] = [
-  {
-    id: 'CC001', cliente: 'Ing. Alberto Ruiz', empresa: 'Inmobiliaria ARCO', obra: 'Fraccionamiento Valle Sur',
-    totalObra: 1200000, totalCobrado: 950000, fechaUltimoAbono: '2026-08-10', diasCredito: 30, estado: 'Al corriente',
-  },
-  {
-    id: 'CC002', cliente: 'Lic. Martha Silva', empresa: 'Gobierno CDMX', obra: 'Remodelación Centro Histórico',
-    totalObra: 4500000, totalCobrado: 1200000, fechaUltimoAbono: '2026-07-15', diasCredito: 60, estado: 'Atraso leve',
-  },
-  {
-    id: 'CC003', cliente: 'Arq. Fernanda Torres', empresa: 'Desarrollos Costa', obra: 'Residencial Lomas Norte',
-    totalObra: 850000, totalCobrado: 850000, fechaUltimoAbono: '2026-08-01', diasCredito: 30, estado: 'Saldado',
-  },
-  {
-    id: 'CC004', cliente: 'Ing. Marcos Linares', empresa: 'Constructora Omega', obra: 'Bodega Industrial Km 45',
-    totalObra: 620000, totalCobrado: 80000, fechaUltimoAbono: '2026-06-20', diasCredito: 30, estado: 'Atraso grave',
-  },
-];
-
-const abonosIniciales: Abono[] = [
-  { id: 'AB001', cuentaId: 'CC001', clienteNombre: 'Inmobiliaria ARCO', monto: 200000, fecha: '2026-08-10', referencia: 'TRF-882211', formaPago: 'Transferencia' },
-  { id: 'AB002', cuentaId: 'CC002', clienteNombre: 'Gobierno CDMX', monto: 500000, fecha: '2026-07-15', referencia: 'CHQ-004412', formaPago: 'Cheque' },
-  { id: 'AB003', cuentaId: 'CC001', clienteNombre: 'Inmobiliaria ARCO', monto: 350000, fecha: '2026-07-01', referencia: 'TRF-774400', formaPago: 'Transferencia' },
-  { id: 'AB004', cuentaId: 'CC004', clienteNombre: 'Constructora Omega', monto: 80000, fecha: '2026-06-20', referencia: 'EFE', formaPago: 'Efectivo' },
-];
-
-const estadoConfig: Record<EstadoCuenta, { color: string; bg: string; dot: string }> = {
-  'Al corriente': { color: 'text-green-700', bg: 'bg-green-100', dot: 'bg-green-500' },
-  'Atraso leve': { color: 'text-yellow-700', bg: 'bg-yellow-100', dot: 'bg-yellow-500' },
-  'Atraso grave': { color: 'text-red-700', bg: 'bg-red-100', dot: 'bg-red-500' },
-  'Saldado': { color: 'text-slate-500', bg: 'bg-slate-100', dot: 'bg-slate-400' },
+const ESTADO_LABEL: Record<EstadoCuentaCobranza, string> = {
+  PENDIENTE: 'Pendiente',
+  PARCIAL: 'Parcial',
+  SALDADO: 'Saldado',
 };
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n);
+const SITUACION_LABEL: Record<SituacionCobranza, string> = {
+  AL_CORRIENTE: 'Al corriente',
+  ATRASO_LEVE: 'Atraso leve',
+  ATRASO_GRAVE: 'Atraso grave',
+  SALDADO: 'Saldado',
+};
 
-// ─── Page ──────────────────────────────────────────────────────────────────────
-export default function CobranzaPage() {
-  const { showToast } = useToast();
-  const [tab, setTab] = useState<'cuentas' | 'abonos' | 'vencimientos'>('cuentas');
-  const [cuentas, setCuentas] = useState<CuentaCliente[]>(cuentasIniciales);
-  const [abonos, setAbonos] = useState<Abono[]>(abonosIniciales);
-  const [search, setSearch] = useState('');
-  const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null);
-  const [modalAbono, setModalAbono] = useState(false);
-  const [formAbono, setFormAbono] = useState({ monto: '', referencia: '', formaPago: 'Transferencia' });
+const situacionVariant: Record<SituacionCobranza, 'success' | 'warning' | 'error' | 'neutral'> = {
+  AL_CORRIENTE: 'success',
+  ATRASO_LEVE: 'warning',
+  ATRASO_GRAVE: 'error',
+  SALDADO: 'neutral',
+};
 
-  // Stats
-  const totalPorCobrar = cuentas.reduce((a, c) => a + Math.max(0, c.totalObra - c.totalCobrado), 0);
-  const enAtraso = cuentas.filter(c => c.estado === 'Atraso grave' || c.estado === 'Atraso leve').length;
-  const totalCobrado = cuentas.reduce((a, c) => a + c.totalCobrado, 0);
-  const totalObras = cuentas.reduce((a, c) => a + c.totalObra, 0);
+const METODOS_PAGO: MetodoPagoCobro[] = ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'];
 
-  const cuentasFiltradas = cuentas.filter(c =>
-    c.cliente.toLowerCase().includes(search.toLowerCase()) ||
-    c.empresa.toLowerCase().includes(search.toLowerCase()) ||
-    c.obra.toLowerCase().includes(search.toLowerCase())
-  );
+const metodoLabel: Record<MetodoPagoCobro, string> = {
+  EFECTIVO: 'Efectivo',
+  TRANSFERENCIA: 'Transferencia',
+  CHEQUE: 'Cheque',
+};
 
-  const handleAbono = () => {
-    if (!selectedCuenta) return;
-    const monto = parseFloat(formAbono.monto);
-    if (!monto || monto <= 0) { showToast('Ingresa un monto válido.', 'error'); return; }
-    const pendiente = selectedCuenta.totalObra - selectedCuenta.totalCobrado;
-    if (monto > pendiente) { showToast(`El abono no puede superar el saldo (${fmt(pendiente)}).`, 'error'); return; }
+const hoyISO = new Date().toISOString().split('T')[0];
 
-    const nuevo: Abono = {
-      id: `AB${Date.now()}`,
-      cuentaId: selectedCuenta.id,
-      clienteNombre: selectedCuenta.empresa,
-      monto,
-      fecha: new Date().toISOString().split('T')[0],
-      referencia: formAbono.referencia || 'Sin referencia',
-      formaPago: formAbono.formaPago as Abono['formaPago'],
-    };
-
-    const nuevoTotalCobrado = selectedCuenta.totalCobrado + monto;
-    const nuevoEstado: EstadoCuenta = nuevoTotalCobrado >= selectedCuenta.totalObra ? 'Saldado' : 'Al corriente';
-
-    setCuentas(prev => prev.map(c =>
-      c.id === selectedCuenta.id
-        ? { ...c, totalCobrado: nuevoTotalCobrado, fechaUltimoAbono: nuevo.fecha, estado: nuevoEstado }
-        : c
-    ));
-    setAbonos(prev => [nuevo, ...prev]);
-    setModalAbono(false);
-    setFormAbono({ monto: '', referencia: '', formaPago: 'Transferencia' });
-    setSelectedCuenta(null);
-    showToast(`✅ Abono de ${fmt(monto)} registrado para ${selectedCuenta.empresa}.`, 'success');
-  };
-
+// ─── Filtros (chips + panel de selects, mismo diseño que /inventario) ─────────
+function FiltrosCobranza({
+  fields,
+  values,
+  active,
+  show,
+  onChange,
+  onRemove,
+  onClear,
+}: {
+  fields: FilterField[];
+  values: Record<string, string>;
+  active: ActiveFilter[];
+  show: boolean;
+  onChange: (key: string, value: string) => void;
+  onRemove: (key: string) => void;
+  onClear: () => void;
+}) {
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Crédito y Cobranza</h1>
-          <p className="text-slate-500 font-medium">Saldos por cliente · Estados de cuenta · Control de abonos</p>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card border-l-4 border-l-red-500 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Por Cobrar</p>
-              <h4 className="text-lg font-black text-red-600">{fmt(totalPorCobrar)}</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-yellow-400 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-yellow-50 text-yellow-500 rounded-xl flex items-center justify-center shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">En Atraso</p>
-              <h4 className="text-lg font-black text-yellow-600">{enAtraso} clientes</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-green-500 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cobrado</p>
-              <h4 className="text-lg font-black text-green-600">{fmt(totalCobrado)}</h4>
-            </div>
-          </div>
-        </div>
-        <div className="card border-l-4 border-l-primary py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-50 text-primary rounded-xl flex items-center justify-center shrink-0">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">% Cobrado</p>
-              <h4 className="text-lg font-black text-slate-900">{totalObras > 0 ? Math.round((totalCobrado / totalObras) * 100) : 0}%</h4>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-        {(['cuentas', 'abonos', 'vencimientos'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${tab === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            {t === 'cuentas' ? 'Cuentas por Cobrar' : t === 'abonos' ? 'Historial de Abonos' : 'Vencimientos'}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      {tab === 'cuentas' && (
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cliente, empresa u obra..."
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-primary/50 transition-all text-sm font-medium"
-          />
-        </div>
-      )}
-
-      {/* ─── CUENTAS TAB ─────────────────────────────────────────────────────── */}
-      {tab === 'cuentas' && (
-        <div className="space-y-4">
-          {cuentasFiltradas.map(c => {
-            const saldo = c.totalObra - c.totalCobrado;
-            const pct = Math.round((c.totalCobrado / c.totalObra) * 100);
-            const cfg = estadoConfig[c.estado];
-            return (
-              <div key={c.id} className="card group hover:border-primary/30">
-                <div className="flex flex-col md:flex-row md:items-center gap-4">
-                  {/* Left info */}
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
-                      {c.empresa[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-black text-slate-900 text-sm">{c.empresa}</h3>
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${cfg.bg} ${cfg.color}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                          {c.estado}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 font-medium truncate">{c.obra}</p>
-                      <p className="text-[10px] text-slate-400">Último abono: {c.fechaUltimoAbono} · {c.diasCredito} días crédito</p>
-                    </div>
-                  </div>
-
-                  {/* Progress */}
-                  <div className="flex-1 min-w-48">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-500 font-medium">Cobrado</span>
-                      <span className="font-bold text-slate-700">{pct}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between mt-1 text-[10px]">
-                      <span className="text-green-600 font-bold">{fmt(c.totalCobrado)}</span>
-                      <span className="text-slate-400">de {fmt(c.totalObra)}</span>
-                    </div>
-                  </div>
-
-                  {/* Right: saldo + action */}
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo</p>
-                      <p className={`font-black text-lg ${saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(saldo)}</p>
-                    </div>
-                    {saldo > 0 && (
-                      <button
-                        onClick={() => { setSelectedCuenta(c); setModalAbono(true); }}
-                        className="btn-primary flex items-center gap-2 text-xs py-2 px-4 whitespace-nowrap"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Abonar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {cuentasFiltradas.length === 0 && (
-            <div className="text-center py-16 text-slate-400 font-medium">No se encontraron cuentas.</div>
+    <>
+      {active.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {active.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+            >
+              <span className="font-normal text-primary/70">{filter.label}:</span>
+              <span>{filter.value}</span>
+              <button
+                onClick={() => onRemove(filter.key)}
+                className="ml-0.5 hover:text-primary-dark transition-colors"
+                aria-label={`Eliminar filtro ${filter.label}`}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          {active.length > 1 && (
+            <button
+              onClick={onClear}
+              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+            >
+              Limpiar todo
+            </button>
           )}
         </div>
       )}
 
-      {/* ─── ABONOS TAB ──────────────────────────────────────────────────────── */}
-      {tab === 'abonos' && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia</th>
-                  <th className="text-center px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Forma</th>
-                  <th className="text-right px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {abonos.map(a => (
-                  <tr key={a.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-slate-500 font-medium text-xs">{a.fecha}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs shrink-0">
-                          {a.clienteNombre[0]}
-                        </div>
-                        <span className="font-bold text-slate-700 text-xs">{a.clienteNombre}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 text-xs font-medium">{a.referencia}</td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                        a.formaPago === 'Transferencia' ? 'bg-blue-100 text-blue-700' :
-                        a.formaPago === 'Cheque' ? 'bg-purple-100 text-purple-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {a.formaPago}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-black text-green-600 text-base">{fmt(a.monto)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {show && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            {fields.map((filter) => (
+              <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  {filter.label}
+                </label>
+                <select
+                  value={values[filter.key] || ''}
+                  onChange={(e) => onChange(filter.key, e.target.value)}
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                >
+                  <option value="">{filter.placeholder || 'Todos'}</option>
+                  {filter.options?.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
           </div>
         </div>
       )}
+    </>
+  );
+}
 
-      {/* ─── VENCIMIENTOS TAB ────────────────────────────────────────────────── */}
-      {tab === 'vencimientos' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {cuentas
-              .filter(c => c.estado !== 'Saldado')
-              .sort((a, b) => {
-                const order: Record<EstadoCuenta, number> = { 'Atraso grave': 0, 'Atraso leve': 1, 'Al corriente': 2, 'Saldado': 3 };
-                return order[a.estado] - order[b.estado];
-              })
-              .map(c => {
-                const saldo = c.totalObra - c.totalCobrado;
-                const cfg = estadoConfig[c.estado];
-                const diasDesdeAbono = Math.floor(
-                  (new Date().getTime() - new Date(c.fechaUltimoAbono).getTime()) / (1000 * 60 * 60 * 24)
-                );
-                return (
-                  <div key={c.id} className={`card border-l-4 ${c.estado === 'Atraso grave' ? 'border-l-red-500' : c.estado === 'Atraso leve' ? 'border-l-yellow-400' : 'border-l-green-400'}`}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-black text-slate-900 text-sm">{c.empresa}</h3>
-                        <p className="text-xs text-slate-500">{c.obra}</p>
-                      </div>
-                      <span className={`text-[10px] font-black px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
-                        {c.estado}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 text-center bg-slate-50 rounded-xl p-3">
-                      <div>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">Saldo</p>
-                        <p className="font-black text-red-600 text-sm">{fmt(saldo)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">Días sin abono</p>
-                        <p className={`font-black text-sm ${diasDesdeAbono > c.diasCredito ? 'text-red-600' : 'text-slate-700'}`}>{diasDesdeAbono}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">Límite crédito</p>
-                        <p className="font-black text-slate-700 text-sm">{c.diasCredito} días</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => { setSelectedCuenta(c); setModalAbono(true); }}
-                      className="mt-3 w-full py-2 bg-primary/10 text-primary font-bold text-xs rounded-lg hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
-                    >
-                      <CreditCard className="w-3.5 h-3.5" /> Registrar Abono
-                    </button>
-                  </div>
-                );
-              })}
-          </div>
+// ─── Página ───────────────────────────────────────────────────────────────────
+export default function CobranzaPage() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+
+  // ── Permisos RBAC (seed: comercial.cobranza) ──
+  const vista = user?.vistas?.find((v) => v.ruta === '/cobranza');
+  const puedeCrear = vista?.puedeCrear ?? false;
+  const puedeEditar = vista?.puedeEditar ?? false;
+  const puedeExportar = vista?.puedeExportar ?? false;
+
+  // ── Datos ──
+  const [cuentas, setCuentas] = useState<CuentaPorCobrarDTO[]>([]);
+  const [paginationCuentas, setPaginationCuentas] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [cobros, setCobros] = useState<CobroDTO[]>([]);
+  const [paginationCobros, setPaginationCobros] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [vencimientos, setVencimientos] = useState<VencimientoDTO[]>([]);
+  const [paginationVenc, setPaginationVenc] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [cuentasCatalogo, setCuentasCatalogo] = useState<CuentaPorCobrarDTO[]>([]);
+  const [grupos, setGrupos] = useState<GrupoProyectoDTO[]>([]);
+  const [porObraPage, setPorObraPage] = useState(1);
+  const [totalesPorProyecto, setTotalesPorProyecto] = useState<{ monto: number; pagado: number; saldo: number; vencido: number }>({ monto: 0, pagado: 0, saldo: 0, vencido: 0 });
+  const [stats, setStats] = useState<CobranzaStats>({ totalPorCobrar: 0, vencido: 0, cobradoMes: 0, clientesConSaldo: 0 });
+
+  // ── UI state ──
+  const [tab, setTab] = useState<'cuentas' | 'cobros' | 'vencimientos' | 'porobra'>('cuentas');
+  const [search, setSearch] = useState('');
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ── Modal registrar cobro ──
+  const [cobroModal, setCobroModal] = useState(false);
+  const [cobroForm, setCobroForm] = useState({ cuentaId: '', monto: '', fecha: hoyISO, metodoPago: 'TRANSFERENCIA' as MetodoPagoCobro, referencia: '' });
+
+  // ── Modal estado de cuenta (ledger) ──
+  const [ledgerCuenta, setLedgerCuenta] = useState<CuentaPorCobrarDTO | null>(null);
+  const [ledgerMovs, setLedgerMovs] = useState<CobroDTO[]>([]);
+  const [ledgerSaldo, setLedgerSaldo] = useState(0);
+
+  // ── Modal reversión de cobro (C6) ──
+  const [revertirCobro, setRevertirCobro] = useState<CobroDTO | null>(null);
+  const [revertirMotivo, setRevertirMotivo] = useState('');
+  const [revertirLoading, setRevertirLoading] = useState(false);
+
+  // ── Carga de datos (patrón /proveedores: fetch + initialLoading) ──
+  const fetchCuentas = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.listar({
+      search: searchVal || undefined,
+      estado: filters?.estado as EstadoCuentaCobranza | undefined,
+      situacion: filters?.situacion as SituacionCobranza | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setCuentas(res.data.items);
+      setPaginationCuentas(res.data.pagination);
+    } else {
+      showToast('Error al cargar cuentas por cobrar.', 'error');
+    }
+  }, [showToast]);
+
+  const fetchCobros = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.cobros({
+      search: searchVal || undefined,
+      metodoPago: filters?.metodo as MetodoPagoCobro | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setCobros(res.data.items);
+      setPaginationCobros(res.data.pagination);
+    } else {
+      showToast('Error al cargar los movimientos de cobro.', 'error');
+    }
+  }, [showToast]);
+
+  const fetchVenc = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.vencimientos({
+      search: searchVal || undefined,
+      rango: filters?.rango as 'vencido' | 'por_vencer' | undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (res.success && res.data) {
+      setVencimientos(res.data.items);
+      setPaginationVenc(res.data.pagination);
+    } else {
+      showToast('Error al cargar los vencimientos.', 'error');
+    }
+  }, [showToast]);
+
+  const fetchStats = useCallback(async () => {
+    const res = await cobranzaApi.stats();
+    if (res.success && res.data) setStats(res.data);
+  }, []);
+
+  /** Cartera agrupada por proyecto (tab "Por obra"). */
+  const fetchPorProyecto = useCallback(async (searchVal?: string, filters?: Record<string, string>) => {
+    const res = await cobranzaApi.porProyecto({
+      search: searchVal || undefined,
+      estado: filters?.estado as EstadoCuentaCobranza | undefined,
+      situacion: filters?.situacion as SituacionCobranza | undefined,
+    });
+    if (res.success && res.data) {
+      setGrupos(res.data.items);
+      setTotalesPorProyecto(res.data.totales);
+    } else {
+      showToast('Error al cargar la cartera por proyecto.', 'error');
+    }
+  }, [showToast]);
+
+  /** Catálogo de cuentas con saldo para el select del modal de cobro. */
+  const fetchCatalogo = useCallback(async () => {
+    const res = await cobranzaApi.listar({ limit: 100 });
+    if (res.success && res.data) setCuentasCatalogo(res.data.items.filter((c) => c.saldo > 0));
+  }, []);
+
+  useEffect(() => {
+    const inicial = async () => {
+      setInitialLoading(true);
+      try {
+        await Promise.all([
+          fetchCuentas(1),
+          fetchCobros(1),
+          fetchVenc(1),
+          fetchPorProyecto(),
+          fetchStats(),
+          fetchCatalogo(),
+        ]);
+      } catch {
+        showToast('No se pudo conectar con el servidor.', 'error');
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    inicial();
+  }, [fetchCuentas, fetchCobros, fetchVenc, fetchPorProyecto, fetchStats, fetchCatalogo, showToast]);
+
+  /** Refetch tras una mutación: tab visible + stats + catálogo. */
+  const refetchAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchCuentas(paginationCuentas.page, search, filterValues),
+        fetchCobros(paginationCobros.page, search, filterValues),
+        fetchVenc(paginationVenc.page, search, filterValues),
+        fetchPorProyecto(search, filterValues),
+        fetchStats(),
+        fetchCatalogo(),
+      ]);
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchCuentas, fetchCobros, fetchVenc, fetchPorProyecto, fetchStats, fetchCatalogo,
+    paginationCuentas.page, paginationCobros.page, paginationVenc.page, search, filterValues, showToast]);
+
+  // ── Búsqueda y filtros ──
+  const activeFilters: ActiveFilter[] = useMemo(
+    () =>
+      Object.entries(filterValues)
+        .filter(([, v]) => v)
+        .map(([key, value]) => ({
+          key,
+          label:
+            key === 'estado' ? 'Estado'
+            : key === 'situacion' ? 'Situación'
+            : key === 'metodo' ? 'Método'
+            : 'Rango',
+          value:
+            key === 'estado' ? (ESTADO_LABEL[value as EstadoCuentaCobranza] ?? value)
+            : key === 'situacion' ? (SITUACION_LABEL[value as SituacionCobranza] ?? value)
+            : key === 'metodo' ? (metodoLabel[value as MetodoPagoCobro] ?? value)
+            : value === 'vencido' ? 'Vencido' : 'Por vencer',
+        })),
+    [filterValues],
+  );
+
+  const filterFields: FilterField[] =
+    tab === 'cuentas' || tab === 'porobra'
+      ? [
+          { key: 'estado', label: 'Estado', type: 'select', options: (Object.keys(ESTADO_LABEL) as EstadoCuentaCobranza[]).map((e) => ({ value: e, label: ESTADO_LABEL[e] })) },
+          { key: 'situacion', label: 'Situación', type: 'select', options: (Object.keys(SITUACION_LABEL) as SituacionCobranza[]).map((s) => ({ value: s, label: SITUACION_LABEL[s] })) },
+        ]
+      : tab === 'cobros'
+        ? [{ key: 'metodo', label: 'Método', type: 'select', options: METODOS_PAGO.map((m) => ({ value: m, label: metodoLabel[m] })) }]
+        : [{ key: 'rango', label: 'Rango', type: 'select', options: [{ value: 'vencido', label: 'Vencido' }, { value: 'por_vencer', label: 'Por vencer' }] }];
+
+  const handleSearch = (val?: string) => {
+    const q = val ?? search;
+    setSearch(q);
+    if (tab === 'cuentas') fetchCuentas(1, q, filterValues);
+    else if (tab === 'cobros') fetchCobros(1, q, filterValues);
+    else if (tab === 'porobra') { fetchPorProyecto(q, filterValues); setPorObraPage(1); }
+    else fetchVenc(1, q, filterValues);
+  };
+
+  const handleFilterChange = (key: string, value: string) => {
+    const next = { ...filterValues };
+    if (value) next[key] = value;
+    else delete next[key];
+    setFilterValues(next);
+    if (tab === 'cuentas') fetchCuentas(1, search, next);
+    else if (tab === 'cobros') fetchCobros(1, search, next);
+    else if (tab === 'porobra') { fetchPorProyecto(search, next); setPorObraPage(1); }
+    else fetchVenc(1, search, next);
+  };
+
+  const handleClearFilters = () => {
+    setFilterValues({});
+    if (tab === 'cuentas') fetchCuentas(1, search, {});
+    else if (tab === 'cobros') fetchCobros(1, search, {});
+    else if (tab === 'porobra') { fetchPorProyecto(search, {}); setPorObraPage(1); }
+    else fetchVenc(1, search, {});
+  };
+
+  const handleRemoveFilter = (key: string) => handleFilterChange(key, '');
+
+  // ── Handlers: cobros ──
+  const openRegistrarCobro = (cuenta?: CuentaPorCobrarDTO) => {
+    setCobroForm({
+      cuentaId: cuenta?.id ?? '',
+      monto: '',
+      fecha: hoyISO,
+      metodoPago: 'TRANSFERENCIA',
+      referencia: '',
+    });
+    setCobroModal(true);
+  };
+
+  const cuentaSeleccionada = cuentasCatalogo.find((c) => c.id === cobroForm.cuentaId);
+
+  const handleRegistrarCobro = async () => {
+    const cuenta = cuentaSeleccionada;
+    if (!cuenta) {
+      showToast('Selecciona una cuenta por cobrar.', 'error');
+      return;
+    }
+    const monto = parseFloat(cobroForm.monto);
+    if (!monto || monto <= 0) {
+      showToast('Ingresa un monto válido.', 'error');
+      return;
+    }
+    if (monto > cuenta.saldo) {
+      showToast(`El cobro no puede superar el saldo (${formatCurrency(cuenta.saldo)}).`, 'error');
+      return;
+    }
+
+    const res = await cobranzaApi.registrarCobro(cuenta.id, {
+      monto,
+      fecha: cobroForm.fecha || hoyISO,
+      metodoPago: cobroForm.metodoPago,
+      referencia: cobroForm.referencia.trim() || undefined,
+    });
+    if (res.success && res.data) {
+      setCobroModal(false);
+      showToast(`Cobro de ${formatCurrency(monto)} registrado para ${cuenta.empresa}.`, 'success');
+      await refetchAll();
+    } else {
+      showToast('No se pudo registrar el cobro.', 'error');
+    }
+  };
+
+  /** Abre el ledger de la cuenta y carga sus movimientos desde la API.
+   *  La modal se abre SOLO cuando el ledger ya fue cargado: evita el
+   *  parpadeo de "Cargando..." — mismo patrón que /proveedores. */
+  const openLedger = async (cuenta: CuentaPorCobrarDTO) => {
+    try {
+      const res = await cobranzaApi.cobrosDeCuenta(cuenta.id);
+      if (res.success && res.data) {
+        setLedgerMovs(res.data.cobros);
+        setLedgerSaldo(res.data.saldo);
+        setLedgerCuenta(cuenta);
+      } else {
+        showToast('Error al cargar el estado de cuenta.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    }
+  };
+
+  /** Abre el modal de reversión con preview del nuevo saldo. */
+  const openRevertir = (cobro: CobroDTO) => {
+    setRevertirCobro(cobro);
+    setRevertirMotivo('');
+  };
+
+  /** Revierte el cobro (C6): soft-delete + CxC vuelve a saldo anterior. */
+  const handleRevertir = async () => {
+    if (!revertirCobro || !ledgerCuenta) return;
+    const motivo = revertirMotivo.trim();
+    if (motivo.length < 10) {
+      showToast('El motivo debe tener al menos 10 caracteres.', 'error');
+      return;
+    }
+    setRevertirLoading(true);
+    try {
+      const res = await cobranzaApi.revertirCobro(ledgerCuenta.id, revertirCobro.id, motivo);
+      if (res.success) {
+        setRevertirCobro(null);
+        setRevertirMotivo('');
+        showToast(`Cobro de ${formatCurrency(res.data.cobroRevertido.monto)} revertido.`, 'success');
+        // Refresca cuentas/cobros/stats y el ledger abierto con la cuenta actualizada.
+        await refetchAll();
+        await openLedger(res.data.cuenta);
+      } else {
+        showToast(res.error?.message || 'No se pudo revertir el cobro.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setRevertirLoading(false);
+    }
+  };
+
+  // ── Exportar CSV: agrupado por proyecto desde el servidor; el resto cliente-side ──
+  const handleExportar = async () => {
+    if (tab === 'porobra') {
+      try {
+        await cobranzaApi.exportarPorProyecto({
+          search: search || undefined,
+          estado: filterValues.estado as EstadoCuentaCobranza | undefined,
+          situacion: filterValues.situacion as SituacionCobranza | undefined,
+        });
+        showToast('Reporte exportado a CSV.', 'success');
+      } catch {
+        showToast('No se pudo exportar el reporte.', 'error');
+      }
+      return;
+    }
+
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines: (string | number)[][] =
+      tab === 'cuentas'
+        ? [['Cliente', 'Obra', 'Factura', 'Total', 'Pagado', 'Saldo', 'Vencimiento', 'Estado'],
+           ...cuentas.map((c) => [c.empresa, c.obra, c.facturaFolio, c.monto, c.montoPagado, c.saldo, c.fechaVencimiento, ESTADO_LABEL[c.estado]])]
+        : tab === 'cobros'
+          ? [['Fecha', 'Cliente', 'Referencia', 'Método', 'Monto'],
+             ...cobros.map((c) => [c.fecha, c.clienteNombre, c.referencia, metodoLabel[c.metodoPago], c.monto])]
+          : [['Cliente', 'Obra', 'Vencimiento', 'Días atraso', 'Monto'],
+             ...vencimientos.map((v) => [v.clienteNombre, v.obra, v.fechaVencimiento, v.diasAtraso, v.monto])];
+
+    const csv = lines.map((row) => row.map(esc).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cobranza-${tab}-${hoyISO}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Reporte exportado a CSV.', 'success');
+  };
+
+  // ── Columnas: cuentas por cobrar ──
+  const cuentaColumns: Column<CuentaPorCobrarDTO>[] = [
+    {
+      key: 'cliente',
+      header: 'Cliente',
+      minWidth: '220px',
+      nowrap: true,
+      render: (c) => (
+        <div>
+          <p className="font-semibold text-slate-800 truncate">{c.empresa}</p>
+          <p className="text-xs text-slate-400 truncate">{c.clienteNombre} · {c.obra}</p>
         </div>
-      )}
+      ),
+    },
+    { key: 'factura', header: 'Factura', minWidth: '110px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs font-semibold">{c.facturaFolio}</span> },
+    {
+      key: 'proyecto',
+      header: 'Proyecto',
+      minWidth: '160px',
+      nowrap: true,
+      render: (c) =>
+        c.proyecto ? (
+          <span className="text-slate-600 text-xs font-semibold truncate">
+            <span className="text-slate-400 font-mono">{c.proyecto.codigo}</span> · {c.proyecto.nombre}
+          </span>
+        ) : (
+          <Badge variant="neutral" size="sm">Sin proyecto</Badge>
+        ),
+    },
+    { key: 'monto', header: 'Total', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{formatCurrency(c.monto)}</span> },
+    { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-green-600 font-medium">{formatCurrency(c.montoPagado)}</span> },
+    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-slate-900">{formatCurrency(c.saldo)}</span> },
+    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-500 text-sm">{c.fechaVencimiento}</span> },
+    {
+      key: 'situacion',
+      header: 'Situación',
+      minWidth: '130px',
+      nowrap: true,
+      render: (c) => <Badge variant={situacionVariant[c.situacion]} dot>{SITUACION_LABEL[c.situacion]}</Badge>,
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'center',
+      minWidth: '240px',
+      nowrap: true,
+      render: (c) => (
+        <div className="flex items-center justify-center gap-1">
+          {c.saldo > 0 && puedeCrear && (
+            <Button variant="primary" size="sm" icon={<CreditCard className="w-3.5 h-3.5" />} onClick={() => openRegistrarCobro(c)}>
+              Registrar cobro
+            </Button>
+          )}
+          <Button variant="outline" size="sm" icon={<Eye className="w-3.5 h-3.5" />} onClick={() => openLedger(c)}>
+            Ver estado de cuenta
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
-      {/* ─── Modal Abono ─────────────────────────────────────────────────────── */}
-      {selectedCuenta && (
-        <Modal
-          isOpen={modalAbono}
-          onClose={() => { setModalAbono(false); setSelectedCuenta(null); setFormAbono({ monto: '', referencia: '', formaPago: 'Transferencia' }); }}
-          onConfirm={handleAbono}
-          title="Registrar Abono"
-          confirmLabel="Confirmar Abono"
-        >
-          <div className="bg-slate-50 rounded-xl p-4 space-y-1">
-            <p className="font-black text-slate-700">{selectedCuenta.empresa}</p>
-            <p className="text-xs text-slate-500">{selectedCuenta.obra}</p>
-            <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-200">
-              <div>
-                <p className="text-[10px] text-slate-400">Total obra</p>
-                <p className="font-black text-slate-700">{fmt(selectedCuenta.totalObra)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-slate-400">Saldo pendiente</p>
-                <p className="font-black text-red-600">{fmt(selectedCuenta.totalObra - selectedCuenta.totalCobrado)}</p>
-              </div>
+  // ── Columnas: movimientos de cobro ──
+  const cobroColumns: Column<CobroDTO>[] = [
+    { key: 'fecha', header: 'Fecha', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{c.fecha}</span> },
+    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (c) => <span className="font-semibold text-slate-800 truncate">{c.clienteNombre}</span> },
+    { key: 'referencia', header: 'Referencia', minWidth: '130px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs">{c.referencia}</span> },
+    {
+      key: 'metodo',
+      header: 'Método',
+      minWidth: '130px',
+      nowrap: true,
+      render: (c) => (
+        <Badge variant={c.metodoPago === 'CHEQUE' ? 'info' : c.metodoPago === 'EFECTIVO' ? 'warning' : 'success'}>{metodoLabel[c.metodoPago]}</Badge>
+      ),
+    },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-green-600">{formatCurrency(c.monto)}</span> },
+  ];
+
+  // ── Columnas: vencimientos ──
+  const vencColumns: Column<VencimientoDTO>[] = [
+    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (v) => <span className="font-semibold text-slate-800 truncate">{v.clienteNombre}</span> },
+    { key: 'obra', header: 'Obra', minWidth: '220px', nowrap: true, render: (v) => <span className="text-slate-500 truncate">{v.obra}</span> },
+    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (v) => <span className="text-slate-600 font-medium">{v.fechaVencimiento}</span> },
+    {
+      key: 'dias',
+      header: 'Días atraso',
+      minWidth: '110px',
+      align: 'right',
+      nowrap: true,
+      render: (v) =>
+        v.diasAtraso > 0 ? (
+          <span className="inline-flex items-center gap-1 text-red-600 font-bold">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {v.diasAtraso} días
+          </span>
+        ) : (
+          <span className="text-green-600 font-semibold">Al corriente</span>
+        ),
+    },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (v) => <span className="font-black text-slate-900">{formatCurrency(v.monto)}</span> },
+  ];
+
+  // ── Columnas: cartera por proyecto ──
+  const porObraColumns: Column<GrupoProyectoDTO>[] = [
+    {
+      key: 'proyecto',
+      header: 'Proyecto',
+      minWidth: '260px',
+      nowrap: true,
+      render: (g) =>
+        g.proyecto ? (
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-800 truncate">
+              <span className="font-mono text-primary/70 mr-1.5">{g.proyecto.codigo}</span>
+              {g.proyecto.nombre}
+            </p>
+          </div>
+        ) : (
+          <Badge variant="neutral" size="sm">Sin proyecto</Badge>
+        ),
+    },
+    { key: 'cuentas', header: 'Cuentas', align: 'right', minWidth: '90px', nowrap: true, render: (g) => <span className="text-slate-500 font-bold">{g.totalCuentas}</span> },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-slate-600 font-medium">{formatCurrency(g.monto)}</span> },
+    { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-green-600 font-medium">{formatCurrency(g.pagado)}</span> },
+    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="font-black text-slate-900">{formatCurrency(g.saldo)}</span> },
+    {
+      key: 'vencido',
+      header: 'Vencido',
+      align: 'right',
+      minWidth: '130px',
+      nowrap: true,
+      render: (g) =>
+        g.vencido > 0 ? (
+          <span className="text-red-600 font-black">{formatCurrency(g.vencido)}</span>
+        ) : (
+          <span className="text-slate-300 font-medium">—</span>
+        ),
+    },
+  ];
+
+  // Paginación local: el endpoint por-proyecto no pagina (client-side).
+  const porObraTotalPages = Math.max(1, Math.ceil(grupos.length / PAGE_SIZE));
+  const porObraPaginated = grupos.slice((porObraPage - 1) * PAGE_SIZE, porObraPage * PAGE_SIZE);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Crédito y Cobranza"
+        subtitle="Saldos por cliente · Estados de cuenta · Control de cobros"
+        action={
+          puedeExportar && (
+            <Button variant="secondary" size="md" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+              Exportar
+            </Button>
+          )
+        }
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatsCard icon={<Wallet className="w-5 h-5" />} label="Por cobrar" value={formatCurrency(stats.totalPorCobrar)} color="error" />
+        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" />
+        <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" />
+        <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" />
+        <StatsCard
+          icon={<Wallet className="w-5 h-5" />}
+          label={
+            <>
+              Monto
+              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                {grupos.reduce((n, g) => n + g.totalCuentas, 0)} cuentas · {grupos.length} proyecto{grupos.length !== 1 ? 's' : ''}
+              </span>
+            </>
+          }
+          value={formatCurrency(totalesPorProyecto.monto)}
+          color="info"
+        />
+        <StatsCard
+          icon={<HandCoins className="w-5 h-5" />}
+          label="Pagado"
+          value={formatCurrency(totalesPorProyecto.pagado)}
+          color="success"
+        />
+        <StatsCard
+          icon={<Building2 className="w-5 h-5" />}
+          label="Saldo por obra"
+          value={formatCurrency(totalesPorProyecto.saldo)}
+          color="warning"
+        />
+        <StatsCard
+          icon={<AlertTriangle className="w-5 h-5" />}
+          label="Vencido por obra"
+          value={formatCurrency(totalesPorProyecto.vencido)}
+          color="error"
+        />
+      </div>
+
+      {/* Tabs */}
+      <Tabs
+        tabs={[
+          { key: 'cuentas', label: 'Cuentas por cobrar', icon: <ReceiptText className="w-4 h-4" />, count: paginationCuentas.total },
+          { key: 'cobros', label: 'Movimientos de cobro', icon: <HandCoins className="w-4 h-4" />, count: paginationCobros.total },
+          { key: 'vencimientos', label: 'Vencimientos', icon: <CalendarClock className="w-4 h-4" />, count: paginationVenc.total },
+          { key: 'porobra', label: 'Por obra', icon: <Building2 className="w-4 h-4" />, count: grupos.length },
+        ]}
+        onChange={(key) => {
+          setTab(key as 'cuentas' | 'cobros' | 'vencimientos' | 'porobra');
+          setSearch('');
+          setFilterValues({});
+          setShowFilters(false);
+        }}
+      >
+        {/* ─── CUENTAS POR COBRAR ─────────────────────────────────────── */}
+        <TabPanel tabKey="cuentas">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar cliente, empresa, obra o factura..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
             </div>
+
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
+
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando cuentas por cobrar..." subtitle="Espera un momento." />
+            ) : cuentas.length === 0 ? (
+              <EmptyState
+                title="Sin cuentas por cobrar"
+                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={cuentaColumns}
+                  data={cuentas}
+                  keyExtractor={(c) => c.id}
+                  emptyText="No se encontraron cuentas."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={paginationCuentas.page}
+                  totalPages={paginationCuentas.totalPages}
+                  totalRecords={paginationCuentas.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(page) => fetchCuentas(page, search, filterValues)}
+                />
+              </>
+            )}
           </div>
-          <ModalField label="Monto del Abono (MXN) *">
+        </TabPanel>
+
+        {/* ─── MOVIMIENTOS DE COBRO ───────────────────────────────────── */}
+        <TabPanel tabKey="cobros">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar cliente o referencia..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
+
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando movimientos de cobro..." subtitle="Espera un momento." />
+            ) : cobros.length === 0 ? (
+              <EmptyState
+                title="Sin movimientos de cobro"
+                subtitle="No se encontraron cobros para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={cobroColumns}
+                  data={cobros}
+                  keyExtractor={(c) => c.id}
+                  emptyText="No se encontraron cobros."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={paginationCobros.page}
+                  totalPages={paginationCobros.totalPages}
+                  totalRecords={paginationCobros.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(page) => fetchCobros(page, search, filterValues)}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+
+        {/* ─── VENCIMIENTOS ───────────────────────────────────────────── */}
+        <TabPanel tabKey="vencimientos">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar cliente u obra..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
+
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando vencimientos..." subtitle="Espera un momento." />
+            ) : vencimientos.length === 0 ? (
+              <EmptyState
+                title="Sin vencimientos pendientes"
+                subtitle="No hay saldos por cobrar con vencimientos para este rango."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={vencColumns}
+                  data={vencimientos}
+                  keyExtractor={(v) => v.id}
+                  emptyText="No se encontraron vencimientos."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={paginationVenc.page}
+                  totalPages={paginationVenc.totalPages}
+                  totalRecords={paginationVenc.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(page) => fetchVenc(page, search, filterValues)}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+      {/* ─── POR OBRA (cartera agrupada por proyecto, O2) ─────────────── */}
+        <TabPanel tabKey="porobra">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                onSearch={handleSearch}
+                placeholder="Buscar proyecto, cliente o factura..."
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'primary' : 'secondary'}
+                size="md"
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                Filtros
+                {activeFilters.length > 0 && (
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            <FiltrosCobranza
+              fields={filterFields}
+              values={filterValues}
+              active={activeFilters}
+              show={showFilters}
+              onChange={handleFilterChange}
+              onRemove={handleRemoveFilter}
+              onClear={handleClearFilters}
+            />
+
+            {initialLoading || refreshing ? (
+              <EmptyState title="Cargando cartera por obra..." subtitle="Espera un momento." />
+            ) : grupos.length === 0 ? (
+              <EmptyState
+                title="Sin saldos por proyecto"
+                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={porObraColumns}
+                  data={porObraPaginated}
+                  keyExtractor={(g) => g.proyecto?.id ?? 'sin-proyecto'}
+                  emptyText="No se encontraron grupos para la búsqueda."
+                  maxBodyHeight="500px"
+                />
+                <Pagination
+                  currentPage={porObraPage}
+                  totalPages={porObraTotalPages}
+                  totalRecords={grupos.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPorObraPage}
+                />
+              </>
+            )}
+          </div>
+        </TabPanel>
+      </Tabs>
+
+      {/* ─── Modal: Registrar cobro ────────────────────────────────────── */}
+      <FormModal
+        open={cobroModal}
+        onClose={() => setCobroModal(false)}
+        onCancel={() => setCobroModal(false)}
+        title="Registrar cobro"
+        subtitle="Registra un pago parcial o total contra una cuenta por cobrar."
+        submitLabel="Registrar Cobro"
+        cancelLabel="Cancelar"
+        onSubmit={handleRegistrarCobro}
+      >
+        <ModalField label="Cuenta por cobrar" required>
+          <select
+            className={modalSelectClass}
+            value={cobroForm.cuentaId}
+            onChange={(e) => setCobroForm({ ...cobroForm, cuentaId: e.target.value })}
+          >
+            <option value="">Selecciona la cuenta...</option>
+            {cuentasCatalogo.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.empresa} — {c.obra}
+                {c.proyecto ? ` (${c.proyecto.codigo})` : ''} (saldo {formatCurrency(c.saldo)})
+              </option>
+            ))}
+          </select>
+        </ModalField>
+
+        {cuentaSeleccionada && (
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+            Factura <span className="font-bold text-slate-700">{cuentaSeleccionada.facturaFolio}</span> · Saldo actual{' '}
+            <span className="font-bold text-slate-700">{formatCurrency(cuentaSeleccionada.saldo)}</span>
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Monto" required>
             <input
               type="number"
-              className={inputClass}
+              min={0}
+              step="0.01"
+              className={modalInputClass}
               placeholder="0.00"
-              value={formAbono.monto}
-              onChange={e => setFormAbono({ ...formAbono, monto: e.target.value })}
+              value={cobroForm.monto}
+              onChange={(e) => setCobroForm({ ...cobroForm, monto: e.target.value })}
             />
           </ModalField>
-          <ModalField label="Forma de Pago">
+          <ModalField label="Fecha" required>
+            <input
+              type="date"
+              className={modalInputClass}
+              value={cobroForm.fecha}
+              onChange={(e) => setCobroForm({ ...cobroForm, fecha: e.target.value })}
+            />
+          </ModalField>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Método de pago" required>
             <select
-              className={inputClass}
-              value={formAbono.formaPago}
-              onChange={e => setFormAbono({ ...formAbono, formaPago: e.target.value })}
+              className={modalSelectClass}
+              value={cobroForm.metodoPago}
+              onChange={(e) => setCobroForm({ ...cobroForm, metodoPago: e.target.value as MetodoPagoCobro })}
             >
-              <option value="Transferencia">Transferencia bancaria</option>
-              <option value="Cheque">Cheque</option>
-              <option value="Efectivo">Efectivo</option>
+              {METODOS_PAGO.map((m) => (
+                <option key={m} value={m}>
+                  {metodoLabel[m]}
+                </option>
+              ))}
             </select>
           </ModalField>
-          <ModalField label="Referencia / Folio de pago">
+          <ModalField label="Referencia" hint="Folio de transferencia, cheque o efectivo.">
             <input
-              className={inputClass}
-              placeholder="TRF-000000 / CHQ-0000"
-              value={formAbono.referencia}
-              onChange={e => setFormAbono({ ...formAbono, referencia: e.target.value })}
+              type="text"
+              className={modalInputClass}
+              placeholder="TRF-000000"
+              value={cobroForm.referencia}
+              onChange={(e) => setCobroForm({ ...cobroForm, referencia: e.target.value })}
             />
           </ModalField>
-        </Modal>
-      )}
+        </div>
+      </FormModal>
+
+      {/* ─── Modal: Estado de cuenta (ledger) ──────────────────────────── */}
+      <Modal open={!!ledgerCuenta} onClose={() => setLedgerCuenta(null)} size="lg">
+        <ModalHeader
+          title={`Estado de cuenta — ${ledgerCuenta?.empresa ?? ''}`}
+          subtitle={
+            ledgerCuenta
+              ? `${ledgerCuenta.obra} · Factura ${ledgerCuenta.facturaFolio}`
+              : undefined
+          }
+          onClose={() => setLedgerCuenta(null)}
+        />
+        <ModalBody>
+          {ledgerCuenta && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Facturado</p>
+                  <p className="text-lg font-black text-slate-900">{formatCurrency(ledgerCuenta.monto)}</p>
+                </div>
+                <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
+                  <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Pagado</p>
+                  <p className="text-lg font-black text-green-700">{formatCurrency(ledgerCuenta.montoPagado)}</p>
+                </div>
+                <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                  <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Saldo</p>
+                  <p className="text-lg font-black text-red-600">{formatCurrency(ledgerSaldo)}</p>
+                </div>
+              </div>
+
+              {ledgerMovs.length === 0 ? (
+                <EmptyState
+                  title="Sin cobros registrados"
+                  subtitle="Esta cuenta aún no tiene movimientos de cobro."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {ledgerMovs.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800">{metodoLabel[m.metodoPago]}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {m.fecha} · {m.referencia}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center min-w-0">
+                        <span className="font-black text-green-600 shrink-0">{formatCurrency(m.monto)}</span>
+                        {puedeEditar && (
+                          <button
+                            type="button"
+                            onClick={() => openRevertir(m)}
+                            title="Reversión de cobro (C6)"
+                            className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Undo2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setLedgerCuenta(null)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* ─── Modal: Reversión de cobro (C6) ─────────────────────────────── */}
+      <FormModal
+        open={!!revertirCobro}
+        onClose={() => setRevertirCobro(null)}
+        onCancel={() => setRevertirCobro(null)}
+        title="Reversión de cobro"
+        subtitle={
+          revertirCobro
+            ? `Se revierte el cobro de ${formatCurrency(revertirCobro.monto)} de ${ledgerCuenta?.empresa ?? ''}. La CxC vuelve a su saldo anterior y la traza contable permanece.`
+            : undefined
+        }
+        submitLabel="Revertir Cobro"
+        cancelLabel="Cancelar"
+        submitDisabled={revertirLoading}
+        onSubmit={handleRevertir}
+      >
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+          <p className="text-sm text-amber-800">
+            Nuevo saldo estimado:{' '}
+            <span className="font-black">{formatCurrency(ledgerSaldo + (revertirCobro?.monto ?? 0))}</span>
+          </p>
+          <p className="text-xs text-amber-700 mt-1">
+            Esta acción no puede deshacerse. Se genera el EGRESO contable correspondiente.
+          </p>
+        </div>
+
+        <ModalField label="Motivo de la reversión" required hint="Mínimo 10 caracteres. Queda en la bitácora de auditoría.">
+          <textarea
+            className={`${modalInputClass} min-h-24 resize-y`}
+            placeholder="Ej: Cobro duplicado en transferencia bancaria, el cliente pagó dos veces la misma factura."
+            value={revertirMotivo}
+            onChange={(e) => setRevertirMotivo(e.target.value)}
+          />
+        </ModalField>
+      </FormModal>
     </div>
   );
 }

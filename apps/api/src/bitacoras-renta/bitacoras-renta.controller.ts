@@ -54,6 +54,19 @@ export class BitacorasRentaController {
     return this.bitacorasRentaService.update(id, dto, user.id);
   }
 
+  /**
+   * POST /api/bitacoras-renta/:id/facturar
+   * Cierra la bitácora LISTO_FACTURAR y hace nacer la CxC (O3).
+   * Permiso: rrhh.trabajadores.editar
+   */
+  @RequirePermission('rrhh', 'trabajadores', 'editar')
+  @Post(':id/facturar')
+  @HttpCode(HttpStatus.CREATED)
+  async facturar(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.bitacorasRentaService.facturar(id, user.id);
+  }
+
   @RequirePermission('rrhh', 'trabajadores', 'eliminar')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)

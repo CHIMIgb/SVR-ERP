@@ -51,6 +51,42 @@ describe('CreateReporteCampoDto', () => {
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
+
+  it('should pass with facturacion fields (clienteId, proyectoId, montoServicio)', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, {
+      ...base,
+      clienteId: '550e8400-e29b-41d4-a716-446655440030',
+      proyectoId: '550e8400-e29b-41d4-a716-446655440040',
+      montoServicio: 12000.5,
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should fail with montoServicio negativo o no numérico', async () => {
+    const dtoNegativo = plainToInstance(CreateReporteCampoDto, {
+      ...base,
+      montoServicio: -50,
+    });
+    const errorsNegativo = await validate(dtoNegativo);
+    expect(errorsNegativo.length).toBeGreaterThan(0);
+
+    const dtoTexto = plainToInstance(CreateReporteCampoDto, {
+      ...base,
+      montoServicio: 'caro',
+    });
+    const errorsTexto = await validate(dtoTexto);
+    expect(errorsTexto.length).toBeGreaterThan(0);
+  });
+
+  it('should fail with clienteId que no es UUID', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, {
+      ...base,
+      clienteId: 'no-es-uuid',
+    });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
 });
 
 describe('CambiarEstadoDto', () => {

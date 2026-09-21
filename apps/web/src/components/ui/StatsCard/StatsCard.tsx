@@ -8,7 +8,7 @@ export type StatsTrend = 'up' | 'down' | 'neutral';
 export interface StatsCardProps {
   icon: React.ReactNode;
   value: string | number;
-  label: string;
+  label: React.ReactNode;
   color?: StatsColor;
   trend?: StatsTrend;
   trendValue?: string;

@@ -5,6 +5,16 @@ import { AuditContextService, AuditRequestContext } from './audit-context.servic
 import { AUDIT_SENSITIVE_FIELDS } from './audit.constants';
 
 /**
+ * Las columnas request_id / correlation_id / session_id son UUID estrictos
+ * en la BD (@db.Uuid). Si un cliente externo manda X-Request-Id con formato
+ * libre (ej. "req-123"), el INSERT de auditoría falla EN SILENCIO y se pierde
+ * el registro. Por eso solo se reutilizan valores con formato UUID válido;
+ * cualquier otra cosa se reemplaza por un UUID generado.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const esUuid = (v?: string): v is string => !!v && UUID_RE.test(v);
+
+/**
  * Interceptor global que popula el AuditRequestContext en cada request autenticada.
  *
  * Se ejecuta DESPUÉS de los guards (JwtAuthGuard, PermissionsGuard), así que
@@ -27,10 +37,12 @@ export class AuditContextInterceptor implements NestInterceptor {
 
     // Un solo ID por request HTTP: todos los logs de este request lo comparten.
     // X-Request-Id permite que un gateway/frontend propague su propio trace.
-    const requestId =
-      (req.headers['x-request-id'] as string | undefined) || randomUUID();
-    const correlationId =
-      (req.headers['x-correlation-id'] as string | undefined) || requestId;
+    // Solo se reutiliza si es UUID válido; si no, se genera uno (evita que la
+    // auditoría falle en silencio por violación de tipo @db.Uuid).
+    const headerRequestId = req.headers['x-request-id'] as string | undefined;
+    const headerCorrelationId = req.headers['x-correlation-id'] as string | undefined;
+    const requestId = esUuid(headerRequestId) ? headerRequestId : randomUUID();
+    const correlationId = esUuid(headerCorrelationId) ? headerCorrelationId : requestId;
 
     // Query params de GETs — útiles para saber qué buscaba el usuario.
     const query = this.sanitizeQuery(req);
@@ -45,7 +57,7 @@ export class AuditContextInterceptor implements NestInterceptor {
     const store: AuditRequestContext = {
       ipAddress: req.ip ?? req.socket?.remoteAddress ?? undefined,
       userAgent: req.headers['user-agent'] ?? undefined,
-      sessionId: user?.sessionId ?? undefined,
+      sessionId: esUuid(user?.sessionId) ? user.sessionId : undefined,
       endpoint: req.originalUrl ?? req.url,
       method: req.method,
       jwtUserId: user?.id,

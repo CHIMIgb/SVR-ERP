@@ -5,9 +5,9 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException } from '@nestjs/common';
+import { INestApplication, BadRequestException, ConflictException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, AuditResult } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
@@ -88,6 +88,9 @@ describe('BitacorasRenta Audit (Real DB)', () => {
     if (!prisma) return;
 
     if (createdBitacoraIds.length > 0) {
+      await prisma.cuentas_por_cobrar.deleteMany({
+        where: { bitacora_id: { in: createdBitacoraIds } },
+      });
       await prisma.firmas_cliente.deleteMany({ where: { bitacora_id: { in: createdBitacoraIds } } });
       await prisma.bitacoras_renta_diaria.deleteMany({ where: { id: { in: createdBitacoraIds } } });
     }
@@ -178,6 +181,85 @@ describe('BitacorasRenta Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.BITACORA_RENTA_ELIMINADA, bitacora.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+  });
+
+  describe('BITACORA_FACTURADA (O3: bitácora → CxC)', () => {
+    it('debe cerrar la bitácora LISTO_FACTURAR, crear la CxC y auditar SUCCESS', async () => {
+      const bitacora = await service.create(createDto({ firmado: true }), ACTOR_USER_ID);
+      createdBitacoraIds.push(bitacora.id);
+      expect(bitacora.estadoCobro).toBe('Listo para Facturar');
+
+      const resultado = await service.facturar(bitacora.id, ACTOR_USER_ID);
+
+      // 1. Bitácora marcada FACTURADO
+      const enDb = await prisma.bitacoras_renta_diaria.findUnique({ where: { id: bitacora.id } });
+      expect(enDb!.estado_cobro).toBe('FACTURADO');
+
+      // 2. CxC persistida con bitacora_id + monto de la bitácora
+      const cxc = await prisma.cuentas_por_cobrar.findUnique({ where: { id: resultado.cuenta.id } });
+      expect(cxc).not.toBeNull();
+      expect(cxc!.bitacora_id).toBe(bitacora.id);
+      expect(Number(cxc!.monto)).toBe(bitacora.importeTotalRenta);
+      expect(cxc!.estado).toBe('PENDIENTE');
+
+      // 3. Audits SUCCESS de BITACORA_FACTURADA + CXC_CREADA
+      const auditFacturada = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.BITACORA_FACTURADA, entity_id: bitacora.id },
+      });
+      expect(auditFacturada).not.toBeNull();
+      expect(auditFacturada!.result).toBe(AuditResult.SUCCESS);
+
+      const auditCxc = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.CXC_CREADA, entity_id: resultado.cuenta.id },
+      });
+      expect(auditCxc).not.toBeNull();
+      expect(auditCxc!.result).toBe(AuditResult.SUCCESS);
+    });
+
+    it('debe bloquear la segunda facturación (doble clic) con BITACORA_YA_FACTURADA', async () => {
+      // La bitácora del test anterior ya quedó FACTURADO con CxC.
+      const bitacora = await service.create(createDto({ firmado: true }), ACTOR_USER_ID);
+      createdBitacoraIds.push(bitacora.id);
+      await service.facturar(bitacora.id, ACTOR_USER_ID);
+
+      await expect(service.facturar(bitacora.id, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      // En secuencia, el pre-guard detecta el estado FACTURADO (la carrera real
+      // BITACORA_YA_FACTURADA se cubre en los unit tests con updateMany count 0).
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.BITACORA_FACTURADA,
+          entity_id: bitacora.id,
+          result: AuditResult.FAIL,
+          error_code: 'BITACORA_NO_LISTA_FACTURAR',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+
+      // Solo debe existir UNA CxC para la bitácora.
+      const cxcs = await prisma.cuentas_por_cobrar.count({ where: { bitacora_id: bitacora.id } });
+      expect(cxcs).toBe(1);
+    });
+
+    it('debe rechazar bitácora sin firma (PENDIENTE_FIRMA) con BITACORA_NO_LISTA_FACTURAR', async () => {
+      const bitacora = await service.create(createDto(), ACTOR_USER_ID); // firmado: false
+      createdBitacoraIds.push(bitacora.id);
+      expect(bitacora.estadoCobro).toBe('Pendiente Firma');
+
+      await expect(service.facturar(bitacora.id, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.BITACORA_FACTURADA,
+          entity_id: bitacora.id,
+          result: AuditResult.FAIL,
+          error_code: 'BITACORA_NO_LISTA_FACTURAR',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
     });
   });
 });

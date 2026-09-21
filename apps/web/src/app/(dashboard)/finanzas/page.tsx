@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus, Wallet, ArrowUpCircle, ArrowDownCircle,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download,
+  Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp, ArrowRightLeft,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download, Landmark,
+  Receipt, BadgeCheck, Unlink,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { formatFechaSolo } from '@/lib/formatters';
@@ -18,11 +19,14 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { ConciliacionBancaria } from '@/components/finanzas/ConciliacionBancaria';
 import {
   finanzasApi,
   FinanzasCategorias,
   type TransaccionDTO,
   type TipoTransaccionApi,
+  type FlujoNetoDTO,
+  type VentanaFlujoItem,
 } from '@/lib/api';
 
 // ── Constantes ──
@@ -44,7 +48,13 @@ export default function FinanzasPage() {
 
   // ── Estado de datos ──
   const [transacciones, setTransacciones] = useState<TransaccionDTO[]>([]);
+  const [tab, setTab] = useState<'movimientos' | 'conciliacion'>('movimientos');
   const [stats, setStats] = useState({ balance: 0, totalIngresos: 0, totalEgresos: 0, cantidad: 0 });
+  const [concTotales, setConcTotales] = useState({ cargado: 0, conciliado: 0, sinConciliar: 0 });
+  const [flujo, setFlujo] = useState<FlujoNetoDTO>({
+    items: [],
+    totales: { porCobrar: 0, porPagar: 0, neto: 0 },
+  });
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -68,6 +78,7 @@ export default function FinanzasPage() {
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
+  const puedeExportar = vista?.puedeExportar ?? false;
 
   // ── Cargar datos ──
   const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
@@ -106,10 +117,36 @@ export default function FinanzasPage() {
     }
   }, []);
 
+  const fetchFlujo = useCallback(async () => {
+    const res = await finanzasApi.flujoNeto();
+    if (res.success && res.data) {
+      setFlujo(res.data);
+    }
+  }, []);
+
+  // ── Exportar CSV con los filtros actuales ──
+  const handleExportar = useCallback(async () => {
+    try {
+      await finanzasApi.exportar({
+        search: search || undefined,
+        tipo: filterValues.tipo as TipoTransaccionApi | undefined,
+        categoria: filterValues.categoria || undefined,
+      });
+    } catch {
+      showToast('No se pudo exportar el CSV.', 'error');
+    }
+  }, [search, filterValues, showToast]);
+
   useEffect(() => {
-    fetchData(1);
-    fetchStats();
-  }, [fetchData, fetchStats]);
+    const inicial = async () => {
+      try {
+        await Promise.all([fetchData(1), fetchStats(), fetchFlujo()]);
+      } catch {
+        /* manejo de error delegado a cada fetch */
+      }
+    };
+    inicial();
+  }, [fetchData, fetchStats, fetchFlujo]);
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
@@ -297,6 +334,13 @@ export default function FinanzasPage() {
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
+  const flujoColumns: Column<VentanaFlujoItem>[] = [
+    { key: 'ventana', header: 'Ventana', render: (it) => <span className="font-medium text-slate-700">{it.label}</span> },
+    { key: 'porCobrar', header: 'Por cobrar', align: 'right', render: (it) => <span className="text-emerald-600">{formatCurrency(it.porCobrar)}</span> },
+    { key: 'porPagar', header: 'Por pagar', align: 'right', render: (it) => <span className="text-rose-600">{formatCurrency(it.porPagar)}</span> },
+    { key: 'neto', header: 'Neto', align: 'right', render: (it) => <span className={it.neto >= 0 ? 'font-semibold text-slate-800' : 'font-semibold text-rose-700'}>{formatCurrency(it.neto)}</span> },
+  ];
+
   // ── Columnas de DataTable ──
   const columns: Column<TransaccionDTO>[] = [
     {
@@ -376,9 +420,11 @@ export default function FinanzasPage() {
         subtitle="Flujo de caja, ingresos por obras y gastos operativos."
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={() => {}}>
-              Exportar
-            </Button>
+            {puedeExportar && (
+              <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={handleExportar}>
+                Exportar
+              </Button>
+            )}
             {puedeCrear && (
               <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
                 Nueva Transacción
@@ -407,7 +453,96 @@ export default function FinanzasPage() {
           label="Egresos"
           color="error"
         />
+        {tab === 'conciliacion' && (
+          <>
+            <StatsCard
+              icon={<Receipt className="w-6 h-6" />}
+              value={formatCurrency(concTotales.cargado)}
+              label="Total cargado"
+              color="primary"
+            />
+            <StatsCard
+              icon={<BadgeCheck className="w-6 h-6" />}
+              value={formatCurrency(concTotales.conciliado)}
+              label="Conciliado"
+              color="success"
+            />
+            <StatsCard
+              icon={<Unlink className="w-6 h-6" />}
+              value={formatCurrency(concTotales.sinConciliar)}
+              label="Sin conciliar"
+              color={concTotales.sinConciliar === 0 ? 'success' : 'warning'}
+            />
+          </>
+        )}
       </div>
+
+      {/* Flujo neto proyectado CxC vs CxP (solo tab movimientos) */}
+      {tab === 'movimientos' && (
+      <div className="card p-6">
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-slate-900">Flujo Neto Proyectado</h2>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              Por cobrar: <strong>{formatCurrency(flujo.totales.porCobrar)}</strong>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+              Por pagar: <strong>{formatCurrency(flujo.totales.porPagar)}</strong>
+            </span>
+            <span className="hidden sm:inline-flex items-center gap-1.5">
+              Neto:{' '}
+              <strong className={flujo.totales.neto >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                {formatCurrency(flujo.totales.neto)}
+              </strong>
+            </span>
+          </div>
+        </div>
+
+        <DataTable
+          columns={flujoColumns}
+          data={flujo.items}
+          keyExtractor={(item) => item.ventana}
+          emptyText="Sin cuentas por cobrar ni por pagar activas."
+          className="min-w-[560px]"
+        />
+      </div>
+      )}
+
+      {/* Tabs: movimientos / conciliación bancaria */}
+      <div className="flex gap-1 w-fit rounded-xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setTab('movimientos')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-1.5',
+            tab === 'movimientos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <ArrowRightLeft className="w-4 h-4" />
+          Movimientos
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('conciliacion')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5',
+            tab === 'conciliacion' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <Landmark className="w-4 h-4" />
+          Conciliación
+        </button>
+      </div>
+
+      {tab === 'conciliacion' ? (
+        <ConciliacionBancaria puedeCrear={puedeCrear} puedeEditar={puedeEditar} onTotales={setConcTotales} />
+      ) : (
+      <>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <SearchBar
@@ -701,6 +836,8 @@ export default function FinanzasPage() {
           </div>
         )}
       </FormModal>
+      </>
+      )}
     </div>
   );
 }

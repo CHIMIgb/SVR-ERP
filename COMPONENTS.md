@@ -2398,7 +2398,7 @@ import { StatsCard } from '@/components/ui/StatsCard';
 |------|------|---------|-------------|
 | `icon` | `React.ReactNode` | *(requerido)* | Icono de la estadistica |
 | `value` | `string \| number` | *(requerido)* | Valor numerico o texto a mostrar |
-| `label` | `string` | *(requerido)* | Descripcion de la metrica |
+| `label` | `string \| ReactNode` | *(requerido)* | Descripcion de la metrica. Acepta un ReactNode para incluir una segunda linea (p. ej. conteo de registros) |
 | `color` | `'primary' \| 'success' \| 'warning' \| 'error' \| 'info' \| 'neutral'` | `'primary'` | Color del icono y fondo del icono |
 | `trend` | `'up' \| 'down' \| 'neutral'` | `undefined` | Direccion del trend (flecha) |
 | `trendValue` | `string` | `undefined` | Texto del trend (ej: "+12%", "-5%") |

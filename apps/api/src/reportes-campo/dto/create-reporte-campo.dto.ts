@@ -1,7 +1,9 @@
 import {
   IsDateString,
   IsEnum,
+  IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   Matches,
@@ -27,6 +29,20 @@ export class CreateReporteCampoDto {
   @IsOptional()
   @IsUUID()
   obraId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  /** Monto del servicio cobrable al cliente (permite facturar el reporte). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  montoServicio?: number;
 
   @IsString()
   @MinLength(2)

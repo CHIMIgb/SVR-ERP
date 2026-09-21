@@ -41,6 +41,8 @@ describe('FinanzasService', () => {
           { tipo: TipoTransaccion.EGRESO, _sum: { monto: 4000 }, _count: { _all: 1 } },
         ]),
       },
+      cuentas_por_cobrar: { findMany: jest.fn().mockResolvedValue([]) },
+      cuentas_por_pagar: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -97,6 +99,42 @@ describe('FinanzasService', () => {
       expect(callArgs.where.categoria).toBe('Nómina');
       expect(callArgs.where.fecha.gte).toBeDefined();
       expect(callArgs.where.fecha.lte).toBeDefined();
+    });
+  });
+
+  describe('exportar', () => {
+    it('should produce a CSV with BOM and escaped values', async () => {
+      prisma.transacciones.findMany.mockResolvedValue([
+        mockTransaccion,
+        {
+          ...mockTransaccion,
+          id: '660e8400-e29b-41d4-a716-446655440010',
+          codigo: 'TRA-20260821-DEF456',
+          tipo: TipoTransaccion.EGRESO,
+          categoria: 'Proveedores',
+          monto: 4000.5,
+          fecha: new Date('2026-08-21'),
+          descripcion: 'Descripción con, coma y "comillas"',
+        },
+      ]);
+
+      const csv = await service.exportar({}, 'user-1');
+      expect(prisma.transacciones.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ eliminado_en: null }) }),
+      );
+      expect(csv.startsWith('\ufeffCodigo,Fecha,Tipo,Categoria,Descripcion,Monto')).toBe(true);
+      expect(csv).toContain('TRA-20260820-ABC123');
+      expect(csv).toContain('4000.5');
+      // Escape RFC: comas y comillas dobles dentro de la descripción.
+      expect(csv).toContain('"Descripción con, coma y ""comillas"""');
+      // Cada exportación queda auditada con el actor que la ejecutó.
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.TRANSACCION_EXPORTADA,
+          result: AuditResult.SUCCESS,
+          actorUserId: 'user-1',
+        }),
+      );
     });
   });
 
@@ -241,6 +279,61 @@ describe('FinanzasService', () => {
         totalEgresos: 0,
         cantidad: 0,
       });
+    });
+  });
+
+  describe('flujoNeto', () => {
+    /** Fecha relativa a hoy a mediodía (evita bordes de medianoche). */
+    const rel = (dias: number) => {
+      const f = new Date();
+      f.setHours(12, 0, 0, 0);
+      f.setDate(f.getDate() + dias);
+      return f;
+    };
+
+    it('clasifica saldos en ventanas y calcula neto por ventana', async () => {
+      prisma.cuentas_por_cobrar.findMany.mockResolvedValue([
+        { monto: 1000, monto_pagado: 0, fecha_vencimiento: rel(-10) }, // vencido
+        { monto: 2000, monto_pagado: 0, fecha_vencimiento: rel(20) }, // 0-30d
+        { monto: 3000, monto_pagado: 0, fecha_vencimiento: rel(45) }, // 31-60d
+        { monto: 4000, monto_pagado: 0, fecha_vencimiento: rel(75) }, // 61-90d
+        { monto: 5000, monto_pagado: 0, fecha_vencimiento: rel(120) }, // +90d
+        { monto: 6000, monto_pagado: 0, fecha_vencimiento: null }, // sin vencimiento
+        { monto: 500, monto_pagado: 500, fecha_vencimiento: rel(20) }, // saldada
+      ]);
+      prisma.cuentas_por_pagar.findMany.mockResolvedValue([
+        { monto: 800, monto_pagado: 200, fecha_vencimiento: rel(45) }, // saldo 600 → 31-60d
+        { monto: 300, monto_pagado: 300, fecha_vencimiento: rel(10) }, // saldada
+      ]);
+
+      const result = await service.flujoNeto();
+
+      expect(prisma.cuentas_por_cobrar.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ activo: true }) }),
+      );
+      expect(prisma.cuentas_por_pagar.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ activo: true }) }),
+      );
+
+      const porVentana = (ventana: string) =>
+        result.items.find((i) => i.ventana === ventana)!;
+      expect(porVentana('vencido').porCobrar).toBe(1000);
+      expect(porVentana('0-30d').porCobrar).toBe(2000);
+      expect(porVentana('31-60d')).toEqual(
+        expect.objectContaining({ porCobrar: 3000, porPagar: 600, neto: 2400 }),
+      );
+      expect(porVentana('61-90d').porCobrar).toBe(4000);
+      expect(porVentana('+90d').porCobrar).toBe(5000);
+      expect(porVentana('sin_vencimiento').porCobrar).toBe(6000);
+
+      expect(result.totales).toEqual({ porCobrar: 21000, porPagar: 600, neto: 20400 });
+      expect(result.items).toHaveLength(6);
+    });
+
+    it('regresa ventanas en ceros sin cartera', async () => {
+      const result = await service.flujoNeto();
+      expect(result.totales).toEqual({ porCobrar: 0, porPagar: 0, neto: 0 });
+      expect(result.items.every((i) => i.porCobrar === 0 && i.porPagar === 0)).toBe(true);
     });
   });
 });
