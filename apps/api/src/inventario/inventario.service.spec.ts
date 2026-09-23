@@ -7,6 +7,19 @@ import { AuditService } from '../audit/audit.service';
 describe('InventarioService', () => {
   let service: InventarioService;
 
+  // TransactionClient simulado para `$transaction(callback)`: recibe el MISMO
+  // objeto que Prisma pasa como `tx` y expone los delegates usados por
+  // `aplicarEntrada`. Reutilizado por los tests de delegación.
+  const mockTx = {
+    articulos_inventario: {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
+    movimientos_inventario: {
+      create: jest.fn(),
+    },
+  };
+
   const mockPrisma = {
     articulos_inventario: {
       findMany: jest.fn(),
@@ -28,7 +41,11 @@ describe('InventarioService', () => {
       findMany: jest.fn(),
       create: jest.fn(),
     },
-    $transaction: jest.fn((fns: Promise<unknown>[]) => Promise.all(fns)),
+    $transaction: jest.fn((operations: unknown) =>
+      typeof operations === 'function'
+        ? Promise.resolve(operations(mockTx))
+        : Promise.all(operations as Promise<unknown>[]),
+    ),
   };
 
   const mockAudit = {
@@ -73,6 +90,10 @@ describe('InventarioService', () => {
     mockPrisma.articulos_inventario.create.mockResolvedValue(mockArticulo);
     mockPrisma.articulos_inventario.update.mockResolvedValue(mockArticulo);
     mockPrisma.movimientos_inventario.create.mockResolvedValue({});
+    // Transacción callback (TransactionClient) para la delegación de `aplicarEntrada`.
+    mockTx.articulos_inventario.findFirst.mockResolvedValue(mockArticulo);
+    mockTx.articulos_inventario.update.mockResolvedValue(mockArticulo);
+    mockTx.movimientos_inventario.create.mockResolvedValue({});
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -361,6 +382,64 @@ describe('InventarioService', () => {
           { articuloId: 'bad', tipo: 'ENTRADA', cantidad: 1 },
           'user-1',
         ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('aplicarEntrada', () => {
+    const params = {
+      articuloId: mockArticulo.id,
+      cantidad: 7,
+      motivo: 'Recepción OC',
+      referenciaTipo: 'ORDEN_COMPRA',
+      referenciaId: 'oc-1',
+      creadoPor: 'user-1',
+    };
+
+    it('should apply ENTRADA via tx: update stock and create movement', async () => {
+      const result = await service.aplicarEntrada(mockTx as never, params);
+
+      expect(result.stockAnterior).toBe(12);
+      expect(result.stockResultante).toBe(19); // 12 + 7
+      expect(mockTx.articulos_inventario.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockArticulo.id },
+          data: { stock: 19 },
+        }),
+      );
+      expect(mockTx.movimientos_inventario.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            articulo_id: mockArticulo.id,
+            tipo: 'ENTRADA',
+            cantidad: 7,
+            stock_resultante: 19,
+            referencia_tipo: 'ORDEN_COMPRA',
+            referencia_id: 'oc-1',
+          }),
+        }),
+      );
+    });
+
+    it('should delegate from crearMovimiento ENTRADA using $transaction callback', async () => {
+      const result = await service.crearMovimiento(
+        {
+          articuloId: mockArticulo.id,
+          tipo: 'ENTRADA',
+          cantidad: 10,
+        },
+        'user-1',
+      );
+
+      expect(result.stockResultante).toBe(22); // 12 + 10
+      // La delegación ocurre dentro del callback del tx (no en el array principal).
+      expect(mockTx.articulos_inventario.update).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when tx article does not exist', async () => {
+      mockTx.articulos_inventario.findFirst.mockResolvedValue(null);
+      await expect(
+        service.aplicarEntrada(mockTx as never, params),
       ).rejects.toThrow(NotFoundException);
     });
   });

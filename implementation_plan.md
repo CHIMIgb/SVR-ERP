@@ -545,6 +545,21 @@ Se darán de alta 1 artículo y se actualizará el stock de 1 en /inventario.
 
 **Entregable:** `aplicarEntrada` probado; `crearMovimiento` conserva comportamiento.
 
+**Hecho (2026-09-23) — evidencia verificada:**
+- Extraído `aplicarEntrada(tx: Prisma.TransactionClient, params)` que actúa en la transacción ya
+  iniciada: busca artículo (no eliminado), suma stock via `stock_resultante`, inserta
+  `movimientos_inventario` `ENTRADA` con `stock_resultante`/refs/motivo y devuelve
+  `{ stockAnterior, stockResultante }` para auditoría.
+- `crearMovimiento` delegó su rama `ENTRADA` → `this.prisma.$transaction((tx) => this.aplicarEntrada(tx, {...}))`
+  sin anidar transacciones; la rama `SALIDA` conserva su `$transaction([update, create])` y las
+  auditorías de cruce de umbral (`STOCK_BAJO_DETECTADO`/`STOCK_BAJO_RESUELTO`).
+- Spec: `mockTx` tipado correctamente (ya no `as never`); `$transaction` del mock soporta ambos
+  patrones (callback→`tx` y array→`Promise.all`); `describe('aplicarEntrada')` con tests de
+  delegación (update + create + `stockResultante`) y `NotFoundException` cuando no existe el artículo.
+- Verificación: `npx tsc --noEmit` (exit 0) · inventario.service.spec **25/25 PASS**
+  · audit.service.spec **14/14 PASS**. Guard: correr jest con `--rootDir=src` (no `apps/api`,
+  que barre specs obsoletos de `dist/*.js`).
+
 ### 4.3 T3 — Proveedores: DTOs + createOrden con líneas + desacople pago (backend)
 **Archivos a modificar/crear:**
 1. `apps/api/src/proveedores/dto/create-orden-compra.dto.ts` — items
