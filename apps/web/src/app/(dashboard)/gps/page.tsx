@@ -381,7 +381,7 @@ export default function GpsPage() {
         title="Rastreo GPS"
         subtitle="Ubicación en tiempo real de la maquinaria y control de geocercas."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <LiveIndicator />
             {puedeEditar && (
               <Button
@@ -432,7 +432,7 @@ export default function GpsPage() {
                 machines={machines}
                 selectedId={selectedId}
                 onSelect={(m) => setSelectedId(m.id)}
-                height="460px"
+                height="clamp(280px, 45vh, 460px)"
               />
 
               <Card padding="sm">
