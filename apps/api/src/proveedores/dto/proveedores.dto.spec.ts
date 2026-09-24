@@ -47,6 +47,7 @@ describe('CreateOrdenCompraDto', () => {
     proveedorId: '550e8400-e29b-41d4-a716-446655440010',
     descripcion: 'Cemento 50kg',
     monto: 800,
+    items: [{ nombre: 'Cemento 50kg', cantidad: 8, precioUnitario: 100 }],
   };
 
   it('should pass with valid data', async () => {

@@ -158,7 +158,13 @@ async function main() {
       {
         proveedorId: prov.id,
         descripcion: s.descripcion,
-        monto: s.monto,
+          items: [
+            {
+              nombre: `Artículo OC Seed ${i + 1}`,
+              cantidad: 1,
+              precioUnitario: s.monto,
+            },
+          ],
         fecha: fechaOrden(i).toISOString().slice(0, 10),
       },
       userId,

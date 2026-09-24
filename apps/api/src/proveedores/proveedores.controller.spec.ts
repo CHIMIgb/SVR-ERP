@@ -101,7 +101,18 @@ describe('ProveedoresController', () => {
     });
 
     it('POST /ordenes-compra -> createOrden with user id', async () => {
-      const dto = { proveedorId: ID, descripcion: 'Cemento', monto: 800 };
+      const dto = {
+        proveedorId: ID,
+        descripcion: 'Cemento',
+        items: [
+          {
+            articuloId: '11111111-1111-1111-1111-111111111111',
+            nombre: 'Cemento Gris',
+            cantidad: 10,
+            precioUnitario: 80,
+          },
+        ],
+      };
       await controller.createOrden(dto, req as never);
       expect(service.createOrden).toHaveBeenCalledWith(dto, req.user.id);
     });

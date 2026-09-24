@@ -110,7 +110,13 @@ describe('Proveedores Audit (Real DB)', () => {
         {
           proveedorId: proveedor.id,
           descripcion: `Compra test ${TEST_ID}`,
-          monto: 1200.5,
+          items: [
+            {
+              nombre: 'Cemento Sílice Fino',
+              cantidad: 12,
+              precioUnitario: 100.041666,
+            },
+          ],
         },
         ACTOR_USER_ID,
       );
@@ -145,7 +151,13 @@ describe('Proveedores Audit (Real DB)', () => {
         {
           proveedorId: proveedor.id,
           descripcion: `Pago test ${TEST_ID}`,
-          monto: 5000,
+          items: [
+            {
+              nombre: 'Cemento Pago',
+              cantidad: 50,
+              precioUnitario: 100,
+            },
+          ],
         },
         ACTOR_USER_ID,
       );
@@ -212,7 +224,13 @@ describe('Proveedores Audit (Real DB)', () => {
         {
           proveedorId: proveedor.id,
           descripcion: `Fail test ${TEST_ID}`,
-          monto: 1000,
+          items: [
+            {
+              nombre: `Ítem fail test ${TEST_ID}`,
+              cantidad: 1,
+              precioUnitario: 1000,
+            },
+          ],
         },
         ACTOR_USER_ID,
       );
@@ -248,7 +266,13 @@ describe('Proveedores Audit (Real DB)', () => {
         {
           proveedorId: proveedor.id,
           descripcion: `Blocker test ${TEST_ID}`,
-          monto: 3000,
+          items: [
+            {
+              nombre: `Item Blocker ${TEST_ID}`,
+              cantidad: 1,
+              precioUnitario: 3000,
+            },
+          ],
         },
         ACTOR_USER_ID,
       );

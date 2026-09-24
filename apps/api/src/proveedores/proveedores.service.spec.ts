@@ -82,6 +82,11 @@ describe('ProveedoresService', () => {
         create: jest.fn().mockResolvedValue(mockOrden),
         update: jest.fn().mockResolvedValue(mockOrden),
       },
+      ordenes_compra_items: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       cuentas_por_pagar: {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue({
@@ -380,7 +385,13 @@ describe('ProveedoresService', () => {
   });
 
   describe('createOrden', () => {
-    const dto = { proveedorId: mockProveedor.id, descripcion: 'Cemento 50kg', monto: 800 };
+    const dto = {
+      proveedorId: mockProveedor.id,
+      descripcion: 'Cemento 50kg',
+      items: [
+        { nombre: 'Cemento 50kg', cantidad: 1, precioUnitario: 800 },
+      ],
+    };
 
     it('should create OC + CxP inside $transaction and log ORDEN_COMPRA_CREADA', async () => {
       const result = await service.createOrden(dto, USER_ID);
@@ -388,6 +399,24 @@ describe('ProveedoresService', () => {
       expect(prisma.ordenes_compra.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ folio: 'OC-2026-006', estado: EstadoOrdenCompra.PENDIENTE }),
+        }),
+      );
+      // Líneas persisten en la misma transacción y el monto se deriva de ellas.
+      expect(prisma.ordenes_compra_items.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              articulo_id: null,
+              nombre: 'Cemento 50kg',
+              cantidad: 1,
+              precio_unitario: 800,
+            }),
+          ]),
+        }),
+      );
+      expect(prisma.ordenes_compra.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ monto: 800 }),
         }),
       );
       expect(prisma.cuentas_por_pagar.create).toHaveBeenCalled();
@@ -433,6 +462,31 @@ describe('ProveedoresService', () => {
       );
     });
 
+    it('should replace items and derive monto from them when items sent', async () => {
+      await service.updateOrden(
+        mockOrden.id,
+        {
+          items: [
+            { nombre: 'Cemento 50kg', cantidad: 10, precioUnitario: 100 },
+            { articuloId: '3e4b04a7-5f2a-4c1e-9b7d-8a2f0e1c9d6b', cantidad: 2, precioUnitario: 50 },
+          ],
+        },
+        USER_ID,
+      );
+      expect(prisma.ordenes_compra_items.deleteMany).toHaveBeenCalled();
+      expect(prisma.ordenes_compra_items.createMany).toHaveBeenCalled();
+      expect(prisma.ordenes_compra.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ monto: 1100 }),
+        }),
+      );
+      expect(prisma.cuentas_por_pagar.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ monto: 1100 }),
+        }),
+      );
+    });
+
     it('should throw NotFoundException when not found', async () => {
       prisma.ordenes_compra.findFirst.mockResolvedValue(null);
       await expect(service.updateOrden('non-existent', { monto: 1 }, USER_ID)).rejects.toThrow(
@@ -465,6 +519,13 @@ describe('ProveedoresService', () => {
     it('should soft delete orden without pagos', async () => {
       const result = await service.removeOrden(mockOrden.id, USER_ID);
       expect(prisma.$transaction).toHaveBeenCalled();
+      // Líneas de la OC también se marcan inactivas (trazabilidad conservada).
+      expect(prisma.ordenes_compra_items.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orden_compra_id: mockOrden.id, activo: true }),
+          data: expect.objectContaining({ activo: false }),
+        }),
+      );
       expect(result.message).toContain('eliminada');
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.ORDEN_COMPRA_ELIMINADA }),
@@ -499,6 +560,22 @@ describe('ProveedoresService', () => {
       await expect(
         service.cambiarEstadoOrden(mockOrden.id, { estado: EstadoOrdenCompra.PENDIENTE }, USER_ID),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject APROBADA -> RECIBIDA (recepción solo vía POST /:id/recibir)', async () => {
+      prisma.ordenes_compra.findFirst.mockResolvedValue({
+        ...mockOrden,
+        estado: EstadoOrdenCompra.APROBADA,
+      });
+      await expect(
+        service.cambiarEstadoOrden(mockOrden.id, { estado: EstadoOrdenCompra.RECIBIDA }, USER_ID),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorCode: 'TRANSICION_INVALIDA',
+          result: AuditResult.FAIL,
+        }),
+      );
     });
 
     it('should require motivo to cancel', async () => {
@@ -602,14 +679,14 @@ describe('ProveedoresService', () => {
       );
     });
 
-    it('should set RECIBIDA when abono completes an APROBADA orden', async () => {
+    it('should KEEP APROBADA when abono completes an APROBADA orden (desacople pago/recepción)', async () => {
       prisma.ordenes_compra.findFirst.mockResolvedValue({
         ...mockOrden,
         estado: EstadoOrdenCompra.APROBADA,
       });
       await service.registrarAbono(mockProveedor.id, { ...dto, monto: 1000 }, USER_ID);
       expect(prisma.ordenes_compra.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ estado: EstadoOrdenCompra.RECIBIDA }) }),
+        expect.objectContaining({ data: expect.objectContaining({ estado: EstadoOrdenCompra.APROBADA }) }),
       );
     });
 

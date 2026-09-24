@@ -29,7 +29,7 @@ const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 /** Transiciones válidas de estado en órdenes de compra. */
 const TRANSICIONES: Record<EstadoOrdenCompra, EstadoOrdenCompra[]> = {
   PENDIENTE: ['APROBADA', 'CANCELADA'],
-  APROBADA: ['RECIBIDA', 'CANCELADA'],
+  APROBADA: ['CANCELADA'], // RECIBIDA solo llega vía POST /:id/recibir (recepción física)
   RECIBIDA: [],
   CANCELADA: [],
 };
@@ -439,6 +439,10 @@ export class ProveedoresService {
         where,
         include: {
           proveedores: { select: { id: true, nombre: true } },
+          ordenes_compra_items: {
+            where: { activo: true, eliminado_en: null },
+            orderBy: { creado_en: 'asc' },
+          },
         },
         orderBy: [{ fecha: 'desc' }, { folio: 'desc' }],
         skip: (page - 1) * limit,
@@ -466,6 +470,10 @@ export class ProveedoresService {
       where: { id, eliminado_en: null },
       include: {
         proveedores: { select: { id: true, nombre: true } },
+        ordenes_compra_items: {
+          where: { activo: true, eliminado_en: null },
+          orderBy: { creado_en: 'asc' },
+        },
         pagos_proveedor: {
           where: { eliminado_en: null },
           orderBy: { fecha_pago: 'asc' },
@@ -522,13 +530,18 @@ export class ProveedoresService {
       const creada = await this.prisma.$transaction(async (tx) => {
         const folio = await this.generarFolioOrden(tx, fecha);
 
+        const montoTotal = dto.items.reduce(
+          (total, item) => total + item.cantidad * item.precioUnitario,
+          0,
+        );
+
         const orden = await tx.ordenes_compra.create({
           data: {
             id,
             folio,
             proveedor_id: dto.proveedorId,
-            descripcion: dto.descripcion.trim(),
-            monto: dto.monto,
+            descripcion: dto.descripcion?.trim() ?? '',
+            monto: montoTotal,
             pagado: 0,
             fecha,
             estado: EstadoOrdenCompra.PENDIENTE,
@@ -538,12 +551,25 @@ export class ProveedoresService {
           },
         });
 
+        await tx.ordenes_compra_items.createMany({
+          data: dto.items.map((item) => ({
+            id: randomUUID(),
+            orden_compra_id: orden.id,
+            articulo_id: item.articuloId ?? null,
+            nombre: item.nombre ?? '',
+            cantidad: item.cantidad,
+            cantidad_recibida: 0,
+            precio_unitario: item.precioUnitario,
+            actualizado_en: now,
+          })),
+        });
+
         await tx.cuentas_por_pagar.create({
           data: {
             id: randomUUID(),
             proveedor_id: dto.proveedorId,
             orden_compra_id: orden.id,
-            monto: dto.monto,
+            monto: montoTotal,
             monto_pagado: 0,
             estado: 'PENDIENTE',
             activo: true,
@@ -623,26 +649,51 @@ export class ProveedoresService {
       );
     }
 
+    const montoNuevo =
+      dto.items !== undefined
+        ? dto.items.reduce((total, item) => total + item.cantidad * item.precioUnitario, 0)
+        : dto.monto;
+
     const orden = await this.prisma.$transaction(async (tx) => {
+      const dataMonto = montoNuevo !== undefined ? { monto: montoNuevo } : {};
       const actualizada = await tx.ordenes_compra.update({
         where: { id },
         data: {
           ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
-          ...(dto.monto !== undefined && { monto: dto.monto }),
+          ...dataMonto,
           actualizado_por: userId,
           actualizado_en: new Date(),
         },
       });
 
-      // Mantener CxP coherente con el monto de la OC.
-      if (dto.monto !== undefined) {
+      // Reemplazar líneas de detalle (snapshot de nombre siempre preservado).
+      if (dto.items !== undefined) {
+        await tx.ordenes_compra_items.deleteMany({
+          where: { orden_compra_id: id },
+        });
+        await tx.ordenes_compra_items.createMany({
+          data: dto.items.map((item) => ({
+            id: randomUUID(),
+            orden_compra_id: id,
+            articulo_id: item.articuloId ?? null,
+            nombre: item.nombre ?? '',
+            cantidad: item.cantidad,
+            cantidad_recibida: 0,
+            precio_unitario: item.precioUnitario,
+            actualizado_en: new Date(),
+          })),
+        });
+      }
+
+      // Mantener CxP coherente con el monto de la OC (derivado o explícito).
+      if (montoNuevo !== undefined) {
         const cxp = await tx.cuentas_por_pagar.findUnique({
           where: { orden_compra_id: id },
         });
         if (cxp) {
           await tx.cuentas_por_pagar.update({
             where: { id: cxp.id },
-            data: { monto: dto.monto, actualizado_en: new Date() },
+            data: { monto: montoNuevo, actualizado_en: new Date() },
           });
         }
       }
@@ -699,6 +750,11 @@ export class ProveedoresService {
       await tx.ordenes_compra.update({
         where: { id },
         data: { eliminado_en: new Date(), activo: false },
+      });
+      // Soft-delete de líneas para conservar trazabilidad de la OC eliminada.
+      await tx.ordenes_compra_items.updateMany({
+        where: { orden_compra_id: id, activo: true },
+        data: { activo: false, actualizado_en: new Date() },
       });
       const cxp = await tx.cuentas_por_pagar.findUnique({
         where: { orden_compra_id: id },
@@ -914,10 +970,11 @@ export class ProveedoresService {
 
     const pago = await this.prisma.$transaction(async (tx) => {
       const nuevoPagado = pagado + dto.monto;
-      const estadoOrden =
-        nuevoPagado >= monto - 0.0001
-          ? EstadoOrdenCompra.RECIBIDA
-          : orden.estado;
+      // Regla de negocio (T3): el abono NO deriva la OC a RECIBIDA. Recibir la
+      // mercancía es un evento explícito (`recibirOrden`); aquí solo se avanza
+      // el monto pagado y la CxP. La OC conserva su estado (APROBADA en
+      // adelante; PENDIENTE está bloqueado por el guard de arriba).
+      const estadoOrden = orden.estado;
       const estadoCxp =
         nuevoPagado >= monto - 0.0001
           ? 'PAGADA'
@@ -1098,6 +1155,16 @@ export class ProveedoresService {
       estado: orden.estado,
       motivoCancelacion: orden.motivo_cancelacion ?? null,
       activo: orden.activo,
+      items: (orden.ordenes_compra_items ?? [])
+        .filter((item: any) => item.activo && item.eliminado_en === null)
+        .map((item: any) => ({
+          id: item.id,
+          articuloId: item.articulo_id ?? null,
+          nombre: item.nombre,
+          cantidad: Number(item.cantidad),
+          cantidadRecibida: Number(item.cantidad_recibida),
+          precioUnitario: Number(item.precio_unitario),
+        })),
     };
   }
 }
