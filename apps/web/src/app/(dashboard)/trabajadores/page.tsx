@@ -441,7 +441,7 @@ export default function TrabajadoresPage() {
             <input className={modalInputClass} placeholder="Juan Pérez García" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
           </ModalField>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ModalField label="Categoría de Puesto" required>
               <select className={modalSelectClass} value={form.categoriaPuesto} onChange={(e) => setForm({ ...form, categoriaPuesto: e.target.value as TrabajadorCreateInput['categoriaPuesto'] })}>
                 <option value="Operador">Operador de Maquinaria</option>
@@ -456,7 +456,7 @@ export default function TrabajadoresPage() {
             </ModalField>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ModalField label="Teléfono de Contacto">
               <input className={modalInputClass} placeholder="55 1234 5678" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
             </ModalField>
@@ -485,7 +485,7 @@ export default function TrabajadoresPage() {
             </ModalField>
           )}
 
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
             <ModalField label="Sueldo Fiscal (SPEI Tarjeta)">
               <input type="number" className={modalInputClass} value={form.sueldoFiscal} onChange={(e) => setForm({ ...form, sueldoFiscal: e.target.value })} />
             </ModalField>

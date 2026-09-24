@@ -799,7 +799,7 @@ export default function MaquinariaPage() {
           confirmLabel={guardandoMaquina ? 'Guardando…' : 'Registrar Equipo'}
         >
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="ID o Código del Equipo *">
                 <input
                   className={inputClass}
@@ -832,7 +832,7 @@ export default function MaquinariaPage() {
               />
             </ModalField>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Horómetro Inicial">
                 <input
                   type="number"
@@ -903,7 +903,7 @@ export default function MaquinariaPage() {
               </select>
             </ModalField>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Fecha Inicio">
                 <input
                   type="date"
@@ -936,7 +936,7 @@ export default function MaquinariaPage() {
           confirmLabel={guardandoChecklist ? 'Guardando…' : 'Guardar Checklist'}
         >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Máquina">
                 <select
                   className={selectClass}
@@ -960,7 +960,7 @@ export default function MaquinariaPage() {
               </ModalField>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Nivel Aceite Motor">
                 <select
                   className={selectClass}
@@ -985,7 +985,7 @@ export default function MaquinariaPage() {
               </ModalField>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Llantas / Orugas">
                 <select
                   className={selectClass}

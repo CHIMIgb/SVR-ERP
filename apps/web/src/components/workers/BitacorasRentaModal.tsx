@@ -308,7 +308,7 @@ export default function BitacorasRentaModal({
             </ModalField>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <ModalField label="Horas Efectivas">
               <input type="number" step="0.5" className={modalInputClass} value={form.horasEfectivas} onChange={(e) => setForm({ ...form, horasEfectivas: e.target.value })} />
             </ModalField>
