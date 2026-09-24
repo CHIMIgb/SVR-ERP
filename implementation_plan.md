@@ -571,6 +571,33 @@ Se darán de alta 1 artículo y se actualizará el stock de 1 en /inventario.
 
 **Entregable:** OC se crea con líneas; el pago ya no dispara RECIBIDA.
 
+**Hecho (2026-09-23/24) — evidencia verificada:**
+- **DTOs**: `create-orden-compra.dto.ts` — `OrdenCompraItemInput` (exportado) con `articuloId?`/`nombre?`
+  mutuamente excluyentes vía `@ValidateIf` (`nombre` OBLIGATORIO si no hay `articuloId`), `cantidad`
+  (`@Min(0.01)`), `precioUnitario`; `CreateOrdenCompraDto.items` requerido con `@ArrayMinSize(1)`
+  + `@ValidateNested`/`@Type`; `monto` pasó a `@IsOptional()` (derivado de la suma de líneas) y
+  **`descripcion` pasó a `@IsOptional()`** (se deriva de las líneas si no viene, §2.4).
+  `update-orden-compra.dto.ts`: `items?: OrdenCompraItemInput[]` opcional con `@IsArray`/
+  `@ValidateNested`/`@Type`. `recibir-orden-compra.dto.ts` (NUEVO): `ArticuloNuevoRecepcion`
+  (`lineaIndex@IsInt@Min(0)`, `categoriaId`/`unidadId` @IsUUID) + `RecibirOrdenCompraDto.
+  nuevosArticulos?` opcional con `@ArrayMaxSize(500)`/`@ValidateNested`/`@Type` (T4).
+- **Service**: `createOrden` crea cabecera + `ordenes_compra_items.createMany` + CxP en la misma
+  `$transaction`, `monto` derivado de Σ cantidad×precio; `updateOrden` edita líneas y recalcula
+  `monto` + sincroniza CxP (guards PENDIENTE/APROBADA y MONTO_MENOR_A_PAGADO); `removeOrden`
+  soft-deletea cabecera **y marca `activo=false` en sus líneas**; `TRANSICIONES` quedó
+  `APROBADA: ['CANCELADA']` (RECIBIDA solo llega vía `POST /:id/recibir`); `registrarAbono` **ya no
+  fuerza RECIBIDA** (solo avanza `pagado`/CxP; guard `ORDEN_PENDIENTE_NO_ABONABLE`); `serializeOrden`
+  incluye `items` filtrados por `activo && eliminado_en === null`; `findAllOrdenes`/`findOneOrden`
+  incluyen `ordenes_compra_items` activas.
+- **Specs actualizados/verdes**: mock `ordenes_compra_items` en `proveedores.service.spec.ts`,
+  casos con `items` en ambos DTO specs (anidación `@ValidateNested` → `errors[0].children[0].children`),
+  test `APROBADA → RECIBIDA` rechazada (TRANSICION_INVALIDA), test de `removeOrden` verifica
+  `updateMany` de líneas, test `updateOrden` con items recalcula monto, test renombrado
+  "KEEP APROBADA when abono completes" (desacople). Endpoint `POST :id/recibir` en controller
+  queda para T4 (depende de `recibirOrden` + `InventarioModule`).
+- Verificación: `npx tsc --noEmit` exit 0 · jest `--rootDir=src` **994/994 PASS**
+  (proveedores + suite completa).
+
 ### 4.4 T4 — Recepción de OC: método `recibirOrden` (backend)
 **Archivos a modificar:**
 1. `apps/api/src/proveedores/proveedores.service.ts` — `recibirOrden(id, dto, userId)` con la transacción crítica del §2.7
