@@ -1,0 +1,97 @@
+1. ¿Qué tipos de trabajadores tienen en la empresa? Por ejemplo: operadores, choferes, mecánicos, ayudantes, administrativos, residentes de obra, etc.
+
+2. ¿Qué información registran actualmente cuando contratan a una persona?
+
+3. ¿Todos los trabajadores tienen un sueldo fijo o depende del puesto, la obra o los días trabajados?
+
+4. ¿Qué datos necesitan guardar de cada trabajador? Por ejemplo: nombre completo, teléfono, domicilio, puesto, fecha de ingreso y contacto de emergencia.
+
+5. ¿Necesitan registrar el RFC, CURP y número de seguro social de cada trabajador?
+
+6. ¿Todos los trabajadores tienen contrato? Si es así, ¿necesitan guardar una copia digital en el sistema?
+
+7. ¿Necesitan guardar licencias, certificaciones, documentos de seguridad o constancias de capacitación de los operadores?
+
+8. ¿Quién será responsable de dar de alta, editar y dar de baja a los trabajadores en el sistema?
+
+9. ¿Cómo se les paga actualmente a los trabajadores: por semana, quincena, mes, día trabajado o por algún otro esquema?
+
+10. ¿Todos cobran el mismo día o hay diferentes fechas de pago?
+
+11. ¿Cómo se determina el sueldo de cada trabajador? ¿Se establece una cantidad semanal, diaria o por puesto?
+
+12. Tengo entendido que algunos pagos se realizan una parte por transferencia bancaria y otra en efectivo. ¿Así se maneja realmente? ¿Cómo se divide el pago?
+
+13. ¿La parte que se deposita en el banco es fija para cada trabajador o cambia dependiendo de su sueldo?
+
+14. ¿La parte en efectivo corresponde a una cantidad fija, a una diferencia del sueldo o depende de otros conceptos?
+
+15. ¿Todos los trabajadores reciben una parte por banco y otra en efectivo, o hay trabajadores que reciben su pago completamente de una sola forma?
+
+16. ¿Quién calcula y prepara la nómina semanal?
+
+17. ¿Quién revisa y autoriza los montos antes de realizar los pagos?
+
+18. ¿Qué comprobante se entrega al trabajador cuando recibe su sueldo? ¿Firma un recibo, recibe un comprobante digital o se maneja de otra manera?
+
+19. ¿Cómo se registran actualmente los pagos realizados y cómo se comprueba que cada trabajador ya recibió su dinero?
+
+20. ¿Qué sucede si el día de pago un trabajador no está presente o no puede recibir su dinero?
+
+21. ¿Todos los trabajadores están dados de alta en el IMSS o solamente algunos?
+
+22. Si no todos tienen seguro social, ¿cómo identificamos en el sistema quién está dado de alta y quién no?
+
+23. ¿El sueldo registrado ante el IMSS es el mismo que recibe el trabajador o existe alguna diferencia? ¿Quién administra esa información?
+
+24. ¿Todos los trabajadores reciben aguinaldo? ¿Cómo se calcula y cuándo se paga?
+
+25. ¿Todos tienen derecho a vacaciones y prima vacacional? ¿Cómo se solicitan, autorizan y registran?
+
+26. ¿La empresa ofrece alguna otra prestación, como bonos, apoyo de transporte, comida o algún beneficio adicional?
+
+27. ¿Qué sucede con las prestaciones cuando un trabajador ingresa o deja de trabajar a mitad del año?
+
+28. ¿Quién se encarga de calcular y revisar las prestaciones de cada trabajador?
+
+29. ¿Qué sucede cuando un trabajador falta? ¿Se le descuenta el día completo o depende de la situación?
+
+30. ¿Cómo justifican actualmente las faltas? ¿Quién puede autorizarlas?
+
+31. ¿Cómo solicita un trabajador sus vacaciones y quién las autoriza?
+
+32. ¿Cómo se registra una incapacidad médica cuando un trabajador no puede presentarse a laborar?
+
+33. ¿Qué sucede cuando un trabajador renuncia o la empresa decide terminar la relación laboral?
+
+34. ¿Quién calcula el finiquito o la liquidación cuando un trabajador deja la empresa?
+
+35. ¿Qué información y documentos necesitan conservar cuando un trabajador es dado de baja?
+36. ¿La empresa realiza préstamos o anticipos de sueldo a los trabajadores?
+
+37. Si existen, ¿cómo se registran y cómo se acuerdan los descuentos para devolverlos?
+
+38. Además de las faltas, ¿se realizan otros descuentos al sueldo? Por ejemplo, anticipos, pensiones alimenticias u otros conceptos autorizados.
+
+39. ¿Se pagan bonos, comisiones o incentivos por productividad, asistencia o trabajo en determinadas obras?
+
+40. ¿Cómo se manejan los sueldos pendientes, anticipos o ajustes cuando se prepara la nómina?
+
+
+Después de responder las preguntas necesito estos datos para poder ajustarlos al sistema y se les facilite todo asi el sistema ya saben lo que hacen y se pueda generar casi todo en automatico.
+
+NO ES NECESARIO LA INFORMACION DE TODOS LOS TRABAJADORES SINO UNO DE CADA AREA, TIPO UNO DE MAQUINARIA CON SUELDO MIXTO Y OTRO PURO EFECTIVO, UNO DE ALGUN CHALAN, DE UN INGENIERO, UN MECANICO ETC 
+
+Listado de trabajadores con nombre, puesto, fecha de ingreso y estado laboral.
+Sueldo acordado de cada trabajador y periodicidad de pago.
+Desglose de cómo se paga actualmente: transferencia bancaria y efectivo, cuando aplique.
+Información sobre quiénes están dados de alta en el IMSS.
+Políticas y registros de aguinaldo, vacaciones y prima vacacional.
+Horarios, días laborales y reglas para faltas, permisos y retardos.
+Bonos, descuentos y otros conceptos que realmente utilicen.
+Documentos laborales que necesiten conservar en el sistema.
+Procedimiento actual para dar de baja a un trabajador y calcular su finiquito.
+Nombres o puestos de las personas responsables de registrar, revisar y autorizar esta información.
+
+Si cuentan con un ejemplo de nómina reciente y un recibo de pago, también me servirían para entender cómo realizan el proceso actualmente. No es necesario que creen documentos nuevos; podemos partir de los registros que ya tengan.
+
