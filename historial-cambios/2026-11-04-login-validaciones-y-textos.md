@@ -16,6 +16,9 @@
   mensajes class-validator en español (email/tamaño/DoS 128). Se mantiene leniente
   en complejidad (sin `@Matches`: prioridad a longitud, todo carácter permitido),
   hallazgo: bloqueo de contraseñas comunes/HIBP son cosas de REGISTRO (futuro).
+- **Ajuste posterior (commit bc2d0393):** sin mínimo de longitud en el LOGIN — la
+  política de longitud/comunes/HIBP pertenece al registro/cambio de contraseña.
+  Login solo valida: obligatoria, texto, formato email y máx 128 (anti-DoS).
 - **`apps/web/src/providers/AuthProvider.tsx`:** si el backend devuelve errores de
   validación (`error.details`), ahora se MUSTRAN; antes cualquier error se
   sobreescribía con "Credenciales incorrectas", incluso el 400 de validación.
