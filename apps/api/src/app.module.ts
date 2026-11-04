@@ -15,7 +15,6 @@ import { ClientesModule } from './clientes/clientes.module';
 import { ReportesCampoModule } from './reportes-campo/reportes-campo.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
-import { IncidentesModule } from './incidentes/incidentes.module';
 import { ProyectosModule } from './proyectos/proyectos.module';
 import { TrabajadoresModule } from './trabajadores/trabajadores.module';
 import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
@@ -67,7 +66,6 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     ReportesCampoModule,
     InventarioModule,
     BitacoraModule,
-    IncidentesModule,
     ProyectosModule,
     TrabajadoresModule,
     BitacorasRentaModule,
