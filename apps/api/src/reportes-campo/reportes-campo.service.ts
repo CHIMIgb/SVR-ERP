@@ -19,17 +19,20 @@ import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
+import { AsignarReporteDto } from './dto/asignar-reporte.dto';
 
 const REPORTE_INCLUDE = {
   maquinas: { select: { id: true, codigo: true, nombre: true } },
   obras: { select: { id: true, nombre: true } },
   clientes: { select: { id: true, nombre: true } },
   proyectos: { select: { id: true, nombre: true } },
+  asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
 
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
 const TIPO_LABELS: Record<TipoReporteCampo, string> = {
+  [TipoReporteCampo.ADMINISTRATIVO]: 'Administrativo',
   [TipoReporteCampo.MECANICO]: 'Mecanico',
   [TipoReporteCampo.OPERADOR]: 'Operador',
   [TipoReporteCampo.PIPERO]: 'Pipero',
@@ -269,6 +272,107 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
+  //  ASIGNAR RESPONSABLE (quién lo debe resolver)
+  // ────────────────────────────────────────────
+  /**
+   * Define "quién le cae" al reporte: un trabajador activo (FK) y/o un nombre
+   * libre. Con ambos vacíos se limpia la asignación. Audita REPORTE_ASIGNADO
+   * como FALLIDO con error_code antes de lanzar en cada fallo.
+   */
+  async asignar(id: string, dto: AsignarReporteDto, userId: string) {
+    const asignadoA = dto.asignadoA?.trim() || null;
+    const asignadoNombre = dto.asignadoNombre?.trim() || null;
+
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if (!asignadoA && !asignadoNombre) {
+      // Ambos vacíos: se considera LIMPIEZA de asignación (permitido con datos).
+      if (dto.asignadoA === undefined && dto.asignadoNombre === undefined) {
+        return this.fallir(
+          AuditAction.REPORTE_ASIGNADO,
+          id,
+          'ASIGNACION_VACIA',
+          BadRequestException,
+          'Envía asignadoA (trabajador), asignadoNombre, o ambos',
+        );
+      }
+    }
+
+    // Validar el trabajador referenciado (activo, no eliminado) — borde real.
+    if (asignadoA) {
+      const trabajador = await this.prisma.trabajadores.findFirst({
+        where: { id: asignadoA, activo: true, eliminado_en: null },
+        select: { id: true, nombre: true },
+      });
+      if (!trabajador) {
+        return this.fallir(
+          AuditAction.REPORTE_ASIGNADO,
+          id,
+          'TRABAJADOR_NO_ENCONTRADO',
+          BadRequestException,
+          `Trabajador con id "${asignadoA}" no encontrado o inactivo`,
+        );
+      }
+    }
+
+    const saliendoEstadoTerminal =
+      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.RESUELTO ||
+      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.FACTURADO;
+    if (saliendoEstadoTerminal) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_TERMINAL',
+        BadRequestException,
+        `No se puede reasignar un reporte ${ESTADO_LABELS[(existente.estado as EstadoReporteCampo)]}`,
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.update({
+      where: { id },
+      data: {
+        asignado_a_id: asignadoA,
+        asignado_nombre: asignadoNombre,
+        asignado_en: new Date(),
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      },
+      include: REPORTE_INCLUDE,
+    });
+
+    const serialized = this.serialize(reporte);
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_ASIGNADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        asignadoAId: asignadoA,
+        asignadoNombre,
+        estado: ESTADO_LABELS[existente.estado as EstadoReporteCampo],
+      },
+    });
+
+    return serialized;
+  }
+
+  // ────────────────────────────────────────────
   //  CAMBIAR ESTADO (flujo de seguimiento)
   // ────────────────────────────────────────────
   async cambiarEstado(id: string, dto: CambiarEstadoDto, userId: string) {
@@ -304,6 +408,7 @@ export class ReportesCampoService {
       where: { id },
       data: {
         estado: dto.estado,
+        ...(dto.estado === EstadoReporteCampo.RESUELTO && { resuelto_en: new Date() }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -321,7 +426,12 @@ export class ReportesCampoService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: { estado: ESTADO_LABELS[estadoActual] },
-      newValue: { estado: ESTADO_LABELS[dto.estado] },
+      newValue: {
+        estado: ESTADO_LABELS[dto.estado],
+        ...(dto.estado === EstadoReporteCampo.RESUELTO && {
+          resueltoPor: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? 'Sin asignar',
+        }),
+      },
     });
 
     return serialized;
@@ -517,7 +627,7 @@ export class ReportesCampoService {
   async findStats() {
     const baseWhere = { eliminado_en: null };
 
-    const [pendientes, enRevision, atendidos, resueltos, criticosActivos] =
+    const [pendientes, enRevision, atendidos, resueltos, criticosActivos, porAreaRaw] =
       await Promise.all([
         this.prisma.reportes_campo.count({
           where: { ...baseWhere, estado: EstadoReporteCampo.PENDIENTE },
@@ -539,9 +649,21 @@ export class ReportesCampoService {
             estado: { not: EstadoReporteCampo.RESUELTO },
           },
         }),
+        // Desglose por área (tipo de reporte): alimenta los chips de filtro.
+        this.prisma.reportes_campo.groupBy({
+          by: ['tipo'],
+          where: baseWhere,
+          _count: true,
+        }),
       ]);
 
-    return { pendientes, enRevision, atendidos, resueltos, criticosActivos };
+    const porArea: Record<string, number> = {};
+    for (const agregado of porAreaRaw) {
+      const label = TIPO_LABELS[agregado.tipo as TipoReporteCampo] ?? agregado.tipo;
+      porArea[label] = agregado._count;
+    }
+
+    return { pendientes, enRevision, atendidos, resueltos, criticosActivos, porArea };
   }
 
   // ────────────────────────────────────────────
@@ -642,6 +764,11 @@ export class ReportesCampoService {
         reporte.prioridad != null
           ? PRIORIDAD_LABELS[reporte.prioridad as Prioridad]
           : null,
+      asignadoAId: reporte.asignado_a?.id ?? null,
+      asignadoANombre: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? null,
+      asignadoAPuesto: reporte.asignado_a?.puesto ?? null,
+      asignadoEn: reporte.asignado_en?.toISOString?.() ?? reporte.asignado_en ?? null,
+      resueltoEn: reporte.resuelto_en?.toISOString?.() ?? reporte.resuelto_en ?? null,
       detalles: reporte.detalles,
       activo: reporte.activo,
       creadoEn: reporte.creado_en?.toISOString?.() ?? reporte.creado_en,

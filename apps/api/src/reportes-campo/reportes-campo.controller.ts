@@ -19,6 +19,7 @@ import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
+import { AsignarReporteDto } from './dto/asignar-reporte.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -75,6 +76,22 @@ export class ReportesCampoController {
   ) {
     const user = req.user as { id: string };
     return this.service.create(dto, user.id);
+  }
+
+  /**
+   * PATCH /api/reportes-campo/:id/asignar
+   * Define "quién le cae" (responsable) — trabajador o nombre libre.
+   * Permiso: operaciones.reportes_campo.editar
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'editar')
+  @Patch(':id/asignar')
+  async asignar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AsignarReporteDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.service.asignar(id, dto, user.id);
   }
 
   /**

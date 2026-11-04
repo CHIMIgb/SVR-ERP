@@ -49,6 +49,10 @@ describe('ReportesCampoService', () => {
         create: jest.fn().mockResolvedValue(mockReporte),
         update: jest.fn().mockResolvedValue(mockReporte),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        groupBy: jest.fn().mockResolvedValue([{ tipo: 'MECANICO', _count: 1 }]),
+      },
+      trabajadores: {
+        findFirst: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez' }),
       },
       maquinas: {
         findFirst: jest.fn().mockResolvedValue({ id: mockReporte.maquina_id }),
@@ -256,7 +260,9 @@ describe('ReportesCampoService', () => {
           entityId: mockReporte.id,
           result: AuditResult.SUCCESS,
           previousValue: { estado: expect.any(String) },
-          newValue: { estado: hacia === EstadoReporteCampo.RESUELTO ? 'Resuelto' : expect.any(String) },
+          newValue: expect.objectContaining({
+            estado: hacia === EstadoReporteCampo.RESUELTO ? 'Resuelto' : expect.any(String),
+          }),
         }),
       );
     });
@@ -338,6 +344,7 @@ describe('ReportesCampoService', () => {
         atendidos: 2,
         resueltos: 4,
         criticosActivos: 2,
+        porArea: { Mecanico: 1 },
       });
     });
   });
@@ -432,6 +439,124 @@ describe('ReportesCampoService', () => {
         expect.objectContaining({ errorCode: 'REPORTE_YA_FACTURADO' }),
       );
       expect(prisma.cuentas_por_cobrar.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('asignar — "quién le cae" (quién lo debe resolver)', () => {
+    it('asigna a un trabajador activo, fija asignado_en y audita EXITO', async () => {
+      // act
+      const res = await service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1');
+
+      // assert
+      expect(res).toBeTruthy();
+      expect(prisma.reportes_campo.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ asignado_a_id: 't-1' }),
+        }),
+      );
+      const data = prisma.reportes_campo.update.mock.calls[0][0].data;
+      expect(data.asignado_en).toBeInstanceOf(Date);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ASIGNADO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('acepta nombre libre cuando no hay trabajador del sistema', async () => {
+      // act
+      const res = await service.asignar('reporte-1', { asignadoNombre: 'Panchito el externo' }, 'user-1');
+
+      // assert
+      expect(res).toBeTruthy();
+      expect(prisma.reportes_campo.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ asignado_nombre: 'Panchito el externo' }),
+        }),
+      );
+    });
+
+    it('falla con ASIGNACION_VACIA (audita FAIL+errorCode antes de lanzar)', async () => {
+      // arrange / act / assert
+      await expect(service.asignar('reporte-1', {}, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ASIGNACION_VACIA' }),
+      );
+      expect(prisma.reportes_campo.update).not.toHaveBeenCalled();
+    });
+
+    it('falla con TRABAJADOR_NO_ENCONTRADO si el FK no existe/inactivo', async () => {
+      // arrange
+      prisma.trabajadores.findFirst.mockResolvedValue(null);
+
+      // act / assert
+      await expect(service.asignar('reporte-1', { asignadoA: 'no-existe' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'TRABAJADOR_NO_ENCONTRADO' }),
+      );
+    });
+
+    it('falla con REPORTE_NO_ENCONTRADO si no existe', async () => {
+      // arrange
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+
+      // act / assert
+      await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'REPORTE_NO_ENCONTRADO' }),
+      );
+    });
+
+    it('no reasigna un reporte terminal (RESUELTO): REPORTE_TERMINAL', async () => {
+      // arrange
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: EstadoReporteCampo.RESUELTO });
+
+      // act / assert
+      await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'REPORTE_TERMINAL' }),
+      );
+    });
+  });
+
+  describe('cambiarEstado → RESUELTO marca resuelto_en', () => {
+    it('setea resuelto_en cuando la transicion llega a RESUELTO', async () => {
+      // arrange
+      const atendido = { ...mockReporte, estado: EstadoReporteCampo.ATENDIDO };
+      prisma.reportes_campo.findFirst.mockResolvedValue(atendido);
+      prisma.reportes_campo.update.mockResolvedValue(atendido);
+
+      // act
+      await service.cambiarEstado('reporte-1', { estado: EstadoReporteCampo.RESUELTO }, 'user-1');
+
+      // assert
+      const data = prisma.reportes_campo.update.mock.calls[0][0].data;
+      expect(data.resuelto_en).toBeInstanceOf(Date);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('NO setea resuelto_en en transiciones que no son RESUELTO', async () => {
+      // arrange
+      const pendiente = { ...mockReporte, estado: EstadoReporteCampo.PENDIENTE };
+      prisma.reportes_campo.findFirst.mockResolvedValue(pendiente);
+      prisma.reportes_campo.update.mockResolvedValue(pendiente);
+
+      // act
+      await service.cambiarEstado('reporte-1', { estado: EstadoReporteCampo.VISTO }, 'user-1');
+
+      // assert
+      const data = prisma.reportes_campo.update.mock.calls[0][0].data;
+      expect('resuelto_en' in data).toBe(false);
+    });
+  });
+
+  describe('findStats — desglose por área', () => {
+    it('devuelve porArea con labels legibles', async () => {
+      // act
+      const stats = await service.findStats();
+
+      // assert
+      expect(stats.porArea).toEqual({ Mecanico: 1 });
     });
   });
 });
