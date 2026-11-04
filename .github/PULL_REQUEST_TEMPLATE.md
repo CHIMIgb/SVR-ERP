@@ -6,10 +6,13 @@ realmente aplica al cambio; borra las secciones que no corresponden.
 ## Resumen
 
 **Qué cambia:**
-<!-- 2–3 líneas describiendo el cambio. Si el título del PR ya lo dice claramente, acá pondes el "por qué". -->
+<!-- 2–3 líneas describiendo el cambio. Si el título del PR ya lo dice claramente, acá va el "por qué". -->
 
 **Issue relacionado:** Closes #
 <!-- Obligatorio si el PR atiende un issue. Usa `Closes #NNN` para cierre automático. -->
+
+**Documentación impactada:**
+<!-- Marca y actualiza si corresponde: `AGENTS.md`, `DECISIONS.md`, `RBAC.md`, `COMPONENTS.md`, `workflow/*.md`, `IMPLEMENTACIONES-A-FUTURO.md` -->
 
 ## Tipo de cambio
 
@@ -17,47 +20,42 @@ realmente aplica al cambio; borra las secciones que no corresponden.
 - [ ] Feature
 - [ ] Refactor
 - [ ] Documentación
-- [ ] Tests / CI
+- [ ] Tests
 - [ ] Migración / data migration
 
 ## Checklist general
 
-- [ ] Base branch del PR es `main` (branch por defecto del repo).
-- [ ] Título refleja el contenido real (no scope creep).
-- [ ] El PR no incluye `node_modules/`, `.expo/`, `dist/`, `web-build/`, `*.tsbuildinfo`, `.env`, ni nada generado.
+- [ ] La base del PR es `main` (branch por defecto del repo).
+- [ ] Título refleja el contenido real (no scope creep), en español, estilo del repo: `fix(api): ... (contexto/fase/incidente)`.
+- [ ] El diff NO incluye `node_modules/`, `dist/`, `.next/`, `*.tsbuildinfo`, `.env`, migraciones de BD de datos, ni archivos generados.
 - [ ] No hay credenciales, tokens, passwords, API keys ni datos reales en el diff.
+- [ ] Dependencias: no se agregaron paquetes nuevos, o se justificó en el Resumen y se instalaron dentro del paquete correspondiente (`apps/web` o `apps/api`).
 
-## Dependencias (solo si aplica)
+## Frontend (`apps/web`)
 
-- [ ] Los paquetes de Expo se instalaron con `npx expo install <paquete>` (nunca `npm install <paquete>`) para respetar las versiones del SDK.
-- [ ] Si cambia el SDK de Expo o se agregan dependencias nativas: se verificó compatibilidad con Expo Go (ver gotcha en `AGENTS.md` — no bajar el SDK del proyecto).
+- [ ] Responsive en los break puntos de Tailwind (móvil → desktop): tablas con scroll horizontal, modales que caben en pantallas pequeñas, formularios apilados.
+- [ ] Re-usa componentes de `@/components/ui/*` (nada re-implementado).
+- [ ] Sin CSS inline (`style={{}}`) fuera de posición/z-index/dimensiones calculadas en runtime.
+- [ ] Componente nuevo documentado en `COMPONENTS.md` (props, uso, cuándo usar / no usar).
+- [ ] Sin `.map()` con `key` duplicada.
+- [ ] Moneda con el `formatCurrency` compartido (no `new Intl.NumberFormat` duplicado).
+
+## Backend (`apps/api`)
+
+- [ ] El endpoint cumple los **4 requisitos de seguridad/auditoría** (`audit-service-guide.md`): JWT → blacklist → auditoría `SUCCESS` → auditoría `FAIL` con `error_code` en mutaciones antes de lanzar.
+- [ ] Vista CRUD nueva: tomada de la plantilla `/inventario` y acciones por RBAC (`useAuth().user.vistas`).
+- [ ] Permisos/vistas registradas si abriste recurso nuevo (ver `RBAC.md`).
 
 ## Tests y validación
 
-- [ ] Typecheck verde localmente: `npx tsc --noEmit` dentro de `apps/mobile/`.
-- [ ] `npx expo-doctor` sin issues.
-- [ ] Si cambia el schema de Prisma (backend): `npx prisma validate` pasa y la migración se genera con `npx prisma migrate dev`.
-- [ ] Tests nuevos cubren **al menos** el camino crítico + un error path (400/403/404/409 según aplique), no solo happy-path.
+- [ ] `npx tsc --noEmit` verde en `apps/web`.
+- [ ] `npm run test` verde en `apps/api` (unitarios). Tests nuevos cubren el camino crítico **y** al menos un error path (400/403/404/409 según aplique), no solo happy-path.
+- [ ] Si el cambio toca `registro_auditoria`: `npm run test:integration` verde (Prisma real, sin mocks de auditoría).
+- [ ] Guard nuevo/existente: probado en camino válido e inválido.
 
-## Migraciones (solo si aplica)
+## Base de datos (solo si aplica)
 
-- [ ] La migración se genera con `npx prisma migrate dev` (nunca editar SQL ya aplicado).
-- [ ] Si hay data migration, preserva datos existentes sin pérdida.
-- [ ] Si agrega columnas NOT NULL a tablas con datos, usa default o nullable + data migration + segunda migración para el NOT NULL.
-
-## Contrato con frontend (si aplica)
-
-- [ ] Endpoints respetan el envelope `{success, data, error}` del **Contrato universal API ↔ Frontend** en `AGENTS.md`.
-- [ ] Errores devuelven `error: {code, message, details?}` — no string suelto.
-- [ ] Si cambia el contrato, se actualiza la sección correspondiente en `AGENTS.md`.
-
-## Docs impactadas
-
-- [ ] Si el cambio afecta arquitectura, permisos, flujos o integridad: actualicé la doc correspondiente (`README.md` y/o `AGENTS.md`).
-- [ ] Si cambia flujo de ramas, scripts, workers o CI: `AGENTS.md` actualizado.
-
-## Notas adicionales
-
-<!-- Cualquier consideración que el reviewer necesite: decisiones técnicas,
-trade-offs, deudas declaradas, pasos manuales post-merge, dependencias
-con PRs de frontend, etc. -->
+- [ ] Migración generada con `npx prisma migrate dev --name <nombre>` (dentro de `apps/api/`); `npx prisma validate` pasa.
+- [ ] `npx prisma generate` ejecutado y el cliente regenerado commitea `package-lock.json` si correspondió.
+- [ ] La migración NO asume PostGIS (instalación local no lo tiene en todos los equipos).
+- [ ] Seed data va en migraciones `seed_*` idempotentes (`ON CONFLICT DO NOTHING` / `IF NOT EXISTS`).
