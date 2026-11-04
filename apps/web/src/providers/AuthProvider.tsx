@@ -97,6 +97,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const success = handleAuthResponse(response);
 
         if (!success) {
+          // Si el servidor devolvio errores de validacion (message = 'Error de
+          // validacion'), mostrar los detalles reales, no genericos.
+          const detalles = response.success ? undefined : response.error.details;
+          if (Array.isArray(detalles) && detalles.length) {
+            const message = detalles.map(String).join(' ');
+            setError(message);
+            return { success: false, message };
+          }
+
           const backendMessage = response.success
             ? undefined
             : response.error.message;
