@@ -165,6 +165,17 @@ Módulo de referencia vivo: `apps/api/src/criba/` (service + controller + specs)
 - `src/components/ui/*` + `src/components/layout|workers|machinery|projects/*` — reutilizar SIEMPRE; doc en `COMPONENTS.md`.
 - `src/lib/mock-data/*` — datos de demo remanentes (maquinaria, operaciones, proyectos, trabajadores); muchas vistas aún no cosidas al backend — al migrar una vista, reemplazar mock por `xxxApi`.
 
+## Plan de implementación antes de cualquier código (regla dura)
+
+**Nunca se crea ni modifica código sin autorización previa del usuario.**
+
+Para cada cosa nueva o cambio:
+1. Presentar un **plan de implementación primero** (qué archivos se tocarán, qué se hará en cada uno, impacto en callers/existentes, riesgos).
+2. Esperar el "sí autorizado" del usuario.
+3. Solo entonces escribir código, siguiendo el plan acordado.
+
+Esto aplica a todo: features nuevas, fixes, refactors, migraciones y cambios de docs que toquen código. Comentar/leer/diagnosticar sí está permitido sin plan; escribir código NO.
+
 ## Estándares obligatorios (checklist mental de cada PR)
 
 **Endpoint (los 4, sin excepciones):**
