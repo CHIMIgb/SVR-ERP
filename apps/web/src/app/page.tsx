@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isInitialized, isLoading, error, clearError } = useAuth();
-  const [email, setEmail] = useState("admin@svr-constructora.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -98,7 +98,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   autoComplete="email"
-                  placeholder="admin@svr-constructora.com"
+                  placeholder="tu-correo@ejemplo.com"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
