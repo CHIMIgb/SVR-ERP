@@ -13,8 +13,8 @@
      del usuario quedan solo informativos (div, no botón).
    - Se quitaron estado/ref/click-fuera/logout del Topbar (el logout vive solo en el sidebar).
 3. **Botón "Cerrar Sesión" del sidebar más agarrable:**
-   - Ahora es botón completo: borde rojo + fondo rojo suave + hover que se llena de
-     rojo con texto blanco + `active:scale` al presionar (antes era texto flaco sin fondo).
+   - Ahora es botón rojo sólido completo (borde + fondo red-500, texto blanco)
+     SIEMPRE, no solo al hover; hover aclara a red-400 y `active:scale` al presionar.
    - Al cerrar sesión redirige al login (`window.location.href = "/"`) — antes se
      quedaba en la vista abierta sin usuario.
 
