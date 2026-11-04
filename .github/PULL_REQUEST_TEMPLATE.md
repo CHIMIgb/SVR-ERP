@@ -12,7 +12,7 @@ realmente aplica al cambio; borra las secciones que no corresponden.
 <!-- Obligatorio si el PR atiende un issue. Usa `Closes #NNN` para cierre automático. -->
 
 **Documentación impactada:**
-<!-- Marca y actualiza si corresponde: `AGENTS.md`, `DECISIONS.md`, `RBAC.md`, `COMPONENTS.md`, `workflow/*.md`, `IMPLEMENTACIONES-A-FUTURO.md` -->
+<!-- Marca y actualiza si corresponde: `AGENTS.md`, `DECISIONS.md`, `RBAC.md`, `COMPONENTS.md`, `workflow/*.md`, `docs-planes/IMPLEMENTACIONES-A-FUTURO.md` -->
 
 ## Tipo de cambio
 
