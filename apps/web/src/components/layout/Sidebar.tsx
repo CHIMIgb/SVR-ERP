@@ -88,7 +88,7 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/combustible": { group: "Maquinaria" },
   "/gps": { group: "Maquinaria", live: true },
   "/operaciones": { group: "Operaciones" },
-  "/reportes-operaciones": { group: "Operaciones", badge: "NUEVO" },
+  "/reportes": { group: "Operaciones" },
   "/criba": { group: "Operaciones" },
   "/inventario": { group: "Operaciones" },
   "/proyectos": { group: "Operaciones" },
@@ -101,7 +101,6 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/ventas/corte": { group: "Comercial" },
   "/cobranza": { group: "Comercial", badge: "NUEVO" },
   "/documentos": { group: "Sistema", warn: "2" },
-  "/reportes": { group: "Sistema" },
   "/configuracion": { group: "Sistema" },
 };
 
