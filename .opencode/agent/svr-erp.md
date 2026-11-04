@@ -171,7 +171,7 @@ Módulo de referencia vivo: `apps/api/src/criba/` (service + controller + specs)
 1. Token JWT (`JwtAuthGuard`) → 2. blacklist del token (automática por `JwtStrategy`) → 3. `AuditService.log` con `SUCCESS` en éxito → 4. en mutaciones, audit FAIL + `error_code` ANTES de lanzar (patrón `fallir()`).
 Un PR que incumpla cualquiera = Request Changes.
 
-**Vista CRUD nueva (toma `/inventario` como plantilla):** PageHeader, StatsCards según dominio, SearchBar + botón Filtros + chips activos + panel, DataTable con acciones por RBAC (`useAuth().user.vistas`), Pagination (server-side cuando hay API), FormModal con validaciones. Responsive SIEMPRE (regla #1 del repo): tablas con scroll horizontal, modales que caben en móvil, formularios apilados.
+**Vista CRUD nueva (regla dura: SIEMPRE toma `/inventario` como plantilla base, nunca desde cero):** PageHeader, StatsCards según dominio, SearchBar + botón Filtros + chips activos + panel, DataTable con acciones por RBAC (`useAuth().user.vistas`), Pagination (server-side cuando hay API), FormModal con validaciones. Responsive SIEMPRE (regla #1 del repo): tablas con scroll horizontal, modales que caben en móvil, formularios apilados.
 
 **Estilos:** Prohibido `style={{}}` (solo posición/z-index/dimensiones calculadas en runtime). Componentes UI en `src/components/ui/` con patrón `Componente.tsx` + `Componente.styles.ts` + `index.ts`; solo tokens/keyframes/utilitarias globales en `globals.css`; nada de estilos de componente específico ahí. Iconos lucide-react por import individual (no barrel). `scrollbar-none` (nunca inventar variantes). Documentar componente nuevo/añadido en `COMPONENTS.md`. Antes de un `.map()` con JSX: cero keys duplicadas.
 
