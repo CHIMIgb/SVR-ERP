@@ -12,6 +12,9 @@
   Tailwind; el Tooltip sigue mostrando el texto completo). Los botones de
   acción dejaron de ser solo os iconos: icono + texto ("Asignar"/"Reasignar",
   "Marcar X", "Facturar", "Editar", "Eliminar").
+- **Ajuste posterior (bc7aad15):** columnas más anchas — Descripción 420px
+  (texto hasta ~448px útiles) y Acciones 440px con los botones SIEMPRE en
+  una sola fila (se quitó el wrap).
 - Columnas: **Fecha/Hora · Área** (icono+color del tipo) **· Reporta** (usuario,
   cliente debajo) **· Obra/Máq. · Prioridad · Estado** (Badges) **· Responsable**
   (quién le cae; si ya está resuelto, muestra en verde quién resolvió con Tooltip
