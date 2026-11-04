@@ -720,7 +720,7 @@ export default function ReportesOperacionesPage() {
       render: (report) => (
         <div className="max-w-xs">
           <Tooltip placement="top" content={report.descripcion} maxWidth={320}>
-            <span className="block truncate font-medium text-slate-600">
+            <span className="line-clamp-2 font-medium text-slate-600">
               &ldquo;{report.descripcion}&rdquo;
             </span>
           </Tooltip>
@@ -752,35 +752,39 @@ export default function ReportesOperacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      minWidth: '190px',
+      minWidth: '300px',
       render: (report) => {
         const accion = etiquetaAccion(report);
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-1.5 flex-wrap">
             {puedeEditar && report.estado !== 'Resuelto' && report.estado !== 'Facturado' && (
-              <Tooltip content={report.asignadoANombre ? 'Reasignar' : 'Asignar responsable'}>
+              <Tooltip content={report.asignadoANombre ? 'Cambiar responsable' : 'Asignar responsable'}>
                 <Button
                   variant="secondary"
                   size="sm"
                   aria-label="Asignar responsable"
                   icon={<UserCheck className="w-3.5 h-3.5" />}
                   onClick={() => openAsignar(report)}
-                />
+                >
+                  {report.asignadoANombre ? 'Reasignar' : 'Asignar'}
+                </Button>
               </Tooltip>
             )}
             {accion && puedeEditar && (
-              <Tooltip content={accion}>
+              <Tooltip content={`Avanza a "${accion.replace('Marcar ', '')}"`}>
                 <Button
                   variant="success"
                   size="sm"
                   aria-label={accion}
                   icon={<Check className="w-3.5 h-3.5" />}
                   onClick={() => handleAvanzar(report)}
-                />
+                >
+                  {accion}
+                </Button>
               </Tooltip>
             )}
             {puedeEditar && report.estado === 'Resuelto' && report.cliente && report.montoServicio != null && (
-              <Tooltip content="Facturar (nace CxC)">
+              <Tooltip content="Facturar (nace la CxC)">
                 <Button
                   variant="primary"
                   size="sm"
@@ -790,29 +794,35 @@ export default function ReportesOperacionesPage() {
                     setFacturarItem(report);
                     setFacturarOpen(true);
                   }}
-                />
+                >
+                  Facturar
+                </Button>
               </Tooltip>
             )}
             {puedeEditar && report.estado === 'Pendiente' && (
-              <Tooltip content="Editar">
+              <Tooltip content="Editar el reporte">
                 <Button
                   variant="warning"
                   size="sm"
                   aria-label="Editar"
                   icon={<Pencil className="w-3.5 h-3.5" />}
                   onClick={() => openEdit(report)}
-                />
+                >
+                  Editar
+                </Button>
               </Tooltip>
             )}
             {puedeEliminar && (
-              <Tooltip content="Eliminar">
+              <Tooltip content="Eliminar reporte">
                 <Button
                   variant="danger"
                   size="sm"
                   aria-label="Eliminar"
                   icon={<Trash2 className="w-3.5 h-3.5" />}
                   onClick={() => openDelete(report)}
-                />
+                >
+                  Eliminar
+                </Button>
               </Tooltip>
             )}
           </div>
