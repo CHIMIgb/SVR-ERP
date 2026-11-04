@@ -39,6 +39,15 @@
 - **Pendiente:** actualizar el doc para que refleje la realidad; falta además confirmar
   en el navegador si `clientes/`, `finanzas/` y `cotizaciones/` están ya cosidas a la API.
 
+## 6. ⚠️ IP real / `trust proxy` no configurado (flag para despliegue)
+
+- **Hallazgo (2026-11-04):** el backend obtiene la IP con `req.ip || req.socket.remoteAddress`
+  (`auth.controller.ts`, `audit-context.interceptor.ts`) pero `main.ts` **NO configura
+  `trust proxy`** y no hay manejo de `X-Forwarded-For` en ningún lado (grep: cero resultados).
+- **Hoy funciona bien** porque el acceso es directo a la API (local/LAN) — `req.ip` es la IP real del cliente y el bloqueo por IP (`usuarios_bloqueados` / `intentos_login`) castiga a quien debe.
+- **Riesgo si se despliega detrás de nginx/Cloudflare:** todos los clientes aparecerán con la IP del proxy → el rate limiting (login 5/15min) y el bloqueo por IP castigarían a todos por igual.
+- **Corrección cuando toque:** `app.set('trust proxy', 1)` en `main.ts` + validar que `req.ip` refleje el `X-Forwarded-For` correcto (configurar solo el número de saltos/hops confiables del despliegue).
+
 ---
 
 ### No son pendientes (descartados en la revisión)
