@@ -19,7 +19,7 @@ export default function LoginPage() {
     }
   }, [isInitialized, isAuthenticated, router]);
 
-  // Validación en el cliente (español); el servidor repite lavalidación en LoginDto
+  // Validación en el cliente (español); el servidor repite la suya en LoginDto
   const validate = (): { email?: string; password?: string } => {
     const errors: { email?: string; password?: string } = {};
     const emailTrim = email.trim();
@@ -30,8 +30,6 @@ export default function LoginPage() {
     }
     if (!password) {
       errors.password = "La contraseña es obligatoria";
-    } else if (password.length < 8) {
-      errors.password = "La contraseña debe tener al menos 8 caracteres";
     }
     return errors;
   };

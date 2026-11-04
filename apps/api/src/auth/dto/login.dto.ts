@@ -1,11 +1,12 @@
-import { IsEmail, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsEmail, IsString, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @IsEmail({}, { message: 'El correo no es válido' })
   email!: string;
 
+  // Sin mínimo de longitud en login: la política larga (min N, comunes, HIBP)
+  // pertenece al registro/cambio de contraseña. Aquí solo anti-DoS (max 128).
   @IsString({ message: 'La contraseña debe ser texto' })
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
   @MaxLength(128, { message: 'La contraseña no puede exceder 128 caracteres' })
   password!: string;
 }
