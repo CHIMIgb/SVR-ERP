@@ -1,0 +1,181 @@
+SVR-ERP - DUDAS DE RESPONSIVIDAD POR VISTA
+
+Preguntas sobre dónde se usa cada pantalla (computadora, celular o ambos) y qué tan cómoda se lee y opera en cada tamaño de pantalla.
+Al responder, anota: SÍ / NO / se hace así.
+
+
+MÓDULO: OPERACIONES
+
+
+Operaciones
+(Registro diario de qué máquina trabajó, en qué obra y cuántas horas.)
+
+1. ¿Las horas se capturan desde el celular estando en la obra, o desde la computadora al volver a oficina?
+2. ¿La validación de las horas se hace desde el celular o desde la computadora de la oficina?
+3. Si hay captura en celular, ¿los campos serían grandes y pocos por registro (máquina, obra, horas) para usarse con prisa en campo?
+4. ¿El historial de una máquina se consulta desde el celular, o es solo de oficina?
+5. ¿Conviene una vista de bitácora por día en celular (una tarjeta por máquina) en lugar de la tabla larga?
+
+
+Reportes de campo
+(Reportes por tipo y prioridad. Es la vista más usada desde el campo.)
+
+6. ¿Los reportes se levantan sí o sí desde el celular en obra?
+7. ¿Se necesita subir fotos o evidencia desde el celular al reporte (foto del daño, del trabajo)?
+8. ¿El operador encuentra fáciles los botones de tipo y prioridad en pantalla chica, o debe ser un menú de opciones grandes?
+9. ¿La lista de "mis reportes abiertos" debería verse primero en el celular, sin buscar?
+10. ¿Se debe poder ver desde el celular el historial completo del reporte (seguimiento, quién lo resolvió, monto)?
+11. ¿El reporte se envía a una impresora de la obra, o se comparte por WhatsApp o correo como PDF?
+
+
+Criba
+(Producción diaria de la planta de cribado: material, metros cúbicos, operador y turno.)
+
+12. ¿El registro diario se hace desde el celular junto a la planta, o desde la computadora?
+13. ¿La captura de metros cúbicos en celular debe ser solo con números grandes y teclado numérico?
+14. ¿Conviene una captura rápida en celular (escoger turno, operador, material y m³) con el mínimo de pasos?
+15. ¿El reporte de producción lo revisa gerencia desde el celular, o solo en computadora?
+
+
+Inventario
+(Almacén de refacciones y materiales.)
+
+16. ¿El inventario físico (conteo en bodega) se hace con el celular en la mano o con una hoja impresa?
+17. ¿Se necesita un modo de celular para el conteo rápido (escoger artículo y anotar la cantidad contada)?
+18. ¿Las salidas de material para obra se registran desde el celular en la bodega o desde la oficina?
+19. ¿Consultar existencias y el precio de un material debe ser rápido en celular (por ejemplo, con lector de código de barras y la cámara)?
+20. ¿Las tablas del inventario se leen bien en celular, o se prefiere buscar por nombre y ver el artículo en ficha?
+
+
+Proyectos
+(Control de obras por cliente con presupuesto, avance y estado.)
+
+21. ¿El avance del proyecto lo actualiza alguien en oficina (laptop) o en campo (celular)?
+22. ¿El historial de avance debe poderse consultar desde el celular en la obra (porcentaje, presupuesto usado, fotos)?
+23. ¿Las gráficas del proyecto (presupuesto, avance y gasto) se ven bien en celular, o son solo de computadora?
+24. ¿En celular el resumen del proyecto (avance, presupuesto y días restantes) se debe mostrar en tarjetas antes que en gráficas?
+
+
+Incidentes
+(Registro de fallas, accidentes y retrasos con prioridad y seguimiento.)
+
+25. ¿Los incidentes críticos se reportan desde el celular con el mínimo de pasos (apretar un botón, describir, foto)?
+26. ¿El reporte de accidentes incluye fotos desde el celular como evidencia?
+27. ¿El botón de reporte de incidente debe estar a un toque de distancia en el celular (pantalla inicial) para usarse en una emergencia?
+28. ¿El formato de reporte en celular debe ser distinto (preguntas cortas, por pasos) al de computadora?
+
+
+MÓDULO: COMERCIAL
+
+
+Clientes
+(Agenda comercial con estado de cuenta consolidado.)
+
+1. ¿El vendedor consulta la ficha del cliente desde el celular cuando visita la obra?
+2. ¿Se necesita la ficha del cliente optimizada para celular (contacto, saldo, último cobro y cotizaciones a la vista)?
+3. ¿El alta de cliente se hace desde la oficina o también desde el celular?
+4. ¿Los números de contacto permiten marcar directo (llamar o WhatsApp) desde el celular?
+
+
+Cotizaciones
+(Presupuestos enviados a clientes.)
+
+5. ¿La cotización en PDF se debe poder compartir desde el celular (WhatsApp o correo) al cliente?
+6. ¿Quién crea la cotización: el vendedor en campo (celular) o en oficina (laptop)?
+7. ¿Los escritos largos (descripción del servicio y notas) se escriben en celular, o es solo en laptop?
+8. ¿El estado de las cotizaciones (pendiente, aceptada, rechazada) se consulta desde el celular?
+
+
+Finanzas
+(Registro central del dinero y conciliación bancaria.)
+
+9. ¿Quién usa Finanzas, solo en oficina con computadora? Suele ser una vista pesada de tablas.
+10. ¿En celular basta con ver el balance y lo del día, sin editar movimientos?
+11. ¿O también se registran gastos desde el celular?
+12. ¿Las tablas de movimientos se leen bien en pantalla chica, o se necesita una lista resumida por día?
+13. ¿La conciliación bancaria se hace en pantalla grande, o también en tablet o celular?
+
+
+Proveedores
+(Compras del negocio: proveedores, órdenes de compra, cuentas por pagar y pagos.)
+
+14. ¿La orden de compra se crea desde la oficina, o también desde el celular al llegar el material?
+15. ¿Al recibir la mercancía se verifica contra la orden desde el celular en la bodega?
+16. ¿Las tablas de órdenes y pagos se consultan en celular (estado de cuenta tipo chequera), o solo en computadora?
+17. ¿El pago a un proveedor puede autorizarse desde el celular, o es una acción que requiere la laptop?
+
+
+Ventas
+(Caja registradora para vender y cobrar materiales.)
+
+18. ¿La caja se opera en celular o tablet en el mostrador, o siempre en una computadora fija?
+19. Si hay caja en tablet, ¿los botones de cobrar y descuento deben ser grandes para táctil?
+20. ¿El ticket se imprime desde el mismo dispositivo de la caja (impresora térmica), o se envía por correo o WhatsApp?
+21. ¿Los materiales en la caja se buscan con teclado grande en celular, o por categorías en tarjetas?
+22. ¿Cuál es el tamaño mínimo de pantalla para usar la caja cómodamente?
+
+
+Cobranza
+(Cartera de crédito: cuánto nos deben, qué está vencido y cuánto se cobró.)
+
+23. ¿El encargado de cobranza revisa la cartera desde el celular (clientes morosos, próximos a vencer)?
+24. ¿Se necesita la cartera resumida para celular (cuánto vence hoy, cuánto esta semana, qué clientes son), en vez de cuatro tablas largas?
+25. ¿Es deseable registrar un cobro desde el celular durante la visita al cliente?
+26. ¿La reversión de cobro se hace solo desde la computadora?
+
+
+Corte del día
+(Cierre de caja del turno: compara lo vendido contra el efectivo contado.)
+
+27. ¿El corte se hace en el mismo dispositivo de la caja (tablet o celular), o en computadora?
+28. ¿El comparativo de efectivo debe ser una pantalla simple en celular (vendido, contado, diferencia y botón de confirmar)?
+29. ¿El ticket del corte se imprime en el mismo dispositivo?
+30. ¿Se puede consultar el corte anterior desde el celular antes de cerrar el turno?
+
+
+Facturas
+(Emite y administra facturas: pendiente, timbrada, pagada o cancelada.)
+
+31. ¿La emisión de facturas se hace solo en la oficina (equipo del contador), o también desde celular?
+32. ¿Las facturas en PDF se comparten con el cliente desde el celular?
+33. ¿El proceso de facturar (muchos campos, RFC y conceptos) se siente largo en celular? ¿Conviene que quede solo en laptop?
+34. ¿La aprobación o cancelación de una factura puede hacerse desde el celular por el responsable?
+
+
+Cierres de caja
+(Vista del administrador para aprobar o rechazar los cortes de caja.)
+
+35. ¿El administrador aprueba cierres desde el celular, o solo en oficina?
+36. ¿En celular, los cierres se ven como tarjetas por cajero y día (cajero, vendido, diferencia, aprobar o rechazar)?
+37. ¿El reporte de cierres del período se consulta en celular o en computadora?
+
+
+VISTAS Y MODOS NUEVOS QUE PODRÍAN FALTAR
+
+1. ¿Se agrega una pantalla de inicio en celular con accesos rápidos por rol?
+2. En campo, ¿los accesos rápidos serían "Nuevo reporte", "Mis reportes" y "Criba hoy"?
+3. En caja, ¿los accesos rápidos serían "Abrir ventas" y "Hacer corte"?
+4. En gerencia, ¿los accesos rápidos serían "Cartera" y "Cierres pendientes"?
+5. ¿Se agrega un modo de conteo de inventario en celular (elegir artículo, anotar conteo, totalizar)?
+6. ¿Se agrega en celular una vista para buscar al cliente y marcar directo (teléfono o WhatsApp) desde su ficha?
+7. ¿Se agrega la captura con foto para subir imágenes y evidencia desde el celular en reportes de campo e incidentes?
+8. ¿Se agrega compartir la cotización o la factura en PDF por WhatsApp o correo desde el celular, sin volver a la oficina?
+9. ¿Se agrega un tablero ligero para celular con los tres o cuatro datos más importantes del día de cada rol, en vez de abrir tablas enteras?
+10. ¿Se agrega un modo sin señal para capturar y guardar reportes o cobros en la obra sin internet, y sincronizarlos después?
+
+
+USO GENERAL DE DISPOSITIVOS
+(Aplica a todas las pantallas.)
+
+1. ¿Qué celulares usa la empresa (gama, tamaño, antigüedad) y cuántos hay disponibles para el personal de campo?
+2. ¿En la obra hay internet, se usa el 4G del celular, o a veces no hay señal?
+3. El menú lateral ya se despliega con un botón. ¿Es suficiente, o se prefiere un inicio con accesos rápidos?
+4. Hoy el buscador global solo aparece en computadora. ¿Se necesita también en celular?
+5. Hoy las tablas se deslizan de lado a lado. ¿Es cómodo, o se prefieren tarjetas?
+6. ¿El personal en campo lee bien la letra y toca bien los botones en celular?
+7. Los avisos de éxito y error en celular, ¿se ven completos o se cortan en pantallas chicas?
+8. ¿En el celular las pantallas tardan en cargar con la señal de obra?
+9. ¿Se imprime desde el mismo celular o tablet (ticket, reporte), o siempre en la impresora de la oficina?
+10. ¿Se comparte la documentación (cotización, factura, reporte) con el cliente por WhatsApp o correo desde el dispositivo?
+11. En una laptop normal se ve todo el tablero en una sola vista, sin deslizar. ¿Alguna pantalla se siente apretada o con mucho espacio en blanco?
+12. Al aprobar, cancelar o revertir desde el celular, ¿las confirmaciones son fáciles de leer y de tocar?

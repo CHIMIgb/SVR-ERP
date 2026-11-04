@@ -1,0 +1,321 @@
+SVR-ERP - DUDAS POR VISTA
+
+Preguntas sobre cómo debe comportarse cada pantalla del sistema.
+Al responder, anota: SÍ / NO / se hace así.
+
+
+MÓDULO: OPERACIONES
+
+
+Operaciones
+(Registro diario de qué máquina trabajó, en qué obra y cuántas horas.)
+
+1. ¿Quién captura las horas, el operador o un supervisor?
+2. ¿Debe existir alguien que valide las horas antes de aceptarlas?
+3. Si una máquina trabaja en dos obras el mismo día, ¿se registra una entrada por obra o una sola entrada con varias obras?
+4. ¿Las horas se cobran como renta al cliente o son solo control interno?
+5. Si las horas se cobran, ¿de dónde sale la tarifa?
+6. Cuando la máquina se detiene a mitad del turno, ¿se registran esas horas perdidas?
+7. ¿Se necesita dejar nota de quién operó cada máquina cada día?
+8. ¿Se necesita exportar la bitácora semanal o mensual en Excel, o un reporte en PDF por obra o por máquina?
+
+
+Reportes de campo
+(Reportes por tipo y prioridad. Al resuelto y facturable se le genera la cuenta por cobrar del cliente.)
+
+9. ¿La obra debe ser opcional? Hoy es obligatoria y hay reportes de taller, en tránsito o en instalaciones que no pertenecen a una obra.
+10. ¿Los tipos de reporte actuales son suficientes o falta alguno (material, seguridad, clima, caja)?
+11. ¿Quién debe poder levantar cada tipo de reporte, cualquiera o solo el rol que le corresponde?
+12. ¿La prioridad crítica debe escalarse automáticamente a gerencia o seguridad?
+13. ¿Todo reporte resuelto se factura, o hay casos que no se cobran (garantías, cortesías)?
+14. ¿Qué tipos de reporte son facturables y cuáles solo informativos?
+15. ¿Se agrega el campo de monto del servicio al levantar el reporte? El sistema ya lo soporta, pero la pantalla no lo muestra.
+16. ¿El monto se captura en todos los reportes o solo en los facturables?
+17. ¿La factura se genera sola cuando el reporte cumple las condiciones (resuelto, cliente y monto), o siempre con confirmación de una persona?
+18. ¿Quién define el monto del servicio?
+19. ¿Con qué base se define el monto: tarifario, cotización o criterio del ingeniero?
+20. Si el cliente no está de acuerdo con el monto, ¿se ajusta la cuenta sin perder el historial?
+21. ¿El vencimiento a 30 días aplica a todos los clientes o hay acuerdos distintos (obra pública)?
+22. ¿Se necesita el PDF de cada reporte para entregarlo al cliente?
+23. ¿Se necesita exportar en Excel los reportes del mes?
+
+
+Criba
+(Producción diaria de la planta de cribado: material, metros cúbicos, operador y turno.)
+
+24. ¿El material producido se vende directamente desde la planta? ¿Cómo se cobra hoy?
+25. ¿El material se almacena para vender después, o sale el mismo día?
+26. ¿La merma calculada es aceptable? ¿A partir de qué porcentaje sería un problema?
+27. ¿Se necesita saber a qué cliente u obra se fue el material, o es solo control de planta?
+28. ¿La producción debe entrar al inventario automáticamente para saber cuánto hay disponible para vender?
+29. ¿Se necesita un reporte de producción diaria o semanal en PDF o Excel, para gerencia o para el cliente comprador?
+
+
+Inventario
+(Almacén de refacciones y materiales. El punto de venta descuenta stock al cobrar; el mantenimiento hoy no descuenta existencias.)
+
+30. ¿Quién autoriza la salida de material para una obra?
+31. ¿Queda registro de quién retira el material?
+32. ¿Las refacciones usadas en mantenimiento deben descontar existencias automáticamente? Hoy no lo hacen.
+33. ¿Se hace inventario físico periódico?
+34. ¿Cómo se corrige cuando el sistema no coincide con lo que hay en bodega?
+35. ¿El stock mínimo lo define la empresa?
+36. ¿Quién recibe la alerta de stock mínimo?
+37. ¿Los materiales sobrantes que devuelve una obra regresan a inventario con registro?
+38. ¿Se necesita caducidad o lote de algunos materiales, o basta con la existencia total?
+39. ¿Se necesita el listado de existencias en Excel?
+40. ¿Se necesita una hoja física de conteo en PDF (stock del sistema y espacio para anotar el conteo real)?
+
+
+Proyectos
+(Control de obras por cliente con presupuesto, avance y estado. El dato financiero se captura a mano.)
+
+41. ¿El % de avance debe calcularse con un plan de metas e hitos (cimentación 20%, estructura 50%, acabados 80%, entrega 100%) en lugar de capturarse a mano?
+42. ¿El % de avance debe calcularse solo con lo registrado en campo?
+43. ¿Quién actualiza el % de avance y cada cuándo?
+44. ¿Debe quedar historial de avance (fecha, % y responsable)?
+45. ¿El gasto del proyecto debe sumarse solo de combustibles, refacciones, nómina y proveedores de esa obra?
+46. ¿Cuando una obra pasa del presupuesto, se congela o se autoriza un extra?
+47. ¿Cómo se manejan los trabajos extra no contemplados?
+48. ¿Quién da por finalizado un proyecto?
+49. ¿Qué se revisa antes de darlo por finalizado (pagos pendientes, equipo regresado)?
+50. ¿Se necesita un reporte de avance y finanzas por obra en PDF?
+51. ¿Se necesita exportar la lista de proyectos activos en Excel?
+
+
+Incidentes
+(Registro de fallas, accidentes y retrasos con prioridad y seguimiento. No genera cobros ni costos.)
+
+52. ¿Un incidente crítico debe escalarse automáticamente? ¿A quién?
+53. ¿La notificación debe llegar solo a los roles con permiso, en lugar de a todo el personal?
+54. ¿La notificación debe depender de la prioridad del incidente?
+55. ¿Los incidentes con costo (reparación, tiempo perdido) deben quedar con monto y verse en finanzas?
+56. ¿Qué diferencia hay entre "resolver" un incidente y "reportarlo formalmente"? ¿Cuándo se usa cada uno?
+57. ¿Los accidentes de personas requieren expediente especial (seguro, autoridad)?
+58. ¿Se necesita un reporte de incidentes en PDF para el expediente de seguridad?
+59. ¿Se necesita exportar el histórico de incidentes en Excel?
+
+
+MÓDULO: COMERCIAL
+
+
+Clientes
+(Agenda comercial con estado de cuenta consolidado: cuentas por cobrar, facturas, cobros y cotizaciones.)
+
+1. ¿Todos los clientes deben facturar con RFC, o hay ventas a consumidor final?
+2. ¿Se necesita clasificar a los clientes (obra pública, privada, desarrollador, particular)?
+3. ¿Un cliente con atraso grave debe bloquearse para nuevas cotizaciones o ventas hasta regularizarse?
+4. ¿Quién está autorizado a dar de alta un cliente?
+5. ¿Está bien que desde la ficha del cliente se pueda crear una cotización rápida, sin entrar a Cotizaciones?
+6. ¿El botón "Ver todas las cotizaciones", que abre Cotizaciones filtrado por ese cliente, es útil o se prefiere la lista general?
+7. ¿Se necesitan varios contactos por cliente (residencia, pago, operación), o basta uno?
+8. ¿Se necesita el directorio de clientes en Excel?
+9. ¿Se necesita el estado de cuenta del cliente en PDF?
+
+
+Cotizaciones
+(Presupuestos enviados a clientes. Al aceptar una y marcar "Generar factura" se crean la factura con IVA y la cuenta por cobrar a 30 días.)
+
+10. ¿Los precios salen de una lista oficial o los decide el vendedor?
+11. ¿Quién autoriza los descuentos y hasta cuánto?
+12. ¿El monto debe mostrarse con IVA? Hoy se muestra sin impuestos.
+13. ¿Las cotizaciones tienen vigencia?
+14. ¿Qué pasa si el cliente acepta una cotización vencida o con precios viejos?
+15. Si una cotización se rechaza, ¿se reofrece con cambios o se crea otra?
+16. ¿Se necesita saber qué vendedor hizo cada cotización y cuánto vendió cada uno?
+17. ¿Un rol prepara la cotización (crear, editar, eliminar) y otro distinto la decide (aceptar, rechazar), o la misma persona hace ambas?
+18. ¿Se necesita la cotización en PDF con membrete y logo para el cliente?
+19. ¿Se necesita exportar el listado por vendedor o por mes en Excel?
+
+
+Finanzas
+(Registro central del dinero. Recibe los cobros de clientes (ingresos) y los pagos a proveedores (egresos); el resto de los gastos se captura a mano.)
+
+20. ¿Quién captura los gastos manuales?
+21. ¿Quién valida los gastos manuales?
+22. ¿La nómina debe generar su egreso automáticamente al procesarse? Hoy no lo hace.
+23. ¿Las ventas de mostrador deben llegar solas a Finanzas como ingreso del día? Hoy no lo hacen.
+24. ¿Con qué frecuencia se concilia el banco?
+25. ¿Quién hace la conciliación bancaria?
+26. ¿Se necesita una alerta cuando un pago esperado no llega?
+27. ¿Se necesita ver el balance por banco (cuánto hay en cada cuenta)?
+28. ¿Se asigna en Configuración de qué banco sale cada gasto (proveedores a una cuenta, nómina a otra, cobros a otra) para facilitar la conciliación?
+29. ¿Un rol modifica esas asignaciones (Administrador) y otro distinto hace la conciliación (Contador)?
+30. ¿Se necesita un reporte financiero mensual en PDF (balance, ingresos, egresos y flujo), además del Excel que ya existe?
+
+
+Proveedores
+(Compras del negocio: proveedores, órdenes de compra, cuentas por pagar y pagos. Los abonos generan egresos en Finanzas.)
+
+31. ¿Quién autoriza una orden de compra?
+32. ¿Hay requisición previa, donde uno pide y otro aprueba?
+33. Al recibir la mercancía, ¿alguien verifica que coincida con lo pedido y con la factura del proveedor?
+34. ¿Se necesita alerta de pagos por vencer a proveedores?
+35. ¿Al recibir la orden de compra debe entrar al inventario automáticamente?
+36. ¿La entrada al inventario requiere confirmación previa o es directo?
+37. ¿Un mismo material se compra a varios proveedores? ¿Se compara por precio?
+38. ¿Se necesita el estado de cuenta del proveedor en PDF?
+39. ¿Se necesitan las órdenes del mes en Excel?
+
+
+Ventas
+(Caja registradora: vende materiales, cobra y descuenta stock automáticamente. No genera factura ni cuenta por cobrar.)
+
+40. ¿Quiénes están autorizados a operar la caja?
+41. ¿Cómo se maneja una devolución (reembolso y regreso de stock)?
+42. ¿Quién autoriza una devolución?
+43. ¿Se permite descuento en mostrador? ¿Hasta cuánto y quién lo autoriza?
+44. ¿Se necesita facturar desde la venta cuando el comprador lo pide? Hoy no es posible.
+45. ¿Se puede vender sin existencias, o debe bloquearse?
+46. ¿En la caja solo deben aparecer los materiales de una categoría específica (por ejemplo, "Construcción")?
+47. ¿Cómo se distingue un material vendible?
+48. ¿Se usan los tres métodos de pago (efectivo, tarjeta y transferencia) o solo efectivo?
+49. ¿La transferencia requiere referencia o comprobante?
+50. ¿Se debe bloquear la caja fuera de su horario (por ejemplo, ventas de 8 a 4)? ¿Con excepción autorizada?
+51. ¿Se necesita un reporte de ventas del día o del mes en PDF?
+52. ¿Se necesita el listado de tickets en Excel?
+
+
+Cobranza
+(Cartera de crédito: cuánto nos deben, qué está vencido y cuánto se cobró. Cada cobro genera un ingreso en Finanzas.)
+
+53. ¿Quién registra los cobros?
+54. ¿Quién revierte los cobros?
+55. ¿La reversión de un cobro requiere visto bueno?
+56. Cuando un cliente se atrasa, ¿qué pasos sigue la empresa?
+57. ¿El sistema debe recordarle al cliente los atrasos?
+58. ¿Se necesitan registrar promesas de pago y darles seguimiento?
+59. ¿Las cuentas sin proyecto asignado son normales, o todas deben saber a qué obra pertenecen?
+60. ¿Se necesita la cartera y la antigüedad de saldos en PDF o Excel?
+61. ¿Se necesita una carta de cobro en PDF para enviar al cliente?
+
+
+Corte del día
+(Cierre de caja del turno: compara lo vendido contra el efectivo contado y registra la diferencia.)
+
+62. Cuando sobra efectivo, ¿se queda en caja para el siguiente turno o se retira?
+63. ¿Basta un corte por turno, o se necesita cortar a mitad del día por cambio de cajero?
+64. ¿Quién define y entrega el fondo inicial de caja?
+65. Las diferencias en contra, ¿las absorbe el cajero, la empresa, o se descuentan de nómina?
+66. ¿Se debe bloquear el corte fuera de su horario (por ejemplo, de 5 a 7)? ¿Con excepción autorizada?
+67. ¿Se necesita el ticket o reporte del corte en PDF?
+68. ¿Se necesita el historial del mes en Excel?
+
+
+Facturas
+(Emite y administra facturas: pendiente, timbrada, pagada o cancelada.)
+
+69. ¿Quién está autorizado a cancelar una factura?
+70. ¿Cancelar una factura requiere segunda aprobación?
+71. ¿Se necesita complemento de pago cuando una factura se cobra en parcialidades? Hoy no se emite.
+72. ¿Las ventas de mostrador deben poder facturarse desde el punto de venta?
+73. ¿Se limita cuánto tiempo una factura puede quedar pendiente antes de timbrarse?
+74. ¿Un rol prepara la factura (crear, editar, eliminar) y otro valida, timbra o cancela (contador o administrador)?
+75. ¿Se necesita la facturación por mes y por cliente en PDF o Excel para el contador?
+
+
+Cierres de caja
+(Vista del administrador para aprobar o rechazar los cortes de caja.)
+
+76. Cuando un cierre se rechaza, ¿se descuenta al cajero, se repone o solo se documenta?
+77. ¿Se necesita comparar el desempeño de los cajeros (las diferencias de cada uno)?
+78. ¿El administrador debe consultar cortes de varios días y entregarlos al contador?
+79. ¿Se necesita un reporte de cierres del período en PDF o Excel para el contador?
+
+
+VISTAS NUEVAS QUE PODRÍAN FALTAR
+
+1. ¿Se agrega una vista de utilidad por proyecto u obra, que muestre cuánto se gana o se pierde (contrato contra gastos reales)?
+2. ¿Se agrega requisición de material, donde el campo solicita, un supervisor autoriza y bodega entrega?
+3. ¿Se agrega el proceso de devoluciones o notas de crédito, que regrese stock y genere la nota de crédito?
+4. ¿Se agrega una vista de costos por obra, que distribuya personal, combustible y refacciones a cada proyecto?
+5. ¿Se agrega una consulta de combustible por máquina y por obra?
+6. ¿Se agrega un tablero de indicadores como pantalla inicial, con ventas del mes, cartera vencida, producción y proyectos en curso?
+7. ¿Se agrega un centro de avisos automáticos (vencimientos, pagos, stock bajo, proyectos por vencer)?
+8. ¿Se agrega una pantalla de registro de auditoría? El sistema ya guarda quién hizo qué y cuándo, pero hoy no se puede consultar.
+9. ¿Quién puede ver la pantalla de auditoría: solo el Administrador, o también Dirección y Contador?
+10. ¿Se exporta la auditoría?
+11. ¿Se agrega una vista para administrar las unidades de venta y los precios por material? Hoy el cajero los usa, pero no hay dónde editarlos.
+
+
+EXPORTACIÓN DE DATOS
+
+1. ¿Para qué casos se necesita Excel (trabajar, filtrar, analizar) y para cuáles PDF (entregar, archivar, mostrar)?
+2. ¿La exportación incluye siempre los datos filtrados que se ven en pantalla, o todo el período?
+3. ¿Quiénes pueden exportar: solo administradores, o también supervisores y cajeros?
+4. ¿Los PDF deben llevar membrete, logo y datos fiscales para ser documentos oficiales?
+5. ¿Se necesitan exportaciones automáticas (por ejemplo, ventas del día cada noche a un correo), o basta pedirlas?
+
+
+ROLES QUE DEBEN EXISTIR EN LA APLICACIÓN
+
+(Hoy solo existe el rol Administrador. Estas preguntas son solo de los módulos Operaciones y Comercial.)
+
+1. ¿Qué roles se necesitan y con qué usuarios reales?
+2. ¿Quién aprueba los cierres de caja, la facturación de reportes, las cancelaciones, las reversiones de cobro y los descuentos?
+3. ¿Un usuario puede tener varios roles (por ejemplo, almacenista y compras), o solo uno?
+4. ¿Quién ve la información de dinero (finanzas, cobranza y cierres)?
+5. ¿El personal de campo usa el sistema desde el celular con un rol limitado (solo reportes)?
+6. ¿Debe quedar registrado quién hizo cada cosa, como ya ocurre hoy?
+
+
+INTERFAZ Y EXPERIENCIA DE USO
+
+Colores e imagen
+(Hoy el sistema usa naranja como color principal, barra lateral oscura y fondo claro.)
+
+1. ¿La imagen actual (naranja y gris oscuro) representa a la empresa, o se prefieren los colores de la empresa?
+2. ¿Se coloca el logo en el inicio de sesión, en la barra lateral y en los PDF (membrete)?
+3. ¿Se necesita modo oscuro o basta la pantalla clara?
+4. ¿Los colores de estado (verde = bien, amarillo = pendiente, rojo = error o crítico) son claros?
+5. ¿Falta algún estado especial (vencido, cancelado)?
+
+
+Navegación y disposición
+
+6. ¿La barra lateral por módulos es cómoda, o se necesita búsqueda en el menú y accesos rápidos (ventas, inventario, cobranza)?
+7. ¿El encabezado superior (área, notificaciones, usuario) es suficiente?
+8. ¿Falta alguna información siempre visible (fecha, caja abierta, saldo del día)?
+9. ¿La organización por pestañas dentro de una pantalla es clara (por ejemplo, en Clientes)?
+
+
+Tablas y datos
+
+10. ¿Las tablas ya tienen buscador, filtros y paginación. Falta ordenar por columnas, mostrar u ocultar columnas, o fijar la primera?
+11. ¿Se usará el sistema desde celular en obra o principalmente en oficina?
+12. ¿Las tablas se leen bien en pantallas chicas?
+
+
+Formularios y mensajes
+
+13. ¿Los formularios en ventana emergente son cómodos, o se prefieren vistas completas para capturas largas (orden de compra, factura)?
+14. ¿Los mensajes de error y éxito se entienden?
+15. ¿Deben durar más visibles?
+16. ¿Los campos obligatorios están claros (asterisco)?
+17. ¿Se necesita avisar antes de guardar qué falta?
+
+
+Iconos y letra
+
+18. ¿Los iconos se entienden solos, o algunos conviene acompañarlos siempre con texto?
+19. ¿El tamaño de letra es adecuado para el personal en campo?
+
+
+Confirmaciones y mejoras
+
+20. ¿Las confirmaciones de acciones fuertes (facturar, cancelar, revertir) son suficientes?
+21. ¿Alguna debe ser más estricta (motivo obligatorio, doble confirmación)?
+22. ¿Se necesita guía o ayuda dentro de cada pantalla?
+23. ¿Las pantallas cargan rápido en el equipo donde se usarán?
+24. ¿Se agrega un botón de "Sugerencia" en cada pantalla para que los usuarios reporten mejoras?
+
+
+CONEXIÓN A INTERNET Y PWA
+
+(Una PWA es una página web que se instala desde el navegador como una app normal: abre en su propia ventana, puede trabajar sin conexión guardando los datos en el dispositivo y se actualiza sola. No se distribuye por Google Play ni App Store.)
+
+1. ¿El sistema se usará solo en oficina con internet, o el personal de campo en obra necesita registrar reportes, inventario o ventas sin señal y sincronizar cuando vuelva la conexión?
+2. ¿Se quiere usar el sistema como PWA completa (instalable desde el navegador, sin tiendas de apps), como PWA solo para el campo y la obra, o siempre conectado sin instalar nada?
+3. En obra o en el almacén, ¿qué tan grave es quedarse unos minutos sin servicio?
+4. Si no hay señal, ¿el reporte o el cobro se anota en papel y se captura después, o no puede detenerse?
+5. ¿Se usaría en el navegador del celular, tablet o computadora de la empresa (con la PWA instalada o sin instalar), o se espera una app que se descarga de una tienda?
