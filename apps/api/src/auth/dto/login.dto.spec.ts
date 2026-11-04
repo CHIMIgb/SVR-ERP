@@ -43,7 +43,7 @@ describe('LoginDto', () => {
       expect(errores[0].constraints?.isEmail).toBe('El correo no es válido');
     });
 
-    it('rechaza contraseña menor a 8 caracteres (mensaje en español)', async () => {
+    it('NO exige longitud mínima (política larga = registro/cambio de contraseña)', async () => {
       // arrange
       const dto = plainToInstance(LoginDto, { ...base, password: 'corta12' });
 
@@ -51,11 +51,7 @@ describe('LoginDto', () => {
       const errores = await validate(dto);
 
       // assert
-      const fallo = errores.find((e) => e.property === 'password');
-      expect(fallo).toBeTruthy();
-      expect(fallo!.constraints?.minLength).toBe(
-        'La contraseña debe tener al menos 8 caracteres',
-      );
+      expect(errores).toHaveLength(0);
     });
 
     it('rechaza contraseña mayor a 128 caracteres (protección DoS por hash)', async () => {
