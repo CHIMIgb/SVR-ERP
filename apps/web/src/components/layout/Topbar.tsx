@@ -22,7 +22,7 @@ const MODULOS = [
   { name: 'Asistencia', href: '/asistencia', icon: Clock, tag: 'Módulo' },
   { name: 'Maquinaria', href: '/maquinaria', icon: Truck, tag: 'Módulo' },
   { name: 'Criba', href: '/criba', icon: Layers, tag: 'Módulo' },
-  { name: 'Reportes de Campo', href: '/reportes-campo', icon: ShieldAlert, tag: 'Módulo' },
+  { name: 'Reportes de Operación', href: '/reportes-operaciones', icon: ShieldAlert, tag: 'Módulo' },
   { name: 'Documentación', href: '/documentos', icon: FileText, tag: 'Módulo' },
   { name: 'Proyectos', href: '/proyectos', icon: HardHat, tag: 'Módulo' },
   { name: 'Inventario', href: '/inventario', icon: FileText, tag: 'Módulo' },
@@ -50,10 +50,6 @@ export default function Topbar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-
-  // User dropdown
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on clicking outside
   useEffect(() => {
