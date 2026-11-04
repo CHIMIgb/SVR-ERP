@@ -715,10 +715,10 @@ export default function ReportesOperacionesPage() {
     {
       key: 'descripcion',
       header: 'Descripción',
-      minWidth: '260px',
+      minWidth: '420px',
       className: 'whitespace-normal',
       render: (report) => (
-        <div className="max-w-xs">
+        <div className="max-w-md">
           <Tooltip placement="top" content={report.descripcion} maxWidth={320}>
             <span className="line-clamp-2 font-medium text-slate-600">
               &ldquo;{report.descripcion}&rdquo;
@@ -752,11 +752,11 @@ export default function ReportesOperacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      minWidth: '300px',
+      minWidth: '440px',
       render: (report) => {
         const accion = etiquetaAccion(report);
         return (
-          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+          <div className="flex items-center justify-end gap-1.5">
             {puedeEditar && report.estado !== 'Resuelto' && report.estado !== 'Facturado' && (
               <Tooltip content={report.asignadoANombre ? 'Cambiar responsable' : 'Asignar responsable'}>
                 <Button
