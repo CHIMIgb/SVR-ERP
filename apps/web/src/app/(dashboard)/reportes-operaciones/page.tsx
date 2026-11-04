@@ -5,6 +5,7 @@ import {
   Wrench, Fuel, User, ClipboardCheck, Clock, MapPin,
   ShieldAlert, HardHat, Users, AlertTriangle, CheckCircle2,
   Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal, Receipt,
+  Briefcase, UserCheck, UserX,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -20,6 +21,7 @@ import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import {
   bitacoraApi,
   reportesCampoApi,
+  trabajadoresApi,
   type CatalogoItem,
   type ReporteCampoDTO,
   type ReportesCampoStats,
@@ -30,14 +32,17 @@ import {
   type TipoReporte,
   type EstadoReporte,
   type PrioridadReporte,
+  type TrabajadorDTO,
 } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 6;
+const VISTA_RUTA = '/reportes-operaciones';
 
 const TIPOS: { value: TipoReporteApi; label: string }[] = [
   { value: 'INCIDENTE', label: 'Incidente' },
   { value: 'MECANICO', label: 'Mecanico' },
+  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
   { value: 'PIPERO', label: 'Pipero' },
   { value: 'OPERADOR', label: 'Operador' },
   { value: 'CHECADOR', label: 'Checador' },
@@ -65,27 +70,29 @@ const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
 
 function getTipoIcon(tipo: string) {
   switch (tipo) {
-    case 'Mecanico':   return <Wrench className="w-5 h-5 text-blue-500" />;
-    case 'Pipero':     return <Fuel className="w-5 h-5 text-orange-500" />;
-    case 'Operador':   return <User className="w-5 h-5 text-green-500" />;
-    case 'Checador':   return <ClipboardCheck className="w-5 h-5 text-purple-500" />;
-    case 'Incidente':  return <ShieldAlert className="w-5 h-5 text-red-500" />;
-    case 'Ingeniero':  return <HardHat className="w-5 h-5 text-yellow-500" />;
-    case 'Trabajador': return <Users className="w-5 h-5 text-teal-500" />;
-    default:           return <ClipboardCheck className="w-5 h-5 text-slate-400" />;
+    case 'Mecanico':      return <Wrench className="w-5 h-5 text-blue-500" />;
+    case 'Pipero':        return <Fuel className="w-5 h-5 text-orange-500" />;
+    case 'Operador':      return <User className="w-5 h-5 text-green-500" />;
+    case 'Checador':      return <ClipboardCheck className="w-5 h-5 text-purple-500" />;
+    case 'Incidente':     return <ShieldAlert className="w-5 h-5 text-red-500" />;
+    case 'Ingeniero':     return <HardHat className="w-5 h-5 text-yellow-500" />;
+    case 'Administrativo': return <Briefcase className="w-5 h-5 text-indigo-500" />;
+    case 'Trabajador':    return <Users className="w-5 h-5 text-teal-500" />;
+    default:              return <ClipboardCheck className="w-5 h-5 text-slate-400" />;
   }
 }
 
 function getTipoColor(tipo: string) {
   switch (tipo) {
-    case 'Mecanico':   return 'bg-blue-500';
-    case 'Pipero':     return 'bg-orange-500';
-    case 'Operador':   return 'bg-green-500';
-    case 'Checador':   return 'bg-purple-500';
-    case 'Incidente':  return 'bg-red-500';
-    case 'Ingeniero':  return 'bg-yellow-400';
-    case 'Trabajador': return 'bg-teal-500';
-    default:           return 'bg-slate-400';
+    case 'Mecanico':      return 'bg-blue-500';
+    case 'Pipero':        return 'bg-orange-500';
+    case 'Operador':      return 'bg-green-500';
+    case 'Checador':      return 'bg-purple-500';
+    case 'Incidente':     return 'bg-red-500';
+    case 'Ingeniero':     return 'bg-yellow-400';
+    case 'Administrativo': return 'bg-indigo-500';
+    case 'Trabajador':    return 'bg-teal-500';
+    default:              return 'bg-slate-400';
   }
 }
 
@@ -149,6 +156,7 @@ const STATS_CERO: ReportesCampoStats = {
   atendidos: 0,
   resueltos: 0,
   criticosActivos: 0,
+  porArea: {},
 };
 
 const emptyForm = {
@@ -162,12 +170,12 @@ const emptyForm = {
   descripcion: '',
 };
 
-export default function ReportesCampoPage() {
+export default function ReportesOperacionesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
 
   // ── Permisos RBAC ──
-  const vista = user?.vistas?.find((v) => v.ruta === '/reportes-campo');
+  const vista = user?.vistas?.find((v) => v.ruta === VISTA_RUTA);
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
@@ -179,6 +187,7 @@ export default function ReportesCampoPage() {
     maquinas: [],
     obras: [],
   });
+  const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -195,17 +204,25 @@ export default function ReportesCampoPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [facturarOpen, setFacturarOpen] = useState(false);
+  const [asignarOpen, setAsignarOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReporteCampoDTO | null>(null);
   const [facturarItem, setFacturarItem] = useState<ReporteCampoDTO | null>(null);
+  const [asignarItem, setAsignarItem] = useState<ReporteCampoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [facturando, setFacturando] = useState(false);
+  const [asignarForm, setAsignarForm] = useState({ asignadoA: '', asignadoNombre: '' });
 
   // ── Cargar catálogos de obra y máquina (una sola vez) ──
   useEffect(() => {
     bitacoraApi.catalogos().then((res) => {
       if (res.success && res.data) {
         setCatalogos(res.data);
+      }
+    });
+    trabajadoresApi.listar({ limit: 100 }).then((res) => {
+      if (res.success && res.data) {
+        setTrabajadores(res.data.items);
       }
     });
   }, []);
@@ -231,7 +248,7 @@ export default function ReportesCampoPage() {
         setReportes(res.data.items);
         setPagination(res.data.pagination);
       } else {
-        showToast('Error al cargar reportes de campo.', 'error');
+        showToast('Error al cargar los reportes.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -259,6 +276,16 @@ export default function ReportesCampoPage() {
     };
     inicial();
   }, [fetchData, fetchStats]);
+
+  // ── Chips de área ( Comparative por tipo, respetando stats.porArea) ──
+  const areaChips = [
+    { value: '', label: 'Todas las áreas', count: Object.values(stats.porArea || {}).reduce((a, b) => a + (b ?? 0), 0) },
+    ...TIPOS.map((t) => ({
+      value: t.value,
+      label: t.label,
+      count: stats.porArea?.[t.label as TipoReporte] ?? 0,
+    })),
+  ];
 
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
@@ -380,6 +407,15 @@ export default function ReportesCampoPage() {
     setDeleteOpen(true);
   }, []);
 
+  const openAsignar = useCallback((item: ReporteCampoDTO) => {
+    setAsignarItem(item);
+    setAsignarForm({
+      asignadoA: item.asignadoAId ?? '',
+      asignadoNombre: item.asignadoAId ? '' : item.asignadoANombre ?? '',
+    });
+    setAsignarOpen(true);
+  }, []);
+
   // ── Validación ──
   const validateForm = useCallback(() => {
     if (!form.tipo || !form.usuario.trim()) {
@@ -482,11 +518,45 @@ export default function ReportesCampoPage() {
     }
   }, [selectedItem, showToast, refetch, fetchStats]);
 
+  // ── ASIGNAR "quién le cae" (responsable) ──
+  const handleAsignar = useCallback(async () => {
+    if (!asignarItem) return;
+    if (!asignarForm.asignadoA && !asignarForm.asignadoNombre.trim()) {
+      showToast('Asigna un trabajador o un nombre.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await reportesCampoApi.asignar(asignarItem.id, {
+        asignadoA: asignarForm.asignadoA || null,
+        asignadoNombre: asignarForm.asignadoA ? null : asignarForm.asignadoNombre.trim(),
+      });
+      if (res.success) {
+        showToast('Responsable asignado exitosamente.', 'success');
+        setAsignarOpen(false);
+        setAsignarItem(null);
+        refetch();
+      } else {
+        showToast(res.error?.message || 'Error al asignar.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [asignarItem, asignarForm, showToast, refetch]);
+
   // ── Flujo de estados (avanza una etapa via API) ──
   const handleAvanzar = useCallback(
     async (item: ReporteCampoDTO) => {
       const next = siguienteEstado(item.estado);
       if (!next) return;
+      // Regla del negocio: al resolver exige saber "quién le cae".
+      if (next === 'Resuelto' && !item.asignadoANombre) {
+        showToast('Primero asigna a quién le toca resolverlo.', 'error');
+        openAsignar(item);
+        return;
+      }
       const res = await reportesCampoApi.cambiarEstado(item.id, ESTADO_API[next]);
       if (res.success) {
         showToast(`Reporte marcado como "${next}".`, 'success');
@@ -496,7 +566,7 @@ export default function ReportesCampoPage() {
         showToast(res.error?.message || 'Error al avanzar el reporte.', 'error');
       }
     },
-    [showToast, refetch, fetchStats],
+    [showToast, refetch, fetchStats, openAsignar],
   );
 
   // ── Facturar reporte Resuelto (nace la CxC) ──
@@ -527,8 +597,8 @@ export default function ReportesCampoPage() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
-        title="Reportes de Campo"
-        subtitle="Bitácora unificada — mecánicos, operadores, ingenieros, incidentes y más."
+        title="Reportes de Operación"
+        subtitle="Incidentes, mecánicos, administrativos y demás áreas — con responsable asignado."
         action={
           puedeCrear ? (
             <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
@@ -592,6 +662,31 @@ export default function ReportesCampoPage() {
           label="Resueltos"
           color="success"
         />
+      </div>
+
+      {/* Chips de ÁREA — filtrar sin depender del panel */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+        {areaChips.map((chip) => {
+          const activa = (filterValues.tipo ?? '') === chip.value;
+          return (
+            <button
+              key={chip.value || 'todas'}
+              onClick={() => handleFilterChange('tipo', chip.value)}
+              className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                activa
+                  ? 'bg-primary text-white border-primary shadow-md shadow-primary/25'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-primary/50 hover:text-primary'
+              }`}
+            >
+              {chip.label}
+              {chip.value !== '' && chip.count > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${activa ? 'bg-white/20' : 'bg-slate-100'}`}>
+                  {chip.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -687,8 +782,8 @@ export default function ReportesCampoPage() {
           </div>
         ) : reportes.length === 0 ? (
           <EmptyState
-            title="Sin reportes en esta categoría"
-            subtitle="Ajusta los filtros o registra un nuevo reporte de campo."
+            title="Sin reportes en esta área"
+            subtitle="Ajusta los filtros o registra un nuevo reporte."
           />
         ) : (
           reportes.map((report) => {
@@ -700,11 +795,11 @@ export default function ReportesCampoPage() {
                   report.tipo === 'Incidente' ? 'hover:border-red-300' : 'hover:border-primary/50'
                 }`}
               >
-                {/* Barra lateral de color por tipo */}
+                {/* Barra lateral de color por área */}
                 <div className={`w-1.5 md:w-4 shrink-0 ${getTipoColor(report.tipo)}`} />
 
                 <div className="p-6 flex-1 flex flex-col md:flex-row gap-6">
-                  {/* Info del usuario */}
+                  {/* Info del reportante */}
                   <div className="md:w-52 shrink-0">
                     <div className="flex items-center gap-3 mb-2">
                       <div
@@ -741,6 +836,19 @@ export default function ReportesCampoPage() {
                       {report.montoServicio != null && (
                         <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
                           Servicio: {formatCurrency(report.montoServicio)}
+                        </div>
+                      )}
+                      {/* Quién lo debe resolver / cómo se resolvió */}
+                      {report.asignadoANombre && (
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-widest">
+                          <UserCheck className="w-3 h-3 text-emerald-600" />
+                          Responsable: {report.asignadoANombre}
+                        </div>
+                      )}
+                      {report.resueltoEn && (
+                        <div className="flex items-center gap-2 text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Resuelto {report.asignadoANombre ? `por ${report.asignadoANombre}` : ''} · {report.resueltoEn.slice(0, 10)}
                         </div>
                       )}
                     </div>
@@ -801,6 +909,17 @@ export default function ReportesCampoPage() {
 
                   {/* Acciones */}
                   <div className="md:w-36 flex md:flex-col justify-end items-stretch md:items-end gap-2 shrink-0">
+                    {puedeEditar && report.estado !== 'Resuelto' && report.estado !== 'Facturado' && (
+                      <Button
+                        variant={report.asignadoANombre ? 'secondary' : 'primary'}
+                        size="sm"
+                        icon={<UserCheck className="w-3.5 h-3.5" />}
+                        className="w-full"
+                        onClick={() => openAsignar(report)}
+                      >
+                        {report.asignadoANombre ? 'Reasignar' : 'Asignar'}
+                      </Button>
+                    )}
                     {accion && puedeEditar && (
                       <Button
                         variant="success"
@@ -875,7 +994,7 @@ export default function ReportesCampoPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCancel={() => setCreateOpen(false)}
-        title="Nuevo Reporte de Campo"
+        title="Nuevo Reporte"
         subtitle="Registra una observación, incidente o actividad desde campo."
         submitLabel="Registrar Reporte"
         cancelLabel="Cancelar"
@@ -883,7 +1002,7 @@ export default function ReportesCampoPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Tipo de reporte" required>
+          <ModalField label="Área (tipo de reporte)" required>
             <select
               className={modalSelectClass}
               value={form.tipo}
@@ -981,6 +1100,67 @@ export default function ReportesCampoPage() {
         </div>
       </FormModal>
 
+      {/* Modal de ASIGNACIÓN — quién lo debe resolver */}
+      <FormModal
+        open={asignarOpen}
+        onClose={() => {
+          setAsignarOpen(false);
+          setAsignarItem(null);
+        }}
+        onCancel={() => {
+          setAsignarOpen(false);
+          setAsignarItem(null);
+        }}
+        title="Asignar Responsable"
+        subtitle="Quién debe resolver este reporte. Trabajador del sistema o nombre libre."
+        submitLabel="Asignar"
+        cancelLabel="Cancelar"
+        onSubmit={handleAsignar}
+        isSubmitting={submitting}
+      >
+        <div className="space-y-4">
+          <ModalField label="Trabajador del sistema" hint="Al elegir uno, el nombre libre se ignora.">
+            <select
+              className={modalSelectClass}
+              value={asignarForm.asignadoA}
+              onChange={(e) =>
+                setAsignarForm({ ...asignarForm, asignadoA: e.target.value })
+              }
+            >
+              <option value="">Sin trabajador del sistema...</option>
+              {trabajadores.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre} — {t.puesto}
+                </option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="O nombre libre" hint="Para externos o empleados aún no catalogados.">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Ej: Panchito el externo"
+              value={asignarForm.asignadoNombre}
+              onChange={(e) =>
+                setAsignarForm({ ...asignarForm, asignadoNombre: e.target.value })
+              }
+              disabled={!!asignarForm.asignadoA}
+            />
+          </ModalField>
+
+          {asignarItem && (
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-start gap-2">
+              <UserX className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-500">
+                Reporte de <strong>{asignarItem.usuario}</strong> ({asignarItem.tipo}) —
+                &ldquo;{asignarItem.descripcion.slice(0, 80)}&rdquo;
+              </p>
+            </div>
+          )}
+        </div>
+      </FormModal>
+
       <FormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
@@ -997,7 +1177,7 @@ export default function ReportesCampoPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Tipo de reporte" required>
+          <ModalField label="Área (tipo de reporte)" required>
             <select
               className={modalSelectClass}
               value={form.tipo}

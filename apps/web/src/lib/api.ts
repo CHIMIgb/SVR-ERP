@@ -604,98 +604,6 @@ export const combustibleApi = {
 //  Incidentes API
 // ────────────────────────────────────────────────────────────
 
-export interface IncidenteDTO {
-  id: string;
-  titulo: string;
-  descripcion: string;
-  prioridad: 'Crítica' | 'Alta' | 'Media' | 'Baja';
-  estado: 'Abierto' | 'En Revisión' | 'Resuelto';
-  fecha: string;
-  maquinaId: string | null;
-  maquina: string | null;
-  obraId: string;
-  obra: string;
-  reporteDescripcion: string | null;
-  reportadoEn: string | null;
-  activo: boolean;
-  creadoEn: string;
-  actualizadoEn: string;
-}
-
-export interface IncidenteStats {
-  total: number;
-  abiertos: number;
-  criticos: number;
-}
-
-export interface IncidenteCatalogos {
-  maquinas: CatalogoItem[];
-  obras: CatalogoItem[];
-}
-
-export interface IncidenteCreateInput {
-  titulo: string;
-  descripcion: string;
-  prioridad: 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
-  estado: 'ABIERTO' | 'EN_REVISION' | 'RESUELTO';
-  fecha: string;
-  maquinaId?: string;
-  obraId: string;
-}
-
-export interface IncidenteReportarInput {
-  descripcion: string;
-}
-
-export const incidentesApi = {
-  listar: (params?: {
-    search?: string;
-    prioridad?: 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
-    estado?: 'ABIERTO' | 'EN_REVISION' | 'RESUELTO';
-    maquinaId?: string;
-    obraId?: string;
-    page?: number;
-    limit?: number;
-  }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.search) searchParams.set('search', params.search);
-    if (params?.prioridad) searchParams.set('prioridad', params.prioridad);
-    if (params?.estado) searchParams.set('estado', params.estado);
-    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
-    if (params?.obraId) searchParams.set('obraId', params.obraId);
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.limit) searchParams.set('limit', String(params.limit));
-    const qs = searchParams.toString();
-    return apiClient.get<PaginatedResponse<IncidenteDTO>>(
-      `/incidentes${qs ? `?${qs}` : ''}`,
-    );
-  },
-
-  obtener: (id: string) =>
-    apiClient.get<IncidenteDTO>(`/incidentes/${id}`),
-
-  crear: (data: IncidenteCreateInput) =>
-    apiClient.post<IncidenteDTO>('/incidentes', data),
-
-  actualizar: (id: string, data: Partial<IncidenteCreateInput>) =>
-    apiClient.patch<IncidenteDTO>(`/incidentes/${id}`, data),
-
-  eliminar: (id: string) =>
-    apiClient.delete<{ message: string }>(`/incidentes/${id}`),
-
-  resolver: (id: string) =>
-    apiClient.patch<IncidenteDTO>(`/incidentes/${id}/resolver`, {}),
-
-  reportar: (id: string, data: IncidenteReportarInput) =>
-    apiClient.patch<IncidenteDTO>(`/incidentes/${id}/reportar`, data),
-
-  stats: () =>
-    apiClient.get<IncidenteStats>('/incidentes/stats'),
-
-  catalogos: () =>
-    apiClient.get<IncidenteCatalogos>('/incidentes/catalogos'),
-};
-
 // ────────────────────────────────────────────────────────────
 //  Proyectos API
 // ────────────────────────────────────────────────────────────
@@ -792,12 +700,12 @@ export const proyectosApi = {
 //  Reportes de Campo API
 // ────────────────────────────────────────────────────────────
 
-export type TipoReporte = 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
+export type TipoReporte = 'Administrativo' | 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
 export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto' | 'Facturado';
 export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
 
 /** Valores de enum que acepta la API en query/body (mayúsculas). */
-export type TipoReporteApi = 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
+export type TipoReporteApi = 'ADMINISTRATIVO' | 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
 export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO' | 'FACTURADO';
 export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
 
@@ -822,6 +730,11 @@ export interface ReporteCampoDTO {
   descripcion: string;
   estado: EstadoReporte;
   prioridad: PrioridadReporte | null;
+  asignadoAId: string | null;
+  asignadoANombre: string | null;
+  asignadoAPuesto: string | null;
+  asignadoEn: string | null;
+  resueltoEn: string | null;
   detalles: Record<string, unknown> | null;
   activo: boolean;
   creadoEn: string;
@@ -834,6 +747,7 @@ export interface ReportesCampoStats {
   atendidos: number;
   resueltos: number;
   criticosActivos: number;
+  porArea: Partial<Record<TipoReporte, number>>;
 }
 
 export interface ReporteCampoCreateInput {
@@ -886,6 +800,10 @@ export const reportesCampoApi = {
 
   cambiarEstado: (id: string, estado: EstadoReporteApi) =>
     apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/estado`, { estado }),
+
+  /** Asigna "quién le cae": trabajador del sistema y/o nombre libre. */
+  asignar: (id: string, data: { asignadoA?: string | null; asignadoNombre?: string | null }) =>
+    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/asignar`, data),
 
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/reportes-campo/${id}`),
