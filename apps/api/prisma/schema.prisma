@@ -1135,31 +1135,6 @@ model periodos_nomina {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model permisos {
-  id                                    String        @id @db.Uuid
-  trabajador_id                         String        @db.Uuid
-  tipo                                  TipoPermiso
-  fecha_inicio                          DateTime      @db.Date
-  fecha_fin                             DateTime      @db.Date
-  estado                                EstadoPermiso @default(PENDIENTE)
-  motivo                                String
-  dias_solicitados                      Int
-  activo                                Boolean       @default(true)
-  creado_en                             DateTime      @default(now()) @db.Timestamptz()
-  actualizado_en                        DateTime      @db.Timestamptz()
-  codigo                                String?       @unique
-  actualizado_por                       String?       @db.Uuid
-  aprobador_id                          String?       @db.Uuid
-  creado_por                            String?       @db.Uuid
-  eliminado_en                          DateTime?     @db.Timestamptz()
-  users_permisos_actualizado_porTousers users?        @relation("permisos_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_permisos_actualizado_por")
-  users_permisos_aprobador_idTousers    users?        @relation("permisos_aprobador_idTousers", fields: [aprobador_id], references: [id], onUpdate: NoAction, map: "fk_permisos_aprobador")
-  users_permisos_creado_porTousers      users?        @relation("permisos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_permisos_creado_por")
-  trabajadores                          trabajadores  @relation(fields: [trabajador_id], references: [id])
-
-  @@index([trabajador_id])
-}
-
 model permissions {
   id               String             @id @db.Uuid
   modulo           String
@@ -1611,7 +1586,6 @@ model trabajadores {
   maquina_operadores                        maquina_operadores[]
   maquinas                                  maquinas[]
   nominas                                   nominas[]
-  permisos                                  permisos[]
   registros_asistencia                      registros_asistencia[]
   registros_criba                           registros_criba[]
   registros_mantenimiento                   registros_mantenimiento[]
@@ -1965,9 +1939,6 @@ model users {
   pagos_pagos_creado_porTousers                                                  pagos[]                       @relation("pagos_creado_porTousers")
   periodos_nomina_periodos_nomina_actualizado_porTousers                         periodos_nomina[]             @relation("periodos_nomina_actualizado_porTousers")
   periodos_nomina_periodos_nomina_creado_porTousers                              periodos_nomina[]             @relation("periodos_nomina_creado_porTousers")
-  permisos_permisos_actualizado_porTousers                                       permisos[]                    @relation("permisos_actualizado_porTousers")
-  permisos_permisos_aprobador_idTousers                                          permisos[]                    @relation("permisos_aprobador_idTousers")
-  permisos_permisos_creado_porTousers                                            permisos[]                    @relation("permisos_creado_porTousers")
   personas_personas_actualizado_porTousers                                       personas[]                    @relation("personas_actualizado_porTousers")
   personas_personas_creado_porTousers                                            personas[]                    @relation("personas_creado_porTousers")
   proveedores_proveedores_actualizado_porTousers                                 proveedores[]                 @relation("proveedores_actualizado_porTousers")
@@ -2400,12 +2371,6 @@ enum TipoDocumento {
 enum TipoMantenimiento {
   CORRECTIVO
   PREVENTIVO
-}
-
-enum TipoPermiso {
-  VACACIONES
-  PERMISO
-  INCAPACIDAD
 }
 
 enum TipoReporteCampo {
