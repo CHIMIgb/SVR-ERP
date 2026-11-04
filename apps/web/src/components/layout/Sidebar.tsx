@@ -242,7 +242,7 @@ function SidebarContent() {
       <div className="p-4 border-t border-white/5">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2.5 px-3 py-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm font-bold hover:bg-red-500 hover:border-red-500 hover:text-white active:scale-[0.98] transition-all"
+          className="w-full flex items-center justify-center gap-2.5 px-3 py-3 rounded-xl border border-red-500 bg-red-500 text-white text-sm font-bold hover:bg-red-400 hover:border-red-400 active:scale-[0.98] transition-all"
         >
           <LogOut className="w-5 h-5" />
           Cerrar Sesión
