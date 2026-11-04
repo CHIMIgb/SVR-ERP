@@ -1,14 +1,14 @@
 # IMPLEMENTACIONES A FUTURO — Hoja de ruta de integración del ERP
 
-> **Propósito:** Documentar los flujos de negocio pendientes y cómo los módulos (con
-> foco en **cotizaciones** y el resto de las vistas CRUD) interactuarán entre sí. Este
-> documento NO se aplica hoy: describe la hoja de ruta de integración que se ejecutará
-> **cuando los módulos destino estén terminados**.
->
-> **Estado actual (fase 1):** `/cotizaciones` funciona como **CRUD aislado** sobre
-> PostgreSQL (listado, detalle, crear, editar, aceptar/rechazar con motivo, filtros,
-> búsqueda, paginación, stats, RBAC y auditoría). Está bien construida técnicamente,
-> pero **aún no genera ni consume nada aguas abajo** en el flujo de negocio.
+> **Estado actual (actualizado 2026-11-04):** la cadena núcleo de dinero ya está
+> implementada — cotización facturable (`POST /cotizaciones/:id/facturar` genera
+> factura + conceptos + CxC en `$transaction`), bitácoras-renta y reportes-campo
+> facturables, módulo de cobranza con cobros/reversiones atómicos, proveedores con
+> OC→CxP→abono→egreso, flujo neto y conciliación bancaria. La fuente de verdad de
+> los flujos implementados es **`workflow/README.md`** (índice con estados). Este
+> documento conserva el diagnóstico histórico y lista los flujos que AÚN quedan.
+> Cada estado aquí se verifica contra `schema.prisma` y el código real antes de
+> marcarse pendiente o realizado.
 
 ---
 
@@ -31,19 +31,16 @@ Estado real del plan de integración cobranza/finanzas. **Todas ejecutadas** en 
 
 ---
 
-## 1. Resumen ejecutivo
+## 1. Resumen ejecutivo — ACTUALIZADO 2026-11-04
 
-Hoy, una cotización es una **bolsa de datos suelta**: se crea → se acepta/rechaza → **y
-ahí muere**. No dispara ventas, facturas, cuentas por cobrar, proyectos ni movimientos
-de inventario. El objetivo de esta hoja de ruta es conectar `cotizaciones` con la
-**cadena de valor** del ERP: **cliente → cotización → venta/factura → cuenta por cobrar
-→ pago**, y de forma secundaria **→ proyecto/obra** e **→ inventario**.
+**Antes:** una cotización era una bolsa de datos suelta: se creaba → se aceptaba/rechazaba → ahí moría. No dispara nada.
 
-El problema de fondo es de **modelo de datos**: la tabla `cotizaciones` solo se
-relaciona con `clientes` (y con usuarios de auditoría / `vendedor_id`). No tiene
-relación con `facturas`, `cuentas_por_cobrar`, `pagos`, `proyectos`, `articulos_`
-`inventario`, `movimientos_inventario` ni `transacciones`. Además **no existe un
-modelo `ventas`/`pedidos`** en el schema.
+**Hoy:** la cadena núcleo CLIENTE → COTIZACIÓN → FACTURA → CxC → PAGO ya funciona de punta a punta:
+- `POST /cotizaciones/:id/facturar` — en una `$transaction` marca la cotización como facturada, crea `facturas` + `factura_conceptos` + `cuentas_por_cobrar (PENDIENTE)`, con folio secuencial `FAC-YYYY-NNNN` y reintento anti-colisión (`COTIZACION_NO_PENDIENTE` / `COTIZACION_YA_FACTURADA` en 400/409).
+- Existe el modelo y módulo de **ventas** (POS con idempotencia, caja, retiros y cierres con aprobación).
+- Existía además el flujo O1/O2/O3: bitácoras-renta y reportes-campo facturables → CxC (ver `workflow/02`).
+
+Lo que sigue abierto de la hoja de ruta: **P2** (partidas para facturar por línea), **P3** (cotización↔proyecto), **P4** (bajada de inventario), **P6** (vendedor real), **P7** (precios por medida) y la venta POS a crédito → factura → CxC (C3).
 
 ---
 
@@ -64,17 +61,17 @@ relaciones:
   + users (vendedor_id)                                ✅ SÍ existe (sin uso real)
 ```
 
-### 2.2 Integraciones que NO existen (por eso vive aislada)
+### 2.2 Integraciones — estado real (actualizado 2026-11-04)
 
 | Relación | Modelo destino | Estado |
 |----------|----------------|--------|
-| Cotización → línea/partida (`cotizacion_items`) | (no existe el modelo) | ❌ Falta |
-| Cotización → factura / factura_conceptos | `facturas` | ❌ Falta |
-| Cotización → cuenta por cobrar | `cuentas_por_cobrar` | ❌ Falta |
-| Cotización → pago | `pagos` | ❌ Falta |
-| Cotización → proyecto / obra | `proyectos` (no hay `proyecto_id`) | ❌ Falta |
-| Cotización → venta / pedido | (no existe modelo `ventas`) | ❌ Falta modelo |
-| Cotización → artículo de inventario | `articulos_inventario` | ❌ Falta (vía partidas) |
+| Cotización → factura / factura_conceptos | `facturas` | ✅ Existe (via `facturar()`, Fase 3) |
+| Cotización → cuenta por cobrar | `cuentas_por_cobrar` | ✅ Existe (facturar nace la CxC) |
+| Cotización → pago | `pagos` | ✅ Existe (módulo cobranza; pagos contra CxC reversible) |
+| Cotización → venta / pedido | `ventas` | ⏳ El modelo/módulo existe (POS), pero la venta a crédito aún NO nace CxC (C3) |
+| Cotización → línea/partida (`cotizacion_items`) | (no existe el modelo) | ❌ Falta (P2) |
+| Cotización → proyecto / obra | `proyectos` (no hay `proyecto_id`) | ❌ Falta (P3) |
+| Cotización → artículo de inventario | `articulos_inventario` | ❌ Falta (P4, vía partidas) |
 
 El problema del aislamiento no es la vista frontend (que consume API real), **es que no
 hay cadena de integración en el modelo ni en los servicios** que conviertan la
@@ -91,8 +88,10 @@ cotización aceptada en algo más.
 - una **`facturas`** con sus **`factura_conceptos`**, y
 - la **`cuentas_por_cobrar`** correspondiente al cliente.
 
-**Hoy:** la transición `Pendiente → Aceptada` solo cambia un string `estado`. No dispara
-nada.
+**✅ REALIZADO (Fase 3, workflow 01):** `facturar()` en `cotizaciones.service.ts`
+implementa exactamente esto — transición condicional PENDIENTE → facturada con índice
+único contra dobles, factura + conceptos + CxC en una sola `$transaction`, folio
+anti-colisión y audit FAIL/SUCCESS. Workflow documentado en `workflow/01-venta-cotizacion-cobro.md`.
 
 **Cómo se aplicará:**
 1. **Schema:** agregar `cotizacion_id` (nullable FK) a `facturas` (+ indice), y crear
@@ -211,8 +210,10 @@ venta/factura se descarga **`articulos_inventario`** y se registra un
 
 **Objetivo:** cerrar del todo la cadena **cotización → factura → CxC → pago**.
 
-**Hoy:** los `pagos` (finanzas/cobranza) son independientes; no hay vínculo con la CxC
-que nacería de la cotización.
+**✅ REALIZADO (Fases 1-2, workflow 03):** módulo cobranza completo — el cobro abona
+`cuentas_por_cobrar.monto_pagado` (update condicional cierra la carrera) y marca
+`PENDIENTE → PARCIAL → SALDADO` en la misma transacción que nace la transacción
+INGRESO; la corrección es **reversión** (compensatoria auditable), nunca delete.
 
 **Cómo se aplicará:**
 - Un `pago` abona contra `cuentas_por_cobrar.monto_pagado` y al llegar a `monto`
@@ -370,11 +371,12 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 ## 6. Mapa de integración de las demás vistas (CRUD ya en API)
 
 > La siguiente es la síntesis de dos auditorías de cruces entre módulos (backend vía
-> `schema.prisma`, frontend vía `apps/web/src/lib/api.ts` y cada `page.tsx`). Mayoría de
-> las vistas ya consumen su CRUD desde PostgreSQL a través de `apps/web/src/lib/api.ts`
-> (Ninguna importa `@/lib/data` en `page.tsx`, salvo `ProjectDetailsModal.tsx` que aún
-> filtra mock). Abajo quedan los **cruce de negocio** y los **gaps de modelo** por
-> dominio. Se ejecutarán cuando cada módulo esté terminado.
+> `schema.prisma`, frontend vía `apps/web/src/lib/api.ts` y cada `page.tsx`).
+> **Actualización 2026-11-04:** la mayoría de las vistas consumen CRUD por API
+> (`apps/web/src/lib/api.ts`), PERO aún hay mock de `@/lib/data` en:
+> `dashboard/page.tsx`, `gps/page.tsx`, `documentos/page.tsx`, `Topbar.tsx`,
+> `MachineCard.tsx`, `ProjectCard.tsx` y `ProjectDetailsModal.tsx`. Abajo quedan los
+> **cruces de negocio** y los **gaps de modelo** por dominio.
 
 ### Mapa de flujo entre vistas (vista de pájaro)
 
@@ -398,11 +400,11 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 
 ### 6.1 `/operaciones` ↔ Bitácoras de operación & renta (`bitacoras_operacion`, `bitacoras_renta_diaria`)
 
-- **Hoy:** vistas de operaciones consumen su CRUD por API. El cruce de cobranza ya fue
-  mapeado: **`bitacoras_renta_diaria` → `cuentas_por_cobrar[]` + `firmas_cliente`**.
-- **Flujo pendiente:** al **cerrar/confirmar** una bitácora de renta, generar (o
-  actualizar) la **`cuentas_por_cobrar`** del cliente y enlazar la **firma del cliente**
-  (`firmas_cliente`) en la misma `$transaction`.
+- **Hoy:** vistas de operaciones consumen su CRUD por API. ✅ **REALIZADO (Fase 4,
+  workflow 02):** `bitacoras_renta_diaria` cerrada (estado `LISTO_FACTURAR`) se factura
+  con `POST /bitacoras-renta/:id/facturar` → nace la `cuentas_por_cobrar` del cliente
+  con la bitácora referenciada; la firma del residente (PENDING_FIRMA) gatea la
+  facturación.
 - **Gap de modelo:** verificar que `bitacoras_operacion` tenga el cruce a `maquinas`,
   `trabajadores` y `proyectos` (despachos_maquina ya cruza máquina+proyecto+operador).
 
@@ -535,14 +537,17 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 
 ### 6.8 `/finanzas` ↔ Transacciones, facturas, CxC, pagos & proyectos (`transacciones`)
 
-- **Hoy:** CRUD por API; `transacciones` no tiene FK a proyectos/facturas.
-- **Flujo pendiente:**
-  - Endpoints de **facturas, cuentas_por_cobrar y pagos** (aún por construir en finanzas/
-    cobranza) para sostener P1/P5.
-  - Ligar egresos a proyectos vía `transacciones.entidad_id` (= `proyecto.id`) o FK
-    explícita.
-  - Dashboard financiero que sume **ingresos** (pagos/CxC) vs **egresos** (transacciones)
-    y muestre **utilidad por proyecto**.
+- **Hoy:** CRUD por API. **Actualización 2026-11-04:** los endpoints que este apartado
+  pedía YA EXISTEN — módulo `facturas` (CRUD + conceptos + cambiar estado + export CSV),
+  módulo cobranza (CxC + cobros + vencimientos + por-proyecto) y conciliación
+  (`GET /finanzas/flujo-neto` suma CxC vs CxP por ventanas de vencimiento).
+- **Flujo pendiente (lo que queda de verdad):**
+  - Desgloses reales por proyecto (nómina/combustible/mantenimiento/inventario) =
+    **Fase 3 de `FLUJO-PROGRESO-PROYECTOS.md`**; hoy `proyectos.finanzas` es captura
+    manual (`ingreso_cobrado`/`gastado`).
+  - La venta POS a crédito aún no nace CxC (C3) ni factura (ver §8.4).
+- **Puntero polimórfico:** `transacciones.entidad_tipo/entidad_id` sigue sin FK;
+  el cruce a proyecto es conceptual (verificado en schema).
 - **Cruce con cotizaciones:** la CxC/factura generada al aceptar (P1) y su pago (P5)
   consolidan la vista de finanzas.
 
@@ -561,30 +566,27 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 
 | ID | Flujo | Rutas involucradas | Estado |
 |----|-------|--------------------|--------|
-| P1 | Aceptar cot. → Factura + Cuenta por Cobrar | `/cotizaciones` → `/finanzas` → `/clientes` | ⏳ Pendiente (cuando estén finanzas/cobranza) |
-| P2 | Partidas de cotización (`cotizacion_items`) | `/cotizaciones` (editor interno) | ⏳ Pendiente |
-| P3 | Cotización ↔ Proyecto/obra | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente (cuando estén operaciones/proyectos) |
-| P4 | Bajada de inventario por líneas | `/cotizaciones` → `/inventario` | ⏳ Pendiente (cuando esté inventario) |
-| P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ⏳ Pendiente (cuando esté cobranza) |
-| P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente |
+| P1 | Aceptar cot. → Factura + Cuenta por Cobrar | `/cotizaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 3, workflow 01) |
+| P2 | Partidas de cotización (`cotizacion_items`) | `/cotizaciones` (editor interno) | ⏳ Pendiente (`cotizacion_items` no existe en schema — verificado) |
+| P3 | Cotización ↔ Proyecto/obra | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
+| P4 | Bajada de inventario por líneas | `/cotizaciones` → `/inventario` | ⏳ Pendiente (depende de P2) |
+| P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
+| P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
-| 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ⏳ Pendiente |
-| 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente |
-| 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente |
-| 6.4 | Criba → máquina/obra + producción → inventario | `/criba` → `/maquinaria` → `/inventario` | ⏳ Pendiente (gap: `registros_criba` sin FK a máquina/obra) |
-| 6.5 | Inventario → entradas criba / salidas cotización | `/inventario` ↔ `/criba` ↔ `/cotizaciones` | ⏳ Pendiente |
-| 6.6 | Proyecto → obras/despachos; `ProjectDetailsModal` mock | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (migrar modal a API) |
-| 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ⏳ Pendiente |
-| 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ⏳ Pendiente (endpoints de cobranza aún por construir) |
+| 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02) |
+| 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente (verificado: `incidentes` no deriva nada) |
+| 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente (verificado: no toca `progreso` ni `transacciones`) |
+| 6.4 | Criba → máquina/obra + producción → inventario | `/criba` → `/maquinaria` → `/inventario` | ⏳ Pendiente (gap confirmado en schema: `registros_criba` solo FK a trabajadores) |
+| 6.5 | Inventario → entradas criba / salidas cotización | `/inventario` ↔ `/criba` ↔ `/cotizaciones` | ⏳ Pendiente (criba no genera movimientos) |
+| 6.6 | Proyecto → obras/despachos; `ProjectDetailsModal` mock | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + dashboard/gps/documentos/Topbar en mock) |
+| 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ✅ **Realizado** (`GET /clientes/:id/consolidado` + tabs cuentas/facturas/cobros/cotizaciones). Falta tab de trabajadores por proyecto |
+| 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
 
-> **Regla general:** cada uno de estos flujos se construirá **cuando el módulo destino
-> (finanzas, proyectos, inventario, operaciones, cobranza) esté completo**, para evitar
-> acoplar a un destino que aún no existe. Hito previo: **migrar `ProjectDetailsModal.tsx`
-> a API real** (único residuo de `@/lib/data` en páginas). El orden sugerido es
-> **P1 → P2 → P3 → P4 → P5 → P6** y, en paralelo, los flujos 6.4 → 6.5 → 6.6 → 6.8 que
-> comparten el cruce con `transacciones` y el inventario. **P7** (precios por medida de
-> venta) puede ejecutarse en paralelo con cualquiera de ellos: es independiente del
-> módulo destino y desbloquea el catálogo de precios del POS.
+> **Regla general:** cada flujo se construye cuando el módulo destino está completo,
+> para evitar acoplar a un destino que no existe. El orden sugerido original
+> (P1 → P2 → P3 → P4 → P5 → P6) se cumplió en la primera mitad; el siguiente bloque
+> natural es **P2 → P4 → P7** (partidas habilitan inventario y precios por medida),
+> con **6.4 → 6.5** en paralelo. **P7** puede ejecutarse en paralelo con cualquiera.
 
 ---
 
@@ -664,15 +666,22 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 6. `/finanzas` refleja el ingreso del cobro.
 7. `/documentos` guarda el comprobante/CFDI; `/reportes` lo agrega a cartera.
 
-### 8.4 Estado actual vs. pendiente
+### 8.4 Estado actual vs. pendiente (actualizado 2026-11-04)
 
-- **Con API ya:** `/clientes`, `/ventas`, `/finanzas`, `/proveedores` (módulos NestJS).
-- **En Prisma pero sin endpoints aún:** `facturas`, `pagos`, `cuentas_por_cobrar`, `bitacoras_renta_diaria`.
-- **Eslabones faltantes del ciclo (backend de cobranza):**
-  1. **`ventas` → factura → `cuentas_por_cobrar`** (creación automática al facturar; hoy la factura no dispara CxC).
-  2. **`/cobranza` → `pagos`** (el "Registrar cobro" escribe en `pagos` y actualiza `cuentas_por_cobrar.monto_pagado/estado` en la misma transacción).
-  3. **Cierre del círculo en `/finanzas`**: el cobro alimenta la caja como ingreso.
-- **Frontend:** `/cobranza` reconstruida en **fase 1 (mock local)** con contrato DTO listo en `src/lib/api.ts` (`CuentaPorCobrarDTO`, `CobroDTO`, `VencimientoDTO`, `CobranzaStats`, `CobroCreateInput`) — listo para consumir el API real sin tocar la UI.
+- **Con API ya (todo el ciclo):** `/clientes` (+ consolidado), `/ventas` (POS con
+  idempotencia y caja), `/finanzas`, `/proveedores`, `/facturas` (CRUD + export),
+  `/cobranza` (real, consume API), `/bitacoras-renta` y `/reportes-campo` (facturables).
+- **✅ Los eslabones del ciclo ya construidos:** `cotización → factura → CxC`
+  (`facturar()` transaccional), `bitácora-renta/reportes → factura → CxC`,
+  `/cobranza → pagos` (cobro atómico + reversión) y el cierre en `/finanzas`
+  (transacción INGRESO en la caja).
+- **Eslabones que siguen faltantes:**
+  1. **`ventas a crédito` → factura → `cuentas_por_cobrar`** (C3): la venta POS aún no
+     dispara factura ni CxC (verificado: el service de ventas no crea esas entidades).
+  2. **§9:** asignación vista → cuenta bancaria y conciliación asistida (nada implementado).
+  3. **§10:** `fecha_vencimiento` en CxP — la columna YA existe (schema `cuentas_por_`
+     `pagar.fecha_vencimiento`), pero ningún service la propaga desde la orden de
+     compra; falta UI en /proveedores y alertas "por vencer".
 
 ---
 
@@ -714,6 +723,12 @@ contra datos que el banco aún no reporta.
 
 ## 10. Futuro — Fecha de vencimiento en cuentas por pagar (CxP)
 
+**ACTUALIZACIÓN 2026-11-04:** la columna `cuentas_por_pagar.fecha_vencimiento` ya existe
+en el schema (Quedó del dump original), PERO sigue sin usarse: ningún service de
+proveedores/ordenes-compra la escribe, así que el flujo neto sigue clasificando todas
+las CxP en "Sin vencimiento". El pendiente real es: campo en la OC → propagación al
+crear la CxP → mostrarla en estado de cuenta/ledger → (opcional) alertas por vencer.
+
 **Contexto (hallazgo real en BD, sep 2026):** el Flujo Neto Proyectado de /finanzas
 clasifica por ventanas (Vencido, 0-30, 31-60, 61-90, +90, Sin vencimiento) usando
 `fecha_vencimiento` de `cuentas_por_cobrar` y `cuentas_por_pagar`. En la operación
@@ -733,10 +748,10 @@ desde el cobro).
 
 **Diseño propuesto:**
 
-1. **Schema:** agregar `fecha_vencimiento` (nullable) a la orden de compra y propagarla a
-   `cuentas_por_pagar` al crear la CxP (misma fecha o un plazo configurable por
-   proveedor, p.ej. neto 15/30/60). Migración + backfill opcional desde `fecha` +
-   término para datos existentes.
+1. **Schema/UI:** el campo a nivel `orden de compra` no existe; agregarlo y propagarlo a
+   `cuentas_por_pagar.fecha_vencimiento` (columna ya existente en schema) al crear la CxP
+   (misma fecha o un plazo configurable por proveedor, p.ej. neto 15/30/60). Sin backfill
+   necesario si se llena con la `fecha` de la OC + término para el flujo proyectado.
 2. **UI /proveedores:** campo "Fecha de vencimiento" en el modal de orden de compra;
    mostrarla en el estado de cuenta y en el ledger por proveedor.
 3. **/finanzas:** una vez haya fechas, el flujo proyectado por ventanas de "Por pagar"
