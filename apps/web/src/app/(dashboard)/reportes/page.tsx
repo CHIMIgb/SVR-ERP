@@ -13,8 +13,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
@@ -594,6 +595,232 @@ export default function ReportesOperacionesPage() {
     }
   }, [facturarItem, showToast, refetch, fetchStats]);
 
+  // ── Columnas de la tabla (patrón /inventario) ──
+  const columns: Column<ReporteCampoDTO>[] = [
+    {
+      key: 'fechaHora',
+      header: 'Fecha',
+      minWidth: '105px',
+      render: (report) => (
+        <div>
+          <span className="flex items-center gap-1.5 font-black text-slate-800">
+            <Clock className="w-3 h-3 text-slate-400" />
+            {report.hora}
+          </span>
+          <span className="text-[10px] font-bold text-slate-400">{report.fecha}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'tipo',
+      header: 'Área',
+      minWidth: '120px',
+      render: (report) => (
+        <span className="flex items-center gap-2">
+          {getTipoIcon(report.tipo)}
+          <span className={`h-2 w-2 rounded-full ${getTipoColor(report.tipo)}`} />
+          <span className="font-bold text-slate-700">{report.tipo}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'usuario',
+      header: 'Reporta',
+      minWidth: '130px',
+      render: (report) => (
+        <div>
+          <span className="font-black text-slate-900">{report.usuario}</span>
+          {report.cliente && (
+            <span className="block text-[10px] font-bold text-slate-400">
+              Cliente: {report.cliente}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'obra',
+      header: 'Obra / Máq.',
+      minWidth: '150px',
+      render: (report) => (
+        <div>
+          <span className="flex items-center gap-1.5 font-bold text-slate-700">
+            <MapPin className="w-3 h-3 text-slate-400" />
+            {report.obra}
+          </span>
+          {(report.maquinaCodigo || report.maquinaNombre) && (
+            <span className="block text-[10px] font-black text-primary uppercase">
+              Máq: {report.maquinaCodigo ?? report.maquinaNombre}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'prioridad',
+      header: 'Prior.',
+      minWidth: '90px',
+      render: (report) =>
+        report.prioridad ? (
+          <Badge variant={prioridadVariant[report.prioridad]} size="sm" dot>
+            {report.prioridad}
+          </Badge>
+        ) : (
+          <span className="text-slate-300">—</span>
+        ),
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (report) => (
+        <Badge variant={estadoVariant[report.estado]} size="sm">
+          {report.estado}
+        </Badge>
+      ),
+    },
+    {
+      key: 'responsable',
+      header: 'Responsable',
+      minWidth: '150px',
+      render: (report) => {
+        if (report.resueltoEn) {
+          return (
+            <Tooltip
+              placement="top"
+              content={
+                <span>
+                  Resuelto por {report.asignadoANombre ?? '—'} el{' '}
+                  {report.resueltoEn.slice(0, 10)}
+                </span>
+              }
+            >
+              <span className="flex items-center gap-1.5 font-black text-emerald-700">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {report.asignadoANombre ?? 'Resuelto'}
+              </span>
+            </Tooltip>
+          );
+        }
+        if (report.asignadoANombre) {
+          return (
+            <span className="flex items-center gap-1.5 font-bold text-slate-700">
+              <UserCheck className="w-3.5 h-3.5 text-primary" />
+              {report.asignadoANombre}
+            </span>
+          );
+        }
+        return <span className="text-slate-300">Sin asignar</span>;
+      },
+    },
+    {
+      key: 'descripcion',
+      header: 'Descripción',
+      minWidth: '260px',
+      className: 'whitespace-normal',
+      render: (report) => (
+        <div className="max-w-xs">
+          <Tooltip placement="top" content={report.descripcion} maxWidth={320}>
+            <span className="block truncate font-medium text-slate-600">
+              &ldquo;{report.descripcion}&rdquo;
+            </span>
+          </Tooltip>
+          {/* Detalles (litros/costo) y servicio facturable */}
+          <span className="mt-1 flex gap-2 flex-wrap">
+            {report.detalles &&
+              Object.entries(report.detalles).map(([k, v]) => (
+                <span
+                  key={k}
+                  className={`border rounded-lg px-2 py-0.5 text-[10px] font-black ${
+                    k === 'costo'
+                      ? 'bg-green-50 border-green-100 text-green-700'
+                      : 'bg-orange-50 border-orange-100 text-orange-700'
+                  }`}
+                >
+                  {k.charAt(0).toUpperCase() + k.slice(1)}: {formatDetalle(k, v)}
+                </span>
+              ))}
+            {report.montoServicio != null && (
+              <span className="border border-emerald-100 bg-emerald-50 rounded-lg px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                Servicio: {formatCurrency(report.montoServicio)}
+              </span>
+            )}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'right',
+      minWidth: '190px',
+      render: (report) => {
+        const accion = etiquetaAccion(report);
+        return (
+          <div className="flex items-center justify-end gap-1">
+            {puedeEditar && report.estado !== 'Resuelto' && report.estado !== 'Facturado' && (
+              <Tooltip content={report.asignadoANombre ? 'Reasignar' : 'Asignar responsable'}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label="Asignar responsable"
+                  icon={<UserCheck className="w-3.5 h-3.5" />}
+                  onClick={() => openAsignar(report)}
+                />
+              </Tooltip>
+            )}
+            {accion && puedeEditar && (
+              <Tooltip content={accion}>
+                <Button
+                  variant="success"
+                  size="sm"
+                  aria-label={accion}
+                  icon={<Check className="w-3.5 h-3.5" />}
+                  onClick={() => handleAvanzar(report)}
+                />
+              </Tooltip>
+            )}
+            {puedeEditar && report.estado === 'Resuelto' && report.cliente && report.montoServicio != null && (
+              <Tooltip content="Facturar (nace CxC)">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  aria-label="Facturar"
+                  icon={<Receipt className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setFacturarItem(report);
+                    setFacturarOpen(true);
+                  }}
+                />
+              </Tooltip>
+            )}
+            {puedeEditar && report.estado === 'Pendiente' && (
+              <Tooltip content="Editar">
+                <Button
+                  variant="warning"
+                  size="sm"
+                  aria-label="Editar"
+                  icon={<Pencil className="w-3.5 h-3.5" />}
+                  onClick={() => openEdit(report)}
+                />
+              </Tooltip>
+            )}
+            {puedeEliminar && (
+              <Tooltip content="Eliminar">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  aria-label="Eliminar"
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                  onClick={() => openDelete(report)}
+                />
+              </Tooltip>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
@@ -768,214 +995,20 @@ export default function ReportesOperacionesPage() {
         </div>
       )}
 
-      {/* Feed de tarjetas de reporte */}
-      <div className="relative space-y-4">
+      {/* Tabla de reportes (patrón /inventario) */}
+      <div className="relative">
         {refreshing && !initialLoading && (
           <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
             <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
-        {initialLoading ? (
-          <div className="flex items-center justify-center py-24 bg-white rounded-xl border border-slate-200">
-            <span className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : reportes.length === 0 ? (
-          <EmptyState
-            title="Sin reportes en esta área"
-            subtitle="Ajusta los filtros o registra un nuevo reporte."
-          />
-        ) : (
-          reportes.map((report) => {
-            const accion = etiquetaAccion(report);
-            return (
-              <div
-                key={report.id}
-                className={`bg-white rounded-xl border border-slate-200 shadow-sm transition-all p-0 overflow-hidden flex flex-col md:flex-row ${
-                  report.tipo === 'Incidente' ? 'hover:border-red-300' : 'hover:border-primary/50'
-                }`}
-              >
-                {/* Barra lateral de color por área */}
-                <div className={`w-1.5 md:w-4 shrink-0 ${getTipoColor(report.tipo)}`} />
-
-                <div className="p-6 flex-1 flex flex-col md:flex-row gap-6">
-                  {/* Info del reportante */}
-                  <div className="md:w-52 shrink-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div
-                        className={`p-2 rounded-lg ${
-                          report.tipo === 'Incidente' ? 'bg-red-50' : 'bg-slate-50'
-                        }`}
-                      >
-                        {getTipoIcon(report.tipo)}
-                      </div>
-                      <div className="font-black text-slate-900 text-sm leading-tight">
-                        {report.usuario}
-                      </div>
-                    </div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      {report.tipo}
-                    </p>
-                    <div className="mt-4 space-y-1.5">
-                      <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                        <Clock className="w-3 h-3" /> {report.hora} — {report.fecha}
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                        <MapPin className="w-3 h-3" /> {report.obra}
-                      </div>
-                      {(report.maquinaCodigo || report.maquinaNombre) && (
-                        <div className="text-[10px] font-black text-primary uppercase tracking-widest">
-                          Máq: {report.maquinaCodigo ?? report.maquinaNombre}
-                        </div>
-                      )}
-                      {report.cliente && (
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                          <User className="w-3 h-3" /> Cliente: {report.cliente}
-                        </div>
-                      )}
-                      {report.montoServicio != null && (
-                        <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
-                          Servicio: {formatCurrency(report.montoServicio)}
-                        </div>
-                      )}
-                      {/* Quién lo debe resolver / cómo se resolvió */}
-                      {report.asignadoANombre && (
-                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-widest">
-                          <UserCheck className="w-3 h-3 text-emerald-600" />
-                          Responsable: {report.asignadoANombre}
-                        </div>
-                      )}
-                      {report.resueltoEn && (
-                        <div className="flex items-center gap-2 text-[10px] font-black text-emerald-700 uppercase tracking-widest">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Resuelto {report.asignadoANombre ? `por ${report.asignadoANombre}` : ''} · {report.resueltoEn.slice(0, 10)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Contenido del reporte */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-3 gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {report.prioridad && (
-                          <Badge variant={prioridadVariant[report.prioridad]} size="sm" dot>
-                            Prioridad {report.prioridad}
-                          </Badge>
-                        )}
-                      </div>
-                      <Badge variant={estadoVariant[report.estado]} size="sm">
-                        {report.estado}
-                      </Badge>
-                    </div>
-
-                    <div
-                      className={`p-4 rounded-xl border italic text-sm font-medium ${
-                        report.tipo === 'Incidente'
-                          ? 'bg-red-50 border-red-100 text-red-900'
-                          : 'bg-slate-50 border-slate-100 text-slate-600'
-                      }`}
-                    >
-                      &ldquo;{report.descripcion}&rdquo;
-                    </div>
-
-                    {/* Detalles extra (litros/costo del pipero u otros pares) */}
-                    {report.detalles && (
-                      <div className="mt-4 flex gap-4 flex-wrap">
-                        {Object.entries(report.detalles).map(([k, v]) => (
-                          <div
-                            key={k}
-                            className={`border rounded-lg px-3 py-1.5 ${
-                              k === 'costo'
-                                ? 'bg-green-50 border-green-100'
-                                : 'bg-orange-50 border-orange-100'
-                            }`}
-                          >
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                              {k.charAt(0).toUpperCase() + k.slice(1)}
-                            </span>
-                            <span
-                              className={`text-sm font-black ${
-                                k === 'costo' ? 'text-green-700' : 'text-orange-700'
-                              }`}
-                            >
-                              {formatDetalle(k, v)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Acciones */}
-                  <div className="md:w-36 flex md:flex-col justify-end items-stretch md:items-end gap-2 shrink-0">
-                    {puedeEditar && report.estado !== 'Resuelto' && report.estado !== 'Facturado' && (
-                      <Button
-                        variant={report.asignadoANombre ? 'secondary' : 'primary'}
-                        size="sm"
-                        icon={<UserCheck className="w-3.5 h-3.5" />}
-                        className="w-full"
-                        onClick={() => openAsignar(report)}
-                      >
-                        {report.asignadoANombre ? 'Reasignar' : 'Asignar'}
-                      </Button>
-                    )}
-                    {accion && puedeEditar && (
-                      <Button
-                        variant="success"
-                        size="sm"
-                        icon={<Check className="w-3.5 h-3.5" />}
-                        className="w-full"
-                        onClick={() => handleAvanzar(report)}
-                      >
-                        {accion}
-                      </Button>
-                    )}
-                    {puedeEditar &&
-                      report.estado === 'Resuelto' &&
-                      report.cliente &&
-                      report.montoServicio != null && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          icon={<Receipt className="w-3.5 h-3.5" />}
-                          className="w-full"
-                          onClick={() => {
-                            setFacturarItem(report);
-                            setFacturarOpen(true);
-                          }}
-                        >
-                          Facturar
-                        </Button>
-                      )}
-                    {puedeEditar && report.estado === 'Pendiente' && (
-                      <Button
-                        variant="warning"
-                        size="sm"
-                        icon={<Pencil className="w-3.5 h-3.5" />}
-                        className="w-full"
-                        onClick={() => openEdit(report)}
-                      >
-                        Editar
-                      </Button>
-                    )}
-                    {puedeEliminar && (
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        icon={<Trash2 className="w-3.5 h-3.5" />}
-                        className="w-full"
-                        onClick={() => openDelete(report)}
-                      >
-                        Eliminar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
+        <DataTable
+          columns={columns}
+          data={reportes}
+          keyExtractor={(report) => report.id}
+          emptyText="No hay reportes con estos filtros"
+        />
       </div>
 
       <Pagination
