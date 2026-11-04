@@ -188,6 +188,8 @@ Un PR que incumpla cualquiera = Request Changes.
 
 **Testing:** toda función nueva lleva test unitario (AAA; mocks con `@nestjs/testing`, PrismaService mock). Lo que toque `registro_auditoria` es **integration spec** (Prisma real, sin mocks de auditoría, limpieza FK-safe, `registro_auditoria` es inmutable → no borrar). Cobertura mínima: 1 test por método público de Service/Controller; Guards en ambos caminos; DTOs con class-validator.
 
+**Testing en vistas/edges de datos (regla dura):** toda vista nueva o modificación debe llevar además de lo anterior: (1) pruebas de unicidad — que los índices únicos RECHAZAN duplicados y que la carrera real no los crea (lógica en transacción); (2) pruebas de integración contra la BD real insertando registros reales (no mocks); (3) tests específicos de `registro_auditoria`: verificar insertion real de SUCCESS y FAIL + `error_code` en cada mutación del módulo — y verificar que un DELETE contra `registro_auditoria` es rechazado por el trigger (inmutable).
+
 ## Base de datos local (contexto real del entorno)
 
 - PostgreSQL 18 en localhost, usuario `postgres`, contraseña `admin123` (en `apps/api/.env`: `DATABASE_URL` → `svr_erp`, `SHADOW_DATABASE_URL` → `svr_shadow_erp`).
