@@ -93,6 +93,7 @@ The app UI is entirely in **Spanish** (Mexican). All mock data, labels, and user
 - **NO DUPLICATE KEYS:** Before writing any `.map()` over arrays that render JSX, ALWAYS verify there are no duplicate `key` values. Duplicated keys cause React console errors and broken rendering. Use unique identifiers (IDs, unique names, or index + prefix if no unique data exists). Run `npx tsc --noEmit` after changes to catch issues.
 - **DOCUMENT EVERYTHING:** Every UI component created in `src/components/ui/` MUST be documented in `COMPONENTS.md` with: Props table, Import example, Usage example, "When to use" and "When NOT to use" sections. This is non-negotiable.
 - **NUEVA VISTA = PLANTILLA `/inventario`:** Toda vista nueva se construye tomando la vista `/inventario` como base (PageHeader, StatsCards, SearchBar + filtros, DataTable con acciones por RBAC, Pagination, FormModal). Nunca se construye una vista CRUD desde cero.
+- **PLAN ANTES DE CÓDIGO (obligatorio):** Para cada cambio o cosa nueva, SIEMPRE presentar primero un plan de implementación (qué archivos se tocarán, qué harás, impacto) y esperar la autorización del usuario. **Nunca se crea ni se modifica código sin autorización previa.**
 
 ## Registro de cambios obligatorio (historial-cambios/)
 
