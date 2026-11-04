@@ -25,6 +25,8 @@
 ## Cosas nuevas
 - `apps/api/src/auth/dto/login.dto.spec.ts` (6 tests: válido, caracteres libres,
   email inválido, corta 8, larga 128, no-string).
+- Ajuste posterior: input de usuario inicia VACÍO (sin correo precargado)
+  y placeholder neutral `tu-correo@ejemplo.com` (commit 8d524b52).
 
 ## Archivos tocados
 - `apps/web/src/app/page.tsx` (modificado)
