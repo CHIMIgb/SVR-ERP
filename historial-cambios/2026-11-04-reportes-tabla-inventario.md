@@ -7,12 +7,17 @@
 - El feed de tarjetas de `/reportes` se reemplaza por un **`<DataTable>`**
   (componente existente de `src/components/ui/DataTable`, el mismo patrón de la
   vista /inventario, con scroll horizontal y sombras en móvil).
+- **Ajuste posterior (commit 6d7d9639):** la Descripción ya no se corta con
+  '…' a 1 línea — colapsa a máximo **2 líneas** (`line-clamp-2`, native de
+  Tailwind; el Tooltip sigue mostrando el texto completo). Los botones de
+  acción dejaron de ser solo os iconos: icono + texto ("Asignar"/"Reasignar",
+  "Marcar X", "Facturar", "Editar", "Eliminar").
 - Columnas: **Fecha/Hora · Área** (icono+color del tipo) **· Reporta** (usuario,
   cliente debajo) **· Obra/Máq. · Prioridad · Estado** (Badges) **· Responsable**
   (quién le cae; si ya está resuelto, muestra en verde quién resolvió con Tooltip
-  de la fecha) **· Descripción** (truncada con Tooltip del texto completo +
+  de la fecha) **· Descripción** (line-clamp-2 con Tooltip del texto completo +
   mini-chips de detalles costo/litros + servicio facturable) **· Acciones**
-  (iconos con Tooltip por RBAC: Asignar/Reasignar · Marcar etapa · Facturar ·
+  (iconos+texto con Tooltip por RBAC: Asignar/Reasignar · Marcar etapa · Facturar ·
   Editar · Eliminar).
 - Regla del negocio intacta: botón de avanzar exige responsable antes de
   "Marcar Resuelto" (igual que en tarjetas).
