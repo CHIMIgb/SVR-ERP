@@ -8,7 +8,7 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,9 +23,11 @@ describe('Asistencia Audit (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let service: AsistenciaService;
+  // Obras de prueba propias (no se tocan las obras reales de la BD): una con ubicación y otra sin ella.
   let obraId: string;
-  let obraLat: number;
-  let obraLng: number;
+  let obraSinUbicacionId: string;
+  const obraLat = 19.3421;
+  const obraLng = -99.1843;
 
   const createdTrabajadorIds: string[] = [];
   let categoriaId: string;
@@ -41,11 +43,21 @@ describe('Asistencia Audit (Real DB)', () => {
     prisma = module.get(PrismaService);
     service = module.get(AsistenciaService);
 
-    const obra = await prisma.obras.findFirst({ where: { eliminado_en: null } });
-    if (!obra) throw new Error('Se requiere al menos una obra existente para correr este test');
+    const obra = await prisma.obras.create({
+      data: {
+        id: randomUUID(),
+        nombre: `Obra Asistencia Test ${TEST_ID}`,
+        lat: obraLat,
+        lng: obraLng,
+        radio_permitido_metros: 2000,
+        actualizado_en: new Date(),
+      },
+    });
     obraId = obra.id;
-    obraLat = 19.3421;
-    obraLng = -99.1843;
+    const obraSinUbicacion = await prisma.obras.create({
+      data: { id: randomUUID(), nombre: `Obra Sin Ubicacion Test ${TEST_ID}`, actualizado_en: new Date() },
+    });
+    obraSinUbicacionId = obraSinUbicacion.id;
 
     const categoria = await prisma.categorias_puesto.create({
       data: { id: randomUUID(), nombre: `TestCategoriaAsistencia-${TEST_ID}`, actualizado_en: new Date() },
@@ -64,6 +76,8 @@ describe('Asistencia Audit (Real DB)', () => {
       await prisma.trabajadores.deleteMany({ where: { id: { in: createdTrabajadorIds } } });
     }
     await prisma.categorias_puesto.deleteMany({ where: { id: categoriaId } });
+    // Los registros que apuntaban a estas obras ya se borraron arriba.
+    await prisma.obras.deleteMany({ where: { id: { in: [obraId, obraSinUbicacionId].filter(Boolean) } } });
 
     await prisma.$disconnect();
     await app.close();
@@ -100,8 +114,6 @@ describe('Asistencia Audit (Real DB)', () => {
         {
           trabajadorId: trabajador.id,
           obraId,
-          obraLat,
-          obraLng,
           lat: obraLat + 0.0002,
           lng: obraLng,
           dispositivo: 'Integration Test Device',
@@ -124,8 +136,6 @@ describe('Asistencia Audit (Real DB)', () => {
       const dto = {
         trabajadorId: trabajador.id,
         obraId,
-        obraLat,
-        obraLng,
         lat: obraLat,
         lng: obraLng,
         dispositivo: 'Integration Test Device',
@@ -133,13 +143,47 @@ describe('Asistencia Audit (Real DB)', () => {
       await service.marcarEntrada(dto, ACTOR_USER_ID);
       await expect(service.marcarEntrada(dto, ACTOR_USER_ID)).rejects.toThrow();
     });
+
+    it('debe rechazar el marcaje en una obra sin ubicación registrada y auditar FAIL OBRA_SIN_COORDENADAS', async () => {
+      const trabajador = await crearTrabajador(`Obra Sin Ubicacion Test ${TEST_ID}`);
+      const antes = new Date();
+      await expect(
+        service.marcarEntrada(
+          { trabajadorId: trabajador.id, obraId: obraSinUbicacionId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+          ACTOR_USER_ID,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      const registros = await prisma.registros_asistencia.count({ where: { trabajador_id: trabajador.id } });
+      expect(registros).toBe(0);
+      const fails = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.ASISTENCIA_ENTRADA_REGISTRADA,
+          result: 'FAIL',
+          error_code: 'OBRA_SIN_COORDENADAS',
+          timestamp: { gte: antes },
+        },
+      });
+      expect(fails.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('debe guardar la ubicación y el radio de la obra registrada (no los del cliente)', async () => {
+      const trabajador = await crearTrabajador(`Geocerca Obra Test ${TEST_ID}`);
+      const registro = await service.marcarEntrada(
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        ACTOR_USER_ID,
+      );
+      expect(registro.obraCoordenadas).toEqual({ lat: obraLat, lng: obraLng });
+      expect(registro.radioPermitidoMetros).toBe(2000);
+      expect(registro.enSitio).toBe(true);
+    });
   });
 
   describe('ASISTENCIA_SALIDA_REGISTRADA', () => {
     it('debe registrar la salida y calcular horas trabajadas', async () => {
       const trabajador = await crearTrabajador(`Salida Test ${TEST_ID}`);
       await service.marcarEntrada(
-        { trabajadorId: trabajador.id, obraId, obraLat, obraLng, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
         ACTOR_USER_ID,
       );
 
@@ -161,7 +205,7 @@ describe('Asistencia Audit (Real DB)', () => {
     it('debe registrar horas extra y aprobarlas, dejando ambos eventos auditados', async () => {
       const trabajador = await crearTrabajador(`Horas Extra Test ${TEST_ID}`);
       const registro = await service.marcarEntrada(
-        { trabajadorId: trabajador.id, obraId, obraLat, obraLng, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
         ACTOR_USER_ID,
       );
 

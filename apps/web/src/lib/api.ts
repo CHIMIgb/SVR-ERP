@@ -1182,12 +1182,10 @@ export interface AsistenciaSemanalDTO {
   totalHorasExtra: number;
 }
 
+/** La API valida la geocerca con la ubicación y el radio guardados de la obra; el cliente solo manda su GPS. */
 export interface MarcarEntradaInput {
   trabajadorId: string;
   obraId: string;
-  obraLat: number;
-  obraLng: number;
-  radioPermitidoMetros?: number;
   lat: number;
   lng: number;
   precisionGpsMetros?: number;
@@ -1211,9 +1209,6 @@ export interface MarcarSalidaInput {
 
 export interface MarcarCuadrillaInput {
   obraId: string;
-  obraLat: number;
-  obraLng: number;
-  radioPermitidoMetros?: number;
   trabajadorIds: string[];
   lat: number;
   lng: number;

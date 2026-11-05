@@ -1,23 +1,9 @@
 import { IsString, IsUUID, IsNumber, IsOptional, IsArray, ArrayMinSize, Min, Max, MinLength } from 'class-validator';
 
 export class MarcarCuadrillaDto {
+  /** La geocerca se valida con la ubicación y el radio guardados de esta obra, no con datos del cliente. */
   @IsUUID()
   obraId!: string;
-
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  obraLat!: number;
-
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  obraLng!: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  radioPermitidoMetros?: number;
 
   @IsArray()
   @ArrayMinSize(1)

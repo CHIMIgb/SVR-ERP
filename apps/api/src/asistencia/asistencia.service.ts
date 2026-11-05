@@ -176,6 +176,18 @@ export class AsistenciaService {
       );
     }
 
+    const geocerca = this.geocercaDeObra(obra);
+    if (!geocerca) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_ENTRADA_REGISTRADA,
+        ENTITY_TYPE,
+        null,
+        'OBRA_SIN_COORDENADAS',
+        BadRequestException,
+        `La obra "${obra.nombre}" aún no tiene su ubicación registrada; no se puede marcar asistencia en ella`,
+      );
+    }
+
     const hoy = this.fechaHoy();
     const existente = await this.prisma.registros_asistencia.findFirst({
       where: { trabajador_id: dto.trabajadorId, fecha: hoy, eliminado_en: null },
@@ -191,8 +203,8 @@ export class AsistenciaService {
       );
     }
 
-    const radioPermitido = dto.radioPermitidoMetros ?? RADIO_DEFECTO_METROS;
-    const distancia = this.distanciaMetros(dto.lat, dto.lng, dto.obraLat, dto.obraLng);
+    const radioPermitido = geocerca.radioMetros;
+    const distancia = this.distanciaMetros(dto.lat, dto.lng, geocerca.lat, geocerca.lng);
     const enSitio = distancia <= radioPermitido;
     const ahora = new Date();
     const estado = this.esRetardo(ahora, trabajador.entrada) ? 'RETARDO' : 'PUNTUAL';
@@ -210,8 +222,8 @@ export class AsistenciaService {
         lng_entrada: dto.lng,
         obra_asignada: obra.nombre,
         obra_id: obra.id,
-        lat_obra: dto.obraLat,
-        lng_obra: dto.obraLng,
+        lat_obra: geocerca.lat,
+        lng_obra: geocerca.lng,
         distancia_metros: distancia,
         radio_permitido_metros: radioPermitido,
         en_sitio: enSitio,
@@ -337,6 +349,18 @@ export class AsistenciaService {
       );
     }
 
+    const geocerca = this.geocercaDeObra(obra);
+    if (!geocerca) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_CUADRILLA_REGISTRADA,
+        ENTITY_TYPE,
+        null,
+        'OBRA_SIN_COORDENADAS',
+        BadRequestException,
+        `La obra "${obra.nombre}" aún no tiene su ubicación registrada; no se puede pasar lista en ella`,
+      );
+    }
+
     const idsUnicos = Array.from(new Set(dto.trabajadorIds));
     const trabajadores = await this.prisma.trabajadores.findMany({
       where: { id: { in: idsUnicos }, eliminado_en: null },
@@ -361,8 +385,8 @@ export class AsistenciaService {
     });
     const yaRegistrados = new Set(existentes.map((e) => e.trabajador_id));
 
-    const radioPermitido = dto.radioPermitidoMetros ?? RADIO_DEFECTO_METROS;
-    const distancia = this.distanciaMetros(dto.lat, dto.lng, dto.obraLat, dto.obraLng);
+    const radioPermitido = geocerca.radioMetros;
+    const distancia = this.distanciaMetros(dto.lat, dto.lng, geocerca.lat, geocerca.lng);
     const enSitio = distancia <= radioPermitido;
     const ahora = new Date();
     const horaEntrada = this.horaActualUtc(ahora);
@@ -386,8 +410,8 @@ export class AsistenciaService {
           lng_entrada: dto.lng,
           obra_asignada: obra.nombre,
           obra_id: obra.id,
-          lat_obra: dto.obraLat,
-          lng_obra: dto.obraLng,
+          lat_obra: geocerca.lat,
+          lng_obra: geocerca.lng,
           distancia_metros: distancia,
           radio_permitido_metros: radioPermitido,
           en_sitio: enSitio,
@@ -893,6 +917,21 @@ export class AsistenciaService {
     const minutosSalida = salida.getUTCHours() * 60 + salida.getUTCMinutes();
     const horas = Math.max(0, minutosSalida - minutosEntrada) / 60;
     return Number(horas.toFixed(1));
+  }
+
+  /**
+   * Centro y radio de la geocerca de una obra, tomados de lo GUARDADO en la tabla `obras`. Sin ubicación
+   * registrada devuelve null y el marcaje se rechaza (decisión del cliente: esperar a que la obra se
+   * registre). Si tiene ubicación pero no radio, se usa el radio por defecto.
+   */
+  private geocercaDeObra(obra: { lat: Prisma.Decimal | null; lng: Prisma.Decimal | null; radio_permitido_metros: Prisma.Decimal | null }) {
+    if (obra.lat == null || obra.lng == null) return null;
+    const radio = obra.radio_permitido_metros != null ? Number(obra.radio_permitido_metros) : RADIO_DEFECTO_METROS;
+    return {
+      lat: Number(obra.lat),
+      lng: Number(obra.lng),
+      radioMetros: radio > 0 ? radio : RADIO_DEFECTO_METROS,
+    };
   }
 
   /** Distancia en metros entre dos coordenadas GPS (fórmula de Haversine). */
