@@ -10,7 +10,7 @@
     (se limpian al escribir); `noValidate` para no depender del validador nativo del
     navegador (salía en inglés); `autoComplete` email/current-password; `aria-invalid`.
   - Textos: "Bienvenido a SVR" (antes "al ERP"); botón solo "Iniciar Sesión"
-    (se quitó la flecha); footer "SISTEMA DESARROLLADO POR ARAZAK"
+    (se quitó la flecha); footer "SISTEMA DESARROLLADO POR ARAZAKA"
     (antes "SVR CONSTRUCTORA © 2025 — V2.0").
 - **`apps/api/src/auth/dto/login.dto.ts`:** mínimo de contraseña 6→8 caracteres y
   mensajes class-validator en español (email/tamaño/DoS 128). Se mantiene leniente
