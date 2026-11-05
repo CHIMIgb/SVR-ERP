@@ -55,3 +55,5 @@
 - **Posterior (07530487):** el modal de Crear ya no incluye "Progreso (%)" —
   todo proyecto nace en 0% (el backend ya lo hace por default, `progreso=0`);
   el avance se captura únicamente al Editar. Editar conserva el campo.
+- **Posterior (cf84d141):** layout del modal de Crear — Presupuesto en fila
+  propia (ancho completo) y Fecha inicio + Fecha de entrega juntas en otra fila.
