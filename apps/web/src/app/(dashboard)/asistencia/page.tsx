@@ -29,8 +29,9 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 
-/** Punto de referencia usado solo cuando una obra aún no tiene coordenadas configuradas. */
-const FALLBACK_COORD = { lat: 19.3421, lng: -99.1843 };
+/** Decisión del cliente: en una obra sin ubicación registrada no se marca asistencia hasta que se registre. */
+const MENSAJE_OBRA_SIN_UBICACION =
+  'Esta obra aún no tiene su ubicación registrada. No se puede marcar asistencia hasta que se registre.';
 
 const CATEGORIAS = [
   { id: 'Todos', label: 'Todos los puestos' },
@@ -527,6 +528,10 @@ export default function AsistenciaPage() {
       showToast('Selecciona la obra o frente de trabajo.', 'error');
       return;
     }
+    if (obraSeleccionadaCuadrilla.lat == null || obraSeleccionadaCuadrilla.lng == null) {
+      showToast(MENSAJE_OBRA_SIN_UBICACION, 'error');
+      return;
+    }
     if (selectedCuadrillaWorkers.length === 0) {
       showToast('Selecciona al menos un trabajador.', 'error');
       return;
@@ -542,9 +547,6 @@ export default function AsistenciaPage() {
     try {
       const res = await asistenciaApi.marcarCuadrilla({
         obraId: obra.id,
-        obraLat: obra.lat ?? FALLBACK_COORD.lat,
-        obraLng: obra.lng ?? FALLBACK_COORD.lng,
-        radioPermitidoMetros: obra.radioPermitidoMetros ?? 2000,
         trabajadorIds: selectedCuadrillaWorkers,
         lat: coords.lat,
         lng: coords.lng,
@@ -576,6 +578,10 @@ export default function AsistenciaPage() {
     }
     if (clockInType === 'entrada' && !obraSeleccionadaEntrada) {
       showToast('Selecciona la obra.', 'error');
+      return;
+    }
+    if (clockInType === 'entrada' && (obraSeleccionadaEntrada?.lat == null || obraSeleccionadaEntrada?.lng == null)) {
+      showToast(MENSAJE_OBRA_SIN_UBICACION, 'error');
       return;
     }
     const horasSalida = Number(earlyDepartureHours);
@@ -614,9 +620,6 @@ export default function AsistenciaPage() {
         const res = await asistenciaApi.marcarEntrada({
           trabajadorId: worker.id,
           obraId: obra.id,
-          obraLat: obra.lat ?? FALLBACK_COORD.lat,
-          obraLng: obra.lng ?? FALLBACK_COORD.lng,
-          radioPermitidoMetros: obra.radioPermitidoMetros ?? 2000,
           lat: coords.lat,
           lng: coords.lng,
           precisionGpsMetros: coords.precisionGpsMetros,
@@ -1154,6 +1157,7 @@ export default function AsistenciaPage() {
         onSubmit={handleClockInSubmit}
         title={clockInType === 'entrada' ? 'Marcar entrada' : clockInType === 'salida' ? 'Marcar salida' : 'Registrar horas extra'}
         submitLabel={submitting ? 'Enviando…' : 'Registrar'}
+        submitDisabled={clockInType === 'entrada' && obraSeleccionadaEntrada?.lat == null}
         isSubmitting={submitting}
       >
         <div className="space-y-4">
@@ -1188,13 +1192,11 @@ export default function AsistenciaPage() {
             <ModalField label="Obra">
               <select value={clockInObraId} onChange={(e) => setClockInObraId(e.target.value)} className={modalSelectClass}>
                 {obras.map((o) => (
-                  <option key={o.id} value={o.id}>{o.nombre}</option>
+                  <option key={o.id} value={o.id}>{o.nombre}{o.lat == null ? ' (sin ubicación)' : ''}</option>
                 ))}
               </select>
               {obraSeleccionadaEntrada && obraSeleccionadaEntrada.lat == null && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                  Esta obra aún no tiene coordenadas configuradas; se usará una ubicación de referencia.
-                </p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">{MENSAJE_OBRA_SIN_UBICACION}</p>
               )}
             </ModalField>
           )}
@@ -1266,21 +1268,20 @@ export default function AsistenciaPage() {
         onSubmit={handleCuadrillaSubmit}
         title="Pase de lista por cuadrilla"
         submitLabel={submitting ? 'Enviando…' : 'Registrar cuadrilla'}
+        submitDisabled={obraSeleccionadaCuadrilla?.lat == null}
         isSubmitting={submitting}
       >
         <div className="space-y-4">
           <ModalField label="Obra o frente de trabajo">
             <select value={cuadrillaObraId} onChange={(e) => setCuadrillaObraId(e.target.value)} className={modalSelectClass}>
               {obras.map((o) => (
-                <option key={o.id} value={o.id}>{o.nombre}</option>
+                <option key={o.id} value={o.id}>{o.nombre}{o.lat == null ? ' (sin ubicación)' : ''}</option>
               ))}
             </select>
           </ModalField>
 
           {obraSeleccionadaCuadrilla && obraSeleccionadaCuadrilla.lat == null && (
-            <p className="-mt-2 text-xs text-amber-600 dark:text-amber-400">
-              Esta obra aún no tiene coordenadas configuradas; se usará una ubicación de referencia.
-            </p>
+            <p className="-mt-2 text-xs text-red-600 dark:text-red-400">{MENSAJE_OBRA_SIN_UBICACION}</p>
           )}
 
           <ModalField label="Ubicación del dispositivo (residente o cabo)">

@@ -19,9 +19,13 @@ describe('AsistenciaService', () => {
     estado: 'ACTIVO',
   };
 
+  // Ubicación y radio guardados de la obra: la geocerca se valida contra esto, no contra el cliente.
   const mockObra = {
     id: 'obra-uuid-1',
     nombre: 'Fraccionamiento Valle Sur',
+    lat: 19.3421,
+    lng: -99.1843,
+    radio_permitido_metros: 2000,
   };
 
   const baseRegistro = {
@@ -104,8 +108,6 @@ describe('AsistenciaService', () => {
   const entradaDto = (overrides: Record<string, unknown> = {}) => ({
     trabajadorId: mockTrabajador.id,
     obraId: mockObra.id,
-    obraLat: 19.3421,
-    obraLng: -99.1843,
     lat: 19.3423,
     lng: -99.1841,
     dispositivo: 'Dispositivo Móvil · GPS Activo',
@@ -131,13 +133,36 @@ describe('AsistenciaService', () => {
     });
 
     it('computes real GPS distance and flags fuera de sitio beyond the allowed radius', async () => {
-      await service.marcarEntrada(
-        entradaDto({ obraLat: 19.3421, obraLng: -99.1843, lat: 19.378, lng: -99.172, radioPermitidoMetros: 2000 }),
-        'user-1',
-      );
+      await service.marcarEntrada(entradaDto({ lat: 19.378, lng: -99.172 }), 'user-1');
       const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
       expect(data.en_sitio).toBe(false);
       expect(data.distancia_metros).toBeGreaterThan(2000);
+    });
+
+    it('validates the geofence with the obra stored location and radius, not with client data', async () => {
+      // Radio guardado de 100 m: a ~120 m del centro queda fuera aunque el radio por defecto sea 2 km.
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, radio_permitido_metros: 100 });
+      await service.marcarEntrada(entradaDto({ lat: 19.3432, lng: -99.1843 }), 'user-1');
+      const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
+      expect(data.lat_obra).toBe(19.3421);
+      expect(data.lng_obra).toBe(-99.1843);
+      expect(data.radio_permitido_metros).toBe(100);
+      expect(data.en_sitio).toBe(false);
+    });
+
+    it('uses the default radius when the obra has a location but no radius', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, radio_permitido_metros: null });
+      await service.marcarEntrada(entradaDto(), 'user-1');
+      const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
+      expect(data.radio_permitido_metros).toBe(2000);
+      expect(data.en_sitio).toBe(true);
+    });
+
+    it('rejects when the obra has no stored location (OBRA_SIN_COORDENADAS) and creates nothing', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, lat: null, lng: null });
+      await expect(service.marcarEntrada(entradaDto(), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OBRA_SIN_COORDENADAS' }));
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
     });
 
     it('rejects when the trabajador does not exist', async () => {
@@ -214,8 +239,6 @@ describe('AsistenciaService', () => {
       const result = await service.marcarCuadrilla(
         {
           obraId: mockObra.id,
-          obraLat: 19.3421,
-          obraLng: -99.1843,
           trabajadorIds: [mockTrabajador.id, t2.id],
           lat: 19.3423,
           lng: -99.1841,
@@ -234,8 +257,6 @@ describe('AsistenciaService', () => {
         service.marcarCuadrilla(
           {
             obraId: mockObra.id,
-            obraLat: 1,
-            obraLng: 1,
             trabajadorIds: [mockTrabajador.id, 'no-existe'],
             lat: 1,
             lng: 1,
@@ -244,6 +265,18 @@ describe('AsistenciaService', () => {
           'user-1',
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects the whole pase de lista when the obra has no stored location', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, lat: null, lng: null });
+      await expect(
+        service.marcarCuadrilla(
+          { obraId: mockObra.id, trabajadorIds: [mockTrabajador.id], lat: 19.3423, lng: -99.1841, dispositivo: 'Móvil' },
+          'user-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OBRA_SIN_COORDENADAS' }));
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
     });
   });
 

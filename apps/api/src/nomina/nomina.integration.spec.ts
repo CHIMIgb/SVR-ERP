@@ -49,8 +49,17 @@ describe('Nomina Audit (Real DB)', () => {
     });
     categoriaId = categoria.id;
 
-    const obra = await prisma.obras.findFirst({ where: { eliminado_en: null } });
-    if (!obra) throw new Error('Se requiere al menos una obra existente para correr este test');
+    // Obra de prueba propia con ubicación: la asistencia se valida contra la ubicación guardada de la obra.
+    const obra = await prisma.obras.create({
+      data: {
+        id: randomUUID(),
+        nombre: `Obra Nomina Test ${TEST_ID}`,
+        lat: 19.3421,
+        lng: -99.1843,
+        radio_permitido_metros: 2000,
+        actualizado_en: new Date(),
+      },
+    });
     obraId = obra.id;
   });
 
@@ -70,6 +79,7 @@ describe('Nomina Audit (Real DB)', () => {
       await prisma.trabajadores.deleteMany({ where: { id: { in: createdTrabajadorIds } } });
     }
     await prisma.categorias_puesto.deleteMany({ where: { id: categoriaId } });
+    if (obraId) await prisma.obras.deleteMany({ where: { id: obraId } });
 
     await prisma.$disconnect();
     await app.close();
@@ -135,8 +145,6 @@ describe('Nomina Audit (Real DB)', () => {
         {
           trabajadorId: trabajador.id,
           obraId,
-          obraLat: 19.3421,
-          obraLng: -99.1843,
           lat: 19.3421,
           lng: -99.1843,
           dispositivo: 'Integration Test',

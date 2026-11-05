@@ -4,24 +4,12 @@ export class MarcarEntradaDto {
   @IsUUID()
   trabajadorId!: string;
 
+  /**
+   * La geocerca se valida con la ubicación y el radio GUARDADOS de esta obra (tabla `obras`), nunca con
+   * coordenadas que mande el cliente: si no, cualquiera podría declarar la obra donde está y salir "en sitio".
+   */
   @IsUUID()
   obraId!: string;
-
-  /** Coordenadas del centro de la obra en el momento del marcaje. */
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  obraLat!: number;
-
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  obraLng!: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  radioPermitidoMetros?: number;
 
   /** Coordenadas GPS reportadas por el dispositivo del trabajador. */
   @IsNumber()
