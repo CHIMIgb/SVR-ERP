@@ -157,7 +157,7 @@ export default function LoginPage() {
 
           <div className="mt-10 text-center">
             <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">
-              Sistema desarrollado por Arazak
+              Sistema desarrollado por Arazaka
             </p>
           </div>
         </div>
