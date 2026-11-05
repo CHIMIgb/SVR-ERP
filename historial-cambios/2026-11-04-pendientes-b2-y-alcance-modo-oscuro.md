@@ -25,3 +25,8 @@
 ## Pendientes y riesgos
 - Implementación del modo oscuro pendiente de autorización (Fase 0 con el
   alcance de 2 grupos de vistas).
+- **PSA (2026-11-04 posterior):** el usuario decide **DELEGAR la implementación
+  del modo oscuro al otro desarrollador** — no se implementa desde aquí por
+  ahora. El análisis, alcance (Comercial+Operaciones) y colocación del toggle
+  (Topbar, junto a notificaciones) quedan documentados arriba para que el otro
+  dev arranque sin re-analizar.
