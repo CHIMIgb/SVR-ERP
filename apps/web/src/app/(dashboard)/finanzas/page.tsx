@@ -335,10 +335,10 @@ export default function FinanzasPage() {
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const flujoColumns: Column<VentanaFlujoItem>[] = [
-    { key: 'ventana', header: 'Ventana', render: (it) => <span className="font-medium text-slate-700">{it.label}</span> },
+    { key: 'ventana', header: 'Ventana', render: (it) => <span className="font-medium text-ui-700">{it.label}</span> },
     { key: 'porCobrar', header: 'Por cobrar', align: 'right', render: (it) => <span className="text-emerald-600">{formatCurrency(it.porCobrar)}</span> },
     { key: 'porPagar', header: 'Por pagar', align: 'right', render: (it) => <span className="text-rose-600">{formatCurrency(it.porPagar)}</span> },
-    { key: 'neto', header: 'Neto', align: 'right', render: (it) => <span className={it.neto >= 0 ? 'font-semibold text-slate-800' : 'font-semibold text-rose-700'}>{formatCurrency(it.neto)}</span> },
+    { key: 'neto', header: 'Neto', align: 'right', render: (it) => <span className={it.neto >= 0 ? 'font-semibold text-ui-800' : 'font-semibold text-rose-700'}>{formatCurrency(it.neto)}</span> },
   ];
 
   // ── Columnas de DataTable ──
@@ -347,7 +347,7 @@ export default function FinanzasPage() {
       key: 'fecha',
       header: 'Fecha',
       render: (item) => (
-        <span className="font-semibold text-slate-600 uppercase text-xs tracking-wide">
+        <span className="font-semibold text-ui-600 uppercase text-xs tracking-wide">
           {formatFechaSolo(item.fecha)}
         </span>
       ),
@@ -358,8 +358,8 @@ export default function FinanzasPage() {
       className: 'whitespace-pre-line min-w-[220px] max-w-[360px]',
       render: (item) => (
         <div>
-          <div className="font-black text-slate-900">{item.descripcion}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.catEfectiva ?? item.categoria}</div>
+          <div className="font-black text-ui-900">{item.descripcion}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">{item.catEfectiva ?? item.categoria}</div>
         </div>
       ),
     },
@@ -377,7 +377,7 @@ export default function FinanzasPage() {
       header: 'Monto',
       align: 'right',
       render: (item) => (
-        <span className={`font-black ${item.tipo === 'INGRESO' ? 'text-green-600' : 'text-slate-900'}`}>
+        <span className={`font-black ${item.tipo === 'INGRESO' ? 'text-green-600' : 'text-ui-900'}`}>
           {item.tipo === 'INGRESO' ? '+' : '-'}{formatCurrency(item.monto)}
         </span>
       ),
@@ -483,7 +483,7 @@ export default function FinanzasPage() {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold text-slate-900">Flujo Neto Proyectado</h2>
+            <h2 className="text-lg font-bold text-ui-900">Flujo Neto Proyectado</h2>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="inline-flex items-center gap-1.5">
@@ -514,13 +514,13 @@ export default function FinanzasPage() {
       )}
 
       {/* Tabs: movimientos / conciliación bancaria */}
-      <div className="flex gap-1 w-fit rounded-xl bg-slate-100 p-1">
+      <div className="flex gap-1 w-fit rounded-xl bg-ui-100 p-1">
         <button
           type="button"
           onClick={() => setTab('movimientos')}
           className={cn(
             'px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-1.5',
-            tab === 'movimientos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+            tab === 'movimientos' ? 'bg-surface text-ui-900 shadow-sm' : 'text-ui-500 hover:text-ui-700',
           )}
         >
           <ArrowRightLeft className="w-4 h-4" />
@@ -531,7 +531,7 @@ export default function FinanzasPage() {
           onClick={() => setTab('conciliacion')}
           className={cn(
             'px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5',
-            tab === 'conciliacion' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+            tab === 'conciliacion' ? 'bg-surface text-ui-900 shadow-sm' : 'text-ui-500 hover:text-ui-700',
           )}
         >
           <Landmark className="w-4 h-4" />
@@ -561,7 +561,7 @@ export default function FinanzasPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -589,7 +589,7 @@ export default function FinanzasPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -602,7 +602,7 @@ export default function FinanzasPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
@@ -626,7 +626,7 @@ export default function FinanzasPage() {
       <div className="space-y-3">
         <div className="relative">
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -824,13 +824,13 @@ export default function FinanzasPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               ¿Estás seguro de eliminar la transacción?
             </p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="font-black text-ui-900 text-lg mb-2">
               {selectedItem.descripcion}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ui-500">
               {selectedItem.categoria} — {formatCurrency(selectedItem.monto)}
             </p>
           </div>

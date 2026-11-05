@@ -415,7 +415,7 @@ export default function ClientesPage() {
             {item.empresa[0]}
           </div>
           <div className="min-w-0">
-            <div className="font-black text-slate-900 truncate">{item.empresa}</div>
+            <div className="font-black text-ui-900 truncate">{item.empresa}</div>
             <div className="text-xs font-bold text-primary truncate">{item.nombre}</div>
           </div>
         </div>
@@ -426,12 +426,12 @@ export default function ClientesPage() {
       header: 'Contacto',
       render: (item) => (
         <div className="space-y-0.5 min-w-0">
-          <div className="flex items-center gap-2 text-slate-600">
-            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-2 text-ui-600">
+            <Mail className="w-3.5 h-3.5 text-ui-400 shrink-0" />
             <span className="text-sm font-medium truncate">{item.correo}</span>
           </div>
-          <div className="flex items-center gap-2 text-slate-600">
-            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-2 text-ui-600">
+            <Phone className="w-3.5 h-3.5 text-ui-400 shrink-0" />
             <span className="text-sm font-medium truncate">{item.telefono}</span>
           </div>
         </div>
@@ -441,7 +441,7 @@ export default function ClientesPage() {
       key: 'rfc',
       header: 'RFC',
       render: (item) => (
-        <span className="text-sm font-semibold text-slate-600">{item.rfc || '—'}</span>
+        <span className="text-sm font-semibold text-ui-600">{item.rfc || '—'}</span>
       ),
     },
     {
@@ -513,11 +513,11 @@ export default function ClientesPage() {
   // ── Columnas del modal de estado de cuenta por cliente ──
   const estadoCuentaColumns = {
     cuentas: [
-      { key: 'fechaVencimiento', header: 'Vencimiento', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-slate-600">{c.fechaVencimiento ?? '—'}</span> },
-      { key: 'proyecto', header: 'Proyecto', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-slate-600">{c.proyecto ? `${c.proyecto.codigo} — ${c.proyecto.nombre}` : 'Sin proyecto'}</span> },
-      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(c.monto)}</span> },
-      { key: 'montoPagado', header: 'Pagado', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-slate-600">{formatCurrency(c.montoPagado)}</span> },
-      { key: 'saldo', header: 'Saldo', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="font-bold text-slate-900">{formatCurrency(c.saldo)}</span> },
+      { key: 'fechaVencimiento', header: 'Vencimiento', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-ui-600">{c.fechaVencimiento ?? '—'}</span> },
+      { key: 'proyecto', header: 'Proyecto', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-ui-600">{c.proyecto ? `${c.proyecto.codigo} — ${c.proyecto.nombre}` : 'Sin proyecto'}</span> },
+      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="font-semibold text-ui-800">{formatCurrency(c.monto)}</span> },
+      { key: 'montoPagado', header: 'Pagado', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="text-ui-600">{formatCurrency(c.montoPagado)}</span> },
+      { key: 'saldo', header: 'Saldo', align: 'right', render: (c: ConsolidadoClienteDTO['cuentasPorCobrar'][number]) => <span className="font-bold text-ui-900">{formatCurrency(c.saldo)}</span> },
       {
         key: 'situacion',
         header: 'Situación',
@@ -530,16 +530,16 @@ export default function ClientesPage() {
       },
     ] as Column<ConsolidadoClienteDTO['cuentasPorCobrar'][number]>[],
     facturas: [
-      { key: 'folio', header: 'Folio', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="font-semibold text-slate-800">{f.folio || f.codigo || '—'}</span> },
-      { key: 'fechaEmision', header: 'Emisión', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="text-slate-600">{f.fechaEmision ?? '—'}</span> },
-      { key: 'total', header: 'Total', align: 'right', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(f.total)}</span> },
+      { key: 'folio', header: 'Folio', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="font-semibold text-ui-800">{f.folio || f.codigo || '—'}</span> },
+      { key: 'fechaEmision', header: 'Emisión', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="text-ui-600">{f.fechaEmision ?? '—'}</span> },
+      { key: 'total', header: 'Total', align: 'right', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <span className="font-semibold text-ui-800">{formatCurrency(f.total)}</span> },
       { key: 'estado', header: 'Estado', render: (f: ConsolidadoClienteDTO['facturas'][number]) => <Badge variant="neutral" size="sm">{f.estado}</Badge> },
     ] as Column<ConsolidadoClienteDTO['facturas'][number]>[],
     cobros: [
-      { key: 'fecha', header: 'Fecha', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-slate-600">{c.fecha ?? '—'}</span> },
-      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(c.monto)}</span> },
-      { key: 'metodoPago', header: 'Método', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-slate-600">{c.metodoPago}</span> },
-      { key: 'referencia', header: 'Referencia', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-slate-600">{c.referencia ?? '—'}</span> },
+      { key: 'fecha', header: 'Fecha', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-ui-600">{c.fecha ?? '—'}</span> },
+      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="font-semibold text-ui-800">{formatCurrency(c.monto)}</span> },
+      { key: 'metodoPago', header: 'Método', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-ui-600">{c.metodoPago}</span> },
+      { key: 'referencia', header: 'Referencia', render: (c: ConsolidadoClienteDTO['cobros'][number]) => <span className="text-ui-600">{c.referencia ?? '—'}</span> },
       {
         key: 'estado',
         header: 'Estado',
@@ -549,9 +549,9 @@ export default function ClientesPage() {
       },
     ] as Column<ConsolidadoClienteDTO['cobros'][number]>[],
     cotizaciones: [
-      { key: 'fecha', header: 'Fecha', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="text-slate-600">{c.fecha ?? '—'}</span> },
-      { key: 'descripcion', header: 'Descripción', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="text-slate-700">{c.descripcion}</span> },
-      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="font-semibold text-slate-800">{formatCurrency(c.monto)}</span> },
+      { key: 'fecha', header: 'Fecha', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="text-ui-600">{c.fecha ?? '—'}</span> },
+      { key: 'descripcion', header: 'Descripción', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="text-ui-700">{c.descripcion}</span> },
+      { key: 'monto', header: 'Monto', align: 'right', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => <span className="font-semibold text-ui-800">{formatCurrency(c.monto)}</span> },
       { key: 'estado', header: 'Estado', render: (c: ConsolidadoClienteDTO['cotizaciones'][number]) => estadoBadge(c.estado as CotizacionDTO['estado']) },
     ] as Column<ConsolidadoClienteDTO['cotizaciones'][number]>[],
   };
@@ -608,7 +608,7 @@ export default function ClientesPage() {
         >
           Filtros
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -632,7 +632,7 @@ export default function ClientesPage() {
       <div className="space-y-3">
         <div className="relative">
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -740,37 +740,37 @@ export default function ClientesPage() {
                 {selected.empresa[0]}
               </div>
               <div>
-                <p className="font-black text-slate-900 text-lg leading-tight">{selected.empresa}</p>
+                <p className="font-black text-ui-900 text-lg leading-tight">{selected.empresa}</p>
                 <p className="text-xs font-bold text-primary">{selected.nombre}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
-                <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="bg-ui-50 border border-ui-200 rounded-xl p-3 flex items-center gap-3">
+                <Mail className="w-4 h-4 text-ui-400 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Correo</p>
-                  <p className="text-sm font-semibold text-slate-700 truncate">{selected.correo}</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Correo</p>
+                  <p className="text-sm font-semibold text-ui-700 truncate">{selected.correo}</p>
                 </div>
               </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
-                <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="bg-ui-50 border border-ui-200 rounded-xl p-3 flex items-center gap-3">
+                <Phone className="w-4 h-4 text-ui-400 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Teléfono</p>
-                  <p className="text-sm font-semibold text-slate-700 truncate">{selected.telefono}</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Teléfono</p>
+                  <p className="text-sm font-semibold text-ui-700 truncate">{selected.telefono}</p>
                 </div>
               </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
-                <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="bg-ui-50 border border-ui-200 rounded-xl p-3 flex items-center gap-3">
+                <Building2 className="w-4 h-4 text-ui-400 shrink-0" />
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RFC</p>
-                  <p className="text-sm font-semibold text-slate-700">{selected.rfc || '—'}</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">RFC</p>
+                  <p className="text-sm font-semibold text-ui-700">{selected.rfc || '—'}</p>
                 </div>
               </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
-                <FolderKanban className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="bg-ui-50 border border-ui-200 rounded-xl p-3 flex items-center gap-3">
+                <FolderKanban className="w-4 h-4 text-ui-400 shrink-0" />
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Estado</p>
                   <div className="mt-0.5">
                     <Badge variant={selected.activo ? 'success' : 'neutral'} size="sm">
                       {selected.activo ? 'Activo' : 'Inactivo'}
@@ -784,45 +784,45 @@ export default function ClientesPage() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-primary" />
-                <h4 className="font-black text-slate-900 text-sm">Cotizaciones</h4>
+                <h4 className="font-black text-ui-900 text-sm">Cotizaciones</h4>
                 <Badge variant="info" size="sm">{historialPagination.total}</Badge>
               </div>
 
               {historialLoading ? (
-                <div className="flex items-center justify-center py-6 text-slate-400">
+                <div className="flex items-center justify-center py-6 text-ui-400">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
               ) : cotizaciones.length === 0 ? (
-                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
+                <div className="bg-ui-50 border border-dashed border-ui-200 rounded-xl p-6 text-center">
                   <FileText className="w-6 h-6 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-500">
+                  <p className="text-sm font-semibold text-ui-500">
                     {selected.empresa} aún no tiene cotizaciones registradas.
                   </p>
                 </div>
               ) : (
                 <>
                   <div className="relative">
-                    <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                    <ul className="divide-y divide-slate-100 border border-ui-200 rounded-xl overflow-hidden">
                       {cotizaciones.map((cq) => (
-                        <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50/50">
+                        <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-ui-50/50">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-black text-primary">{cq.codigo}</span>
                               {estadoBadge(cq.estado)}
                             </div>
-                            <p className="text-sm font-semibold text-slate-700 truncate mt-0.5">{cq.descripcion}</p>
-                            <p className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                            <p className="text-sm font-semibold text-ui-700 truncate mt-0.5">{cq.descripcion}</p>
+                            <p className="text-xs font-medium text-ui-400 flex items-center gap-1 mt-0.5">
                               <CalendarDays className="w-3 h-3" /> {cq.fecha}
                             </p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="font-black text-slate-900">{formatCurrency(cq.monto)}</p>
+                            <p className="font-black text-ui-900">{formatCurrency(cq.monto)}</p>
                           </div>
                         </li>
                       ))}
                     </ul>
                     {historialPaging && (
-                      <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+                      <div className="absolute inset-0 bg-surface/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
                         <Loader2 className="w-5 h-5 animate-spin text-primary" />
                       </div>
                     )}
@@ -985,13 +985,13 @@ export default function ClientesPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               ¿Estás seguro de eliminar el cliente?
             </p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="font-black text-ui-900 text-lg mb-2">
               {selected.empresa}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ui-500">
               {selected.nombre} — {selected.correo}
             </p>
           </div>

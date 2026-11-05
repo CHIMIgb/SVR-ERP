@@ -348,8 +348,8 @@ export default function CotizacionesPage() {
       header: 'Código / Cliente',
       render: (item) => (
         <div>
-          <div className="font-black text-slate-900">{item.codigo || '—'}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          <div className="font-black text-ui-900">{item.codigo || '—'}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">
             {item.clienteEmpresa || (item.clienteNombre ?? 'Cliente')}
           </div>
         </div>
@@ -359,7 +359,7 @@ export default function CotizacionesPage() {
       key: 'descripcion',
       header: 'Descripción',
       render: (item) => (
-        <span className="font-semibold text-slate-600 min-w-0 truncate max-w-[260px] block">
+        <span className="font-semibold text-ui-600 min-w-0 truncate max-w-[260px] block">
           {item.descripcion}
         </span>
       ),
@@ -368,8 +368,8 @@ export default function CotizacionesPage() {
       key: 'fecha',
       header: 'Fecha',
       render: (item) => (
-        <span className="inline-flex items-center gap-1.5 font-medium text-slate-500 whitespace-nowrap">
-          <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
+        <span className="inline-flex items-center gap-1.5 font-medium text-ui-500 whitespace-nowrap">
+          <CalendarDays className="w-3.5 h-3.5 text-ui-400" />
           {formatFechaSolo(item.fecha)}
         </span>
       ),
@@ -379,7 +379,7 @@ export default function CotizacionesPage() {
       header: 'Monto',
       align: 'right',
       render: (item) => (
-        <span className="font-black text-slate-900">{formatCurrency(item.monto)}</span>
+        <span className="font-black text-ui-900">{formatCurrency(item.monto)}</span>
       ),
     },
     {
@@ -502,7 +502,7 @@ export default function CotizacionesPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -530,7 +530,7 @@ export default function CotizacionesPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -542,7 +542,7 @@ export default function CotizacionesPage() {
         <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             <div className="flex flex-col gap-1 w-full sm:w-auto">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado</label>
+              <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Estado</label>
               <select
                 value={filterValues.estado || ''}
                 onChange={(e) => handleFilterChange('estado', e.target.value)}
@@ -555,7 +555,7 @@ export default function CotizacionesPage() {
               </select>
             </div>
             <div className="flex flex-col gap-1 w-full sm:w-64">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cliente</label>
+              <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Cliente</label>
               <select
                 value={filterValues.clienteId || ''}
                 onChange={(e) => handleFilterChange('clienteId', e.target.value)}
@@ -574,7 +574,7 @@ export default function CotizacionesPage() {
       <div className="space-y-3">
         <div className="relative">
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -641,7 +641,7 @@ export default function CotizacionesPage() {
               value={form.monto}
               onChange={(e) => setForm({ ...form, monto: e.target.value })}
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-ui-500">
               La factura se emite por este monto + IVA 16% (se aplica al aceptar con factura).
             </p>
           </ModalField>
@@ -702,7 +702,7 @@ export default function CotizacionesPage() {
               value={editForm.monto}
               onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-ui-500">
               La factura se emite por este monto + IVA 16%.
             </p>
           </ModalField>
@@ -733,12 +733,12 @@ export default function CotizacionesPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Estado</p>
                   {estadoBadge(selected.estado)}
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</p>
-                  <p className="font-black text-2xl text-slate-900">{formatCurrency(selected.monto)}</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Monto</p>
+                  <p className="font-black text-2xl text-ui-900">{formatCurrency(selected.monto)}</p>
                 </div>
               </div>
 
@@ -753,23 +753,23 @@ export default function CotizacionesPage() {
                 <div className="flex items-start gap-2">
                   <Building2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</p>
-                    <p className="text-sm font-black text-slate-900">{selected.clienteEmpresa || '—'}</p>
-                    <p className="text-xs font-medium text-slate-500">{selected.clienteNombre || ''}</p>
+                    <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Cliente</p>
+                    <p className="text-sm font-black text-ui-900">{selected.clienteEmpresa || '—'}</p>
+                    <p className="text-xs font-medium text-ui-500">{selected.clienteNombre || ''}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <CalendarDays className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</p>
-                    <p className="text-sm font-bold text-slate-700">{formatFechaSolo(selected.fecha)}</p>
+                    <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Fecha</p>
+                    <p className="text-sm font-bold text-ui-700">{formatFechaSolo(selected.fecha)}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Descripción</p>
-                <p className="text-sm font-semibold text-slate-700">{selected.descripcion}</p>
+              <div className="bg-ui-50 border border-dashed border-ui-200 rounded-xl p-4">
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest mb-1">Descripción</p>
+                <p className="text-sm font-semibold text-ui-700">{selected.descripcion}</p>
               </div>
             </div>
           )}
@@ -802,11 +802,11 @@ export default function CotizacionesPage() {
                   ? <CheckCircle2 className="w-7 h-7 text-green-500" />
                   : <XCircle className="w-7 h-7 text-red-500" />}
               </div>
-              <p className="text-sm text-slate-700 mb-1">
+              <p className="text-sm text-ui-700 mb-1">
                 ¿Estás seguro de {selectedEstado === 'ACEPTADA' ? 'aceptar' : 'rechazar'} la cotización?
               </p>
-              <p className="font-black text-slate-900 text-lg mb-1">{selected.descripcion}</p>
-              <p className="text-xs text-slate-500">
+              <p className="font-black text-ui-900 text-lg mb-1">{selected.descripcion}</p>
+              <p className="text-xs text-ui-500">
                 {selected.clienteEmpresa || 'Cliente'} — {formatCurrency(selected.monto)}
               </p>
             </div>
@@ -825,7 +825,7 @@ export default function CotizacionesPage() {
             )}
             {selectedEstado === 'ACEPTADA' && (
               <div className="w-full mt-2 text-left">
-                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:border-primary/40 transition-colors">
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-ui-200 bg-ui-50 cursor-pointer hover:border-primary/40 transition-colors">
                   <input
                     type="checkbox"
                     checked={generarFactura}
@@ -833,8 +833,8 @@ export default function CotizacionesPage() {
                     className="mt-0.5 w-4 h-4 accent-primary"
                   />
                   <span>
-                    <span className="block text-sm font-semibold text-slate-800">Generar factura</span>
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-sm font-semibold text-ui-800">Generar factura</span>
+                    <span className="block text-xs text-ui-500">
                       Acepta la cotización y crea la factura con su cuenta por cobrar automáticamente.
                     </span>
                   </span>
