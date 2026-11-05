@@ -494,18 +494,18 @@ export default function ProveedoresPage() {
       header: 'Proveedor',
       render: (p) => (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xs shrink-0">
+          <div className="w-9 h-9 bg-ui-900 text-white rounded-xl flex items-center justify-center font-black text-xs shrink-0">
             {p.nombre[0]}
           </div>
           <div className="min-w-0">
-            <p className="font-bold text-slate-900 text-xs truncate">{p.nombre}</p>
-            <p className="text-[10px] text-slate-500 font-medium truncate">{p.correo || '—'}</p>
+            <p className="font-bold text-ui-900 text-xs truncate">{p.nombre}</p>
+            <p className="text-[10px] text-ui-500 font-medium truncate">{p.correo || '—'}</p>
           </div>
         </div>
       ),
     },
-    { key: 'rfc', header: 'RFC', render: (p) => <span className="text-xs font-medium text-slate-500">{p.rfc ?? '—'}</span> },
-    { key: 'telefono', header: 'Teléfono', render: (p) => <span className="text-xs font-medium text-slate-600">{p.telefono ?? '—'}</span> },
+    { key: 'rfc', header: 'RFC', render: (p) => <span className="text-xs font-medium text-ui-500">{p.rfc ?? '—'}</span> },
+    { key: 'telefono', header: 'Teléfono', render: (p) => <span className="text-xs font-medium text-ui-600">{p.telefono ?? '—'}</span> },
     {
       key: 'categoria',
       header: 'Categoría',
@@ -532,7 +532,7 @@ export default function ProveedoresPage() {
       key: 'total',
       header: 'Total Compras',
       align: 'right',
-      render: (p) => <span className="text-xs font-black text-slate-700">{formatCurrency(totalComprado(p.id))}</span>,
+      render: (p) => <span className="text-xs font-black text-ui-700">{formatCurrency(totalComprado(p.id))}</span>,
     },
     {
       key: 'acciones',
@@ -565,20 +565,20 @@ export default function ProveedoresPage() {
       header: 'Proveedor',
       render: (o) => (
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs shrink-0">
+          <div className="w-7 h-7 bg-ui-900 text-white rounded-lg flex items-center justify-center font-black text-xs shrink-0">
             {(o.proveedor ?? '?')[0]}
           </div>
-          <span className="font-bold text-slate-700 text-xs">{o.proveedor ?? '—'}</span>
+          <span className="font-bold text-ui-700 text-xs">{o.proveedor ?? '—'}</span>
         </div>
       ),
     },
     {
       key: 'descripcion',
       header: 'Descripción',
-      render: (o) => <p className="text-xs text-slate-600 font-medium max-w-[220px] truncate">{o.descripcion}</p>,
+      render: (o) => <p className="text-xs text-ui-600 font-medium max-w-[220px] truncate">{o.descripcion}</p>,
     },
-    { key: 'fecha', header: 'Fecha', render: (o) => <span className="text-xs font-medium text-slate-500">{o.fecha.slice(0, 10)}</span> },
-    { key: 'monto', header: 'Monto', align: 'right', render: (o) => <span className="text-xs font-black text-slate-900">{formatCurrency(o.monto)}</span> },
+    { key: 'fecha', header: 'Fecha', render: (o) => <span className="text-xs font-medium text-ui-500">{o.fecha.slice(0, 10)}</span> },
+    { key: 'monto', header: 'Monto', align: 'right', render: (o) => <span className="text-xs font-black text-ui-900">{formatCurrency(o.monto)}</span> },
     {
       key: 'pagado',
       header: 'Pagado',
@@ -690,10 +690,10 @@ export default function ProveedoresPage() {
       header: 'Proveedor',
       render: (r) => (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xs shrink-0">
+          <div className="w-9 h-9 bg-ui-900 text-white rounded-xl flex items-center justify-center font-black text-xs shrink-0">
             {r.proveedor[0]}
           </div>
-          <p className="font-bold text-slate-900 text-xs truncate">{r.proveedor}</p>
+          <p className="font-bold text-ui-900 text-xs truncate">{r.proveedor}</p>
         </div>
       ),
     },
@@ -711,7 +711,7 @@ export default function ProveedoresPage() {
         </div>
       ),
     },
-    { key: 'total', header: 'Total Compras', align: 'right', render: (r) => <span className="text-xs font-black text-slate-700">{formatCurrency(r.total)}</span> },
+    { key: 'total', header: 'Total Compras', align: 'right', render: (r) => <span className="text-xs font-black text-ui-700">{formatCurrency(r.total)}</span> },
     { key: 'pagado', header: 'Pagado', align: 'right', render: (r) => <span className="text-xs font-black text-green-600">{formatCurrency(r.pagado)}</span> },
     {
       key: 'saldo',
@@ -727,10 +727,10 @@ export default function ProveedoresPage() {
 
   // ── Columnas DataTable: ledger detalle de un proveedor ──
   const ledgerColumns: Column<LedgerDetalleDTO['movimientos'][number]>[] = [
-    { key: 'fecha', header: 'Fecha', render: (r) => <span className="text-xs font-medium text-slate-500">{r.fecha.slice(0, 10)}</span> },
+    { key: 'fecha', header: 'Fecha', render: (r) => <span className="text-xs font-medium text-ui-500">{r.fecha.slice(0, 10)}</span> },
     { key: 'folio', header: 'Folio', render: (r) => <span className="font-black text-primary text-xs">{r.folio}</span> },
-    { key: 'concepto', header: 'Concepto', render: (r) => <p className="text-xs text-slate-600 font-medium max-w-[200px] truncate">{r.concepto}</p> },
-    { key: 'cargo', header: 'Cargo', align: 'right', render: (r) => <span className="text-xs font-bold text-slate-700">{formatCurrency(r.cargo)}</span> },
+    { key: 'concepto', header: 'Concepto', render: (r) => <p className="text-xs text-ui-600 font-medium max-w-[200px] truncate">{r.concepto}</p> },
+    { key: 'cargo', header: 'Cargo', align: 'right', render: (r) => <span className="text-xs font-bold text-ui-700">{formatCurrency(r.cargo)}</span> },
     { key: 'abono', header: 'Abono', align: 'right', render: (r) => <span className="text-xs font-bold text-green-600">{formatCurrency(r.abono)}</span> },
     {
       key: 'saldo',
@@ -821,7 +821,7 @@ export default function ProveedoresPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -891,7 +891,7 @@ export default function ProveedoresPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -961,7 +961,7 @@ export default function ProveedoresPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -990,7 +990,7 @@ export default function ProveedoresPage() {
               />
             ) : (
               <>
-                <p className="text-xs text-slate-500 font-medium">
+                <p className="text-xs text-ui-500 font-medium">
                   Usa el botón <span className="font-bold">Ver</span> de cada proveedor para consultar su estado de cuenta completo (saldo corrido por operación).
                 </p>
                 <DataTable
@@ -1015,8 +1015,8 @@ export default function ProveedoresPage() {
 
       {/* Indicador de refetch */}
       {refreshing && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg">
-          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-ui-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg">
+          <span className="w-3.5 h-3.5 border-2 border-surface/30 border-t-white rounded-full animate-spin" />
           Sincronizando...
         </div>
       )}
@@ -1149,11 +1149,11 @@ export default function ProveedoresPage() {
         onSubmit={handleAbono}
       >
         {abonoOC && (
-          <div className="bg-slate-50 rounded-xl p-4 space-y-1 text-sm">
-            <p className="font-bold text-slate-700">{abonoOC.proveedor ?? '—'}</p>
-            <p className="text-slate-500 text-xs">{abonoOC.folio} — {abonoOC.descripcion}</p>
-            <div className="flex justify-between mt-2 pt-2 border-t border-slate-200">
-              <span className="text-slate-500 text-xs">Pendiente por pagar</span>
+          <div className="bg-ui-50 rounded-xl p-4 space-y-1 text-sm">
+            <p className="font-bold text-ui-700">{abonoOC.proveedor ?? '—'}</p>
+            <p className="text-ui-500 text-xs">{abonoOC.folio} — {abonoOC.descripcion}</p>
+            <div className="flex justify-between mt-2 pt-2 border-t border-ui-200">
+              <span className="text-ui-500 text-xs">Pendiente por pagar</span>
               <span className="font-black text-red-600">{formatCurrency(abonoOC.saldo)}</span>
             </div>
           </div>
@@ -1217,19 +1217,19 @@ export default function ProveedoresPage() {
             </div>
             {confirmCambio.estado === 'APROBADA' ? (
               <>
-                <p className="text-sm text-slate-700 mb-1">¿Confirmas la aprobación de la orden?</p>
-                <p className="font-black text-slate-900 text-lg mb-1">{confirmCambio.orden.folio}</p>
+                <p className="text-sm text-ui-700 mb-1">¿Confirmas la aprobación de la orden?</p>
+                <p className="font-black text-ui-900 text-lg mb-1">{confirmCambio.orden.folio}</p>
                 <p className="font-black text-red-600 text-xl mb-2">{formatCurrency(confirmCambio.orden.monto)}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ui-500">
                   Se autoriza el compromiso de pago. La orden podrá cancelarse antes de recibirse (si no tiene abonos).
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm text-slate-700 mb-1">¿Confirmas la recepción de la mercancía?</p>
-                <p className="font-black text-slate-900 text-lg mb-1">{confirmCambio.orden.folio}</p>
+                <p className="text-sm text-ui-700 mb-1">¿Confirmas la recepción de la mercancía?</p>
+                <p className="font-black text-ui-900 text-lg mb-1">{confirmCambio.orden.folio}</p>
                 <p className="font-black text-red-600 text-xl mb-2">{formatCurrency(confirmCambio.orden.monto)}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ui-500">
                   Esto genera la cuenta por pagar por el total y{' '}
                   <span className="font-bold">la orden ya no podrá cancelarse</span>.
                 </p>
@@ -1256,8 +1256,8 @@ export default function ProveedoresPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <XCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de cancelar la orden?</p>
-            <p className="font-black text-slate-900 text-lg mb-3">{cancelOC.folio}</p>
+            <p className="text-sm text-ui-700 mb-1">¿Estás seguro de cancelar la orden?</p>
+            <p className="font-black text-ui-900 text-lg mb-3">{cancelOC.folio}</p>
             <ModalField label="Motivo de cancelación" required>
               <input
                 type="text"
@@ -1288,9 +1288,9 @@ export default function ProveedoresPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar el proveedor?</p>
-            <p className="font-black text-slate-900 text-lg mb-2">{deleteProv.nombre}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-ui-700 mb-1">¿Estás seguro de eliminar el proveedor?</p>
+            <p className="font-black text-ui-900 text-lg mb-2">{deleteProv.nombre}</p>
+            <p className="text-xs text-ui-500">
               El proveedor no podrá eliminarse si tiene cuentas por pagar pendientes.
             </p>
           </div>
@@ -1314,9 +1314,9 @@ export default function ProveedoresPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar la orden?</p>
-            <p className="font-black text-slate-900 text-lg mb-2">{deleteOC.folio}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-ui-700 mb-1">¿Estás seguro de eliminar la orden?</p>
+            <p className="font-black text-ui-900 text-lg mb-2">{deleteOC.folio}</p>
+            <p className="text-xs text-ui-500">
               Solo pueden eliminarse órdenes sin pagos registrados.
             </p>
           </div>
@@ -1335,9 +1335,9 @@ export default function ProveedoresPage() {
             <ModalBody>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="bg-slate-50 rounded-xl p-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total compras</p>
-                    <p className="text-lg font-black text-slate-900">
+                  <div className="bg-ui-50 rounded-xl p-3">
+                    <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Total compras</p>
+                    <p className="text-lg font-black text-ui-900">
                       {formatCurrency(ledger?.totales.cargo ?? detalleProv.total)}
                     </p>
                   </div>
