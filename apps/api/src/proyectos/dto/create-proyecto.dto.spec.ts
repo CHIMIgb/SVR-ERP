@@ -57,4 +57,38 @@ describe('CreateProyectoDto', () => {
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
+
+  describe('ubicación (dirección exacta)', () => {
+    const direccion = {
+      calle: 'Av. Insurgentes 123',
+      colonia: 'Col. Centro',
+      ciudad: 'Tepic',
+      estadoUbicacion: 'Nayarit',
+      codigoPostal: '63000',
+    };
+
+    it('acepta la dirección completa', async () => {
+      const dto = plainToInstance(CreateProyectoDto, { ...base, ...direccion });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rechaza código postal con menos de 5 dígitos', async () => {
+      const dto = plainToInstance(CreateProyectoDto, { ...base, ...direccion, codigoPostal: '630' });
+      const failures = await validate(dto);
+      const fallo = failures.find((e) => e.property === 'codigoPostal');
+      expect(fallo).toBeTruthy();
+      expect(fallo!.constraints?.matches).toBe('El código postal debe ser de 5 dígitos');
+    });
+
+    it('rechaza calle que excede 200 caracteres', async () => {
+      const dto = plainToInstance(CreateProyectoDto, {
+        ...base,
+        ...direccion,
+        calle: 'a'.repeat(201),
+      });
+      const failures = await validate(dto);
+      expect(failures.some((e) => e.property === 'calle')).toBe(true);
+    });
+  });
 });

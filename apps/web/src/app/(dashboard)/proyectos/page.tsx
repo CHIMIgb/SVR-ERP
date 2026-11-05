@@ -9,6 +9,7 @@ import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -49,6 +50,11 @@ const emptyForm = {
   fechaFin: '',
   estado: 'EN_PROCESO' as NonNullable<ProyectoCreateInput['estado']>,
   progreso: '0',
+  calle: '',
+  colonia: '',
+  ciudad: '',
+  estadoUbicacion: '',
+  codigoPostal: '',
 };
 
 const emptyFinanzasForm = {
@@ -227,6 +233,11 @@ export default function ProyectosPage() {
       fechaFin: item.fechaFin,
       estado: estadoToValue(item.estado),
       progreso: String(item.progreso),
+      calle: item.calle ?? '',
+      colonia: item.colonia ?? '',
+      ciudad: item.ciudad ?? '',
+      estadoUbicacion: item.estadoUbicacion ?? '',
+      codigoPostal: item.codigoPostal ?? '',
     });
     setEditOpen(true);
   }, []);
@@ -277,6 +288,17 @@ export default function ProyectosPage() {
       showToast('El progreso debe estar entre 0 y 100.', 'error');
       return false;
     }
+    // Dirección exacta obligatoria
+    const faltantes: string[] = [];
+    if (!form.calle.trim()) faltantes.push('Calle y número');
+    if (!form.colonia.trim()) faltantes.push('Colonia');
+    if (!form.ciudad.trim()) faltantes.push('Ciudad');
+    if (!form.estadoUbicacion.trim()) faltantes.push('Estado');
+    if (!/^\d{5}$/.test(form.codigoPostal.trim())) faltantes.push('Código postal (5 dígitos)');
+    if (faltantes.length) {
+      showToast('Completa la ubicación: ' + faltantes.join(', ') + '.', 'error');
+      return false;
+    }
     return true;
   }, [form, showToast]);
 
@@ -290,6 +312,11 @@ export default function ProyectosPage() {
       fechaFin: form.fechaFin,
       estado: form.estado,
       progreso: parseFloat(form.progreso),
+      calle: form.calle.trim(),
+      colonia: form.colonia.trim(),
+      ciudad: form.ciudad.trim(),
+      estadoUbicacion: form.estadoUbicacion.trim(),
+      codigoPostal: form.codigoPostal.trim(),
     }),
     [form],
   );
@@ -446,6 +473,37 @@ export default function ProyectosPage() {
       key: 'progreso',
       header: 'Progreso',
       render: renderProgreso,
+    },
+    {
+      key: 'ubicacion',
+      header: 'Ubicación',
+      minWidth: '200px',
+      render: (item) => {
+        if (!item.ciudad && !item.calle) {
+          return <span className="text-slate-300">—</span>;
+        }
+        const direccionCompleta = [
+          item.calle,
+          item.colonia,
+          `${item.ciudad}, ${item.estadoUbicacion}`.replace(/ , |, $/, ', '),
+          item.codigoPostal ? `CP ${item.codigoPostal}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <Tooltip placement="top" content={direccionCompleta} maxWidth={340}>
+            <div>
+              <span className="block font-semibold text-slate-600">
+                {item.ciudad}
+                {item.codigoPostal ? `, CP ${item.codigoPostal}` : ''}
+              </span>
+              <span className="block text-[10px] font-bold text-slate-400 truncate">
+                {item.calle}
+              </span>
+            </div>
+          </Tooltip>
+        );
+      },
     },
     {
       key: 'presupuesto',
@@ -738,6 +796,68 @@ export default function ProyectosPage() {
               onChange={(e) => setForm({ ...form, fechaFin: e.target.value })}
             />
           </ModalField>
+
+          {/* ── Ubicación exacta ── */}
+          <div className="sm:col-span-2">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+              Ubicación de la obra
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ModalField label="Calle y número" required className="sm:col-span-2">
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Av. Insurgentes 123"
+                  value={form.calle}
+                  onChange={(e) => setForm({ ...form, calle: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Colonia" required>
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Col. Centro"
+                  value={form.colonia}
+                  onChange={(e) => setForm({ ...form, colonia: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Ciudad" required>
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Návojoa"
+                  value={form.ciudad}
+                  onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Estado" required>
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Sonora"
+                  value={form.estadoUbicacion}
+                  onChange={(e) => setForm({ ...form, estadoUbicacion: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Código postal" required>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  className={modalInputClass}
+                  placeholder="5 dígitos"
+                  value={form.codigoPostal}
+                  onChange={(e) =>
+                    setForm({ ...form, codigoPostal: e.target.value.replace(/\D/g, '') })
+                  }
+                />
+              </ModalField>
+            </div>
+          </div>
         </div>
       </FormModal>
 
@@ -828,6 +948,68 @@ export default function ProyectosPage() {
               onChange={(e) => setForm({ ...form, fechaFin: e.target.value })}
             />
           </ModalField>
+
+          {/* ── Ubicación exacta ── */}
+          <div className="sm:col-span-2">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+              Ubicación de la obra
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ModalField label="Calle y número" required className="sm:col-span-2">
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Av. Insurgentes 123"
+                  value={form.calle}
+                  onChange={(e) => setForm({ ...form, calle: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Colonia" required>
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Col. Centro"
+                  value={form.colonia}
+                  onChange={(e) => setForm({ ...form, colonia: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Ciudad" required>
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Návojoa"
+                  value={form.ciudad}
+                  onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Estado" required>
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Sonora"
+                  value={form.estadoUbicacion}
+                  onChange={(e) => setForm({ ...form, estadoUbicacion: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Código postal" required>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  className={modalInputClass}
+                  placeholder="5 dígitos"
+                  value={form.codigoPostal}
+                  onChange={(e) =>
+                    setForm({ ...form, codigoPostal: e.target.value.replace(/\D/g, '') })
+                  }
+                />
+              </ModalField>
+            </div>
+          </div>
         </div>
       </FormModal>
 
@@ -928,7 +1110,12 @@ export default function ProyectosPage() {
             gastado: viewItem.gastado,
             progreso: viewItem.progreso,
             estado: viewItem.estado,
-            ubicacion: '',
+            ubicacion: [
+              viewItem.calle,
+              viewItem.colonia,
+              [viewItem.ciudad, viewItem.estadoUbicacion].filter(Boolean).join(', '),
+              viewItem.codigoPostal ? `CP ${viewItem.codigoPostal}` : '',
+            ].filter(Boolean).join(' · '),
             fechaInicio: viewItem.fechaInicio,
             fechaFin: viewItem.fechaFin,
             historicoProgreso: [],

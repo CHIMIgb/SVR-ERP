@@ -621,6 +621,12 @@ export interface ProyectoDTO {
   fechaFin: string;
   ingresoCobrado: number;
   gastado: number;
+  /** Ubicación exacta (opcional en BD; la UI la exige) */
+  calle: string | null;
+  colonia: string | null;
+  ciudad: string | null;
+  estadoUbicacion: string | null;
+  codigoPostal: string | null;
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
@@ -647,6 +653,11 @@ export interface ProyectoCreateInput {
   progreso?: number;
   ingresoCobrado?: number;
   gastado?: number;
+  calle?: string;
+  colonia?: string;
+  ciudad?: string;
+  estadoUbicacion?: string;
+  codigoPostal?: string;
 }
 
 export interface ProyectoFinanzasInput {
