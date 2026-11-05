@@ -389,13 +389,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                     <div key={d} className={posClasses.denomEntry}>
                       <p className={posClasses.denomLabel}>${d.toLocaleString('es-MX')}</p>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
                         inputMode="numeric"
                         placeholder="0"
                         className={posClasses.denomInput}
                         value={counts[d] ?? ''}
-                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value.replace(/\D/g, '').slice(0, 7) }))}
                       />
                     </div>
                   ))}
@@ -411,13 +410,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                     <div key={d} className={posClasses.denomEntry}>
                       <p className={posClasses.denomLabel}>${d.toLocaleString('es-MX')}</p>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
                         inputMode="numeric"
                         placeholder="0"
                         className={posClasses.denomInput}
                         value={counts[d] ?? ''}
-                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value.replace(/\D/g, '').slice(0, 7) }))}
                       />
                     </div>
                   ))}
