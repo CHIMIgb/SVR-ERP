@@ -425,7 +425,7 @@ export default function CribaPage() {
       header: 'Observaciones',
       render: (item) => (
         <span className="text-ui-500 font-medium text-xs max-w-[180px] truncate block">
-          {item.observaciones || <span className="text-slate-300">—</span>}
+          {item.observaciones || <span className="text-ui-300">—</span>}
         </span>
       ),
     },

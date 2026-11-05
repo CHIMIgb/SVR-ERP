@@ -441,11 +441,11 @@ export default function ProyectosPage() {
       : 'bg-primary';
     return (
       <div className="flex items-center gap-2 min-w-[120px]">
-        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="flex-1 h-2 bg-ui-100 rounded-full overflow-hidden">
           {/* Width calculada en runtime — excepción permitida */}
           <div className={`${barColor} h-full rounded-full transition-all`} style={{ width: `${Math.min(100, item.progreso)}%` }} />
         </div>
-        <span className="text-xs font-black text-slate-600 w-10 text-right">{item.progreso}%</span>
+        <span className="text-xs font-black text-ui-600 w-10 text-right">{item.progreso}%</span>
       </div>
     );
   };
@@ -457,8 +457,8 @@ export default function ProyectosPage() {
       header: 'Proyecto / Cliente',
       render: (item) => (
         <div>
-          <div className="font-black text-slate-900">{item.nombre}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.cliente}</div>
+          <div className="font-black text-ui-900">{item.nombre}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">{item.cliente}</div>
         </div>
       ),
     },
@@ -480,7 +480,7 @@ export default function ProyectosPage() {
       minWidth: '200px',
       render: (item) => {
         if (!item.ciudad && !item.calle) {
-          return <span className="text-slate-300">—</span>;
+          return <span className="text-ui-300">—</span>;
         }
         const direccionCompleta = [
           item.calle,
@@ -493,11 +493,11 @@ export default function ProyectosPage() {
         return (
           <Tooltip placement="top" content={direccionCompleta} maxWidth={340}>
             <div>
-              <span className="block font-semibold text-slate-600">
+              <span className="block font-semibold text-ui-600">
                 {item.ciudad}
                 {item.codigoPostal ? `, CP ${item.codigoPostal}` : ''}
               </span>
-              <span className="block text-[10px] font-bold text-slate-400 truncate">
+              <span className="block text-[10px] font-bold text-ui-400 truncate">
                 {item.calle}
               </span>
             </div>
@@ -510,21 +510,21 @@ export default function ProyectosPage() {
       header: 'Presupuesto',
       align: 'right',
       render: (item) => (
-        <span className="font-black text-slate-900">{formatCurrency(item.presupuesto)}</span>
+        <span className="font-black text-ui-900">{formatCurrency(item.presupuesto)}</span>
       ),
     },
     {
       key: 'fechaInicio',
       header: 'Inicio',
       render: (item) => (
-        <span className="whitespace-nowrap font-semibold text-slate-500">{formatDate(item.fechaInicio)}</span>
+        <span className="whitespace-nowrap font-semibold text-ui-500">{formatDate(item.fechaInicio)}</span>
       ),
     },
     {
       key: 'fechaFin',
       header: 'Entrega',
       render: (item) => (
-        <span className="whitespace-nowrap font-bold text-slate-600">{formatDate(item.fechaFin)}</span>
+        <span className="whitespace-nowrap font-bold text-ui-600">{formatDate(item.fechaFin)}</span>
       ),
     },
     {
@@ -630,7 +630,7 @@ export default function ProyectosPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -658,7 +658,7 @@ export default function ProyectosPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -671,7 +671,7 @@ export default function ProyectosPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
@@ -695,7 +695,7 @@ export default function ProyectosPage() {
       <div className="space-y-3">
         <div className="relative">
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           )}
@@ -788,7 +788,7 @@ export default function ProyectosPage() {
 
           {/* ── Ubicación exacta ── */}
           <div className="sm:col-span-2">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+            <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-3">
               Ubicación de la obra
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -940,7 +940,7 @@ export default function ProyectosPage() {
 
           {/* ── Ubicación exacta ── */}
           <div className="sm:col-span-2">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+            <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-3">
               Ubicación de la obra
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1018,11 +1018,11 @@ export default function ProyectosPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               ¿Estás seguro de eliminar este proyecto?
             </p>
-            <p className="font-black text-slate-900 text-lg mb-2">{selectedItem.nombre}</p>
-            <p className="text-xs text-slate-500">
+            <p className="font-black text-ui-900 text-lg mb-2">{selectedItem.nombre}</p>
+            <p className="text-xs text-ui-500">
               {selectedItem.cliente} · {formatCurrency(selectedItem.presupuesto)}
             </p>
           </div>
@@ -1042,13 +1042,13 @@ export default function ProyectosPage() {
       >
         {selectedItem && (
           <div className="space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 grid grid-cols-2 gap-3 text-center">
+            <div className="bg-ui-50 border border-ui-200 rounded-xl p-3 grid grid-cols-2 gap-3 text-center">
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presupuesto</p>
-                <p className="font-black text-slate-900 text-sm">{formatCurrency(selectedItem.presupuesto)}</p>
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Presupuesto</p>
+                <p className="font-black text-ui-900 text-sm">{formatCurrency(selectedItem.presupuesto)}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Utilidad actual</p>
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Utilidad actual</p>
                 <p className={`font-black text-sm ${(selectedItem.ingresoCobrado - selectedItem.gastado) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                   {formatCurrency(selectedItem.ingresoCobrado - selectedItem.gastado)}
                 </p>
@@ -1079,7 +1079,7 @@ export default function ProyectosPage() {
               />
             </ModalField>
 
-            <p className="text-[11px] text-slate-400 font-medium text-center">
+            <p className="text-[11px] text-ui-400 font-medium text-center">
               Cada cambio queda registrado en la bitácora de auditoría con el valor anterior y nuevo.
             </p>
           </div>

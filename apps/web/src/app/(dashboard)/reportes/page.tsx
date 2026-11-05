@@ -79,7 +79,7 @@ function getTipoIcon(tipo: string) {
     case 'Ingeniero':     return <HardHat className="w-5 h-5 text-yellow-500" />;
     case 'Administrativo': return <Briefcase className="w-5 h-5 text-indigo-500" />;
     case 'Trabajador':    return <Users className="w-5 h-5 text-teal-500" />;
-    default:              return <ClipboardCheck className="w-5 h-5 text-slate-400" />;
+    default:              return <ClipboardCheck className="w-5 h-5 text-ui-400" />;
   }
 }
 
@@ -93,7 +93,7 @@ function getTipoColor(tipo: string) {
     case 'Ingeniero':     return 'bg-yellow-400';
     case 'Administrativo': return 'bg-indigo-500';
     case 'Trabajador':    return 'bg-teal-500';
-    default:              return 'bg-slate-400';
+    default:              return 'bg-ui-400';
   }
 }
 
@@ -630,11 +630,11 @@ export default function ReportesOperacionesPage() {
       minWidth: '105px',
       render: (report) => (
         <div>
-          <span className="flex items-center gap-1.5 font-black text-slate-800">
-            <Clock className="w-3 h-3 text-slate-400" />
+          <span className="flex items-center gap-1.5 font-black text-ui-800">
+            <Clock className="w-3 h-3 text-ui-400" />
             {report.hora}
           </span>
-          <span className="text-[10px] font-bold text-slate-400">{report.fecha}</span>
+          <span className="text-[10px] font-bold text-ui-400">{report.fecha}</span>
         </div>
       ),
     },
@@ -646,7 +646,7 @@ export default function ReportesOperacionesPage() {
         <span className="flex items-center gap-2">
           {getTipoIcon(report.tipo)}
           <span className={`h-2 w-2 rounded-full ${getTipoColor(report.tipo)}`} />
-          <span className="font-bold text-slate-700">{report.tipo}</span>
+          <span className="font-bold text-ui-700">{report.tipo}</span>
         </span>
       ),
     },
@@ -656,9 +656,9 @@ export default function ReportesOperacionesPage() {
       minWidth: '130px',
       render: (report) => (
         <div>
-          <span className="font-black text-slate-900">{report.usuario}</span>
+          <span className="font-black text-ui-900">{report.usuario}</span>
           {report.cliente && (
-            <span className="block text-[10px] font-bold text-slate-400">
+            <span className="block text-[10px] font-bold text-ui-400">
               Cliente: {report.cliente}
             </span>
           )}
@@ -671,8 +671,8 @@ export default function ReportesOperacionesPage() {
       minWidth: '150px',
       render: (report) => (
         <div>
-          <span className="flex items-center gap-1.5 font-bold text-slate-700">
-            <MapPin className="w-3 h-3 text-slate-400" />
+          <span className="flex items-center gap-1.5 font-bold text-ui-700">
+            <MapPin className="w-3 h-3 text-ui-400" />
             {report.obra}
           </span>
           {(report.maquinaCodigo || report.maquinaNombre) && (
@@ -693,7 +693,7 @@ export default function ReportesOperacionesPage() {
             {report.prioridad}
           </Badge>
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-ui-300">—</span>
         ),
     },
     {
@@ -730,13 +730,13 @@ export default function ReportesOperacionesPage() {
         }
         if (report.asignadoANombre) {
           return (
-            <span className="flex items-center gap-1.5 font-bold text-slate-700">
+            <span className="flex items-center gap-1.5 font-bold text-ui-700">
               <UserCheck className="w-3.5 h-3.5 text-primary" />
               {report.asignadoANombre}
             </span>
           );
         }
-        return <span className="text-slate-300">Sin asignar</span>;
+        return <span className="text-ui-300">Sin asignar</span>;
       },
     },
     {
@@ -747,7 +747,7 @@ export default function ReportesOperacionesPage() {
       render: (report) => (
         <div className="max-w-2xl">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
-            <span className="font-medium text-slate-600">
+            <span className="font-medium text-ui-600">
               &ldquo;{report.descripcion}&rdquo;
             </span>
           </Tooltip>
@@ -945,7 +945,7 @@ export default function ReportesOperacionesPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -973,7 +973,7 @@ export default function ReportesOperacionesPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -986,7 +986,7 @@ export default function ReportesOperacionesPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
@@ -1010,7 +1010,7 @@ export default function ReportesOperacionesPage() {
       {/* Tabla de reportes (patrón /inventario) */}
       <div className="relative">
         {refreshing && !initialLoading && (
-          <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+          <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
             <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
@@ -1186,9 +1186,9 @@ export default function ReportesOperacionesPage() {
           </ModalField>
 
           {asignarItem && (
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-start gap-2">
-              <UserX className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-500">
+            <div className="bg-ui-50 border border-ui-100 rounded-xl p-3 flex items-start gap-2">
+              <UserX className="w-4 h-4 text-ui-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-ui-500">
                 Reporte de <strong>{asignarItem.usuario}</strong> ({asignarItem.tipo}) —
                 &ldquo;{asignarItem.descripcion.slice(0, 80)}&rdquo;
               </p>
@@ -1324,11 +1324,11 @@ export default function ReportesOperacionesPage() {
             <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
               <CheckCircle2 className="w-7 h-7 text-emerald-600" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">¿Marcar este reporte como resuelto?</p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="text-sm text-ui-700 mb-1">¿Marcar este reporte como resuelto?</p>
+            <p className="font-black text-ui-900 text-lg mb-2">
               {resolverItem.usuario} · {resolverItem.tipo}
             </p>
-            <p className="text-xs text-slate-500 max-w-xs">
+            <p className="text-xs text-ui-500 max-w-xs">
               Quedará registrado que lo resolvió{' '}
               <strong className="text-emerald-700">{resolverItem.asignadoANombre}</strong>.
             </p>
@@ -1352,11 +1352,11 @@ export default function ReportesOperacionesPage() {
             <div className="w-14 h-14 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar este reporte?</p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="text-sm text-ui-700 mb-1">¿Estás seguro de eliminar este reporte?</p>
+            <p className="font-black text-ui-900 text-lg mb-2">
               {selectedItem.usuario} · {selectedItem.tipo}
             </p>
-            <p className="text-xs text-slate-500 max-w-xs truncate">
+            <p className="text-xs text-ui-500 max-w-xs truncate">
               &ldquo;{selectedItem.descripcion}&rdquo;
             </p>
           </div>
@@ -1379,13 +1379,13 @@ export default function ReportesOperacionesPage() {
             <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
               <Receipt className="w-7 h-7 text-emerald-600" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               Reporte de <strong>{facturarItem.usuario}</strong> ({facturarItem.tipo})
             </p>
-            <p className="font-black text-slate-900 text-2xl mb-1">
+            <p className="font-black text-ui-900 text-2xl mb-1">
               {formatCurrency(facturarItem.montoServicio ?? 0)}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ui-500">
               Cliente: {facturarItem.cliente} · Vencimiento a 30 días
             </p>
           </div>

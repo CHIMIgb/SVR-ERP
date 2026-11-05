@@ -411,7 +411,7 @@ export default function ClientesPage() {
       header: 'Cliente',
       render: (item) => (
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-sm shrink-0">
+          <div className="w-10 h-10 bg-ui-900 text-white rounded-xl flex items-center justify-center font-black text-sm shrink-0">
             {item.empresa[0]}
           </div>
           <div className="min-w-0">
@@ -736,7 +736,7 @@ export default function ClientesPage() {
           <div className="space-y-5">
             {/* Datos generales */}
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
+              <div className="w-12 h-12 bg-ui-900 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
                 {selected.empresa[0]}
               </div>
               <div>
@@ -794,7 +794,7 @@ export default function ClientesPage() {
                 </div>
               ) : cotizaciones.length === 0 ? (
                 <div className="bg-ui-50 border border-dashed border-ui-200 rounded-xl p-6 text-center">
-                  <FileText className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                  <FileText className="w-6 h-6 text-ui-300 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-ui-500">
                     {selected.empresa} aún no tiene cotizaciones registradas.
                   </p>
@@ -802,7 +802,7 @@ export default function ClientesPage() {
               ) : (
                 <>
                   <div className="relative">
-                    <ul className="divide-y divide-slate-100 border border-ui-200 rounded-xl overflow-hidden">
+                    <ul className="divide-y divide-ui-100 border border-ui-200 rounded-xl overflow-hidden">
                       {cotizaciones.map((cq) => (
                         <li key={cq.id} className="flex items-center justify-between gap-3 p-3 bg-ui-50/50">
                           <div className="min-w-0">
