@@ -27,6 +27,7 @@
   filtrado por área vive como filtro **"Área" dentro del panel Filtros** (primera
   opción, con conteo "Incidente (4)" en cada opción; placeholder "Todas las
   áreas"). El segundo se ven activos como "Área: <área>" cuando se aplica.
+- **Ajuste posterior (ad63eec7):** paginación a 10 registros por página (era 6).
 - Columnas: **Fecha/Hora · Área** (icono+color del tipo) **· Reporta** (usuario,
   cliente debajo) **· Obra/Máq. · Prioridad · Estado** (Badges) **· Responsable**
   (quién le cae; si ya está resuelto, muestra en verde quién resolvió con Tooltip
