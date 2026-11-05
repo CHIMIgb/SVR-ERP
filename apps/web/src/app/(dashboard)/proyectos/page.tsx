@@ -756,7 +756,7 @@ export default function ProyectosPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Presupuesto (MXN)" required>
+          <ModalField label="Presupuesto (MXN)" required className="sm:col-span-2">
             <input
               type="number"
               min="0"
