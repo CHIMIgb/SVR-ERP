@@ -35,7 +35,7 @@ export default function EmailPreviewModal({
           aria-modal="true"
         >
           {/* Window Chrome Header */}
-          <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+          <div className="bg-secondary dark:bg-ui-200 text-white px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 bg-red-500 rounded-full" />
               <div className="w-2.5 h-2.5 bg-yellow-500 rounded-full" />

@@ -736,7 +736,7 @@ export default function ClientesPage() {
           <div className="space-y-5">
             {/* Datos generales */}
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-ui-900 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
+              <div className="w-12 h-12 bg-secondary dark:bg-ui-200 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
                 {selected.empresa[0]}
               </div>
               <div>

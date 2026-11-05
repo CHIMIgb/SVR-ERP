@@ -228,7 +228,7 @@ export default function LiquidacionModal({
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 shadow-lg">
+                <div className="p-4 rounded-2xl bg-secondary dark:bg-ui-200 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 shadow-lg">
                   <div>
                     <span className="text-[10px] font-black uppercase text-white/50 tracking-widest">Total Neto a Pagar al Trabajador</span>
                     <h3 className="text-3xl font-black text-emerald-400">{fmt.format(granTotalNeto)}</h3>
@@ -251,7 +251,7 @@ export default function LiquidacionModal({
                   <p className="text-xs font-sans text-slate-500">Oficina Central: Av. Insurgentes Sur 1450, Piso 8, CDMX</p>
                 </div>
                 <div className="text-right font-sans">
-                  <span className="text-xs font-black uppercase bg-slate-900 text-white px-3 py-1 rounded-md">CONVENIO DE FINIQUITO</span>
+                  <span className="text-xs font-black uppercase bg-secondary dark:bg-ui-200 text-white px-3 py-1 rounded-md">CONVENIO DE FINIQUITO</span>
                   <p className="text-xs font-bold text-slate-500 mt-1">Fecha: {fechaBaja}</p>
                 </div>
               </div>

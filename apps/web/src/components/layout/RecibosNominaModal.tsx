@@ -38,7 +38,7 @@ export default function RecibosNominaModal({
   return (
     <Modal open={isOpen} onClose={onClose} size="full" contentClassName="overflow-hidden">
         {/* Modal Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+        <div className="px-6 py-4 bg-secondary dark:bg-ui-200 text-white flex items-center justify-between print:hidden">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary text-white rounded-xl">
               <Printer className="w-5 h-5" />
@@ -87,7 +87,7 @@ export default function RecibosNominaModal({
                       <p className="text-[10px] font-bold text-slate-400">RECIBO DE NÓMINA · {periodoLabel.split(':')[0]?.toUpperCase()}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-slate-900 text-white">
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-secondary dark:bg-ui-200 text-white">
                         {t.metodoPago}
                       </span>
                       <p className="text-[9px] text-slate-400 font-mono mt-0.5">FOLIO: {periodoCodigo}-{t.id.slice(0, 8)}</p>
