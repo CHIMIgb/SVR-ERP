@@ -59,3 +59,17 @@ recibos) permanecen EN BLANCO por diseño; nada backend.
 ## pendiente global
 - ✅ nada backend; registrado por fase en historial-cambios/;
 - Nibles de impresión de POS NO cambian (se mantiene blanca en ambos modos).
+
+---
+## ✅ ESTADO FINAL (2026-11-05): TODAS LAS FASES HECHAS
+- Fase 1: 24 reemplazos (paneles de filtros, 10 vistas) — commit 239fa0e2.
+- Fase 2: 17 pares dark (banners/alertas — inventario/reportes/corte/config) — 5ddcc964.
+- Fase 3: 171 reemplazos (finanzas/conciliación/facturas/clientes/cotizaciones) — 40c26272.
+- Fase 4: 34 reemplazos (POS/corte; ticket de impresión sigue blanco) — a2117a16.
+- Fase 5: 74 reemplazos (operaciones/criba/config/inventario) — a75f0a41.
+- Fase 6: 13 pares dark (soft-colors residuales) + verificación automática
+  **cero** `bg-*-50` sin `dark:` en el alcance — 35ba4aed (scan: scan-soft50.cjs).
+- Total: ~330 reemplazos/apuntes en ~20 archivos, tsc ✔,	script de fase reproducibles.
+- Verificación visual final pendiente del usuario (por favor re-captura si
+  queda algo con óptes no soportados por el scope — revisar siempre con
+  Contrapartes dark al nuevo archivo)
