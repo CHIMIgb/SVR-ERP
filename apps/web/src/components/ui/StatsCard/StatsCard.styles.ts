@@ -1,6 +1,6 @@
 export const statsCardClasses = {
   base: 'bg-surface rounded-xl border border-ui-200 p-4 sm:p-5 transition-all duration-200 overflow-hidden',
-  interactive: 'hover:shadow-md hover:border-ui-300 cursor-pointer',
+  interactive: 'hover:shadow-md hover:border-ui-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
   iconWrapper: 'w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0',
   iconVariants: {
     primary: 'bg-primary/10 text-primary',

@@ -23,6 +23,8 @@ export interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
   maxBodyHeight?: string;
   className?: string;
+  /** 'brand' (por defecto): encabezado naranja alternado. 'neutral': encabezado gris claro, alineado como cada columna. */
+  headerVariant?: 'brand' | 'neutral';
 }
 
 export function DataTable<T>({
@@ -34,6 +36,7 @@ export function DataTable<T>({
   onRowClick,
   maxBodyHeight = '400px',
   className,
+  headerVariant = 'brand',
 }: DataTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showRightShadow, setShowRightShadow] = useState(false);
@@ -99,8 +102,13 @@ export function DataTable<T>({
                   <th
                     key={col.key}
                     className={cn(
-                      dataTableClasses.th,
-                      index % 2 === 0 ? dataTableClasses.thOdd : dataTableClasses.thEven,
+                      headerVariant === 'neutral'
+                        ? [
+                            dataTableClasses.thNeutral,
+                            col.align === 'right' && dataTableClasses.tdRight,
+                            col.align === 'center' && dataTableClasses.tdCenter,
+                          ]
+                        : [dataTableClasses.th, index % 2 === 0 ? dataTableClasses.thOdd : dataTableClasses.thEven],
                       col.className
                     )}
                   >
@@ -114,6 +122,9 @@ export function DataTable<T>({
                 <tr
                   key={keyExtractor(item)}
                   onClick={() => onRowClick?.(item)}
+                  // Fila clicable: también se abre con teclado (Enter / Espacio).
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(item); } } : undefined}
                   className={cn(
                     dataTableClasses.tr,
                     index % 2 === 0 ? dataTableClasses.trEven : dataTableClasses.trOdd,

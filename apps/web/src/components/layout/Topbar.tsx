@@ -100,12 +100,12 @@ export default function Topbar() {
   const hasResults = matchedModulos.length > 0 || matchedTrabajadores.length > 0 || matchedMaquinaria.length > 0 || matchedProyectos.length > 0;
 
   return (
-    <header className="h-16 border-b border-ui-200 bg-surface fixed top-0 right-0 left-0 md:left-72 z-40 px-4 md:px-8 flex items-center justify-between gap-4">
+    <header className="h-16 border-b border-ui-200 bg-surface fixed top-0 right-0 left-0 lg:left-72 z-40 px-4 md:px-8 flex items-center justify-between gap-4">
       
       {/* Hamburger — mobile only */}
       <button
         onClick={openMobile}
-        className="md:hidden p-2 hover:bg-ui-100 rounded-xl transition-colors text-ui-600"
+        className="lg:hidden p-2 hover:bg-ui-100 rounded-xl transition-colors text-ui-600"
       >
         <Menu className="w-5 h-5" />
       </button>

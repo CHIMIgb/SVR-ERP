@@ -32,7 +32,8 @@ export default function LayoutModal({
   const [offsetLeft, setOffsetLeft] = useState(0);
 
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
+    // Debe coincidir con el corte en que aparece el menú lateral fijo (lg = 1024px, ver Sidebar.tsx).
+    const mq = window.matchMedia('(min-width: 1024px)');
     const update = () => setOffsetLeft(mq.matches ? SIDEBAR_WIDTH : 0);
     update();
     mq.addEventListener('change', update);

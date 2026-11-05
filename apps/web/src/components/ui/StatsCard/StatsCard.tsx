@@ -53,6 +53,10 @@ export function StatsCard({
   return (
     <div
       onClick={onClick}
+      // Clicable: también se usa con teclado (Enter / Espacio) y se anuncia como botón.
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       className={cn(
         statsCardClasses.base,
         onClick && statsCardClasses.interactive,

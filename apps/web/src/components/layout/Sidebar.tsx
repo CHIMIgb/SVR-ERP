@@ -258,7 +258,7 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop sidebar — always visible on md+ */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex-col">
+      <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex-col">
         <SidebarContent />
       </aside>
 
@@ -267,12 +267,12 @@ export default function Sidebar() {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/50 z-50 md:hidden animate-[fadeIn_0.2s_ease-out]"
+            className="fixed inset-0 bg-black/50 z-50 lg:hidden animate-[fadeIn_0.2s_ease-out]"
             onClick={closeMobile}
           />
 
           {/* Panel */}
-          <aside className="fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex flex-col md:hidden animate-[slideInLeft_0.2s_ease-out]">
+          <aside className="fixed left-0 top-0 h-screen w-72 bg-sidebar text-white z-50 flex flex-col lg:hidden animate-[slideInLeft_0.2s_ease-out]">
             {/* Close button */}
             <button
               onClick={closeMobile}

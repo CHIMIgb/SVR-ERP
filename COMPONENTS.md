@@ -1305,6 +1305,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 | `subtitle` | `string` | `undefined` | Subtitulo descriptivo debajo del titulo |
 | `action` | `React.ReactNode` | `undefined` | Elemento de accion (boton, grupo de botones, etc.) |
 
+**Responsivo:** si las acciones no caben junto al titulo, bajan a la siguiente linea (el titulo nunca se
+aplasta ni se corta). Titulo y subtitulo hacen salto de linea en vez de truncarse. Para que los botones
+envuelvan entre si, pasar el grupo con `flex flex-wrap gap-2`.
+
 #### Ejemplo basico
 
 ```tsx
@@ -3105,6 +3109,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 | `onRowClick` | `(item: T) => void` | `undefined` | Callback al hacer click en una fila |
 | `maxBodyHeight` | `string` | `'400px'` | Altura maxima del body con scroll vertical |
 | `className` | `string` | `undefined` | Clases adicionales del container |
+| `headerVariant` | `'brand' \| 'neutral'` | `'brand'` | `brand`: encabezado naranja alternado. `neutral`: encabezado gris claro, alineado como cada columna (vistas limpias de RRHH / Maquinaria) |
 
 #### Tipo Column<T>
 
