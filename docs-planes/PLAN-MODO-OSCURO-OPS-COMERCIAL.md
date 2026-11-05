@@ -23,10 +23,10 @@ recibos) permanecen EN BLANCO por diseño; nada backend.
 ## FASE 2 — Banners/alertas (patrón `*-50` → `dark:*-500/10`)
 | Lugar | Archivo | Estado |
 |---|---|---|
-| Banner críticos inventario | `inventario/page.tsx` | ✅ |
-| Banner críticos reportes | `reportes/page.tsx` | ✅ |
-| Alerta "Fuera de la ventana de cierre" | `ventas/corte/page.tsx` | ✅ |
-| Panel amarillo "Impacto en el sistema" | `configuracion/page.tsx` | ✅ |
+| Banner críticos inventario | `inventario/page.tsx` | ✅ FASE 2 HECHA (5ddcc964) |
+| Banner críticos reportes | `reportes/page.tsx` | ✅ FASE 2 HECHA |
+| Alerta "Fuera de la ventana de cierre" | `ventas/corte/page.tsx` | ✅ FASE 2 HECHA |
+| Panel amarillo "Impacto en el sistema" | `configuracion/page.tsx` | ✅ FASE 2 HECHA |
 
 ## FASE 3 — Finanzas / Facturas / Clientes / Cotizaciones
 | Lugar | Archivo | Estado |
