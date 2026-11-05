@@ -1,55 +1,75 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Plus, UserCheck, UserMinus, Truck, Compass, Wrench, Building2, FileText,
-  ClipboardList, CheckCircle2, AlertCircle, Calendar,
-} from 'lucide-react';
-import type { Maquina } from '@svr-erp/shared';
-import {
-  trabajadoresApi, bitacorasRentaApi, catalogosApi,
-  type TrabajadorDTO, type TrabajadorCreateInput, type BitacoraRentaDTO, type ProyectoCatalogoDTO,
+  trabajadoresApi,
+  bitacorasRentaApi,
+  type BitacoraRentaDTO,
+  type CatalogosTrabajadoresDTO,
+  type TrabajadorDTO,
 } from '@/lib/api';
+import { formatCurrency, formatFechaSolo } from '@/lib/formatters';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/components/layout/Toast';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SearchBar } from '@/components/ui/SearchBar';
+import { Select } from '@/components/ui/Select';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
-import WorkerCard from '@/components/workers/WorkerCard';
-import BitacorasRentaModal from '@/components/workers/BitacorasRentaModal';
+import TrabajadorFormModal, { CATEGORIAS_PUESTO, llevaMaquina } from '@/components/workers/TrabajadorFormModal';
+import BitacorasRentaModal, { ESTADO_COBRO_BADGE } from '@/components/workers/BitacorasRentaModal';
 import LiquidacionModal from '@/components/workers/LiquidacionModal';
-import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/components/layout/Toast';
-import { formatCurrency } from '@/lib/formatters';
 
 const PAGE_SIZE = 12;
+const PAGE_SIZE_BITACORAS = 20;
 
-const CATEGORIAS = [
-  { id: 'Todos', label: 'Todos los Puestos', icon: UserCheck },
-  { id: 'Operador', label: 'Operadores de Maquinaria', icon: Truck },
-  { id: 'Chofer', label: 'Choferes de Transporte', icon: Compass },
-  { id: 'Mecanico', label: 'Mecánicos de Taller', icon: Wrench },
-  { id: 'Ingeniero', label: 'Ingenieros y Encargados', icon: Building2 },
-  { id: 'Administrativo', label: 'Administración', icon: FileText },
-] as const;
+// Etiquetas cortas: el select del filtro es angosto (las largas se enciman con la flecha).
+const FILTRO_CATEGORIAS = [
+  { value: 'Todos', label: 'Todos los puestos' },
+  { value: 'Operador', label: 'Operadores' },
+  { value: 'Chofer', label: 'Choferes' },
+  { value: 'Mecanico', label: 'Mecánicos' },
+  { value: 'Ingeniero', label: 'Ingenieros' },
+  { value: 'Administrativo', label: 'Administrativos' },
+];
 
-const emptyForm = {
-  nombre: '',
-  puesto: '',
-  categoriaPuesto: 'Operador' as TrabajadorCreateInput['categoriaPuesto'],
-  telefono: '',
-  entrada: '07:00',
-  proyecto: '',
-  sueldoFiscal: '2500',
-  sueldoEfectivo: '3500',
-  metodoPago: 'Mixto' as TrabajadorCreateInput['metodoPago'],
-  maquinaId: '',
+const FILTRO_ESTADOS = [
+  { value: 'Activo', label: 'Activos' },
+  { value: 'Vacaciones', label: 'De vacaciones' },
+  { value: 'Inactivo', label: 'Dados de baja' },
+  { value: 'Todos', label: 'Todos' },
+];
+
+const ETIQUETA_CATEGORIA: Record<string, string> = Object.fromEntries(CATEGORIAS_PUESTO.map((c) => [c.value, c.label]));
+
+const ESTADO_BADGE: Record<TrabajadorDTO['estado'], { variant: 'success' | 'info' | 'neutral'; label: string }> = {
+  Activo: { variant: 'success', label: 'Activo' },
+  Vacaciones: { variant: 'info', label: 'Vacaciones' },
+  Inactivo: { variant: 'neutral', label: 'Baja' },
 };
+
+type Pag = { page: number; limit: number; total: number; totalPages: number };
+
+function Aviso({ titulo, detalle, onReintentar, reintentando }: { titulo: string; detalle: string; onReintentar: () => void; reintentando: boolean }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10"
+    >
+      <div className="text-sm text-red-700 dark:text-red-300 min-w-0">
+        <p className="font-semibold">{titulo}</p>
+        <p className="mt-0.5 text-xs break-words">{detalle}</p>
+      </div>
+      <Button variant="outline" size="sm" onClick={onReintentar} disabled={reintentando} className="shrink-0">
+        {reintentando ? 'Reintentando…' : 'Reintentar'}
+      </Button>
+    </div>
+  );
+}
 
 export default function TrabajadoresPage() {
   const { user } = useAuth();
@@ -60,462 +80,542 @@ export default function TrabajadoresPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
+  const [tab, setTab] = useState<'plantilla' | 'bitacoras'>('plantilla');
+
+  // ── Plantilla ──
+  const [busqueda, setBusqueda] = useState('');
+  const [textoBusqueda, setTextoBusqueda] = useState('');
+  const [categoria, setCategoria] = useState('Todos');
+  const [estado, setEstado] = useState('Activo');
+  const [page, setPage] = useState(1);
+  const [recargaLista, setRecargaLista] = useState(0);
   const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
-  const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
-  const [proyectos, setProyectos] = useState<ProyectoCatalogoDTO[]>([]);
-  const [bitacorasCountPorTrabajador, setBitacorasCountPorTrabajador] = useState<Record<string, number>>({});
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const hasLoaded = useRef(false);
+  const [pagination, setPagination] = useState<Pag>({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [errorLista, setErrorLista] = useState<string | null>(null);
+  const [listaInicial, setListaInicial] = useState(true);
+  // La lista está "cargando" mientras la última respuesta no corresponda a los filtros actuales; así una
+  // respuesta lenta de un filtro anterior nunca pisa la del filtro nuevo.
+  const filtrosLista = JSON.stringify([busqueda, categoria, estado, page]);
+  const claveLista = JSON.stringify([filtrosLista, recargaLista]);
+  const [claveListaCargada, setClaveListaCargada] = useState<string | null>(null);
+  const cargandoLista = claveLista !== claveListaCargada;
+  // Filtros con los que se obtuvieron las filas en pantalla: si la carga de otro filtro falla, no se muestran
+  // filas que no corresponden (p. ej. activos bajo el filtro "Dados de baja").
+  const [filtrosDatos, setFiltrosDatos] = useState<string | null>(null);
 
-  const [activeMainTab, setActiveMainTab] = useState<'plantilla' | 'bitacoras_renta'>('plantilla');
-  const [selectedRole, setSelectedRole] = useState<(typeof CATEGORIAS)[number]['id']>('Todos');
-  const [search, setSearch] = useState('');
+  // ── Bitácoras (concentrado) ──
+  const [busquedaBit, setBusquedaBit] = useState('');
+  const [textoBusquedaBit, setTextoBusquedaBit] = useState('');
+  const [pageBit, setPageBit] = useState(1);
+  const [recargaBit, setRecargaBit] = useState(0);
+  const [bitacoras, setBitacoras] = useState<BitacoraRentaDTO[]>([]);
+  const [paginationBit, setPaginationBit] = useState<Pag | null>(null);
+  const [errorBit, setErrorBit] = useState<string | null>(null);
+  const claveBit = JSON.stringify([busquedaBit, pageBit, recargaBit]);
+  const [claveBitCargada, setClaveBitCargada] = useState<string | null>(null);
+  const cargandoBit = tab === 'bitacoras' && claveBit !== claveBitCargada;
 
-  const [bitacorasConcentrado, setBitacorasConcentrado] = useState<BitacoraRentaDTO[]>([]);
-  const [bitacorasLoading, setBitacorasLoading] = useState(false);
+  // ── Catálogos (máquinas y proyectos) ──
+  const [catalogos, setCatalogos] = useState<CatalogosTrabajadoresDTO | null>(null);
+  const [errorCatalogos, setErrorCatalogos] = useState<string | null>(null);
+  const [intentoCatalogos, setIntentoCatalogos] = useState(0);
+  const [catalogosCargando, setCatalogosCargando] = useState(true);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [bitacorasModalOpen, setBitacorasModalOpen] = useState(false);
-  const [selectedWorkerForBitacora, setSelectedWorkerForBitacora] = useState<TrabajadorDTO | null>(null);
-  const [liquidacionModalOpen, setLiquidacionModalOpen] = useState(false);
-  const [selectedWorkerForLiquidacion, setSelectedWorkerForLiquidacion] = useState<TrabajadorDTO | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [form, setForm] = useState(emptyForm);
-
-  const fetchTrabajadores = useCallback(async (page = 1, searchVal = search, role = selectedRole) => {
-    const res = await trabajadoresApi.listar({
-      search: searchVal || undefined,
-      categoriaPuesto: role !== 'Todos' ? role : undefined,
-      page,
-      limit: PAGE_SIZE,
-    });
-    if (res.success) {
-      setTrabajadores(res.data.items);
-      setPagination(res.data.pagination);
-      setErrorCarga(null);
-
-      // Conteo de bitácoras por operador — para el badge del botón en cada card.
-      const operadores = res.data.items.filter((t) => t.categoriaPuesto === 'Operador' || t.categoriaPuesto === 'Chofer');
-      const conteos = await Promise.all(
-        operadores.map((t) => bitacorasRentaApi.listar({ trabajadorId: t.id, limit: 1 })),
-      );
-      const mapa: Record<string, number> = {};
-      operadores.forEach((t, i) => {
-        const res2 = conteos[i];
-        mapa[t.id] = res2.success ? res2.data.pagination.total : 0;
-      });
-      setBitacorasCountPorTrabajador(mapa);
-    } else {
-      setErrorCarga(res.error.message);
-    }
-    hasLoaded.current = true;
-    setInitialLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchBitacorasConcentrado = useCallback(async (searchVal = search) => {
-    setBitacorasLoading(true);
-    const res = await bitacorasRentaApi.listar({ search: searchVal || undefined, limit: 100 });
-    if (res.success) setBitacorasConcentrado(res.data.items);
-    setBitacorasLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // ── Modales ──
+  const [formOpen, setFormOpen] = useState(false);
+  const [editando, setEditando] = useState<TrabajadorDTO | null>(null);
+  const [bitacorasDe, setBitacorasDe] = useState<TrabajadorDTO | null>(null);
+  const [abriendoBitacorasId, setAbriendoBitacorasId] = useState<string | null>(null);
+  const abriendoBitacorasRef = useRef(false);
+  const [liquidacionOpen, setLiquidacionOpen] = useState(false);
+  const [liquidarA, setLiquidarA] = useState<TrabajadorDTO | null>(null);
 
   useEffect(() => {
-    catalogosApi.maquinas().then((res) => {
-      if (res.success) setMaquinaria(res.data as unknown as Maquina[]);
-    });
-    catalogosApi.proyectos().then((res) => {
-      if (res.success) setProyectos(res.data);
-    });
-    fetchTrabajadores(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (activeMainTab === 'bitacoras_renta') fetchBitacorasConcentrado(search);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMainTab]);
-
-  useEffect(() => {
-    if (maquinaria.length > 0 && !form.maquinaId) {
-      setForm((f) => ({ ...f, maquinaId: maquinaria[0].id }));
-    }
-  }, [maquinaria, form.maquinaId]);
-
-  const handleSearchChange = (value: string) => setSearch(value);
-
-  const handleSearch = () => {
-    if (activeMainTab === 'plantilla') fetchTrabajadores(1, search, selectedRole);
-    else fetchBitacorasConcentrado(search);
-  };
-
-  const handleRoleChange = (role: (typeof CATEGORIAS)[number]['id']) => {
-    setSelectedRole(role);
-    fetchTrabajadores(1, search, role);
-  };
-
-  const handlePageChange = (page: number) => fetchTrabajadores(page, search, selectedRole);
-
-  const openCreate = () => {
-    setEditingId(null);
-    setForm({ ...emptyForm, maquinaId: maquinaria[0]?.id ?? '' });
-    setModalOpen(true);
-  };
-
-  const openEdit = (t: TrabajadorDTO) => {
-    setEditingId(t.id);
-    setForm({
-      nombre: t.nombre,
-      puesto: t.puesto,
-      categoriaPuesto: t.categoriaPuesto as TrabajadorCreateInput['categoriaPuesto'],
-      telefono: t.telefono,
-      entrada: t.entrada,
-      proyecto: t.proyectos[0] ?? '',
-      sueldoFiscal: String(t.sueldoFiscal),
-      sueldoEfectivo: String(t.sueldoEfectivo),
-      metodoPago: t.metodoPago,
-      maquinaId: maquinaria.find((m) => m.id === t.maquinaAsignadaId)?.id ?? '',
-    });
-    setModalOpen(true);
-  };
-
-  const handleSubmit = async () => {
-    if (!form.nombre.trim() || !form.puesto.trim()) {
-      showToast('Por favor completa nombre y puesto.', 'error');
-      return;
-    }
-
-    const payload: TrabajadorCreateInput = {
-      nombre: form.nombre.trim(),
-      puesto: form.puesto.trim(),
-      categoriaPuesto: form.categoriaPuesto,
-      telefono: form.telefono || '55 0000 0000',
-      entrada: form.entrada,
-      sueldoFiscal: parseFloat(form.sueldoFiscal) || 2000,
-      sueldoEfectivo: parseFloat(form.sueldoEfectivo) || 3000,
-      metodoPago: form.metodoPago,
-      proyecto: form.proyecto || undefined,
-      maquinaId: form.categoriaPuesto === 'Operador' || form.categoriaPuesto === 'Chofer' ? form.maquinaId || undefined : undefined,
+    let vigente = true;
+    const clave = claveLista;
+    const filtros = filtrosLista;
+    (async () => {
+      try {
+        const res = await trabajadoresApi.listar({
+          search: busqueda || undefined,
+          categoriaPuesto: categoria !== 'Todos' ? categoria : undefined,
+          estado: estado !== 'Todos' ? estado : undefined,
+          page,
+          limit: PAGE_SIZE,
+        });
+        if (!vigente) return;
+        if (res.success) {
+          setTrabajadores(res.data.items);
+          setPagination(res.data.pagination);
+          setFiltrosDatos(filtros);
+          setErrorLista(null);
+          // Tras dar de baja al último de la última página, esa página ya no existe: se va a la última que sí.
+          if (page > res.data.pagination.totalPages) setPage(res.data.pagination.totalPages);
+        } else {
+          setErrorLista(res.error.message);
+        }
+      } catch (error) {
+        if (vigente) setErrorLista(error instanceof Error ? error.message : 'No se pudo cargar la plantilla.');
+      } finally {
+        if (vigente) {
+          setClaveListaCargada(clave);
+          setListaInicial(false);
+        }
+      }
+    })();
+    return () => {
+      vigente = false;
     };
+  }, [claveLista, filtrosLista, busqueda, categoria, estado, page]);
 
-    setSubmitting(true);
-    const res = editingId ? await trabajadoresApi.actualizar(editingId, payload) : await trabajadoresApi.crear(payload);
-    setSubmitting(false);
+  useEffect(() => {
+    if (tab !== 'bitacoras') return;
+    let vigente = true;
+    const clave = claveBit;
+    (async () => {
+      try {
+        const res = await bitacorasRentaApi.listar({ search: busquedaBit || undefined, page: pageBit, limit: PAGE_SIZE_BITACORAS });
+        if (!vigente) return;
+        if (res.success) {
+          setBitacoras(res.data.items);
+          setPaginationBit(res.data.pagination);
+          setErrorBit(null);
+        } else {
+          setErrorBit(res.error.message);
+        }
+      } catch (error) {
+        if (vigente) setErrorBit(error instanceof Error ? error.message : 'No se pudieron cargar las bitácoras.');
+      } finally {
+        if (vigente) setClaveBitCargada(clave);
+      }
+    })();
+    return () => {
+      vigente = false;
+    };
+  }, [tab, claveBit, busquedaBit, pageBit]);
 
-    if (res.success) {
-      showToast(`${res.data.nombre} ${editingId ? 'actualizado' : 'dado de alta'} correctamente.`, 'success');
-      setModalOpen(false);
-      fetchTrabajadores(pagination.page, search, selectedRole);
-    } else {
-      showToast(res.error.message, 'error');
+  useEffect(() => {
+    let vigente = true;
+    (async () => {
+      try {
+        const res = await trabajadoresApi.catalogos();
+        if (!vigente) return;
+        if (res.success) {
+          setCatalogos(res.data);
+          setErrorCatalogos(null);
+        } else {
+          setErrorCatalogos(res.error.message);
+        }
+      } catch (error) {
+        if (vigente) setErrorCatalogos(error instanceof Error ? error.message : 'error de red');
+      } finally {
+        if (vigente) setCatalogosCargando(false);
+      }
+    })();
+    return () => {
+      vigente = false;
+    };
+  }, [intentoCatalogos]);
+
+  const reintentarCatalogos = () => {
+    setCatalogosCargando(true);
+    setIntentoCatalogos((n) => n + 1);
+  };
+
+  const recargarTodo = () => {
+    setRecargaLista((n) => n + 1);
+    setRecargaBit((n) => n + 1);
+    // Las máquinas cambian de operador al guardar o dar de baja.
+    reintentarCatalogos();
+  };
+
+  const abrirAlta = () => {
+    setEditando(null);
+    setFormOpen(true);
+  };
+
+  const abrirEdicion = (t: TrabajadorDTO) => {
+    setEditando(t);
+    setFormOpen(true);
+  };
+
+  const abrirLiquidacion = (t: TrabajadorDTO | null) => {
+    setLiquidarA(t);
+    setLiquidacionOpen(true);
+  };
+
+  /** Desde el concentrado: se trae al operador de la hoja para abrir sus bitácoras. */
+  const abrirBitacorasDeHoja = async (b: BitacoraRentaDTO) => {
+    if (abriendoBitacorasRef.current) return;
+    abriendoBitacorasRef.current = true;
+    setAbriendoBitacorasId(b.id);
+    try {
+      const res = await trabajadoresApi.obtener(b.trabajadorId);
+      if (!res.success) {
+        showToast(res.error.message, 'error');
+        return;
+      }
+      setBitacorasDe(res.data);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'No se pudo abrir el operador.', 'error');
+    } finally {
+      abriendoBitacorasRef.current = false;
+      setAbriendoBitacorasId(null);
     }
   };
 
-  const handleOpenBitacorasModal = (worker: TrabajadorDTO) => {
-    setSelectedWorkerForBitacora(worker);
-    setBitacorasModalOpen(true);
-  };
+  const columnas: Column<TrabajadorDTO>[] = [
+    {
+      key: 'trabajador',
+      header: 'Trabajador',
+      render: (t) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-ui-100 text-ui-700 flex items-center justify-center text-[11px] font-bold shrink-0">
+            {t.avatar}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ui-900 truncate">{t.nombre}</p>
+            <p className="text-xs text-ui-500 truncate">
+              {t.puesto}
+              {t.maquinaAsignadaId && <span className="xl:hidden"> · {t.maquinaAsignadaId}</span>}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'categoria',
+      header: 'Categoría',
+      className: 'hidden xl:table-cell',
+      render: (t) => <span className="block text-sm text-ui-700 truncate max-w-[180px]">{ETIQUETA_CATEGORIA[t.categoriaPuesto] ?? t.categoriaPuesto}</span>,
+    },
+    {
+      key: 'maquina',
+      header: 'Máquina',
+      className: 'hidden xl:table-cell',
+      render: (t) =>
+        t.maquinaAsignadaId ? (
+          <div className="min-w-0">
+            <p className="text-sm text-ui-800 truncate max-w-[220px]">{t.maquinaAsignadaId} · {t.maquinaAsignadaNombre}</p>
+            {t.estadoRenta === 'Rentado a Cliente' && t.clienteRentaActual && (
+              <p className="text-xs text-ui-500 truncate">Rentada a {t.clienteRentaActual}</p>
+            )}
+          </div>
+        ) : (
+          <span className="text-ui-300">—</span>
+        ),
+    },
+    {
+      key: 'proyecto',
+      header: 'Proyecto',
+      className: 'hidden 2xl:table-cell',
+      render: (t) =>
+        t.proyectos.length > 0 ? (
+          <span className="block text-sm text-ui-700 truncate max-w-[180px]">{t.proyectos.join(', ')}</span>
+        ) : (
+          <span className="text-ui-300">—</span>
+        ),
+    },
+    {
+      key: 'telefono',
+      header: 'Teléfono',
+      className: 'hidden 2xl:table-cell',
+      render: (t) => <span className="text-sm text-ui-700 tabular-nums whitespace-nowrap">{t.telefono}</span>,
+    },
+    {
+      key: 'entrada',
+      header: 'Entrada',
+      align: 'center',
+      className: 'hidden min-[1700px]:table-cell',
+      render: (t) => <span className="text-sm text-ui-700 tabular-nums">{t.entrada}</span>,
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (t) => <Badge variant={ESTADO_BADGE[t.estado]?.variant ?? 'neutral'} size="sm">{ESTADO_BADGE[t.estado]?.label ?? t.estado}</Badge>,
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'right',
+      render: (t) => (
+        // Los clics de estos botones no deben abrir la edición de la fila (editar es tocar la fila).
+        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          {llevaMaquina(t.categoriaPuesto) && (
+            <Button variant="ghost" size="sm" onClick={() => setBitacorasDe(t)}>Bitácoras</Button>
+          )}
+          {puedeEliminar && t.estado !== 'Inactivo' && (
+            <Button variant="ghost" size="sm" className="text-red-600 dark:text-red-400" onClick={() => abrirLiquidacion(t)}>
+              Dar de baja
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
-  const handleOpenLiquidacion = (worker: TrabajadorDTO) => {
-    setSelectedWorkerForLiquidacion(worker);
-    setLiquidacionModalOpen(true);
-  };
-
-  const bitacorasColumns: Column<BitacoraRentaDTO>[] = [
+  const columnasBitacoras: Column<BitacoraRentaDTO>[] = [
     {
       key: 'folio',
-      header: 'Folio & Fecha',
+      header: 'Hoja',
       render: (b) => (
-        <div>
-          <span className="font-black text-slate-900 text-xs bg-slate-100 px-2 py-0.5 rounded">{b.folio}</span>
-          <p className="text-[10px] text-slate-400 font-medium mt-1 flex items-center gap-1"><Calendar className="w-3 h-3" />{b.fecha}</p>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ui-900 whitespace-nowrap">{b.folio}</p>
+          <p className="text-xs text-ui-500 whitespace-nowrap">{formatFechaSolo(b.fecha)}</p>
+          <p className="md:hidden text-xs text-ui-500 truncate max-w-[160px]">{b.trabajadorNombre}</p>
         </div>
       ),
     },
     {
       key: 'operador',
-      header: 'Operador & Máquina',
+      header: 'Operador',
+      className: 'hidden md:table-cell',
       render: (b) => (
-        <div>
-          <div className="font-bold text-slate-900 text-sm">{b.trabajadorNombre}</div>
-          <p className="text-[10px] text-primary font-bold">{b.maquinaId} — {b.maquinaNombre}</p>
+        <div className="min-w-0">
+          <p className="text-sm text-ui-900 truncate">{b.trabajadorNombre}</p>
+          <p className="text-xs text-ui-500 truncate">{b.maquinaId} · {b.maquinaNombre}</p>
         </div>
       ),
     },
     {
       key: 'cliente',
-      header: 'Cliente & Frente de Obra',
+      header: 'Cliente',
+      className: 'hidden xl:table-cell',
       render: (b) => (
-        <div>
-          <div className="font-black text-slate-800 text-xs">{b.cliente}</div>
-          <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{b.obraUbicacion}</p>
+        <div className="min-w-0">
+          <p className="text-sm text-ui-800 truncate max-w-[220px]">{b.cliente}</p>
+          <p className="text-xs text-ui-500 truncate max-w-[220px]">{b.obraUbicacion}</p>
         </div>
       ),
     },
     {
       key: 'horas',
-      header: 'Horas & Horómetro',
-      align: 'center',
+      header: 'Horas',
+      align: 'right',
+      className: 'hidden xl:table-cell',
+      render: (b) => <span className="text-sm text-ui-700 tabular-nums">{b.horasEfectivas + b.horasExtras} h</span>,
+    },
+    {
+      key: 'importe',
+      header: 'Importe',
+      align: 'right',
       render: (b) => (
-        <div>
-          <div className="text-xs font-black text-slate-900">{b.horasEfectivas + b.horasExtras} hrs</div>
-          <p className="text-[9px] text-slate-400 font-mono">{b.horometroInicial} a {b.horometroFinal}</p>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-sm font-semibold text-ui-900 tabular-nums whitespace-nowrap">{formatCurrency(b.importeTotalRenta)}</span>
+          {/* En celular el estado va aquí, debajo del importe. */}
+          <span className="md:hidden">
+            <Badge variant={ESTADO_COBRO_BADGE[b.estadoCobro] ?? 'neutral'} size="sm">{b.estadoCobro}</Badge>
+          </span>
         </div>
       ),
     },
     {
-      key: 'firma',
-      header: 'Vo.Bo. Residente Cliente',
-      render: (b) => (
-        b.firmaCliente.firmado ? (
-          <div className="text-emerald-700 text-xs font-bold flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /><span>{b.firmaCliente.nombreResidente}</span>
-          </div>
-        ) : (
-          <div className="text-amber-700 text-xs font-bold flex items-center gap-1.5">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /><span>Pendiente de Firma</span>
-          </div>
-        )
-      ),
-    },
-    {
-      key: 'importe',
-      header: 'Importe Cobro',
-      align: 'right',
-      render: (b) => <span className="font-black text-slate-900 text-sm">{formatCurrency(b.importeTotalRenta)}</span>,
-    },
-    {
       key: 'estado',
       header: 'Estado',
-      align: 'center',
-      render: (b) => (
-        <Badge variant={b.estadoCobro === 'Facturado' ? 'info' : b.estadoCobro === 'Listo para Facturar' ? 'success' : 'warning'} size="sm">
-          {b.estadoCobro}
-        </Badge>
-      ),
+      className: 'hidden md:table-cell',
+      render: (b) => <Badge variant={ESTADO_COBRO_BADGE[b.estadoCobro] ?? 'neutral'} size="sm">{b.estadoCobro}</Badge>,
     },
   ];
 
-  if (errorCarga && !hasLoaded.current) {
-    return (
-      <div className="card p-8 text-center space-y-3 border border-red-200 bg-red-50">
-        <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
-        <p className="text-sm font-bold text-red-700">{errorCarga}</p>
-        <Button onClick={() => fetchTrabajadores(1)}>Reintentar</Button>
-      </div>
-    );
-  }
+  // Mientras carga se dejan las filas anteriores (con el indicador de carga); con error, solo si son de estos filtros.
+  const filasVisibles = cargandoLista || filtrosDatos === filtrosLista ? trabajadores : [];
+  const datosLista = !errorLista || filasVisibles.length > 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
-        title="Gestión de Personal & Operadores"
-        subtitle="Control de plantilla por categorías, asignación de maquinaria y bitácoras de renta diaria."
+        title="Trabajadores"
+        subtitle="Plantilla, máquina asignada y bitácoras de renta"
         action={
-          puedeCrear ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="danger"
-                icon={<UserMinus size={16} />}
-                onClick={() => { setSelectedWorkerForLiquidacion(null); setLiquidacionModalOpen(true); }}
-              >
-                Liquidar / Finiquito
-              </Button>
-              <Button icon={<Plus size={16} />} onClick={openCreate}>Alta de Empleado</Button>
+          puedeCrear || puedeEliminar ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {puedeEliminar && (
+                <Button variant="outline" onClick={() => abrirLiquidacion(null)}>Baja y finiquito</Button>
+              )}
+              {puedeCrear && <Button onClick={abrirAlta}>Alta de trabajador</Button>}
             </div>
           ) : undefined
         }
       />
 
       <Tabs
+        ariaLabel="Secciones de trabajadores"
         tabs={[
-          { key: 'plantilla', label: 'Plantilla de Personal', icon: <UserCheck size={16} />, count: pagination.total },
-          { key: 'bitacoras_renta', label: 'Bitácoras de Renta Diaria', icon: <ClipboardList size={16} /> },
+          // Sin número si nunca cargó: un "0" haría creer que no hay nadie.
+          { key: 'plantilla', label: 'Plantilla', count: listaInicial || !datosLista ? undefined : pagination.total },
+          { key: 'bitacoras', label: 'Bitácoras de renta', count: paginationBit?.total },
         ]}
-        value={activeMainTab}
-        onChange={(key) => setActiveMainTab(key as 'plantilla' | 'bitacoras_renta')}
+        value={tab}
+        onChange={(k) => setTab(k as 'plantilla' | 'bitacoras')}
       >
         <TabPanel tabKey="plantilla">
-          {initialLoading ? (
-            <LoadingState text="Cargando trabajadores..." size="lg" />
-          ) : (
-            <div className="space-y-6">
-              <div className="flex flex-wrap items-center gap-2">
-                {CATEGORIAS.map((r) => {
-                  const Icon = r.icon;
-                  return (
-                    <button
-                      key={r.id}
-                      onClick={() => handleRoleChange(r.id)}
-                      className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${selectedRole === r.id ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{r.label}</span>
-                    </button>
-                  );
-                })}
+          <div className="space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <SearchBar
+                  value={textoBusqueda}
+                  onChange={setTextoBusqueda}
+                  onSearch={(v) => {
+                    setBusqueda(v.trim());
+                    setPage(1);
+                  }}
+                  placeholder="Buscar por nombre, puesto o cliente de renta..."
+                />
               </div>
+              <div className="grid grid-cols-2 gap-3 lg:w-[26rem]">
+                <Select
+                  aria-label="Filtrar por puesto"
+                  placeholder="Puesto"
+                  value={categoria}
+                  onChange={(e) => {
+                    setCategoria(e.target.value);
+                    setPage(1);
+                  }}
+                  options={FILTRO_CATEGORIAS.map((c) => ({ value: c.value, label: c.label }))}
+                />
+                <Select
+                  aria-label="Filtrar por estado"
+                  placeholder="Estado"
+                  value={estado}
+                  onChange={(e) => {
+                    setEstado(e.target.value);
+                    setPage(1);
+                  }}
+                  options={FILTRO_ESTADOS}
+                />
+              </div>
+            </div>
 
-              <SearchBar
-                value={search}
-                onChange={handleSearchChange}
-                onSearch={handleSearch}
-                placeholder="Buscar por nombre, puesto o cliente de renta..."
+            {errorLista && (
+              <Aviso
+                titulo="No se pudo cargar la plantilla."
+                detalle={filasVisibles.length > 0 ? `${errorLista} Se muestran los datos de la última carga correcta.` : errorLista}
+                onReintentar={() => setRecargaLista((n) => n + 1)}
+                reintentando={cargandoLista}
               />
+            )}
 
-              {trabajadores.length === 0 ? (
-                <EmptyState title="Sin resultados" subtitle="No se encontraron empleados para los filtros aplicados." />
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {trabajadores.map((t) => (
-                      <WorkerCard
-                        key={t.id}
-                        trabajador={t}
-                        bitacorasCount={bitacorasCountPorTrabajador[t.id] ?? 0}
-                        puedeEditar={puedeEditar}
-                        puedeEliminar={puedeEliminar}
-                        onOpenBitacoras={handleOpenBitacorasModal}
-                        onEdit={openEdit}
-                        onLiquidar={handleOpenLiquidacion}
-                      />
-                    ))}
-                  </div>
+            {listaInicial ? (
+              <LoadingState text="Cargando trabajadores..." size="lg" />
+            ) : (
+              <>
+                <DataTable
+                  headerVariant="neutral"
+                  columns={columnas}
+                  data={filasVisibles}
+                  loading={cargandoLista}
+                  keyExtractor={(t) => t.id}
+                  // Ya va paginada (12 por página): sin tope de alto, para no meter un scroll dentro de la página.
+                  maxBodyHeight="none"
+                  onRowClick={puedeEditar ? abrirEdicion : undefined}
+                  emptyText={!datosLista
+                    ? 'No se pudo cargar la plantilla.'
+                    : busqueda || categoria !== 'Todos' || estado !== 'Todos'
+                      ? 'Nadie coincide con la búsqueda o los filtros.'
+                      : 'Todavía no hay trabajadores dados de alta.'}
+                />
+                {filasVisibles.length > 0 && pagination.totalPages > 1 && (
                   <Pagination
                     currentPage={pagination.page}
                     totalPages={pagination.totalPages}
                     totalRecords={pagination.total}
                     pageSize={PAGE_SIZE}
-                    onPageChange={handlePageChange}
+                    onPageChange={setPage}
                   />
-                </>
-              )}
-            </div>
-          )}
+                )}
+                {puedeEditar && filasVisibles.length > 0 && (
+                  <p className="text-xs text-ui-500">Toca un trabajador para editar sus datos.</p>
+                )}
+              </>
+            )}
+          </div>
         </TabPanel>
 
-        <TabPanel tabKey="bitacoras_renta">
+        <TabPanel tabKey="bitacoras">
           <div className="space-y-4">
-            <div className="card bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-800">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">
-                  Soporte Diario de Cobro a Clientes
-                </span>
-                <h3 className="text-2xl font-black mt-2">Hojas de Bitácora Diaria y Tareo de Maquinaria</h3>
-                <p className="text-xs text-slate-400 mt-1 font-medium">
-                  Partes de trabajo que entregan los operadores con horas efectivas, horómetros y firma del cliente para facturación.
-                </p>
-              </div>
-              <div className="w-full md:w-64">
-                <SearchBar value={search} onChange={handleSearchChange} onSearch={handleSearch} placeholder="Buscar por cliente u operador..." />
-              </div>
-            </div>
+            <SearchBar
+              value={textoBusquedaBit}
+              onChange={setTextoBusquedaBit}
+              onSearch={(v) => {
+                setBusquedaBit(v.trim());
+                setPageBit(1);
+              }}
+              placeholder="Buscar por folio, cliente u operador..."
+            />
+
+            {errorBit && (
+              <Aviso
+                titulo="No se pudieron cargar las bitácoras."
+                detalle={errorBit}
+                onReintentar={() => setRecargaBit((n) => n + 1)}
+                reintentando={cargandoBit}
+              />
+            )}
 
             <DataTable
-              columns={bitacorasColumns}
-              data={bitacorasConcentrado}
-              loading={bitacorasLoading}
+              headerVariant="neutral"
+              columns={columnasBitacoras}
+              data={bitacoras}
+              loading={cargandoBit || abriendoBitacorasId !== null}
               keyExtractor={(b) => b.id}
-              emptyText="Sin bitácoras registradas."
+              maxBodyHeight="none"
+              onRowClick={abrirBitacorasDeHoja}
+              emptyText={errorBit && bitacoras.length === 0
+                ? 'No se pudieron cargar las bitácoras.'
+                : busquedaBit
+                  ? 'Ninguna hoja coincide con la búsqueda.'
+                  : 'Todavía no hay hojas de bitácora.'}
             />
+            {paginationBit && paginationBit.totalPages > 1 && (
+              <Pagination
+                currentPage={paginationBit.page}
+                totalPages={paginationBit.totalPages}
+                totalRecords={paginationBit.total}
+                pageSize={PAGE_SIZE_BITACORAS}
+                onPageChange={setPageBit}
+              />
+            )}
+            {bitacoras.length > 0 && (
+              <p className="text-xs text-ui-500">Toca una hoja para ver las de su operador, registrar la firma o facturarla.</p>
+            )}
           </div>
         </TabPanel>
       </Tabs>
 
-      {/* MODAL ALTA/EDICIÓN DE EMPLEADO */}
-      <FormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSubmit={handleSubmit}
-        title={editingId ? 'Editar Empleado' : 'Alta de Empleado por Puesto'}
-        submitLabel={submitting ? 'Guardando…' : editingId ? 'Guardar Cambios' : 'Dar de Alta'}
-        isSubmitting={submitting}
-      >
-        <div className="space-y-3">
-          <ModalField label="Nombre Completo" required>
-            <input className={modalInputClass} placeholder="Juan Pérez García" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-          </ModalField>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <ModalField label="Categoría de Puesto" required>
-              <select className={modalSelectClass} value={form.categoriaPuesto} onChange={(e) => setForm({ ...form, categoriaPuesto: e.target.value as TrabajadorCreateInput['categoriaPuesto'] })}>
-                <option value="Operador">Operador de Maquinaria</option>
-                <option value="Chofer">Chofer de Transporte</option>
-                <option value="Mecanico">Mecánico de Taller</option>
-                <option value="Ingeniero">Ingeniero / Encargado</option>
-                <option value="Administrativo">Personal Administrativo</option>
-              </select>
-            </ModalField>
-            <ModalField label="Puesto Específico" required>
-              <input className={modalInputClass} placeholder="Ej: Operador de Excavadora CAT" value={form.puesto} onChange={(e) => setForm({ ...form, puesto: e.target.value })} />
-            </ModalField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <ModalField label="Teléfono de Contacto">
-              <input className={modalInputClass} placeholder="55 1234 5678" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
-            </ModalField>
-            <ModalField label="Hora de Entrada">
-              <input type="time" className={modalInputClass} value={form.entrada} onChange={(e) => setForm({ ...form, entrada: e.target.value })} />
-            </ModalField>
-          </div>
-
-          <ModalField label="Obra Asignada">
-            <select className={modalSelectClass} value={form.proyecto} onChange={(e) => setForm({ ...form, proyecto: e.target.value })}>
-              <option value="">Sin asignar</option>
-              {proyectos.map((p) => (
-                <option key={p.id} value={p.nombre}>{p.nombre}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          {(form.categoriaPuesto === 'Operador' || form.categoriaPuesto === 'Chofer') && (
-            <ModalField label="Máquina Asignada">
-              <select className={modalSelectClass} value={form.maquinaId} onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}>
-                <option value="">Sin asignar</option>
-                {maquinaria.map((m) => (
-                  <option key={m.id} value={m.id}>{m.id} — {m.nombre}</option>
-                ))}
-              </select>
-            </ModalField>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-            <ModalField label="Sueldo Fiscal (SPEI Tarjeta)">
-              <input type="number" className={modalInputClass} value={form.sueldoFiscal} onChange={(e) => setForm({ ...form, sueldoFiscal: e.target.value })} />
-            </ModalField>
-            <ModalField label="Complemento Efectivo (Sobre)">
-              <input type="number" className={modalInputClass} value={form.sueldoEfectivo} onChange={(e) => setForm({ ...form, sueldoEfectivo: e.target.value })} />
-            </ModalField>
-          </div>
-        </div>
-      </FormModal>
-
-      {/* MODAL BITÁCORAS DE RENTA */}
-      {bitacorasModalOpen && selectedWorkerForBitacora && (
-        <BitacorasRentaModal
-          isOpen={bitacorasModalOpen}
-          onClose={() => setBitacorasModalOpen(false)}
-          trabajador={selectedWorkerForBitacora}
-          maquinaria={maquinaria}
-          puedeCrear={puedeCrear}
-          puedeEditar={puedeEditar}
-          onBitacoraCreada={() => fetchTrabajadores(pagination.page, search, selectedRole)}
+      {formOpen && (
+        <TrabajadorFormModal
+          trabajador={editando}
+          catalogos={catalogos}
+          catalogosCargando={catalogosCargando}
+          errorCatalogos={errorCatalogos}
+          onReintentarCatalogos={reintentarCatalogos}
+          onClose={() => setFormOpen(false)}
+          onGuardado={() => {
+            setFormOpen(false);
+            recargarTodo();
+          }}
         />
       )}
 
-      {/* MODAL LIQUIDACIÓN Y FINIQUITO */}
-      {liquidacionModalOpen && (
+      {bitacorasDe && (
+        <BitacorasRentaModal
+          trabajador={bitacorasDe}
+          maquinas={errorCatalogos ? null : catalogos?.maquinas ?? null}
+          catalogosCargando={catalogosCargando}
+          errorCatalogos={errorCatalogos}
+          onReintentarCatalogos={reintentarCatalogos}
+          puedeCrear={puedeCrear}
+          puedeEditar={puedeEditar}
+          onClose={() => setBitacorasDe(null)}
+          onCambio={() => setRecargaBit((n) => n + 1)}
+        />
+      )}
+
+      {liquidacionOpen && (
         <LiquidacionModal
-          isOpen={liquidacionModalOpen}
-          onClose={() => setLiquidacionModalOpen(false)}
-          trabajador={selectedWorkerForLiquidacion}
-          onLiquidado={() => fetchTrabajadores(pagination.page, search, selectedRole)}
+          trabajador={liquidarA}
+          onClose={() => setLiquidacionOpen(false)}
+          onLiquidado={recargarTodo}
         />
       )}
     </div>

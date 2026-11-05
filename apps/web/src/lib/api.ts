@@ -1007,6 +1007,20 @@ export const catalogosApi = {
   maquinas: () => apiClient.get<MaquinaCatalogoDTO[]>('/maquinas'),
 };
 
+/** Máquina para los selects de Trabajadores: `codigo` es lo que esperan la API de trabajadores y la de bitácoras. */
+export interface MaquinaTrabajadoresDTO {
+  codigo: string;
+  nombre: string;
+  /** Trabajador que la tiene asignada hoy (para avisar antes de reasignarla). */
+  operadorId: string | null;
+  operadorNombre: string | null;
+}
+
+export interface CatalogosTrabajadoresDTO {
+  maquinas: MaquinaTrabajadoresDTO[];
+  proyectos: ProyectoCatalogoDTO[];
+}
+
 export const trabajadoresApi = {
   /** Listar trabajadores con búsqueda, filtros y paginación */
   listar: (params?: { search?: string; categoriaPuesto?: string; estado?: string; page?: number; limit?: number }) => {
@@ -1021,6 +1035,9 @@ export const trabajadoresApi = {
   },
 
   obtener: (id: string) => apiClient.get<TrabajadorDTO>(`/trabajadores/${id}`),
+
+  /** Máquinas y proyectos con el permiso de RRHH (rrhh.trabajadores.ver). */
+  catalogos: () => apiClient.get<CatalogosTrabajadoresDTO>('/trabajadores/catalogos'),
 
   crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorDTO>('/trabajadores', data),
 

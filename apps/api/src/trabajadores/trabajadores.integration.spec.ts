@@ -8,7 +8,7 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, ConflictException, INestApplication, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +25,10 @@ describe('Trabajadores Audit (Real DB)', () => {
   let service: TrabajadoresService;
 
   const createdTrabajadorIds: string[] = [];
+  // Cliente y dos proyectos propios: la asignación de proyecto se prueba sin depender del seed.
+  const clienteId = randomUUID();
+  const proyectoA = { id: randomUUID(), nombre: `Proyecto IT A ${TEST_ID}` };
+  const proyectoB = { id: randomUUID(), nombre: `Proyecto IT B ${TEST_ID}` };
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -36,6 +40,34 @@ describe('Trabajadores Audit (Real DB)', () => {
 
     prisma = module.get(PrismaService);
     service = module.get(TrabajadoresService);
+
+    await prisma.clientes.create({
+      data: {
+        id: clienteId,
+        codigo: `IT-TRAB-${TEST_ID}`,
+        nombre: `Cliente IT Trabajadores ${TEST_ID}`,
+        empresa: `Empresa IT ${TEST_ID}`,
+        correo: `trab-${TEST_ID}@integration.mx`,
+        telefono: '55-0000-0000',
+        activo: true,
+        actualizado_en: new Date(),
+      },
+    });
+    for (const [i, p] of [proyectoA, proyectoB].entries()) {
+      await prisma.proyectos.create({
+        data: {
+          id: p.id,
+          codigo: `IT-TRAB-${TEST_ID}-${i}`,
+          nombre: p.nombre,
+          cliente_id: clienteId,
+          presupuesto: 100000,
+          fecha_inicio: new Date('2026-01-01'),
+          fecha_fin: new Date('2026-12-31'),
+          activo: true,
+          actualizado_en: new Date(),
+        },
+      });
+    }
   });
 
   afterAll(async () => {
@@ -47,6 +79,9 @@ describe('Trabajadores Audit (Real DB)', () => {
       await prisma.trabajadores.deleteMany({ where: { id: { in: createdTrabajadorIds } } });
     }
     await prisma.categorias_puesto.deleteMany({ where: { nombre: `TestCategoria-${TEST_ID}` } });
+    // trabajadores_proyectos se va en cascada con los trabajadores.
+    await prisma.proyectos.deleteMany({ where: { id: { in: [proyectoA.id, proyectoB.id] } } });
+    await prisma.clientes.deleteMany({ where: { id: clienteId } });
 
     await prisma.$disconnect();
     await app.close();
@@ -61,6 +96,7 @@ describe('Trabajadores Audit (Real DB)', () => {
     sueldoFiscal: 2500,
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto' as const,
+    fechaContratacion: '2024-03-01',
     ...overrides,
   });
 
@@ -113,6 +149,50 @@ describe('Trabajadores Audit (Real DB)', () => {
       const previousValue = audits[0].previous_value as Record<string, unknown> | null;
       expect(previousValue?.puesto).toBe('Operador de prueba');
     });
+
+    it('debe guardar el cambio de proyecto: reemplazar, quitar y reactivar sin chocar con la PK', async () => {
+      const trabajador = await service.create(createDto({ proyecto: proyectoA.nombre }), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+      expect(trabajador.proyectos).toEqual([proyectoA.nombre]);
+
+      // A → B: la asignación a A queda borrada (soft-delete), B activa.
+      const enB = await service.update(trabajador.id, { proyecto: proyectoB.nombre }, ACTOR_USER_ID);
+      expect(enB.proyectos).toEqual([proyectoB.nombre]);
+
+      // Sin proyecto.
+      const sinProyecto = await service.update(trabajador.id, { proyecto: '' }, ACTOR_USER_ID);
+      expect(sinProyecto.proyectos).toEqual([]);
+
+      // De vuelta a A: la fila (trabajador, A) ya existe borrada y se reactiva (crearla de nuevo violaría la PK).
+      const deVueltaEnA = await service.update(trabajador.id, { proyecto: proyectoA.nombre }, ACTOR_USER_ID);
+      expect(deVueltaEnA.proyectos).toEqual([proyectoA.nombre]);
+
+      const filas = await prisma.trabajadores_proyectos.findMany({ where: { trabajador_id: trabajador.id } });
+      expect(filas).toHaveLength(2);
+      expect(filas.find((f) => f.proyecto_id === proyectoA.id)?.eliminado_en).toBeNull();
+      expect(filas.find((f) => f.proyecto_id === proyectoB.id)?.eliminado_en).not.toBeNull();
+    });
+
+    it('debe rechazar un proyecto inexistente y auditar el fallo', async () => {
+      const trabajador = await service.create(createDto(), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      await expect(
+        service.update(trabajador.id, { proyecto: `No existe ${TEST_ID}` }, ACTOR_USER_ID),
+      ).rejects.toThrow(NotFoundException);
+
+      const audits = await findAudits(AuditAction.TRABAJADOR_ACTUALIZADO, trabajador.id);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('PROYECTO_NO_ENCONTRADO');
+    });
+  });
+
+  describe('catalogos', () => {
+    it('debe incluir los proyectos activos y las máquinas con código', async () => {
+      const { maquinas, proyectos } = await service.catalogos();
+      expect(proyectos).toEqual(expect.arrayContaining([{ id: proyectoA.id, nombre: proyectoA.nombre }]));
+      expect(maquinas.every((m) => typeof m.codigo === 'string' && m.codigo.length > 0)).toBe(true);
+    });
   });
 
   describe('TRABAJADOR_LIQUIDADO', () => {
@@ -133,6 +213,53 @@ describe('Trabajadores Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.TRABAJADOR_LIQUIDADO, trabajador.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('no debe liquidar sin fecha de ingreso (la antigüedad saldría de una fecha inventada)', async () => {
+      const trabajador = await service.create(createDto(), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+      await prisma.trabajadores.update({ where: { id: trabajador.id }, data: { fecha_contratacion: null } });
+
+      await expect(
+        service.liquidar(trabajador.id, { tipoTerminacion: 'Despido', diasTrabajadosPeriodo: 6, diasVacacionesPendientes: 0 }, ACTOR_USER_ID),
+      ).rejects.toThrow(BadRequestException);
+
+      const sigueActivo = await prisma.trabajadores.findUnique({ where: { id: trabajador.id } });
+      expect(sigueActivo?.estado).toBe('ACTIVO');
+      const audits = await findAudits(AuditAction.TRABAJADOR_LIQUIDADO, trabajador.id);
+      expect(audits[0].error_code).toBe('SIN_FECHA_CONTRATACION');
+    });
+
+    it('dos bajas al mismo tiempo: solo una se registra (la otra 409)', async () => {
+      const trabajador = await service.create(createDto(), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+      const dto = { tipoTerminacion: 'Renuncia' as const, diasTrabajadosPeriodo: 2, diasVacacionesPendientes: 0 };
+
+      const resultados = await Promise.allSettled([
+        service.liquidar(trabajador.id, dto, ACTOR_USER_ID),
+        service.liquidar(trabajador.id, dto, ACTOR_USER_ID),
+      ]);
+
+      expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const rechazo = resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+      expect(rechazo.reason).toBeInstanceOf(ConflictException);
+      const exitos = await prisma.registro_auditoria.count({
+        where: { action: AuditAction.TRABAJADOR_LIQUIDADO, entity_id: trabajador.id, result: 'SUCCESS' },
+      });
+      expect(exitos).toBe(1);
+    });
+
+    it('no debe liquidar dos veces al mismo trabajador', async () => {
+      const trabajador = await service.create(createDto(), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+      const dto = { tipoTerminacion: 'Renuncia' as const, diasTrabajadosPeriodo: 3, diasVacacionesPendientes: 0 };
+
+      await service.liquidar(trabajador.id, dto, ACTOR_USER_ID);
+      await expect(service.liquidar(trabajador.id, dto, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      const audits = await findAudits(AuditAction.TRABAJADOR_LIQUIDADO, trabajador.id);
+      expect(audits.map((a) => a.result)).toEqual(['FAIL', 'SUCCESS']);
+      expect(audits[0].error_code).toBe('TRABAJADOR_YA_INACTIVO');
     });
   });
 

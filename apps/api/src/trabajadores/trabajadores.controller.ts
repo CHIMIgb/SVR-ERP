@@ -34,6 +34,13 @@ export class TrabajadoresController {
     return this.trabajadoresService.findAll(query);
   }
 
+  /** Máquinas y proyectos para los selects de la vista (va antes de `:id` para que no lo capture). */
+  @RequirePermission('rrhh', 'trabajadores', 'ver')
+  @Get('catalogos')
+  async catalogos() {
+    return this.trabajadoresService.catalogos();
+  }
+
   @RequirePermission('rrhh', 'trabajadores', 'ver')
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {

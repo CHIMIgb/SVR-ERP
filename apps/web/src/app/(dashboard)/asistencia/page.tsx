@@ -1117,7 +1117,7 @@ export default function AsistenciaPage() {
             {mainView === 'faltas' && !datosHoyConfiables && (
               <p className="text-sm text-ui-600">
                 No se puede saber quién falta: no cargó completa la lista de trabajadores o los registros de hoy. Usa
-                &quot;Reintentar&quot; en el aviso de arriba.
+                “Reintentar” en el aviso de arriba.
               </p>
             )}
             {mainView === 'faltas' && datosHoyConfiables && (
