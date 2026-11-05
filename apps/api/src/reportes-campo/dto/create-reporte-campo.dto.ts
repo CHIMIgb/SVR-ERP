@@ -44,10 +44,12 @@ export class CreateReporteCampoDto {
   @IsPositive()
   montoServicio?: number;
 
+  /** Texto de la obra — opcional (hay reportes que no se relacionan con obra). */
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(200)
-  obraTexto!: string;
+  obraTexto?: string;
 
   @IsDateString()
   fecha!: string;
