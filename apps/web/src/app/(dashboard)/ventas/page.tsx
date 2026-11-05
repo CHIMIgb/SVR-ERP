@@ -403,7 +403,7 @@ export default function VentasPage() {
                     <div className={posClasses.card}>
                       <div className="flex items-center gap-3">
                         <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-ui-500">
                           Cargando catálogo de materiales...
                         </p>
                       </div>
@@ -432,11 +432,11 @@ export default function VentasPage() {
                   <div className={posClasses.card}>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className={posClasses.sectionTitle}>Carrito</h3>
-                      <span className="text-xs font-bold text-slate-400">{itemsSold} art(s)</span>
+                      <span className="text-xs font-bold text-ui-400">{itemsSold} art(s)</span>
                     </div>
 
                     {cart.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-8">
+                      <p className="text-sm text-ui-400 text-center py-8">
                         Elige el material, la medida y presiona Agregar.
                       </p>
                     ) : (
@@ -453,7 +453,7 @@ export default function VentasPage() {
                           ))}
                         </div>
 
-                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <div className="mt-3 pt-3 border-t border-ui-100 flex items-center justify-between">
                           <span className={posClasses.cartTotalLabel}>Total</span>
                           <span className={posClasses.cartTotalValue}>{formatCurrency(total)}</span>
                         </div>
@@ -512,7 +512,7 @@ export default function VentasPage() {
                               <ArrowDownCircle className="w-5 h-5" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-bold text-slate-800 text-sm truncate">{r.concepto}</p>
+                              <p className="font-bold text-ui-800 text-sm truncate">{r.concepto}</p>
                               <p className={posClasses.muted}>
                                 {r.fecha} · {r.hora} · Autorizado por:{' '}
                                 <span className="font-bold">{r.autorizadoPor}</span>

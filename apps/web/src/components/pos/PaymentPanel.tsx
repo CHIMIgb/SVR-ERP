@@ -117,8 +117,8 @@ export function PaymentPanel({ total, onPay, disabled }: PaymentPanelProps) {
               ))}
             </div>
           </div>
-          <div className="flex justify-between items-center bg-slate-50 rounded-lg px-3 py-2">
-            <span className="text-xs font-bold text-slate-600">Cambio:</span>
+          <div className="flex justify-between items-center bg-ui-50 rounded-lg px-3 py-2">
+            <span className="text-xs font-bold text-ui-600">Cambio:</span>
             <span className="font-black text-primary">{formatCurrency(change)}</span>
           </div>
         </div>
@@ -147,7 +147,7 @@ export function PaymentPanel({ total, onPay, disabled }: PaymentPanelProps) {
             <span className={posClasses.terminalAmount}>{formatCurrency(total)}</span> a la
             cuenta indicada y confirma.
           </p>
-          <p className="font-mono text-xs font-black text-slate-700 mt-2">{SPEI_ACCOUNT}</p>
+          <p className="font-mono text-xs font-black text-ui-700 mt-2">{SPEI_ACCOUNT}</p>
         </div>
       )}
 
