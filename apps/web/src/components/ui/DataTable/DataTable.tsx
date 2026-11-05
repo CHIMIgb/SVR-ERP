@@ -77,7 +77,7 @@ export function DataTable<T>({
   if (data.length === 0) {
     return (
       <div className={cn(dataTableClasses.container, className)}>
-        <div className="p-12 text-center text-sm text-slate-500">{emptyText}</div>
+        <div className="p-12 text-center text-sm text-ui-500">{emptyText}</div>
       </div>
     );
   }
@@ -144,7 +144,7 @@ export function DataTable<T>({
 
         {/* Indicador de scroll: gradiente derecho */}
         {showRightShadow && (
-          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/90 via-white/60 to-transparent pointer-events-none z-10" />
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface/90 via-surface/60 to-transparent pointer-events-none z-10" />
         )}
       </div>
     </div>

@@ -111,32 +111,66 @@ Todos los tokens estan definidos en `src/app/globals.css` dentro del bloque `@th
 
 | Token | Valor CSS | Uso en Tailwind |
 |-------|-----------|-----------------|
-| `primary` | `#f97316` | `bg-primary`, `text-primary` |
-| `primary-dark` | `#ea580c` | `bg-primary-dark`, `hover:bg-primary-dark` |
-| `primary-light` | `#fbbf24` | `bg-primary-light`, `text-primary-light` |
-| `secondary` | `#0f172a` | `bg-secondary`, `text-secondary` |
-| `sidebar` | `#0f172a` | `bg-sidebar` |
+| `primary` | `#ed8238` | `bg-primary`, `text-primary` |
+| `primary-dark` | `#d96e28` | `bg-primary-dark`, `hover:bg-primary-dark` |
+| `primary-light` | `#f5a860` | `bg-primary-light`, `text-primary-light` |
+| `secondary` | `#1e293b` | `bg-secondary`, `text-secondary` |
+| `sidebar` | `#1e293b` | `bg-sidebar` |
 
 #### Colores Semanticos
 
 | Token | Valor | Uso |
 |-------|-------|-----|
-| `success` | `#22c55e` | Estados exitosos, completados |
-| `success-dark` | `#16a34a` | Hover de exito |
-| `warning` | `#f59e0b` | Advertencias, pendientes |
-| `warning-dark` | `#d97706` | Hover de advertencia |
-| `error` | `#ef4444` | Errores, eliminar, peligro |
-| `error-dark` | `#dc2626` | Hover de error |
-| `info` | `#3b82f6` | Informacion, enlace |
-| `info-dark` | `#2563eb` | Hover de informacion |
+| `success` | `#3d9b6e` | Estados exitosos, completados |
+| `success-dark` | `#2f7d56` | Hover de exito |
+| `warning` | `#d4963a` | Advertencias, pendientes |
+| `warning-dark` | `#b87e2c` | Hover de advertencia |
+| `error` | `#c75450` | Errores, eliminar, peligro |
+| `error-dark` | `#a93e3a` | Hover de error |
+| `info` | `#557fb5` | Informacion, enlace |
+| `info-dark` | `#4569a0` | Hover de informacion |
 
-#### Superficies
+#### Superficies (cambian solas en modo oscuro)
 
-| Token | Valor | Uso |
-|-------|-------|-----|
-| `surface` | `#ffffff` | Fondo principal |
-| `surface-alt` | `#f8fafc` | Fondo alternativo |
-| `surface-elevated` | `#ffffff` | Superficies elevadas (modales, dropdowns) |
+| Token | Claro | Oscuro | Uso |
+|-------|-------|--------|-----|
+| `canvas` | `slate-50` | `#0f172a` | Fondo de la pagina (`bg-canvas`) |
+| `surface` | `#ffffff` | `#1e293b` | Tarjetas, modales, dropdowns, inputs (`bg-surface`) |
+| `surface-alt` | `#f8fafc` | `#172133` | Fondo alternativo |
+| `surface-elevated` | `#ffffff` | `#243146` | Superficies elevadas |
+| `tooltip` | `#1e293b` | `#475569` | Tooltips y globos oscuros (`bg-tooltip`) |
+
+#### Modo oscuro
+
+El tema (claro / oscuro / sistema) lo elige el usuario en la barra superior y se guarda por navegador.
+`ThemeProvider` pone la clase `.dark` en `<html>`; un script en `app/layout.tsx` la aplica antes del primer
+pintado para que no parpadee. Sin preferencia guardada se usa **claro**.
+
+**Escala neutra `ui-*`:** `ui-50` … `ui-950`. En modo claro vale **exactamente** lo mismo que `slate-*`; en
+oscuro se invierte (`ui-50` es casi negro y `ui-900`, casi blanco). Usarla en lugar de `slate` en todo lo que
+deba adaptarse al tema.
+
+**Regla para adaptar una vista:**
+
+| Antes | Despues | Nota |
+|-------|---------|------|
+| `bg-slate-50` (fondo de pagina) | `bg-canvas` | Solo el fondo general |
+| `bg-white` | `bg-surface` | Tarjetas, modales, inputs |
+| `*-slate-N` | `*-ui-N` | Textos, bordes, fondos claros, hovers |
+| `bg-slate-600` a `bg-slate-950` | **se queda en `slate`** | Fondos oscuros a proposito (banners, encabezados oscuros, overlays). Sus textos tambien se quedan en `slate` |
+| `bg-blue-50 text-blue-700 border-blue-200` | agregar `dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/25` | Tintes de color: fondo al 10-25 %, texto 300/400 |
+| `text-white` sobre color | sin cambio | |
+| clase `card` (legacy) | `<Card>` o `bg-surface rounded-xl border border-ui-200 ...` | `.card` se queda **claro** a proposito para no romper vistas aun sin adaptar |
+| Colores en JS (graficas, SVG) | `useTheme().temaAplicado` | Ver `Charts.tsx` (`useColoresEjes`) |
+
+Para casos puntuales existe la variante `dark:` (ej. `dark:bg-ui-200`).
+
+```tsx
+import { useTheme } from '@/hooks/useTheme';
+
+const { preferencia, temaAplicado, setPreferencia } = useTheme();
+// preferencia: 'light' | 'dark' | 'system'  ·  temaAplicado: 'light' | 'dark'
+```
 
 #### Bordes Redondeados
 
@@ -2396,10 +2430,11 @@ import { StatsCard } from '@/components/ui/StatsCard';
 
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
-| `icon` | `React.ReactNode` | *(requerido)* | Icono de la estadistica |
+| `icon` | `React.ReactNode` | `undefined` | Icono de la estadistica. **Sin icono** la tarjeta usa el diseño limpio: etiqueta arriba y valor abajo |
 | `value` | `string \| number` | *(requerido)* | Valor numerico o texto a mostrar |
 | `label` | `string \| ReactNode` | *(requerido)* | Descripcion de la metrica. Acepta un ReactNode para incluir una segunda linea (p. ej. conteo de registros) |
-| `color` | `'primary' \| 'success' \| 'warning' \| 'error' \| 'info' \| 'neutral'` | `'primary'` | Color del icono y fondo del icono |
+| `hint` | `ReactNode` | `undefined` | Linea de apoyo bajo el valor (p. ej. el monto de las horas extra) |
+| `color` | `'primary' \| 'success' \| 'warning' \| 'error' \| 'info' \| 'neutral'` | `'primary'` | Color del icono y fondo del icono (no aplica sin icono) |
 | `trend` | `'up' \| 'down' \| 'neutral'` | `undefined` | Direccion del trend (flecha) |
 | `trendValue` | `string` | `undefined` | Texto del trend (ej: "+12%", "-5%") |
 | `onClick` | `() => void` | `undefined` | Hace la tarjeta clickeable |
@@ -2413,7 +2448,20 @@ import { StatsCard } from '@/components/ui/StatsCard';
 | `warning` | `bg-amber-100` | `text-amber-600` |
 | `error` | `bg-red-100` | `text-red-600` |
 | `info` | `bg-blue-100` | `text-blue-600` |
-| `neutral` | `bg-slate-100` | `text-slate-500` |
+| `neutral` | `bg-ui-100` | `text-ui-500` |
+
+En modo oscuro los fondos de color bajan a `/15` y el texto sube a `400`.
+
+#### Variante limpia (sin icono)
+
+Para vistas con menos ruido visual (Asistencia y las demas de RRHH / Maquinaria):
+
+```tsx
+<div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  <StatsCard label="En sitio" value={12} />
+  <StatsCard label="Horas extra hoy" value="6 h" hint="$1,250" />
+</div>
+```
 
 #### Trends
 

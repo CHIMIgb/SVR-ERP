@@ -1,6 +1,6 @@
 export const cardClasses = {
-  base: 'bg-white rounded-xl border border-slate-200 shadow-sm transition-all duration-200 overflow-hidden',
-  interactive: 'hover:shadow-md hover:border-slate-300 cursor-pointer',
+  base: 'bg-surface rounded-xl border border-ui-200 shadow-sm transition-all duration-200 overflow-hidden',
+  interactive: 'hover:shadow-md hover:border-ui-300 cursor-pointer',
   padding: {
     none: '',
     sm: 'p-4',

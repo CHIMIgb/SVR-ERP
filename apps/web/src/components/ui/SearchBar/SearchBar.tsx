@@ -210,7 +210,7 @@ export function FilterPanel({
           <div className="flex items-end sm:items-center">
             <button
               onClick={onClear}
-              className="h-9 sm:h-10 px-3 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors whitespace-nowrap"
+              className="h-9 sm:h-10 px-3 rounded-lg text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors whitespace-nowrap"
             >
               Limpiar
             </button>
@@ -264,7 +264,7 @@ export function ActiveFilters({
       {onClearAll && filters.length > 1 && (
         <button
           onClick={onClearAll}
-          className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+          className="text-xs font-semibold text-ui-500 hover:text-red-600 dark:hover:text-red-400 transition-colors ml-1"
         >
           Limpiar todo
         </button>

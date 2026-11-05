@@ -54,7 +54,7 @@ export function Tabs({ tabs, defaultTab, value, onChange, children, className }:
                 {tab.icon}
                 {tab.label}
                 {tab.count !== undefined && (
-                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-slate-200 text-slate-600">
+                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-ui-200 text-ui-600">
                     {tab.count}
                   </span>
                 )}

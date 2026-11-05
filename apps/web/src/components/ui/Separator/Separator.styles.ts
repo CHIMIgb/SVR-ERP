@@ -1,5 +1,5 @@
 export const separatorClasses = {
-  base: 'shrink-0 bg-slate-200',
+  base: 'shrink-0 bg-ui-200',
   horizontal: 'h-px w-full',
   vertical: 'w-px h-full',
 };

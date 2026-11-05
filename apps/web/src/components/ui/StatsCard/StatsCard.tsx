@@ -6,9 +6,12 @@ export type StatsColor = keyof typeof statsCardClasses.iconVariants;
 export type StatsTrend = 'up' | 'down' | 'neutral';
 
 export interface StatsCardProps {
-  icon: React.ReactNode;
+  /** Opcional: sin icono la tarjeta usa el diseño limpio (etiqueta arriba, valor abajo). */
+  icon?: React.ReactNode;
   value: string | number;
   label: React.ReactNode;
+  /** Linea de apoyo bajo el valor (p. ej. el monto de las horas extra). */
+  hint?: React.ReactNode;
   color?: StatsColor;
   trend?: StatsTrend;
   trendValue?: string;
@@ -26,6 +29,7 @@ export function StatsCard({
   icon,
   value,
   label,
+  hint,
   color = 'primary',
   trend,
   trendValue,
@@ -33,6 +37,18 @@ export function StatsCard({
   className,
 }: StatsCardProps) {
   const TrendIcon = trend ? trendIcons[trend] : null;
+
+  const trendBadge = trend && TrendIcon && (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold',
+        statsCardClasses.trend[trend]
+      )}
+    >
+      <TrendIcon size={12} />
+      {trendValue}
+    </span>
+  );
 
   return (
     <div
@@ -43,24 +59,27 @@ export function StatsCard({
         className
       )}
     >
-      <div className="flex items-start justify-between">
-        <div className={cn(statsCardClasses.iconWrapper, statsCardClasses.iconVariants[color])}>
-          {icon}
-        </div>
-        {trend && TrendIcon && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold',
-              statsCardClasses.trend[trend]
-            )}
-          >
-            <TrendIcon size={12} />
-            {trendValue}
-          </span>
-        )}
-      </div>
-      <p className={statsCardClasses.value}>{value}</p>
-      <p className={statsCardClasses.label}>{label}</p>
+      {icon ? (
+        <>
+          <div className="flex items-start justify-between">
+            <div className={cn(statsCardClasses.iconWrapper, statsCardClasses.iconVariants[color])}>
+              {icon}
+            </div>
+            {trendBadge}
+          </div>
+          <p className={statsCardClasses.value}>{value}</p>
+          <p className={statsCardClasses.label}>{label}</p>
+        </>
+      ) : (
+        <>
+          <div className={statsCardClasses.plainHeader}>
+            <p className={statsCardClasses.plainLabel}>{label}</p>
+            {trendBadge && <span className="shrink-0">{trendBadge}</span>}
+          </div>
+          <p className={statsCardClasses.plainValue}>{value}</p>
+        </>
+      )}
+      {hint && <p className={statsCardClasses.hint}>{hint}</p>}
     </div>
   );
 }

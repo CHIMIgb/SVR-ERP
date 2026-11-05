@@ -1,5 +1,5 @@
 export const skeletonTextClasses = {
-  base: 'bg-slate-200 rounded animate-pulse',
+  base: 'bg-ui-200 rounded animate-pulse',
   line: 'h-3',
   title: 'h-5',
 };

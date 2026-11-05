@@ -7,7 +7,7 @@ export const loadingStateClasses = {
     md: '',
     lg: '',
   },
-  text: 'text-slate-500 font-medium',
+  text: 'text-ui-500 font-medium',
   textSizes: {
     sm: 'text-xs',
     md: 'text-sm',

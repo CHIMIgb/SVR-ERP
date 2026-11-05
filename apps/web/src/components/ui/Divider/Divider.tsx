@@ -26,16 +26,16 @@ export function Divider({
   className,
 }: DividerProps) {
   const borderStyle: Record<DividerVariant, string> = {
-    solid: 'border-slate-200',
-    dashed: 'border-slate-200 border-dashed',
-    dotted: 'border-slate-300 border-dotted',
+    solid: 'border-ui-200',
+    dashed: 'border-ui-200 border-dashed',
+    dotted: 'border-ui-300 border-dotted',
   };
 
   if (label) {
     return (
       <div className={cn('flex items-center gap-4', spacingMap[spacing], className)}>
         <div className={cn('flex-1 border-t', borderStyle[variant])} />
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+        <span className="text-xs font-semibold text-ui-400 uppercase tracking-wider whitespace-nowrap">
           {label}
         </span>
         <div className={cn('flex-1 border-t', borderStyle[variant])} />

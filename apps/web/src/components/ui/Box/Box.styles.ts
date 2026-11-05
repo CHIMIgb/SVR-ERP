@@ -36,14 +36,14 @@ export const shadowMap: Record<BoxShadow, string> = {
 
 export const backgroundMap: Record<BoxBackground, string> = {
   transparent: 'bg-transparent',
-  white: 'bg-white',
-  slate: 'bg-slate-50',
+  white: 'bg-surface',
+  slate: 'bg-ui-50',
   primary: 'bg-primary/10',
   secondary: 'bg-secondary/10',
 };
 
 export const borderMap: Record<BoxBorder, string> = {
   none: 'border-0',
-  default: 'border border-slate-200',
+  default: 'border border-ui-200',
   primary: 'border border-primary/30',
 };

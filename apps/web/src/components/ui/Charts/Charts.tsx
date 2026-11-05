@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/hooks/useTheme';
 import { chartClasses } from './Charts.styles';
 import {
   BarChart as ReBarChart,
@@ -56,17 +57,44 @@ function getColor(index: number, custom?: string): string {
   return custom || COLORS[index % COLORS.length];
 }
 
-/* ── Shared Tooltip Config ── */
-const tooltipProps = {
-  contentStyle: {
-    backgroundColor: '#1e293b',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '12px',
-  },
-  cursor: { stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' },
+/* ── Colores de ejes y cuadrícula según el tema ──
+   Recharts los recibe como atributos SVG (no clases), así que se eligen en JS. */
+interface ColoresEjes {
+  grid: string;
+  texto: string;
+  textoSuave: string;
+}
+
+const EJES_CLARO: ColoresEjes = { grid: '#e2e8f0', texto: '#64748b', textoSuave: '#94a3b8' };
+const EJES_OSCURO: ColoresEjes = { grid: '#334155', texto: '#94a3b8', textoSuave: '#64748b' };
+
+function useColoresEjes(): ColoresEjes {
+  const { temaAplicado } = useTheme();
+  return temaAplicado === 'dark' ? EJES_OSCURO : EJES_CLARO;
+}
+
+/* ── Shared Tooltip Config ──
+   Precalculado por tema: Recharts compara props por referencia. */
+const tooltipContentStyle = {
+  backgroundColor: 'var(--color-tooltip)',
+  border: 'none',
+  borderRadius: '8px',
+  color: '#fff',
+  fontSize: '12px',
 };
+
+const TOOLTIP_CLARO = {
+  contentStyle: tooltipContentStyle,
+  cursor: { stroke: EJES_CLARO.textoSuave, strokeWidth: 1, strokeDasharray: '4 4' },
+};
+const TOOLTIP_OSCURO = {
+  contentStyle: tooltipContentStyle,
+  cursor: { stroke: EJES_OSCURO.textoSuave, strokeWidth: 1, strokeDasharray: '4 4' },
+};
+
+function tooltipProps(ejes: ColoresEjes) {
+  return ejes === EJES_OSCURO ? TOOLTIP_OSCURO : TOOLTIP_CLARO;
+}
 
 /* ────────────────────────────────────────────────────────────────
    ChartWrapper
@@ -143,6 +171,7 @@ export function BarChart({
   showLegend = false,
   className,
 }: BarChartProps) {
+  const ejes = useColoresEjes();
   const chartData = data.map((d) => ({ name: d.label, value: d.value }));
 
   return (
@@ -155,19 +184,19 @@ export function BarChart({
       legendItems={data.map((d, i) => ({ name: d.label, color: getColor(i, d.color) }))}
     >
       <ReBarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={ejes.grid} />}
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 11, fill: '#64748b' }}
-          axisLine={{ stroke: '#e2e8f0' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
+          axisLine={{ stroke: ejes.grid }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: '#64748b' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {chartData.map((_, i) => (
             <Cell key={`cell-${i}`} fill={getColor(i, data[i].color)} />
@@ -203,6 +232,7 @@ export function LineChart({
   showLegend = true,
   className,
 }: LineChartProps) {
+  const ejes = useColoresEjes();
   const chartData = labels.map((label, i) => {
     const point: Record<string, string | number> = { name: label };
     series.forEach((s) => {
@@ -221,19 +251,19 @@ export function LineChart({
       legendItems={series.map((s, i) => ({ name: s.name, color: getColor(i, s.color) }))}
     >
       <ReLineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={ejes.grid} />}
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 11, fill: '#64748b' }}
-          axisLine={{ stroke: '#e2e8f0' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
+          axisLine={{ stroke: ejes.grid }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: '#64748b' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
         {series.map((s, i) => (
           <Line
             key={s.name}
@@ -275,6 +305,7 @@ export function AreaChart({
   showLegend = true,
   className,
 }: AreaChartProps) {
+  const ejes = useColoresEjes();
   const chartData = labels.map((label, i) => {
     const point: Record<string, string | number> = { name: label };
     series.forEach((s) => {
@@ -293,19 +324,19 @@ export function AreaChart({
       legendItems={series.map((s, i) => ({ name: s.name, color: getColor(i, s.color) }))}
     >
       <ReAreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={ejes.grid} />}
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 11, fill: '#64748b' }}
-          axisLine={{ stroke: '#e2e8f0' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
+          axisLine={{ stroke: ejes.grid }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: '#64748b' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
         {series.map((s, i) => (
           <Area
             key={s.name}
@@ -345,6 +376,7 @@ export function PieChart({
   innerRadius = 0,
   className,
 }: PieChartProps) {
+  const ejes = useColoresEjes();
   const chartData = data.map((d) => ({ name: d.label, value: d.value }));
 
   return (
@@ -372,7 +404,7 @@ export function PieChart({
             <Cell key={`cell-${i}`} fill={getColor(i, data[i].color)} />
           ))}
         </Pie>
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
       </RePieChart>
     </ChartWrapper>
   );
@@ -424,6 +456,7 @@ export function RadarChartComponent({
   showLegend = false,
   className,
 }: RadarChartProps) {
+  const ejes = useColoresEjes();
   const chartData = data.map((d) => ({ subject: d.label, value: d.value, fullMark: Math.max(...data.map((x) => x.value)) * 1.2 }));
 
   return (
@@ -435,9 +468,9 @@ export function RadarChartComponent({
       className={className}
     >
       <RadarChart data={chartData} cx="50%" cy="50%" outerRadius="70%">
-        <PolarGrid stroke="#e2e8f0" />
-        <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: '#64748b' }} />
-        <PolarRadiusAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
+        <PolarGrid stroke={ejes.grid} />
+        <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: ejes.texto }} />
+        <PolarRadiusAxis tick={{ fontSize: 10, fill: ejes.textoSuave }} />
         <Radar
           name="Valor"
           dataKey="value"
@@ -445,7 +478,7 @@ export function RadarChartComponent({
           fill="#ed8238"
           fillOpacity={0.3}
         />
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
       </RadarChart>
     </ChartWrapper>
   );
@@ -472,6 +505,7 @@ export function RadialBarChartComponent({
   showLegend = true,
   className,
 }: RadialBarChartProps) {
+  const ejes = useColoresEjes();
   const chartData = data.map((d, i) => ({
     name: d.label,
     value: d.value,
@@ -500,7 +534,7 @@ export function RadialBarChartComponent({
           dataKey="value"
           cornerRadius={6}
         />
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
       </ReRadialBarChart>
     </ChartWrapper>
   );
@@ -534,6 +568,7 @@ export function ScatterChartComponent({
   showGrid = true,
   className,
 }: ScatterChartProps) {
+  const ejes = useColoresEjes();
   const chartData = points.map((p) => ({ x: p.x, y: p.y, name: p.label || '' }));
 
   return (
@@ -544,24 +579,24 @@ export function ScatterChartComponent({
       className={className}
     >
       <ReScatterChart margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={ejes.grid} />}
         <XAxis
           type="number"
           dataKey="x"
           name="X"
-          tick={{ fontSize: 11, fill: '#64748b' }}
-          axisLine={{ stroke: '#e2e8f0' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
+          axisLine={{ stroke: ejes.grid }}
           tickLine={false}
         />
         <YAxis
           type="number"
           dataKey="y"
           name="Y"
-          tick={{ fontSize: 11, fill: '#64748b' }}
+          tick={{ fontSize: 11, fill: ejes.texto }}
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip {...tooltipProps} />
+        <Tooltip {...tooltipProps(ejes)} />
         <Scatter
           name="Datos"
           data={chartData}
