@@ -52,3 +52,6 @@
   continúa; si el usuario busca "Tepic" en la búsqueda no sale — avisar si se
   quisiera).
 - El error de eslint marcado es de setState en fetchData (pre-existente).
+- **Posterior (07530487):** el modal de Crear ya no incluye "Progreso (%)" —
+  todo proyecto nace en 0% (el backend ya lo hace por default, `progreso=0`);
+  el avance se captura únicamente al Editar. Editar conserva el campo.
