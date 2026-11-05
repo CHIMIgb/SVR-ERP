@@ -206,9 +206,11 @@ export default function ReportesOperacionesPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [facturarOpen, setFacturarOpen] = useState(false);
   const [asignarOpen, setAsignarOpen] = useState(false);
+  const [resolverOpen, setResolverOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReporteCampoDTO | null>(null);
   const [facturarItem, setFacturarItem] = useState<ReporteCampoDTO | null>(null);
   const [asignarItem, setAsignarItem] = useState<ReporteCampoDTO | null>(null);
+  const [resolverItem, setResolverItem] = useState<ReporteCampoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [facturando, setFacturando] = useState(false);
@@ -555,6 +557,12 @@ export default function ReportesOperacionesPage() {
         openAsignar(item);
         return;
       }
+      // "Marcar Resuelto" pide confirmación (es la transición terminal previa a facturar).
+      if (next === 'Resuelto') {
+        setResolverItem(item);
+        setResolverOpen(true);
+        return;
+      }
       const res = await reportesCampoApi.cambiarEstado(item.id, ESTADO_API[next]);
       if (res.success) {
         showToast(`Reporte marcado como "${next}".`, 'success');
@@ -566,6 +574,28 @@ export default function ReportesOperacionesPage() {
     },
     [showToast, refetch, fetchStats, openAsignar],
   );
+
+  // ── Confirmación "Marcar Resuelto" ──
+  const handleResolverConfirm = useCallback(async () => {
+    if (!resolverItem) return;
+    setSubmitting(true);
+    try {
+      const res = await reportesCampoApi.cambiarEstado(resolverItem.id, 'RESUELTO');
+      if (res.success) {
+        showToast('Reporte marcado como "Resuelto".', 'success');
+        setResolverOpen(false);
+        setResolverItem(null);
+        refetch();
+        fetchStats();
+      } else {
+        showToast(res.error?.message || 'Error al marcar el reporte como resuelto.', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [resolverItem, showToast, refetch, fetchStats]);
 
   // ── Facturar reporte Resuelto (nace la CxC) ──
   const handleFacturar = useCallback(async () => {
@@ -1269,6 +1299,41 @@ export default function ReportesOperacionesPage() {
             />
           </ModalField>
         </div>
+      </FormModal>
+
+      {/* Modal de confirmación: Marcar Resuelto */}
+      <FormModal
+        open={resolverOpen}
+        onClose={() => {
+          setResolverOpen(false);
+          setResolverItem(null);
+        }}
+        onCancel={() => {
+          setResolverOpen(false);
+          setResolverItem(null);
+        }}
+        title="Marcar como Resuelto"
+        subtitle="Confirma quién resolvió el reporte. Esta acción no se puede deshacer."
+        submitLabel="Sí, Marcar Resuelto"
+        cancelLabel="Cancelar"
+        onSubmit={handleResolverConfirm}
+        isSubmitting={submitting}
+      >
+        {resolverItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+            </div>
+            <p className="text-sm text-slate-700 mb-1">¿Marcar este reporte como resuelto?</p>
+            <p className="font-black text-slate-900 text-lg mb-2">
+              {resolverItem.usuario} · {resolverItem.tipo}
+            </p>
+            <p className="text-xs text-slate-500 max-w-xs">
+              Quedará registrado que lo resolvió{' '}
+              <strong className="text-emerald-700">{resolverItem.asignadoANombre}</strong>.
+            </p>
+          </div>
+        )}
       </FormModal>
 
       <FormModal
