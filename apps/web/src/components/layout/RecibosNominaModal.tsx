@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Printer } from 'lucide-react';
 import type { NominaRowDTO } from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
-import { Modal } from '@/components/ui/Modal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
+import { Portal } from '@/components/ui/Portal';
+import { formatCurrency } from '@/lib/formatters';
 
 interface RecibosNominaModalProps {
   isOpen: boolean;
@@ -13,6 +15,85 @@ interface RecibosNominaModalProps {
   workersList: NominaRowDTO[];
   periodoLabel: string;
   periodoCodigo: string;
+  /** Abre el modal mostrando solo el recibo de este registro de nómina (si no, todos). */
+  trabajadorInicialId?: string;
+}
+
+/** Lo que va en el sobre: el neto menos lo que ya se transfirió por SPEI (igual que calcula la API). */
+function efectivoEnSobre(t: NominaRowDTO): number {
+  return t.sueldoEfectivo + t.totalPercepciones - t.totalDeducciones;
+}
+
+/**
+ * Recibo en papel. Siempre blanco, también en modo oscuro: es un documento que se imprime y firma.
+ */
+function Recibo({ t, periodoLabel, periodoCodigo }: { t: NominaRowDTO; periodoLabel: string; periodoCodigo: string }) {
+  const sobre = efectivoEnSobre(t);
+  return (
+    <article className="bg-white text-slate-900 rounded-2xl p-5 border-2 border-dashed border-slate-300 break-inside-avoid print:rounded-none print:border-slate-400">
+      <header className="border-b border-slate-200 pb-3 mb-3">
+        <div className="flex items-start justify-between gap-3">
+          <h4 className="min-w-0 font-black text-sm uppercase leading-tight">SVR Constructora S.A. de C.V.</h4>
+          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{t.metodoPago}</span>
+        </div>
+        <p className="text-[10px] font-semibold text-slate-500 uppercase mt-1">Recibo de nómina · {periodoLabel.split(':')[0]}</p>
+        <p className="text-[9px] text-slate-400 font-mono break-all">Folio {periodoCodigo}-{t.id.slice(0, 8)}</p>
+      </header>
+
+      <div className="flex items-start justify-between gap-3 mb-3 text-xs">
+        <div className="min-w-0">
+          <p className="font-bold text-sm truncate">{t.trabajadorNombre}</p>
+          <p className="text-slate-600 truncate">{t.puesto}</p>
+        </div>
+        <p className="shrink-0 text-right text-slate-500">
+          Días laborados <span className="font-semibold text-slate-800">{t.diasTrabajados}/6</span>
+        </p>
+      </div>
+
+      <dl className="space-y-1 text-xs mb-3">
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-600">Sueldo fiscal (transferencia SPEI)</dt>
+          <dd className="font-semibold tabular-nums">{formatCurrency(t.sueldoFiscal)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-600">Complemento en efectivo</dt>
+          <dd className="font-semibold tabular-nums">{formatCurrency(t.sueldoEfectivo)}</dd>
+        </div>
+        {t.percepciones.map((p) => (
+          <div key={p.id} className="flex justify-between gap-3">
+            <dt className="text-slate-600 min-w-0 break-words">{p.concepto}</dt>
+            <dd className="font-semibold tabular-nums text-green-700">+{formatCurrency(p.monto)}</dd>
+          </div>
+        ))}
+        {t.deducciones.map((d) => (
+          <div key={d.id} className="flex justify-between gap-3">
+            <dt className="text-slate-600 min-w-0 break-words">{d.concepto}</dt>
+            <dd className="font-semibold tabular-nums text-red-700">−{formatCurrency(d.monto)}</dd>
+          </div>
+        ))}
+        <div className="flex justify-between gap-3 pt-2 mt-1 border-t border-slate-200 text-sm font-bold">
+          <dt>Total neto</dt>
+          <dd className="tabular-nums">{formatCurrency(t.totalNeto)}</dd>
+        </div>
+      </dl>
+
+      <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs mb-1">
+        <span>Efectivo en sobre: <strong className="tabular-nums">{formatCurrency(sobre)}</strong></span>
+        <span>Transferencia: <strong className="tabular-nums">{formatCurrency(t.sueldoFiscal)}</strong></span>
+      </div>
+      {sobre < 0 && (
+        <p className="text-[10px] text-red-700 mb-1">
+          Las deducciones superan el efectivo: la diferencia se debe cubrir de la transferencia.
+        </p>
+      )}
+
+      <footer className="pt-6 text-center">
+        <div className="w-48 h-px mx-auto bg-slate-400 mb-1" />
+        <p className="text-[10px] font-semibold text-slate-700">Firma de conformidad del trabajador</p>
+        <p className="text-[9px] text-slate-400">Recibí a mi entera satisfacción el importe neto desglosado en este recibo.</p>
+      </footer>
+    </article>
+  );
 }
 
 export default function RecibosNominaModal({
@@ -21,152 +102,84 @@ export default function RecibosNominaModal({
   workersList,
   periodoLabel,
   periodoCodigo,
+  trabajadorInicialId,
 }: RecibosNominaModalProps) {
   const { showToast } = useToast();
-  const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('todos');
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>(trabajadorInicialId ?? 'todos');
 
-  const handlePrint = () => {
-    window.print();
-    showToast('Enviando recibos de nómina a la impresora...', 'success');
+  // Si el trabajador elegido ya no está en la lista (p. ej. se recargó la nómina), se muestran todos.
+  const seleccion = selectedWorkerId !== 'todos' && workersList.some((w) => w.id === selectedWorkerId)
+    ? selectedWorkerId
+    : 'todos';
+  const displayedWorkers = seleccion === 'todos' ? workersList : workersList.filter((w) => w.id === seleccion);
+
+  const imprimir = () => {
+    try {
+      window.print();
+    } catch (error) {
+      showToast(`El navegador no permitió imprimir: ${error instanceof Error ? error.message : 'error desconocido'}.`, 'error');
+    }
   };
 
-  const displayedWorkers = selectedWorkerId === 'todos'
-    ? workersList
-    : workersList.filter((w) => w.id === selectedWorkerId);
+  const opciones = [
+    { value: 'todos', label: `Todos (${workersList.length})` },
+    ...workersList.map((w) => ({ value: w.id, label: w.trabajadorNombre })),
+  ];
 
   return (
-    <Modal open={isOpen} onClose={onClose} size="full" contentClassName="overflow-hidden">
-        {/* Modal Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary text-white rounded-xl">
-              <Printer className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-black text-base text-white">Recibos de Nómina y Sobres de Efectivo</h3>
-              <p className="text-[11px] text-slate-400 font-medium">
-                {periodoLabel} · SVR Constructora
-              </p>
-            </div>
-          </div>
+    <>
+      <Modal open={isOpen} onClose={onClose} size="full">
+        <ModalHeader title="Recibos y sobres de efectivo" subtitle={periodoLabel} onClose={onClose} />
 
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedWorkerId}
-              onChange={(e) => setSelectedWorkerId(e.target.value)}
-              className="bg-slate-800 border border-slate-700 text-white text-xs font-bold rounded-xl px-3 py-1.5 focus:outline-none"
-            >
-              <option value="todos">Todos ({workersList.length} empleados)</option>
-              {workersList.map((w) => (
-                <option key={w.id} value={w.id}>{w.trabajadorNombre} — {w.puesto}</option>
-              ))}
-            </select>
-
-            <Button size="sm" icon={<Printer size={14} />} onClick={handlePrint}>
-              Imprimir Recibos
-            </Button>
-          </div>
-        </div>
-
-        {/* Printable Receipts Content */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-100/50 print:bg-white print:p-0 print:overflow-visible">
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2 print:gap-4">
-            {displayedWorkers.map((t) => {
-              const efectivoEnSobre = t.sueldoEfectivo + t.totalPercepciones - t.totalDeducciones;
-
-              return (
-                <div
-                  key={t.id}
-                  className="bg-white rounded-3xl p-6 border-2 border-dashed border-slate-300 shadow-sm print:border-slate-400 print:shadow-none print:break-inside-avoid relative overflow-hidden"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
-                    <div>
-                      <h4 className="font-black text-slate-900 text-sm tracking-tight uppercase">SVR CONSTRUCTORA S.A. DE C.V.</h4>
-                      <p className="text-[10px] font-bold text-slate-400">RECIBO DE NÓMINA · {periodoLabel.split(':')[0]?.toUpperCase()}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-slate-900 text-white">
-                        {t.metodoPago}
-                      </span>
-                      <p className="text-[9px] text-slate-400 font-mono mt-0.5">FOLIO: {periodoCodigo}-{t.id.slice(0, 8)}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 rounded-2xl p-3 mb-4 border border-slate-100 text-xs">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-black text-slate-900 text-sm">{t.trabajadorNombre}</p>
-                        <p className="text-[11px] font-semibold text-slate-600">{t.puesto}</p>
-                      </div>
-                      <div className="text-right text-[10px] text-slate-500 font-medium">
-                        <p>Categoría: <strong className="text-slate-800">{t.categoriaPuesto}</strong></p>
-                        <p>Días laborados: <strong className="text-slate-800">{t.diasTrabajados}/6</strong></p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs mb-4">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Sueldo Fiscal (Transferencia SPEI):</span>
-                      <span className="font-bold text-slate-800">{fmt.format(t.sueldoFiscal)}</span>
-                    </div>
-
-                    <div className="flex justify-between text-slate-600">
-                      <span>Complemento en Efectivo:</span>
-                      <span className="font-bold text-primary">{fmt.format(t.sueldoEfectivo)}</span>
-                    </div>
-
-                    {t.percepciones.map((p) => (
-                      <div key={p.id} className="flex justify-between text-green-700 font-semibold">
-                        <span>{p.concepto}:</span>
-                        <span className="font-black">+{fmt.format(p.monto)}</span>
-                      </div>
-                    ))}
-
-                    {t.deducciones.map((d) => (
-                      <div key={d.id} className="flex justify-between text-red-600 font-semibold">
-                        <span>{d.concepto}:</span>
-                        <span className="font-black">−{fmt.format(d.monto)}</span>
-                      </div>
-                    ))}
-
-                    <div className="pt-2 border-t border-slate-200 flex justify-between items-baseline font-black text-slate-900 text-sm">
-                      <span>TOTAL NETO PERCIBIDO:</span>
-                      <span className="text-base text-slate-900">{fmt.format(t.totalNeto)}</span>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-orange-50/70 border border-orange-200 text-[11px] font-bold text-orange-950 flex justify-between mb-6">
-                    <span>Efectivo en Sobre: <strong>{fmt.format(efectivoEnSobre)}</strong></span>
-                    <span>SPEI Tarjeta: <strong>{fmt.format(t.sueldoFiscal)}</strong></span>
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-200 text-center">
-                    <div className="w-48 h-8 mx-auto border-b border-slate-400 mb-1" />
-                    <p className="text-[10px] font-bold text-slate-700">FIRMA DE CONFORMIDAD DEL TRABAJADOR</p>
-                    <p className="text-[8px] text-slate-400">Recibí a mi entera satisfacción el importe neto desglosado en este recibo.</p>
-                  </div>
+        <ModalBody className="space-y-4">
+          {workersList.length === 0 ? (
+            <p className="text-sm text-ui-500 py-8 text-center">No hay trabajadores en la nómina de este periodo.</p>
+          ) : (
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="sm:w-72">
+                  <Select
+                    aria-label="Recibos a mostrar"
+                    placeholder="Trabajador"
+                    value={seleccion}
+                    onChange={(e) => setSelectedWorkerId(e.target.value)}
+                    options={opciones}
+                  />
                 </div>
-              );
-            })}
-          </div>
+                <Button onClick={imprimir} disabled={displayedWorkers.length === 0} className="w-full sm:w-auto">
+                  Imprimir {displayedWorkers.length === 1 ? 'recibo' : `${displayedWorkers.length} recibos`}
+                </Button>
+              </div>
 
-        </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 sm:p-4 rounded-xl bg-ui-100">
+                {displayedWorkers.map((t) => (
+                  <Recibo key={t.id} t={t} periodoLabel={periodoLabel} periodoCodigo={periodoCodigo} />
+                ))}
+              </div>
+            </>
+          )}
+        </ModalBody>
 
-        {/* Modal Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between print:hidden">
-          <p className="text-xs text-slate-500 font-medium">
-            Se generaron <strong>{displayedWorkers.length} recibos</strong> listos para impresión en papel carta o sobre.
+        <ModalFooter>
+          <p className="text-xs text-ui-500 sm:mr-auto text-center sm:text-left">
+            Hoja carta, dos recibos por fila. Se imprimen solo los recibos, sin el resto de la pantalla.
           </p>
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </ModalFooter>
+      </Modal>
 
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>Cerrar</Button>
-            <Button icon={<Printer size={16} />} onClick={handlePrint}>Imprimir Todos</Button>
+      {/* Copia solo para imprimir (ver `.solo-impresion` en globals.css). */}
+      {isOpen && displayedWorkers.length > 0 && (
+        <Portal>
+          <div className="solo-impresion">
+            <div className="grid grid-cols-2 gap-4">
+              {displayedWorkers.map((t) => (
+                <Recibo key={t.id} t={t} periodoLabel={periodoLabel} periodoCodigo={periodoCodigo} />
+              ))}
+            </div>
           </div>
-        </div>
-
-    </Modal>
+        </Portal>
+      )}
+    </>
   );
 }
