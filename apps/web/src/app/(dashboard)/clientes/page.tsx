@@ -411,7 +411,7 @@ export default function ClientesPage() {
       header: 'Cliente',
       render: (item) => (
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-ui-900 text-white rounded-xl flex items-center justify-center font-black text-sm shrink-0">
+          <div className="w-10 h-10 bg-secondary dark:bg-ui-200 text-white rounded-xl flex items-center justify-center font-black text-sm shrink-0">
             {item.empresa[0]}
           </div>
           <div className="min-w-0">
@@ -462,7 +462,7 @@ export default function ClientesPage() {
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
           <Button
-            variant="outline"
+            variant="info"
             size="sm"
             icon={<Eye className="w-3.5 h-3.5" />}
             onClick={(e) => { e.stopPropagation(); openView(item); }}
@@ -470,7 +470,7 @@ export default function ClientesPage() {
             Ver
           </Button>
           <Button
-            variant="outline"
+            variant="primary"
             size="sm"
             icon={<Wallet className="w-3.5 h-3.5" />}
             onClick={(e) => { e.stopPropagation(); openConsolidado(item); }}
