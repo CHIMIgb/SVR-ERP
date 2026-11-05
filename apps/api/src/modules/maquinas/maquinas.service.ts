@@ -129,9 +129,12 @@ export class MaquinasService {
   }
 
   async create(dto: CreateMaquinaDto): Promise<MaquinaResponse> {
-    const existente = await this.prisma.maquinas.findUnique({ where: { codigo: dto.id } });
+    // El código se guarda en mayúsculas: se compara igual, si no "m005" pasaba la revisión y chocaba con "M005"
+    // en la base (error 500 en vez de este aviso).
+    const codigo = dto.id.trim().toUpperCase();
+    const existente = await this.prisma.maquinas.findUnique({ where: { codigo } });
     if (existente) {
-      throw new BadRequestException(`Ya existe una máquina con el código "${dto.id}"`);
+      throw new BadRequestException(`Ya existe una máquina con el código "${codigo}"`);
     }
 
     const nombreTipo = TIPO_UI_A_CATALOGO[dto.tipo] ?? dto.tipo;
@@ -157,8 +160,8 @@ export class MaquinasService {
     const creada = await this.prisma.maquinas.create({
       data: {
         id: randomUUID(),
-        codigo: dto.id.toUpperCase(),
-        nombre: dto.nombre,
+        codigo,
+        nombre: dto.nombre.trim(),
         tipo_id: tipo.id,
         estado: 'APAGADA',
         horometro: dto.horometro ?? 0,

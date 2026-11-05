@@ -25,6 +25,10 @@ export class CreateChecklistDto {
   @IsIn(['Correcto', 'Desgaste Severo', 'Daño'])
   estadoLlantasOrugas!: 'Correcto' | 'Desgaste Severo' | 'Daño';
 
+  /** Antes no se capturaba y se guardaba siempre "Correcto": una falla de luces nunca quedaba registrada. */
+  @IsIn(['Correcto', 'Falla'])
+  lucesYAlarmas!: 'Correcto' | 'Falla';
+
   @IsIn(['Correcto', 'Falla'])
   sistemaFrenos!: 'Correcto' | 'Falla';
 

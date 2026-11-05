@@ -56,6 +56,7 @@ export class ChecklistsService {
       dto.nivelAceiteMotor === 'Bajo' ||
       dto.nivelHidraulico === 'Bajo' ||
       dto.sistemaFrenos === 'Falla' ||
+      dto.lucesYAlarmas === 'Falla' ||
       dto.estadoLlantasOrugas === 'Daño';
 
     const trabajador = await this.prisma.trabajadores.findFirst({
@@ -85,9 +86,7 @@ export class ChecklistsService {
         nivel_hidraulico: NIVEL_BINARIO_UI_A_DB[dto.nivelHidraulico],
         fugas_visibles: dto.fugasVisibles,
         estado_llantas_orugas: ESTADO_LLANTAS_UI_A_DB[dto.estadoLlantasOrugas],
-        // El formulario actual del frontend no captura luces y alarmas —
-        // se asume Correcto salvo que se agregue ese campo a la UI.
-        luces_y_alarmas: 'CORRECTO',
+        luces_y_alarmas: ESTADO_SISTEMA_UI_A_DB[dto.lucesYAlarmas],
         sistema_frenos: ESTADO_SISTEMA_UI_A_DB[dto.sistemaFrenos],
         estado: tieneFalla ? 'CON_FALLA' : 'APROBADO',
         observaciones: dto.observaciones,
