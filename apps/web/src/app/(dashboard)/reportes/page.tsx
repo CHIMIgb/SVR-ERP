@@ -715,12 +715,12 @@ export default function ReportesOperacionesPage() {
     {
       key: 'descripcion',
       header: 'Descripción',
-      minWidth: '420px',
+      minWidth: '560px',
       className: 'whitespace-normal',
       render: (report) => (
-        <div className="max-w-md">
-          <Tooltip placement="top" content={report.descripcion} maxWidth={320}>
-            <span className="line-clamp-2 font-medium text-slate-600">
+        <div className="max-w-2xl">
+          <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
+            <span className="font-medium text-slate-600">
               &ldquo;{report.descripcion}&rdquo;
             </span>
           </Tooltip>
