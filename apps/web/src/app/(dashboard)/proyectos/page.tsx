@@ -768,17 +768,6 @@ export default function ProyectosPage() {
             />
           </ModalField>
 
-          <ModalField label="Progreso (%)" hint="Avance físico inicial de la obra.">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              className={modalInputClass}
-              value={form.progreso}
-              onChange={(e) => setForm({ ...form, progreso: e.target.value })}
-            />
-          </ModalField>
-
           <ModalField label="Fecha de inicio" required>
             <input
               type="date"
