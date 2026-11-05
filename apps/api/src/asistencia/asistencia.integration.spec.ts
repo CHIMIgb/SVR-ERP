@@ -73,6 +73,9 @@ describe('Asistencia Audit (Real DB)', () => {
         where: { registros_asistencia: { trabajador_id: { in: createdTrabajadorIds } } },
       });
       await prisma.registros_asistencia.deleteMany({ where: { trabajador_id: { in: createdTrabajadorIds } } });
+      // Si la suite de Nómina corre a la vez, genera nómina también para estos trabajadores (son activos) y el
+      // borrado truena con nominas_trabajador_id_fkey. Percepciones y deducciones se van en cascada.
+      await prisma.nominas.deleteMany({ where: { trabajador_id: { in: createdTrabajadorIds } } });
       await prisma.trabajadores.deleteMany({ where: { id: { in: createdTrabajadorIds } } });
     }
     await prisma.categorias_puesto.deleteMany({ where: { id: categoriaId } });
