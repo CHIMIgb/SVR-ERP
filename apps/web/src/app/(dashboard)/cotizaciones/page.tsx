@@ -539,14 +539,14 @@ export default function CotizacionesPage() {
       )}
 
       {showFilters && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             <div className="flex flex-col gap-1 w-full sm:w-auto">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado</label>
               <select
                 value={filterValues.estado || ''}
                 onChange={(e) => handleFilterChange('estado', e.target.value)}
-                className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
               >
                 <option value="">Todos</option>
                 <option value="PENDIENTE">Pendiente</option>
@@ -559,7 +559,7 @@ export default function CotizacionesPage() {
               <select
                 value={filterValues.clienteId || ''}
                 onChange={(e) => handleFilterChange('clienteId', e.target.value)}
-                className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
               >
                 <option value="">Todos</option>
                 {clientes.map((c) => (
@@ -749,7 +749,7 @@ export default function CotizacionesPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-ui-50 border border-ui-200 rounded-xl p-4">
                 <div className="flex items-start gap-2">
                   <Building2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                   <div>

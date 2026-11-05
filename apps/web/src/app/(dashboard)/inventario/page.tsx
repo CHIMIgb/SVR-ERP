@@ -576,7 +576,7 @@ export default function InventarioPage() {
       )}
 
       {showFilters && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
@@ -586,7 +586,7 @@ export default function InventarioPage() {
                 <select
                   value={filterValues[filter.key] || ''}
                   onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                  className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
                 >
                   <option value="">{filter.placeholder || 'Todos'}</option>
                   {filter.options?.map((opt) => (
@@ -757,7 +757,7 @@ export default function InventarioPage() {
       >
         {selectedItem && (
           <div className="space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-black text-slate-900">{selectedItem.nombre}</p>
