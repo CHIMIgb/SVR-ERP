@@ -36,3 +36,15 @@
 - La rama quedó con 69 commits para push solo con orden explicito. Fuerzas de
   trabajo del otro dev — no pushear hasta la orden del usuario.
 - Historial confuso con el branch tracking para el origin — normal.
+
+## 2026-11-05 (posterior a la versión anterior de este archivo)
+- El usuario pidió, ante un conflicto reaparecido en `Topbar.tsx`, **tomar la
+  versión de `main` completo** (commit `bfe3e4b6`) — es decir, la versión con
+  modo oscuro/ThemeToggle **y con el popup de usuario + "Cerrar sesión"
+  del Topbar** (la decisión de remover el popup de ayer quedó descartada).
+- Estado verificado: `tsc web` limpio; el conflicto ya no existe en el árbol.
+- Copia del conflicto: el comando `checkout --theirs` fuera de rebase tomó el
+  lado equivocado (nuesta versión vieja); corregido tomando directamente
+  `git checkout main -- path`.
+
+# 2026-11-05 — rebase (versión final del listado anterior)
