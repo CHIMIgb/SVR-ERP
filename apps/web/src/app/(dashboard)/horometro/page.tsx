@@ -610,7 +610,7 @@ export default function HorometroPage() {
         >
           <div className="space-y-3">
             
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Seleccionar Maquinaria *">
                 <select
                   className={selectClass}
@@ -641,7 +641,7 @@ export default function HorometroPage() {
               </ModalField>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Lectura Inicial (hrs) *">
                 <input
                   type="number"
@@ -671,7 +671,7 @@ export default function HorometroPage() {
               </strong>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ModalField label="Operador">
                 <input
                   className={inputClass}

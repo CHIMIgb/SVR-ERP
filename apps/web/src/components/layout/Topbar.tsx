@@ -265,7 +265,7 @@ export default function Topbar() {
 
           {/* Dropdown Box */}
           {dropdownOpen && (
-            <div className="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-[fadeScaleIn_0.15s_ease-out]">
+            <div className="absolute right-0 mt-3 w-[calc(100vw-2rem)] max-w-sm sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-[fadeScaleIn_0.15s_ease-out]">
               
               {/* Dropdown Header */}
               <div className="bg-slate-950 text-white px-5 py-4 flex items-center justify-between">

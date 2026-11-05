@@ -37,23 +37,23 @@ export default function MachineCard({ maquina, onOpenChecklist, onOpenGps }: Mac
       
       <div className="space-y-3.5">
         {/* Top Bar */}
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-3">
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className={`p-3 rounded-2xl ${statusColors[maquina.estado] ?? 'bg-slate-400'} shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform`}>
               <Truck className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-black text-slate-900 text-lg leading-none">{maquina.id}</h3>
-                <span className="text-[10px] font-black uppercase text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+              <div className="flex items-center gap-2 min-w-0">
+                <h3 className="font-black text-slate-900 text-lg leading-none shrink-0">{maquina.id}</h3>
+                <span className="text-[10px] font-black uppercase text-slate-400 bg-slate-100 px-2 py-0.5 rounded truncate">
                   {maquina.tipo}
                 </span>
               </div>
-              <p className="text-xs font-bold text-slate-700 mt-1">{maquina.nombre}</p>
+              <p className="text-xs font-bold text-slate-700 mt-1 truncate">{maquina.nombre}</p>
             </div>
           </div>
 
-          <span className={`text-[9px] font-black uppercase tracking-widest ${statusColors[maquina.estado] ?? 'bg-slate-400'} px-2.5 py-1 rounded-full shadow-sm`}>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${statusColors[maquina.estado] ?? 'bg-slate-400'} px-2.5 py-1 rounded-full shadow-sm shrink-0 whitespace-nowrap`}>
             {maquina.estado}
           </span>
         </div>
@@ -63,7 +63,7 @@ export default function MachineCard({ maquina, onOpenChecklist, onOpenGps }: Mac
           <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs space-y-0.5">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-black uppercase text-red-700 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 text-red-600" /> 🚨 Alerta de Telemetría
+                <AlertTriangle className="w-3 h-3 text-red-600" /> Alerta de Telemetría
               </span>
               <span className="text-[9px] font-mono font-bold text-red-700">{maquina.rendimientoActualLtsHora} L/hr</span>
             </div>
