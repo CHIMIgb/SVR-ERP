@@ -376,8 +376,8 @@ export default function InventarioPage() {
       header: 'Nombre / Categoría',
       render: (item) => (
         <div>
-          <div className="font-black text-slate-900">{item.nombre}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.categoria}</div>
+          <div className="font-black text-ui-900">{item.nombre}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">{item.categoria}</div>
         </div>
       ),
     },
@@ -386,10 +386,10 @@ export default function InventarioPage() {
       header: 'Stock Actual',
       render: (item) => (
         <div className="flex items-center gap-2">
-          <span className={`font-black text-sm ${item.stock <= item.stockMinimo ? 'text-red-500' : 'text-slate-900'}`}>
+          <span className={`font-black text-sm ${item.stock <= item.stockMinimo ? 'text-red-500' : 'text-ui-900'}`}>
             {item.stock} {item.unidad}
           </span>
-          <span className="text-[10px] text-slate-400 font-bold">/ Min: {item.stockMinimo}</span>
+          <span className="text-[10px] text-ui-400 font-bold">/ Min: {item.stockMinimo}</span>
         </div>
       ),
     },
@@ -409,14 +409,14 @@ export default function InventarioPage() {
       header: 'Precio Unit.',
       align: 'right',
       render: (item) => (
-        <span className="font-black text-slate-900">{formatCurrency(item.precioUnitario)}</span>
+        <span className="font-black text-ui-900">{formatCurrency(item.precioUnitario)}</span>
       ),
     },
     {
       key: 'proveedor',
       header: 'Proveedor',
       render: (item) => (
-        <span className="font-semibold text-slate-600">{item.proveedor}</span>
+        <span className="font-semibold text-ui-600">{item.proveedor}</span>
       ),
     },
     {
@@ -539,7 +539,7 @@ export default function InventarioPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -567,7 +567,7 @@ export default function InventarioPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -580,7 +580,7 @@ export default function InventarioPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
@@ -605,7 +605,7 @@ export default function InventarioPage() {
         <div className="relative">
           {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -760,8 +760,8 @@ export default function InventarioPage() {
             <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-black text-slate-900">{selectedItem.nombre}</p>
-                  <p className="text-xs text-slate-500">{selectedItem.categoria} — {selectedItem.proveedor}</p>
+                  <p className="font-black text-ui-900">{selectedItem.nombre}</p>
+                  <p className="text-xs text-ui-500">{selectedItem.categoria} — {selectedItem.proveedor}</p>
                 </div>
                 <Badge variant={selectedItem.stock <= selectedItem.stockMinimo ? 'error' : 'success'} size="sm">
                   Stock: {selectedItem.stock} {selectedItem.unidad}
@@ -922,13 +922,13 @@ export default function InventarioPage() {
             <div className="w-14 h-14 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               ¿Estás seguro de eliminar el artículo?
             </p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="font-black text-ui-900 text-lg mb-2">
               {selectedItem.nombre}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ui-500">
               {selectedItem.categoria} — Stock actual: {selectedItem.stock} {selectedItem.unidad}
             </p>
           </div>

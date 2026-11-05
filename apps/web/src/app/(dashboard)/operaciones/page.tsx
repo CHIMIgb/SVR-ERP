@@ -318,7 +318,7 @@ export default function OperacionesPage() {
       key: 'fecha',
       header: 'Fecha',
       render: (item) => (
-        <span className="whitespace-nowrap font-bold text-slate-600">
+        <span className="whitespace-nowrap font-bold text-ui-600">
           {formatFecha(item.fecha)}
         </span>
       ),
@@ -328,8 +328,8 @@ export default function OperacionesPage() {
       header: 'Actividad',
       render: (item) => (
         <div>
-          <div className="font-black text-slate-900">{item.actividad}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          <div className="font-black text-ui-900">{item.actividad}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">
             {item.obra}
           </div>
         </div>
@@ -339,7 +339,7 @@ export default function OperacionesPage() {
       key: 'maquina',
       header: 'Máquina',
       render: (item) => (
-        <span className="font-semibold text-slate-600">{item.maquina}</span>
+        <span className="font-semibold text-ui-600">{item.maquina}</span>
       ),
     },
     {
@@ -347,7 +347,7 @@ export default function OperacionesPage() {
       header: 'Horas',
       align: 'right',
       render: (item) => (
-        <span className="font-black text-sm text-slate-900">{item.horas} hrs</span>
+        <span className="font-black text-sm text-ui-900">{item.horas} hrs</span>
       ),
     },
     {
@@ -443,7 +443,7 @@ export default function OperacionesPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -472,7 +472,7 @@ export default function OperacionesPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -486,7 +486,7 @@ export default function OperacionesPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
@@ -512,7 +512,7 @@ export default function OperacionesPage() {
         <div className="relative">
           {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -569,11 +569,11 @@ export default function OperacionesPage() {
                 ]}
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                <div className="bg-ui-50 border border-ui-200 rounded-xl p-3">
+                  <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-1">
                     Fecha completa
                   </p>
-                  <p className="text-sm font-bold text-slate-900 capitalize">
+                  <p className="text-sm font-bold text-ui-900 capitalize">
                     {new Date(selectedItem.fecha + 'T00:00:00').toLocaleDateString('es-MX', {
                       weekday: 'long',
                       day: 'numeric',
@@ -582,11 +582,11 @@ export default function OperacionesPage() {
                     })}
                   </p>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                <div className="bg-ui-50 border border-ui-200 rounded-xl p-3">
+                  <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-1">
                     Horas registradas
                   </p>
-                  <p className="text-sm font-bold text-slate-900">
+                  <p className="text-sm font-bold text-ui-900">
                     {selectedItem.horas} hrs
                   </p>
                 </div>
@@ -777,13 +777,13 @@ export default function OperacionesPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               ¿Estás seguro de eliminar este registro de bitácora?
             </p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="font-black text-ui-900 text-lg mb-2">
               {selectedItem.actividad}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ui-500">
               {selectedItem.maquina} — {selectedItem.obra} · {selectedItem.horas} hrs
             </p>
           </div>

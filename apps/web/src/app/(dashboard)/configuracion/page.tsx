@@ -124,11 +124,11 @@ export default function ConfiguracionPage() {
           {/* Formulario de horarios */}
           <Card>
             <div className="space-y-6 p-6">
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900">
+              <h3 className="flex items-center gap-2 text-lg font-black text-ui-900">
                 <Clock className="w-5 h-5 text-primary" />
                 Horario de Atención
               </h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ui-500">
                 Define el horario en que el punto de venta está habilitado para cobrar.
                 Fuera de este rango, el POS mostrará un mensaje de "Fuera de horario".
               </p>
@@ -151,7 +151,7 @@ export default function ConfiguracionPage() {
               </div>
 
               {puedeEditar && (
-                <div className="pt-4 border-t border-slate-100 flex justify-end">
+                <div className="pt-4 border-t border-ui-100 flex justify-end">
                   <Button
                     variant="primary"
                     icon={<Save className="w-4 h-4" />}
@@ -170,25 +170,25 @@ export default function ConfiguracionPage() {
           {config && (
             <Card>
               <div className="p-6">
-                <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 mb-4">
+                <h3 className="flex items-center gap-2 text-lg font-black text-ui-900 mb-4">
                   <Settings className="w-5 h-5 text-primary" />
                   Configuración Actual (en BD)
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                  <div className="bg-ui-50 rounded-xl p-4">
+                    <p className="text-[10px] font-bold text-ui-400 uppercase tracking-widest mb-1">
                       Apertura
                     </p>
-                    <p className="font-black text-slate-900 text-2xl">{config.apertura}</p>
+                    <p className="font-black text-ui-900 text-2xl">{config.apertura}</p>
                   </div>
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                  <div className="bg-ui-50 rounded-xl p-4">
+                    <p className="text-[10px] font-bold text-ui-400 uppercase tracking-widest mb-1">
                       Cierre
                     </p>
-                    <p className="font-black text-slate-900 text-2xl">{config.cierre}</p>
+                    <p className="font-black text-ui-900 text-2xl">{config.cierre}</p>
                   </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-4">
+                <p className="text-xs text-ui-500 mt-4">
                   Los cambios se aplican inmediatamente sin reiniciar el servidor.
                   El cache se invalida automáticamente (TTL 30s).
                 </p>
@@ -206,7 +206,7 @@ export default function ConfiguracionPage() {
                 <div className="flex-1">
                   <p className="text-amber-900 dark:text-amber-300 font-bold text-sm">Impacto en el sistema</p>
                   <ul className="text-amber-800 dark:text-amber-300 text-xs mt-2 space-y-1 list-disc list-inside">
-                    <li><strong>Punto de Venta (/ventas):</strong> Solo permite cobrar entre <code className="bg-white/50 px-1 rounded">{config?.apertura || "07:00"}</code> y <code className="bg-white/50 px-1 rounded">{config?.cierre || "20:00"}</code>.</li>
+                    <li><strong>Punto de Venta (/ventas):</strong> Solo permite cobrar entre <code className="bg-surface/50 px-1 rounded">{config?.apertura || "07:00"}</code> y <code className="bg-surface/50 px-1 rounded">{config?.cierre || "20:00"}</code>.</li>
                     <li><strong>Corte de Caja (/ventas/corte):</strong> Solo permite cerrar después de la hora de cierre y hasta antes de la próxima apertura.</li>
                     <li>Cambios surten efecto inmediato (cache TTL 30s).</li>
                     <li>No requiere reinicio del backend ni del frontend.</li>
