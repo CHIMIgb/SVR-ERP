@@ -57,14 +57,14 @@ export default function CorteDelDiaPage() {
         <>
           {/* Bloqueo por fuera de ventana de cierre */}
           {fueraDeVentana && turnoConfig && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
                   <Clock className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="text-red-900 font-bold text-lg">Fuera de la ventana de cierre de caja</p>
-                  <p className="text-red-700 text-sm font-medium mt-1">
+                  <p className="text-red-900 dark:text-red-300 font-bold text-lg">Fuera de la ventana de cierre de caja</p>
+                  <p className="text-red-700 dark:text-red-400 text-sm font-medium mt-1">
                     El cierre solo está permitido después de las <strong>{turnoConfig.cierre}</strong> y hasta antes de las <strong>{turnoConfig.apertura}</strong> hrs (siguiente turno).
                     Hora actual: <strong>{new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong>.
                   </p>

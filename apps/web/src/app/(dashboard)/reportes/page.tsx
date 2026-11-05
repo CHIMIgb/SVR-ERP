@@ -874,14 +874,14 @@ export default function ReportesOperacionesPage() {
 
       {/* Banner de incidentes críticos activos */}
       {stats.criticosActivos > 0 && (
-        <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-red-900 font-bold text-sm">Incidentes Críticos Activos</p>
-              <p className="text-red-700 text-xs font-medium">
+              <p className="text-red-900 dark:text-red-300 font-bold text-sm">Incidentes Críticos Activos</p>
+              <p className="text-red-700 dark:text-red-400 text-xs font-medium">
                 Hay {stats.criticosActivos} incidente{stats.criticosActivos > 1 ? 's' : ''} sin resolver.
               </p>
             </div>
@@ -1349,7 +1349,7 @@ export default function ReportesOperacionesPage() {
       >
         {selectedItem && (
           <div className="flex flex-col items-center text-center py-4">
-            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <div className="w-14 h-14 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
             <p className="text-sm text-slate-700 mb-1">¿Estás seguro de eliminar este reporte?</p>
