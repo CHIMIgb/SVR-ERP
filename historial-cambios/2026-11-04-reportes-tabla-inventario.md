@@ -18,6 +18,11 @@
 - **Ajuste posterior (d055994f):** Descripción a 560px útiles (`max-w-2xl`)
   y el texto completo SIEMPRE visible — se fueron los '…' del `line-clamp`
   (el Tooltip permanece por si sale de pantalla).
+- **Fix de raíz (0feb8933):** el componente `DataTable` IGNORABA el `minWidth`
+  declarado en las columnas (todas las vistas lo pasaban y nunca se aplicaba —
+  por eso la Descripción se veía angosta palabra a palabra). Ahora `th`/`td`
+  aplican `minWidth: <style>`; cobranza/proveedores/ui-showcase también se
+  benefician de sus anchos declarados desde siempre.
 - Columnas: **Fecha/Hora · Área** (icono+color del tipo) **· Reporta** (usuario,
   cliente debajo) **· Obra/Máq. · Prioridad · Estado** (Badges) **· Responsable**
   (quién le cae; si ya está resuelto, muestra en verde quién resolvió con Tooltip
