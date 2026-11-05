@@ -73,3 +73,32 @@ recibos) permanecen EN BLANCO por diseño; nada backend.
 - Verificación visual final pendiente del usuario (por favor re-captura si
   queda algo con óptes no soportados por el scope — revisar siempre con
   Contrapartes dark al nuevo archivo)
+
+## FASE 8 — pos.styles.ts (CAUSA RAÍZ de las capturas #3/#7/#8/#9) ✅
+- `components/pos/pos.styles.ts` (mapa `posClasses` que pinta TODOS los paneles
+  del POS y el corte) nunca había sido tocada: los scripts de fases apuntaban
+  a `.tsx`; el PR #13 migró `components/ui/*` pero este archivo no existía aún.
+- Migrado a tokens (commit ccfc0388): `card`, `chipInactive`, `billBtn`,
+  `terminalBox`, `denomEntry/denomInput`, `summaryCard`, `history*`, `muted/sectionTitle/stepBtn/qtyText/cartTotal*...`
+  → `bg-surface`/`border-ui-*`/`text-ui-*`.
+- `approvalText` +輪 dark (fase 6 ya había incluido approvalBox).
+- **Excepción intencional (intacta):** `ticketPaper`/`ticket*` (papel thermal
+  imprime SIEMPRE en blanco).
+- Verificadores: tsc web ✔; restos `slate/bg-white` en el archivo: SOLO
+  del bloque ticket (intención).
+
+## FASE 7 — barrido de REVISIÓN del usuario (2026-11-05) ✅
+
+El usuario re-capturó (captura#1-/reportes con fila invisible, #2-/proyectos,
+#3-botones grises, #4-#8 blancos). Diagnóstico: los scripts de fases anteriores
+solo mapeaban algunos patrones, y las páginas troncales (reportes/proyectos/
+cobranza/clientes/criba) conservaban clases `slate-*` y `bg-white` en columnas,
+botones e items. Fix (commit 0b625f92, script `oscuro-fase7-sweep.cjs`):
+- Aplicada la **regla de migración impresa en globals.css** por archivo:
+  `bg-white → bg-surface` y `slate-N → ui-N` (light idéntico, dark se invierte
+  solo por variables). Archivos: proyectos (25), reportes (31), cobranza (41),
+  clientes (4), criba (1), DataTable.styles (0 — ya tokens del PR13).
+- Verificación: **slate remanente = 0 en el alcance** (scan de 25 niveles),
+  `tsc web` 0 errores ✔.
+- Los botones "grises" en dark dejan de existir porque sus clases ya son
+  ui-100/ui-200 (los botones de estilo del PR13 son de color sólido — ok).
