@@ -151,6 +151,42 @@ describe('Proyectos Audit (Real DB)', () => {
         service.update(proyecto.id, { fechaFin: '2025-01-01' }, ACTOR_USER_ID),
       ).rejects.toThrow('no puede ser anterior');
     });
+
+    it('debe persistir la ubicación exacta y auditar previous/new', async () => {
+      // arrange: crear SIN dirección (compatibilidad con proyectos viejos)
+      const proyecto = await service.create(createDto(), ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      // act: agregar la dirección completa
+      const direccion = {
+        calle: 'Calle Test 456',
+        colonia: 'Col. Pruebas',
+        ciudad: 'Tepic',
+        estadoUbicacion: 'Nayarit',
+        codigoPostal: '63000',
+      };
+      const actualizado = await service.update(proyecto.id, direccion, ACTOR_USER_ID);
+
+      // assert: BD real
+      const row = await prisma.proyectos.findUnique({ where: { id: proyecto.id } });
+      expect(row?.calle).toBe('Calle Test 456');
+      expect(row?.colonia).toBe('Col. Pruebas');
+      expect(row?.ciudad).toBe('Tepic');
+      expect(row?.estado_ubicacion).toBe('Nayarit');
+      expect(row?.codigo_postal).toBe('63000');
+
+      // serializado en camelCase
+      expect(actualizado.ciudad).toBe('Tepic');
+      expect(actualizado.codigoPostal).toBe('63000');
+
+      // auditoría real: previous SIN dirección, new CON dirección
+      const audits = await findAudits(AuditAction.PROYECTO_ACTUALIZADO, proyecto.id);
+      const previous = audits[0].previous_value as Record<string, unknown> | null;
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(previous?.ciudad).toBeNull();
+      expect(newValue?.ciudad).toBe('Tepic');
+      expect(newValue?.calle).toBe('Calle Test 456');
+    });
   });
 
   describe('PROYECTO_ELIMINADO', () => {

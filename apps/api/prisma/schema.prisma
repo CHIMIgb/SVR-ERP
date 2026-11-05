@@ -1236,6 +1236,12 @@ model proyectos {
   gastado                                Decimal                  @default(0) @db.Decimal(14, 2)
   fecha_inicio                           DateTime                 @db.Date
   fecha_fin                              DateTime                 @db.Date
+  // ── Ubicación exacta de la obra (calle incluye número; estado = entidad federativa) ──
+  calle                                  String?
+  colonia                                String?
+  ciudad                                 String?
+  estado_ubicacion                       String?
+  codigo_postal                          String?                  @db.VarChar(10)
   activo                                 Boolean                  @default(true)
   creado_en                              DateTime                 @default(now()) @db.Timestamptz()
   actualizado_en                         DateTime                 @db.Timestamptz()
