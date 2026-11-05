@@ -16,6 +16,8 @@ const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const MINUTOS_SIN_SENAL = 15;
 /** Debajo de esta velocidad se considera detenida, no en movimiento. */
 const VELOCIDAD_MINIMA_MOVIMIENTO = 2;
+/** Tope de cruces de geocerca en el historial del día (hay uno por geocerca con movimiento). */
+const LIMITE_CRUCES_HISTORIAL = 200;
 
 export type EstadoGpsMaquina = 'moving' | 'idle' | 'offline' | 'alert';
 
@@ -392,6 +394,7 @@ export class GpsService {
       take: Math.min(query.limit || 100, 500),
     });
 
+    // Una fila por geocerca con cruce ese día; el tope protege igual que en el resto de listados.
     const cruces = await this.prisma.geocerca_maquinas.findMany({
       where: {
         maquina_id: maquina.id,
@@ -402,6 +405,8 @@ export class GpsService {
         ],
       },
       include: { geocercas: { select: { nombre: true } } },
+      orderBy: { geocerca_id: 'asc' },
+      take: LIMITE_CRUCES_HISTORIAL,
     });
 
     const eventos: Array<{ time: string; text: string; speed?: number }> = [];

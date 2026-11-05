@@ -126,6 +126,24 @@ describe('GPS Audit (Real DB)', () => {
     });
   });
 
+  describe('registro_auditoria es inmutable (trigger de BD)', () => {
+    it('rechaza borrar o modificar el registro de GEOCERCA_CREADA y el registro sigue intacto', async () => {
+      const [audit] = await findAudits(AuditAction.GEOCERCA_CREADA, geocercasCreadas[0]);
+      expect(audit).toBeDefined();
+
+      await expect(
+        prisma.registro_auditoria.delete({ where: { event_id: audit.event_id } }),
+      ).rejects.toThrow();
+      await expect(
+        prisma.registro_auditoria.update({ where: { event_id: audit.event_id }, data: { error_code: 'MANIPULADO' } }),
+      ).rejects.toThrow();
+
+      const sigue = await prisma.registro_auditoria.findUnique({ where: { event_id: audit.event_id } });
+      expect(sigue).not.toBeNull();
+      expect(sigue?.error_code).toBe(audit.error_code);
+    });
+  });
+
   describe('GEOCERCA_ACTUALIZADA', () => {
     it('actualiza el radio y audita previous/new value', async () => {
       const id = geocercasCreadas[0];
