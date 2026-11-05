@@ -61,6 +61,17 @@ DELETE FROM "permissions" WHERE modulo = 'operaciones' AND recurso = 'incidentes
 DELETE FROM "role_vistas"
  WHERE vista_id IN (SELECT id FROM vistas WHERE ruta IN ('/incidentes', '/reportes-campo'));
 
+DELETE FROM "vistas" WHERE ruta = '/incidentes';
+
 UPDATE "vistas"
-   SET ruta = '/reportes', nombre = 'Reportes', icono = 'AlertTriangle'
+   SET ruta = '/reportes-operaciones', nombre = 'Reportes de Operación', icono = 'AlertTriangle'
  WHERE ruta = '/reportes-campo';
+
+-- Re-vincular el rol Administrador (es_sistema) a la vista unificada con todo
+INSERT INTO role_vistas (id, rol_id, vista_id, puede_ver, puede_crear, puede_editar, puede_eliminar, puede_exportar, asignado_en)
+SELECT gen_random_uuid(), r.id, v.id, true, true, true, true, true, now()
+FROM roles r CROSS JOIN vistas v
+WHERE v.ruta = '/reportes-operaciones' AND r.es_sistema = true
+  AND NOT EXISTS (
+    SELECT 1 FROM role_vistas rv WHERE rv.rol_id = r.id AND rv.vista_id = v.id
+  );
