@@ -183,7 +183,14 @@ export class NominaService {
   async sincronizarAsistencia(
     periodoId: string,
     userId: string,
-  ): Promise<{ items: NominaRowResponse[]; totalHorasExtraSincronizadas: number; totalFaltasAplicadas: number }> {
+  ): Promise<{
+    items: NominaRowResponse[];
+    totalHorasExtraSincronizadas: number;
+    totalFaltasAplicadas: number;
+    totalOmisionesPendientes: number;
+    totalOmisionesVencidas: number;
+    nominasPagadasSinCambio: number;
+  }> {
     const periodo = await this.prisma.periodos_nomina.findFirst({ where: { id: periodoId, eliminado_en: null } });
     if (!periodo) {
       return this.fallir(
@@ -207,8 +214,18 @@ export class NominaService {
 
     let totalHorasExtraSincronizadas = 0;
     let totalFaltasAplicadas = 0;
+    // Omisiones de hoy que todavía se pueden justificar: no se descuentan (aún no son falta), solo se avisan.
+    let totalOmisionesPendientes = 0;
+    // Faltas que salen de omisiones sin resolver (incluidas en totalFaltasAplicadas): se avisan para revisarlas.
+    let totalOmisionesVencidas = 0;
+    // Una nómina ya pagada no se reescribe: el recibo que se entregó cambiaría después del pago.
+    let nominasPagadasSinCambio = 0;
 
     for (const nomina of nominas) {
+      if (nomina.estado === 'PAGADA') {
+        nominasPagadasSinCambio++;
+        continue;
+      }
       const datos = semanalPorTrabajador.get(nomina.trabajador_id);
       const diasTrabajados = datos?.totalDiasAsistidos ?? 0;
       const diasFaltas = datos?.totalFaltas ?? 0;
@@ -217,6 +234,8 @@ export class NominaService {
 
       totalHorasExtraSincronizadas += horasExtra;
       totalFaltasAplicadas += diasFaltas;
+      totalOmisionesPendientes += datos?.totalOmisionesPendientes ?? 0;
+      totalOmisionesVencidas += datos?.totalOmisionesVencidas ?? 0;
 
       await this.prisma.percepciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
       await this.prisma.deducciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'FALTA_AUTO' } });
@@ -272,13 +291,22 @@ export class NominaService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: { totalHorasExtraSincronizadas, totalFaltasAplicadas },
+      newValue: {
+        totalHorasExtraSincronizadas,
+        totalFaltasAplicadas,
+        totalOmisionesPendientes,
+        totalOmisionesVencidas,
+        nominasPagadasSinCambio,
+      },
     });
 
     return {
       items: await this.listarNominasDePeriodo(periodoId),
       totalHorasExtraSincronizadas: Number(totalHorasExtraSincronizadas.toFixed(2)),
       totalFaltasAplicadas,
+      totalOmisionesPendientes,
+      totalOmisionesVencidas,
+      nominasPagadasSinCambio,
     };
   }
 

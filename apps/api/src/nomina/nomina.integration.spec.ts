@@ -98,7 +98,9 @@ describe('Nomina Audit (Real DB)', () => {
         sueldo_efectivo: 3500,
         metodo_pago: 'MIXTO',
         tarifa_hora_extra: tarifaHoraExtra,
-        entrada: new Date(Date.UTC(1970, 0, 1, 7, 0, 0)),
+        // Entrada 23:45: nunca llega tarde, así un checado en la prueba siempre cuenta como día trabajado
+        // (si no, a media tarde quedaría en omisión pendiente y el resultado dependería de la hora).
+        entrada: new Date(Date.UTC(1970, 0, 1, 23, 45, 0)),
         // Igual que trabajadores.service.ts: todo trabajador real tiene fecha_contratacion
         // (se usa para no contar como falta los días anteriores a su ingreso).
         fecha_contratacion: new Date(),

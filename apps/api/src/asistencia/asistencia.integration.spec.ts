@@ -8,7 +8,7 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, INestApplication } from '@nestjs/common';
+import { BadRequestException, ConflictException, INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -240,6 +240,98 @@ describe('Asistencia Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.ASISTENCIA_FALTA_REGISTRADA, registro.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].severity).toBe('WARNING');
+    });
+  });
+
+  describe('OMISIÓN (regla del cliente)', () => {
+    const hoy = () => {
+      const ahora = new Date();
+      return new Date(Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()));
+    };
+
+    it('la omisión de quien checó tarde se resuelve como retardo, con motivo y auditada (una sola vez)', async () => {
+      const trabajador = await crearTrabajador(`Omision Tarde Test ${TEST_ID}`);
+      // Registro en OMISION como lo dejaría un checado tarde (se inserta directo para no depender de la hora).
+      const registro = await prisma.registros_asistencia.create({
+        data: {
+          id: randomUUID(),
+          trabajador_id: trabajador.id,
+          fecha: hoy(),
+          estado: 'OMISION',
+          ubicacion: 'Acceso',
+          lat_entrada: obraLat,
+          lng_entrada: obraLng,
+          obra_asignada: 'Obra de prueba',
+          obra_id: obraId,
+          lat_obra: obraLat,
+          lng_obra: obraLng,
+          distancia_metros: 0,
+          radio_permitido_metros: 2000,
+          en_sitio: true,
+          precision_gps_metros: 10,
+          dispositivo: 'Test',
+          hora_entrada: new Date(Date.UTC(1970, 0, 1, 9, 30, 0)),
+          actualizado_en: new Date(),
+        },
+      });
+
+      const resuelto = await service.resolverOmision(
+        registro.id,
+        { resolucion: 'Retardo', motivo: 'Se le ponchó una llanta' },
+        ACTOR_USER_ID,
+      );
+      expect(resuelto.estado).toBe('Retardo');
+      expect(resuelto.omisionMotivo).toBe('Se le ponchó una llanta');
+
+      const enDb = await prisma.registros_asistencia.findUnique({ where: { id: registro.id } });
+      expect(enDb?.estado).toBe('RETARDO');
+      expect(enDb?.omision_resuelta_por).toBe(ACTOR_USER_ID);
+      expect(enDb?.omision_resuelta_en).not.toBeNull();
+
+      await expect(
+        service.resolverOmision(registro.id, { resolucion: 'Falta', motivo: 'Cambio de opinión' }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+
+      const audits = await findAudits(AuditAction.ASISTENCIA_OMISION_RESUELTA, registro.id);
+      expect(audits.map((a) => a.result)).toEqual(['FAIL', 'SUCCESS']);
+      expect(audits[0].error_code).toBe('NO_ES_OMISION');
+    });
+
+    it('a quien no checó nada se le crea el día ya resuelto como falta (y no se duplica)', async () => {
+      const trabajador = await crearTrabajador(`Omision Sin Marcaje Test ${TEST_ID}`);
+      const dto = { trabajadorId: trabajador.id, resolucion: 'Falta' as const, motivo: 'No avisó' };
+
+      const registro = await service.resolverOmisionSinMarcaje(dto, ACTOR_USER_ID);
+      expect(registro.estado).toBe('Falta');
+      expect(registro.omisionMotivo).toBe('No avisó');
+
+      await expect(service.resolverOmisionSinMarcaje(dto, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+      const registros = await prisma.registros_asistencia.count({ where: { trabajador_id: trabajador.id } });
+      expect(registros).toBe(1);
+    });
+  });
+
+  describe('UBICACIÓN DE LA OBRA', () => {
+    it('registrar la ubicación habilita el marcaje en una obra que no la tenía, y queda auditado', async () => {
+      const trabajador = await crearTrabajador(`Ubicacion Obra Test ${TEST_ID}`);
+      const marcaje = { trabajadorId: trabajador.id, obraId: obraSinUbicacionId, lat: 19.40001, lng: -99.10001, dispositivo: 'Test' };
+
+      await expect(service.marcarEntrada(marcaje, ACTOR_USER_ID)).rejects.toThrow(BadRequestException);
+
+      const ubicada = await service.registrarUbicacionObra(
+        obraSinUbicacionId,
+        { lat: 19.4, lng: -99.1, radioPermitidoMetros: 150, precisionGpsMetros: 9 },
+        ACTOR_USER_ID,
+      );
+      expect(ubicada).toEqual(expect.objectContaining({ lat: 19.4, lng: -99.1, radioPermitidoMetros: 150 }));
+
+      const registro = await service.marcarEntrada(marcaje, ACTOR_USER_ID);
+      expect(registro.enSitio).toBe(true);
+      expect(registro.radioPermitidoMetros).toBe(150);
+
+      const audits = await findAudits(AuditAction.OBRA_UBICACION_REGISTRADA, obraSinUbicacionId);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].entity_type).toBe('obras');
     });
   });
 });

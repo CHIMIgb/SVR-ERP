@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, EstadoAsistencia, EstadoHoraExtra, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +11,8 @@ import { ActualizarEstadoDto } from './dto/actualizar-estado.dto';
 import { RegistrarHorasExtraDto } from './dto/registrar-horas-extra.dto';
 import { QueryAsistenciaDto } from './dto/query-asistencia.dto';
 import { QuerySemanalDto } from './dto/query-semanal.dto';
+import { ResolverOmisionDto, ResolverOmisionSinMarcajeDto } from './dto/resolver-omision.dto';
+import { RegistrarUbicacionObraDto } from './dto/registrar-ubicacion-obra.dto';
 
 export interface HorasExtraResponse {
   id: string;
@@ -31,7 +33,14 @@ export interface RegistroAsistenciaResponse {
   fecha: string;
   horaEntrada?: string;
   horaSalida?: string;
-  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada';
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada' | 'Omisión';
+  /** Registrado sin checar: sus coordenadas y obra son de relleno (las columnas no admiten nulos). */
+  sinMarcaje: boolean;
+  /** Omisión sin resolver después de las 17:00 (o de un día anterior): cuenta como falta. */
+  omisionVencida?: boolean;
+  /** Motivo con el que se resolvió una omisión, y cuándo. */
+  omisionMotivo?: string;
+  omisionResueltaEn?: string;
   ubicacion: string;
   coordenadas: { lat: number; lng: number };
   salidaCoordenadas?: { lat: number; lng: number };
@@ -56,7 +65,10 @@ export interface RegistroAsistenciaResponse {
 export interface DiaAsistenciaSemanaResponse {
   dia: 'Lun' | 'Mar' | 'Mie' | 'Jue' | 'Vie' | 'Sab';
   fecha: string;
-  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso';
+  /** 'Omisión': todavía puede justificarse hoy. 'Pendiente': hoy, aún dentro de su tolerancia de entrada. */
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso' | 'Omisión' | 'Pendiente';
+  /** Registro del día, si existe (para resolver su omisión). */
+  registroId?: string;
   horaEntrada?: string;
   horaSalida?: string;
   horasTrabajadas: number;
@@ -72,6 +84,10 @@ export interface AsistenciaSemanalResponse {
   totalDiasAsistidos: number;
   totalFaltas: number;
   totalRetardos: number;
+  /** Omisiones de hoy que aún pueden justificarse: no cuentan como falta ni como asistencia (todavía). */
+  totalOmisionesPendientes: number;
+  /** Omisiones sin resolver que ya vencieron: están dentro de totalFaltas. */
+  totalOmisionesVencidas: number;
   totalHorasOrdinarias: number;
   totalHorasExtra: number;
 }
@@ -83,6 +99,7 @@ const ESTADO_DB_A_UI: Record<EstadoAsistencia, RegistroAsistenciaResponse['estad
   JUSTIFICADO: 'Justificado',
   NO_PRESENTADO: 'No Presentado',
   SALIDA_ANTICIPADA: 'Salida Anticipada',
+  OMISION: 'Omisión',
 };
 
 const ESTADO_UI_A_DB: Record<string, EstadoAsistencia> = {
@@ -92,6 +109,7 @@ const ESTADO_UI_A_DB: Record<string, EstadoAsistencia> = {
   Justificado: 'JUSTIFICADO',
   'No Presentado': 'NO_PRESENTADO',
   'Salida Anticipada': 'SALIDA_ANTICIPADA',
+  'Omisión': 'OMISION',
 };
 
 const ESTADO_HORA_EXTRA_DB_A_UI: Record<EstadoHoraExtra, HorasExtraResponse['estado']> = {
@@ -105,6 +123,14 @@ const DIAS_SEMANA: DiaAsistenciaSemanaResponse['dia'][] = ['Lun', 'Mar', 'Mie', 
 const MESES_ABREV = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 const TOLERANCIA_RETARDO_MINUTOS = 15;
+/**
+ * Hasta qué hora se puede justificar la omisión del día (horario laboral de 8 a 17 h, decisión del cliente).
+ * Pasada esa hora, una omisión sin resolver cuenta como falta; la administradora aún puede resolverla mientras
+ * no esté pagada la nómina de esa semana.
+ */
+const HORA_LIMITE_JUSTIFICACION_MINUTOS = 17 * 60;
+/** Con una señal peor que esta, la ubicación de la obra no se registra (la geocerca quedaría mal centrada). */
+const PRECISION_MAXIMA_UBICACION_OBRA_METROS = 100;
 const RADIO_DEFECTO_METROS = 2000;
 const TARIFA_HORA_EXTRA_DEFECTO = 80;
 
@@ -114,6 +140,7 @@ const REGISTRO_INCLUDE = {
 
 const ENTITY_TYPE = 'registros_asistencia';
 const ENTITY_TYPE_HORAS_EXTRA = 'horas_extra_asistencia';
+const ENTITY_TYPE_OBRAS = 'obras';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
 type RegistroConHorasExtra = Prisma.registros_asistenciaGetPayload<{ include: typeof REGISTRO_INCLUDE }>;
@@ -207,7 +234,8 @@ export class AsistenciaService {
     const distancia = this.distanciaMetros(dto.lat, dto.lng, geocerca.lat, geocerca.lng);
     const enSitio = distancia <= radioPermitido;
     const ahora = new Date();
-    const estado = this.esRetardo(ahora, trabajador.entrada) ? 'RETARDO' : 'PUNTUAL';
+    // Tarde ya no es retardo directo: queda en omisión hasta que la administradora la resuelva.
+    const estado = this.esRetardo(ahora, trabajador.entrada) ? 'OMISION' : 'PUNTUAL';
 
     const id = randomUUID();
     const registro = await this.prisma.registros_asistencia.create({
@@ -311,7 +339,9 @@ export class AsistenciaService {
         horas_trabajadas_ordinarias: horas,
         salida_anticipada: salidaAnticipada,
         motivo_salida_anticipada: salidaAnticipada ? dto.motivoSalidaAnticipada : null,
-        estado: salidaAnticipada ? 'SALIDA_ANTICIPADA' : registro.estado,
+        // La salida anticipada solo reemplaza un día puntual. Una omisión, un retardo o una falta conservan su
+        // estado (la salida queda en salida_anticipada); antes se pisaban y la omisión pendiente desaparecía.
+        estado: salidaAnticipada && registro.estado === 'PUNTUAL' ? 'SALIDA_ANTICIPADA' : registro.estado,
         actualizado_por: userId,
         actualizado_en: ahora,
       },
@@ -396,7 +426,8 @@ export class AsistenciaService {
     const creados: RegistroAsistenciaResponse[] = [];
 
     for (const trabajador of porRegistrar) {
-      const estado = this.esRetardo(ahora, trabajador.entrada) ? 'RETARDO' : 'PUNTUAL';
+      // Tarde ya no es retardo directo: queda en omisión hasta que la administradora la resuelva.
+      const estado = this.esRetardo(ahora, trabajador.entrada) ? 'OMISION' : 'PUNTUAL';
       const id = randomUUID();
       const registro = await this.prisma.registros_asistencia.create({
         data: {
@@ -472,6 +503,7 @@ export class AsistenciaService {
         'Este trabajador ya tiene un registro de asistencia en esa fecha',
       );
     }
+    await this.exigirNominaSinPagar(dto.trabajadorId, fecha, null, AuditAction.ASISTENCIA_FALTA_REGISTRADA);
 
     const id = randomUUID();
     const ahora = new Date();
@@ -531,6 +563,29 @@ export class AsistenciaService {
         `Registro de asistencia con id "${id}" no encontrado`,
       );
     }
+    // Una omisión se resuelve con su motivo (resolverOmision); cambiarle el estado aquí se saltaría la justificación.
+    if (existente.estado === 'OMISION') {
+      return this.fallir(
+        AuditAction.ASISTENCIA_ESTADO_ACTUALIZADO,
+        ENTITY_TYPE,
+        id,
+        'OMISION_SIN_RESOLVER',
+        BadRequestException,
+        'Este registro es una omisión: resuélvela con su motivo (falta o retardo)',
+      );
+    }
+    // Ya resuelta con motivo por la administradora: cambiarla aquí borraría esa decisión sin dejar el porqué.
+    if (existente.omision_resuelta_en) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_ESTADO_ACTUALIZADO,
+        ENTITY_TYPE,
+        id,
+        'OMISION_YA_RESUELTA',
+        ConflictException,
+        'Esta omisión ya se resolvió con su motivo y no se cambia desde aquí',
+      );
+    }
+    await this.exigirNominaSinPagar(existente.trabajador_id, existente.fecha, id, AuditAction.ASISTENCIA_ESTADO_ACTUALIZADO);
 
     const actualizado = await this.prisma.registros_asistencia.update({
       where: { id },
@@ -556,6 +611,334 @@ export class AsistenciaService {
     });
 
     return serializado;
+  }
+
+  // ────────────────────────────────────────────
+  //  OMISIONES (decisión del cliente, 2026-11-05)
+  // ────────────────────────────────────────────
+
+  /**
+   * Resuelve la omisión de un registro (checó tarde): la administradora valida el motivo y elige si queda como
+   * falta o como retardo. Se puede hacer mientras no esté pagada la nómina de esa semana.
+   */
+  async resolverOmision(id: string, dto: ResolverOmisionDto, userId: string): Promise<RegistroAsistenciaResponse> {
+    const existente = await this.prisma.registros_asistencia.findFirst({
+      where: { id, eliminado_en: null },
+      include: REGISTRO_INCLUDE,
+    });
+    if (!existente) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        id,
+        'REGISTRO_NO_ENCONTRADO',
+        NotFoundException,
+        `Registro de asistencia con id "${id}" no encontrado`,
+      );
+    }
+    if (existente.estado !== 'OMISION') {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        id,
+        'NO_ES_OMISION',
+        ConflictException,
+        existente.omision_resuelta_en ? 'Esta omisión ya se resolvió' : 'Este registro no es una omisión',
+      );
+    }
+    await this.exigirNominaSinPagar(existente.trabajador_id, existente.fecha, id);
+
+    const ahora = new Date();
+    // Escritura condicional: si otra persona la resolvió en el mismo momento, no se pisa su decisión.
+    const resuelta = await this.prisma.registros_asistencia.updateMany({
+      where: { id, eliminado_en: null, estado: 'OMISION' },
+      data: {
+        estado: dto.resolucion === 'Falta' ? 'FALTA' : 'RETARDO',
+        omision_motivo: dto.motivo.trim(),
+        omision_resuelta_en: ahora,
+        omision_resuelta_por: userId,
+        actualizado_por: userId,
+        actualizado_en: ahora,
+      },
+    });
+    if (resuelta.count === 0) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        id,
+        'OMISION_YA_RESUELTA',
+        ConflictException,
+        'Esta omisión ya se resolvió',
+      );
+    }
+
+    const actualizado = await this.prisma.registros_asistencia.findUniqueOrThrow({ where: { id }, include: REGISTRO_INCLUDE });
+    const serializado = this.toResponse(actualizado);
+    await this.auditService.log({
+      action: AuditAction.ASISTENCIA_OMISION_RESUELTA,
+      entityType: ENTITY_TYPE,
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: this.toResponse(existente),
+      newValue: serializado,
+    });
+
+    return serializado;
+  }
+
+  /**
+   * Omisión de quien no checó nada ese día: se crea el registro ya resuelto (falta, o retardo si sí se presentó
+   * y no checó). Si el día ya tiene registro, se resuelve desde ese registro.
+   */
+  async resolverOmisionSinMarcaje(dto: ResolverOmisionSinMarcajeDto, userId: string): Promise<RegistroAsistenciaResponse> {
+    const trabajador = await this.prisma.trabajadores.findFirst({ where: { id: dto.trabajadorId, eliminado_en: null } });
+    if (!trabajador) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        null,
+        'TRABAJADOR_NO_ENCONTRADO',
+        NotFoundException,
+        `Trabajador con id "${dto.trabajadorId}" no encontrado`,
+      );
+    }
+
+    const hoy = this.fechaHoy();
+    const fecha = dto.fecha ? this.soloFecha(new Date(dto.fecha)) : hoy;
+    if (fecha.getTime() > hoy.getTime()) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        null,
+        'FECHA_FUTURA',
+        BadRequestException,
+        'No se puede resolver la omisión de un día que todavía no llega',
+      );
+    }
+    if (trabajador.fecha_contratacion && fecha.getTime() < this.soloFecha(trabajador.fecha_contratacion).getTime()) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        null,
+        'ANTES_DE_SU_INGRESO',
+        BadRequestException,
+        `Ese día ${trabajador.nombre} todavía no trabajaba en la empresa`,
+      );
+    }
+
+    // La semana laboral es de lunes a sábado: un domingo no hay omisión (y findSemanal nunca la contaría).
+    if (fecha.getUTCDay() === 0) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        null,
+        'DIA_DE_DESCANSO',
+        BadRequestException,
+        'El domingo es día de descanso: no hay omisión que resolver',
+      );
+    }
+    // Hoy, todavía dentro de su tolerancia de entrada, aún no es omisión: puede llegar a checar.
+    if (fecha.getTime() === hoy.getTime() && !this.esRetardo(new Date(), trabajador.entrada)) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        null,
+        'AUN_EN_TOLERANCIA',
+        BadRequestException,
+        `${trabajador.nombre} todavía está dentro de su tolerancia de entrada: aún no es omisión`,
+      );
+    }
+
+    const existente = await this.prisma.registros_asistencia.findFirst({
+      where: { trabajador_id: dto.trabajadorId, fecha, eliminado_en: null },
+      select: { id: true },
+    });
+    if (existente) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        existente.id,
+        'YA_REGISTRO_EN_FECHA',
+        ConflictException,
+        'Ese día ya tiene un registro de asistencia: resuelve la omisión desde ese registro',
+      );
+    }
+    await this.exigirNominaSinPagar(dto.trabajadorId, fecha, null);
+
+    const id = randomUUID();
+    const ahora = new Date();
+    const registro = await this.prisma.registros_asistencia.create({
+      data: {
+        id,
+        codigo: await this.generarCodigo(),
+        trabajador_id: dto.trabajadorId,
+        fecha,
+        estado: dto.resolucion === 'Falta' ? 'FALTA' : 'RETARDO',
+        // Sin marcaje no hay GPS: se guardan en 0 como en registrarFalta (las columnas no admiten nulos).
+        ubicacion: 'Sin marcaje registrado',
+        lat_entrada: 0,
+        lng_entrada: 0,
+        obra_asignada: 'Por definir',
+        lat_obra: 0,
+        lng_obra: 0,
+        distancia_metros: 0,
+        radio_permitido_metros: RADIO_DEFECTO_METROS,
+        en_sitio: false,
+        precision_gps_metros: 0,
+        dispositivo: 'No reportado',
+        omision_motivo: dto.motivo.trim(),
+        omision_resuelta_en: ahora,
+        omision_resuelta_por: userId,
+        creado_por: userId,
+        actualizado_por: userId,
+        actualizado_en: ahora,
+      },
+      include: REGISTRO_INCLUDE,
+    });
+
+    const serializado = this.toResponse(registro);
+    await this.auditService.log({
+      action: AuditAction.ASISTENCIA_OMISION_RESUELTA,
+      entityType: ENTITY_TYPE,
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: serializado,
+    });
+
+    return serializado;
+  }
+
+  /** Una vez pagada la nómina de la semana, la asistencia de esos días ya no cambia (el pago ya se hizo así). */
+  private async exigirNominaSinPagar(
+    trabajadorId: string,
+    fecha: Date,
+    entityId: string | null,
+    action: AuditAction = AuditAction.ASISTENCIA_OMISION_RESUELTA,
+  ): Promise<void> {
+    const pagada = await this.prisma.nominas.findFirst({
+      where: {
+        trabajador_id: trabajadorId,
+        estado: 'PAGADA',
+        eliminado_en: null,
+        periodos_nomina: { fecha_inicio: { lte: fecha }, fecha_fin: { gte: fecha } },
+      },
+      select: { id: true },
+    });
+    if (pagada) {
+      return this.fallir(
+        action,
+        ENTITY_TYPE,
+        entityId,
+        'NOMINA_PAGADA',
+        ConflictException,
+        'La nómina de esa semana ya se pagó: la asistencia de ese día ya no se puede cambiar',
+      );
+    }
+  }
+
+  // ────────────────────────────────────────────
+  //  UBICACIÓN DE LA OBRA (centro y radio de la geocerca)
+  // ────────────────────────────────────────────
+
+  /**
+   * Registra (o corrige) dónde está una obra. Sin esto no se puede marcar asistencia en ella: la geocerca toma su
+   * centro y su radio de aquí, nunca de lo que mande el dispositivo que checa.
+   */
+  async registrarUbicacionObra(obraId: string, dto: RegistrarUbicacionObraDto, userId: string) {
+    const obra = await this.prisma.obras.findFirst({ where: { id: obraId, eliminado_en: null } });
+    if (!obra) {
+      return this.fallir(
+        AuditAction.OBRA_UBICACION_REGISTRADA,
+        ENTITY_TYPE_OBRAS,
+        obraId,
+        'OBRA_NO_ENCONTRADA',
+        NotFoundException,
+        `Obra con id "${obraId}" no encontrada`,
+      );
+    }
+    // 0, 0 es lo que manda un GPS sin señal (está en el océano frente a África).
+    if (dto.lat === 0 && dto.lng === 0) {
+      return this.fallir(
+        AuditAction.OBRA_UBICACION_REGISTRADA,
+        ENTITY_TYPE_OBRAS,
+        obraId,
+        'UBICACION_INVALIDA',
+        BadRequestException,
+        'La ubicación 0, 0 no es válida: el GPS no obtuvo la posición',
+      );
+    }
+    // Las obras están en México: fuera de este recuadro es un error de captura (p. ej. latitud y longitud al revés).
+    const enMexico = dto.lat >= 14 && dto.lat <= 33 && dto.lng >= -119 && dto.lng <= -86;
+    if (!enMexico) {
+      return this.fallir(
+        AuditAction.OBRA_UBICACION_REGISTRADA,
+        ENTITY_TYPE_OBRAS,
+        obraId,
+        'UBICACION_FUERA_DE_MEXICO',
+        BadRequestException,
+        'Esa ubicación queda fuera de México: revisa la latitud y la longitud (por ejemplo 19.43, -99.13)',
+      );
+    }
+    if (dto.precisionGpsMetros != null && dto.precisionGpsMetros > PRECISION_MAXIMA_UBICACION_OBRA_METROS) {
+      return this.fallir(
+        AuditAction.OBRA_UBICACION_REGISTRADA,
+        ENTITY_TYPE_OBRAS,
+        obraId,
+        'GPS_IMPRECISO',
+        BadRequestException,
+        `La señal GPS tiene un margen de ${Math.round(dto.precisionGpsMetros)} m (máximo ${PRECISION_MAXIMA_UBICACION_OBRA_METROS} m): ` +
+          'sal a un lugar abierto de la obra y vuelve a tomarla',
+      );
+    }
+
+    const antes = this.ubicacionObraResponse(obra);
+    const actualizada = await this.prisma.obras.update({
+      where: { id: obraId },
+      data: {
+        lat: dto.lat,
+        lng: dto.lng,
+        radio_permitido_metros: dto.radioPermitidoMetros,
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      },
+    });
+    const despues = this.ubicacionObraResponse(actualizada);
+
+    await this.auditService.log({
+      action: AuditAction.OBRA_UBICACION_REGISTRADA,
+      entityType: ENTITY_TYPE_OBRAS,
+      entityId: obraId,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: antes,
+      newValue: { ...despues, precisionGpsMetros: dto.precisionGpsMetros ?? null, capturaManual: dto.precisionGpsMetros == null },
+    });
+
+    return despues;
+  }
+
+  private ubicacionObraResponse(o: {
+    id: string;
+    nombre: string;
+    lat: Prisma.Decimal | null;
+    lng: Prisma.Decimal | null;
+    radio_permitido_metros: Prisma.Decimal | null;
+  }) {
+    return {
+      id: o.id,
+      nombre: o.nombre,
+      lat: o.lat != null ? Number(o.lat) : undefined,
+      lng: o.lng != null ? Number(o.lng) : undefined,
+      radioPermitidoMetros: o.radio_permitido_metros != null ? Number(o.radio_permitido_metros) : undefined,
+    };
   }
 
   // ────────────────────────────────────────────
@@ -754,6 +1137,7 @@ export class AsistenciaService {
     const lunes = this.lunesDeLaSemana(fechaBase);
     const sabado = new Date(Date.UTC(lunes.getUTCFullYear(), lunes.getUTCMonth(), lunes.getUTCDate() + 5));
     const hoy = this.fechaHoy();
+    const ahora = new Date();
 
     const trabajadores = await this.prisma.trabajadores.findMany({
       where: {
@@ -786,6 +1170,9 @@ export class AsistenciaService {
       let totalDiasAsistidos = 0;
       let totalFaltas = 0;
       let totalRetardos = 0;
+      let totalOmisionesPendientes = 0;
+      // Faltas que vienen de omisiones sin resolver (ya cuentan en totalFaltas): se avisan aparte en nómina.
+      let totalOmisionesVencidas = 0;
       let totalHorasOrdinarias = 0;
       let totalHorasExtra = 0;
 
@@ -794,15 +1181,23 @@ export class AsistenciaService {
         const registro = registrosPorTrabajadorYDia.get(`${trabajador.id}:${i}`);
 
         if (registro) {
-          const estadoUi = ESTADO_DB_A_UI[registro.estado];
           const horasExtra = registro.horas_extra_asistencia
             ? Number(registro.horas_extra_asistencia.horas_calculadas)
             : undefined;
+          // Omisión: mientras se puede justificar se muestra como tal; vencida y sin resolver, cuenta como falta.
+          const omisionVencida = registro.estado === 'OMISION' && this.omisionVencida(registro.fecha, ahora);
+          const esFalta = registro.estado === 'FALTA' || registro.estado === 'NO_PRESENTADO' || omisionVencida;
+          const estadoDia: DiaAsistenciaSemanaResponse['estado'] = esFalta
+            ? 'Falta'
+            : registro.estado === 'OMISION'
+              ? 'Omisión'
+              : (ESTADO_DB_A_UI[registro.estado] as DiaAsistenciaSemanaResponse['estado']);
 
           dias.push({
             dia: DIAS_SEMANA[i],
             fecha: fechaDia.toISOString().split('T')[0],
-            estado: estadoUi === 'No Presentado' ? 'Falta' : estadoUi,
+            estado: estadoDia,
+            registroId: registro.id,
             horaEntrada: this.horaUtcAString(registro.hora_entrada),
             horaSalida: this.horaUtcAString(registro.hora_salida),
             horasTrabajadas: registro.horas_trabajadas_ordinarias != null ? Number(registro.horas_trabajadas_ordinarias) : 0,
@@ -811,13 +1206,19 @@ export class AsistenciaService {
             motivo: registro.motivo_salida_anticipada ?? registro.horas_extra_asistencia?.motivo ?? undefined,
           });
 
-          if (registro.estado === 'FALTA') totalFaltas++;
+          // Antes NO_PRESENTADO se mostraba como falta pero se contaba como día asistido.
+          if (omisionVencida) totalOmisionesVencidas++;
+          if (esFalta) totalFaltas++;
+          else if (registro.estado === 'OMISION') totalOmisionesPendientes++;
           else {
             totalDiasAsistidos++;
             if (registro.estado === 'RETARDO') totalRetardos++;
           }
-          totalHorasOrdinarias += registro.horas_trabajadas_ordinarias != null ? Number(registro.horas_trabajadas_ordinarias) : 0;
-          totalHorasExtra += horasExtra ?? 0;
+          // Un día que cuenta como falta no paga horas (antes se pagaban y además se descontaba el día).
+          if (!esFalta) {
+            totalHorasOrdinarias += registro.horas_trabajadas_ordinarias != null ? Number(registro.horas_trabajadas_ordinarias) : 0;
+            totalHorasExtra += horasExtra ?? 0;
+          }
         } else if (fechaDia.getTime() > hoy.getTime() || (trabajador.fecha_contratacion && fechaDia.getTime() < trabajador.fecha_contratacion.getTime())) {
           // Día futuro, o anterior a la fecha de contratación: no cuenta como falta.
           dias.push({
@@ -827,6 +1228,25 @@ export class AsistenciaService {
             horasTrabajadas: 0,
             enSitioGps: false,
           });
+        } else if (fechaDia.getTime() === hoy.getTime() && !this.esRetardo(ahora, trabajador.entrada)) {
+          // Hoy, todavía dentro de su tolerancia de entrada: aún puede llegar.
+          dias.push({
+            dia: DIAS_SEMANA[i],
+            fecha: fechaDia.toISOString().split('T')[0],
+            estado: 'Pendiente',
+            horasTrabajadas: 0,
+            enSitioGps: false,
+          });
+        } else if (!this.omisionVencida(fechaDia, ahora)) {
+          // Hoy, ya tarde y sin checar: omisión que todavía puede justificarse (hasta las 17:00).
+          dias.push({
+            dia: DIAS_SEMANA[i],
+            fecha: fechaDia.toISOString().split('T')[0],
+            estado: 'Omisión',
+            horasTrabajadas: 0,
+            enSitioGps: false,
+          });
+          totalOmisionesPendientes++;
         } else {
           dias.push({
             dia: DIAS_SEMANA[i],
@@ -835,7 +1255,9 @@ export class AsistenciaService {
             horasTrabajadas: 0,
             enSitioGps: false,
           });
+          // Sin checar y sin resolver: es una omisión vencida (regla del cliente).
           totalFaltas++;
+          totalOmisionesVencidas++;
         }
       }
 
@@ -846,6 +1268,8 @@ export class AsistenciaService {
         totalDiasAsistidos,
         totalFaltas,
         totalRetardos,
+        totalOmisionesPendientes,
+        totalOmisionesVencidas,
         totalHorasOrdinarias: Number(totalHorasOrdinarias.toFixed(2)),
         totalHorasExtra: Number(totalHorasExtra.toFixed(2)),
       };
@@ -911,6 +1335,16 @@ export class AsistenciaService {
     return minutosAhora > minutosProgramados + TOLERANCIA_RETARDO_MINUTOS;
   }
 
+  /**
+   * ¿Ya pasó el plazo para justificar la omisión de ese día? Un día anterior, sí; hoy, desde las 17:00 (hora
+   * del servidor, la misma que usa esRetardo). Pasado el plazo, una omisión sin resolver cuenta como falta.
+   */
+  private omisionVencida(fecha: Date, ahora: Date = new Date()): boolean {
+    const hoy = this.fechaHoy();
+    if (fecha.getTime() !== hoy.getTime()) return fecha.getTime() < hoy.getTime();
+    return ahora.getHours() * 60 + ahora.getMinutes() >= HORA_LIMITE_JUSTIFICACION_MINUTOS;
+  }
+
   /** Horas decimales entre dos Time(0) anclados en UTC (mismo día calendario). */
   private horasEntreHoras(entrada: Date, salida: Date): number {
     const minutosEntrada = entrada.getUTCHours() * 60 + entrada.getUTCMinutes();
@@ -963,6 +1397,11 @@ export class AsistenciaService {
       horaEntrada: this.horaUtcAString(r.hora_entrada),
       horaSalida: this.horaUtcAString(r.hora_salida),
       estado: ESTADO_DB_A_UI[r.estado as EstadoAsistencia],
+      // Registrado sin checar (falta u omisión resuelta por la administradora): su GPS en 0 no es real.
+      sinMarcaje: !r.hora_entrada,
+      omisionVencida: r.estado === 'OMISION' ? this.omisionVencida(r.fecha) : undefined,
+      omisionMotivo: r.omision_motivo ?? undefined,
+      omisionResueltaEn: r.omision_resuelta_en ? r.omision_resuelta_en.toISOString() : undefined,
       ubicacion: r.ubicacion,
       coordenadas: { lat: Number(r.lat_entrada), lng: Number(r.lng_entrada) },
       salidaCoordenadas:

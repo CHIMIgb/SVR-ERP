@@ -1154,7 +1154,14 @@ export interface RegistroAsistenciaDTO {
   fecha: string;
   horaEntrada?: string;
   horaSalida?: string;
-  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada';
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada' | 'Omisión';
+  /** Registrado sin checar (falta u omisión resuelta): sus coordenadas y obra son de relleno, no reales. */
+  sinMarcaje: boolean;
+  /** Omisión sin resolver pasada la hora límite (17:00) o de un día anterior: cuenta como falta. */
+  omisionVencida?: boolean;
+  /** Motivo con el que la administradora resolvió la omisión, y cuándo. */
+  omisionMotivo?: string;
+  omisionResueltaEn?: string;
   ubicacion: string;
   coordenadas: { lat: number; lng: number };
   salidaCoordenadas?: { lat: number; lng: number };
@@ -1179,7 +1186,9 @@ export interface RegistroAsistenciaDTO {
 export interface DiaAsistenciaSemanaDTO {
   dia: 'Lun' | 'Mar' | 'Mie' | 'Jue' | 'Vie' | 'Sab';
   fecha: string;
-  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso';
+  /** 'Omisión': aún puede justificarse hoy. 'Pendiente': hoy, todavía dentro de su tolerancia de entrada. */
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso' | 'Omisión' | 'Pendiente';
+  registroId?: string;
   horaEntrada?: string;
   horaSalida?: string;
   horasTrabajadas: number;
@@ -1195,8 +1204,26 @@ export interface AsistenciaSemanalDTO {
   totalDiasAsistidos: number;
   totalFaltas: number;
   totalRetardos: number;
+  totalOmisionesPendientes: number;
+  /** Omisiones sin resolver que ya vencieron; están incluidas en totalFaltas. */
+  totalOmisionesVencidas: number;
   totalHorasOrdinarias: number;
   totalHorasExtra: number;
+}
+
+export type ResolucionOmision = 'Falta' | 'Retardo';
+
+export interface ResolverOmisionInput {
+  resolucion: ResolucionOmision;
+  motivo: string;
+}
+
+export interface RegistrarUbicacionObraInput {
+  lat: number;
+  lng: number;
+  radioPermitidoMetros: number;
+  /** Sin precisión, la API la toma como captura manual. */
+  precisionGpsMetros?: number;
 }
 
 /** La API valida la geocerca con la ubicación y el radio guardados de la obra; el cliente solo manda su GPS. */
@@ -1301,6 +1328,18 @@ export const asistenciaApi = {
   actualizarEstado: (id: string, estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') =>
     apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/${id}/estado`, { estado }),
 
+  /** La administradora resuelve la omisión de un registro (checó tarde). Permiso: rrhh.asistencia.editar */
+  resolverOmision: (id: string, data: ResolverOmisionInput) =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/${id}/omision`, data),
+
+  /** Omisión de quien no checó nada ese día: crea el registro ya resuelto. */
+  resolverOmisionSinMarcaje: (data: ResolverOmisionInput & { trabajadorId: string; fecha?: string }) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/omisiones', data),
+
+  /** Centro y radio de la geocerca de una obra. Permiso: rrhh.asistencia.editar */
+  registrarUbicacionObra: (obraId: string, data: RegistrarUbicacionObraInput) =>
+    apiClient.patch<ObraLite>(`/asistencia/obras/${obraId}/ubicacion`, data),
+
   registrarHorasExtra: (id: string, data: RegistrarHorasExtraInput) =>
     apiClient.post<RegistroAsistenciaDTO>(`/asistencia/${id}/horas-extra`, data),
 
@@ -1370,7 +1409,15 @@ export const nominaApi = {
   },
 
   sincronizarAsistencia: (periodoId: string) =>
-    apiClient.post<{ items: NominaRowDTO[]; totalHorasExtraSincronizadas: number; totalFaltasAplicadas: number }>(
+    apiClient.post<{
+      items: NominaRowDTO[];
+      totalHorasExtraSincronizadas: number;
+      totalFaltasAplicadas: number;
+      totalOmisionesPendientes: number;
+      totalOmisionesVencidas: number;
+      /** Nóminas ya pagadas que la sincronización no tocó. */
+      nominasPagadasSinCambio: number;
+    }>(
       `/nomina/${periodoId}/sincronizar`,
       {},
     ),
