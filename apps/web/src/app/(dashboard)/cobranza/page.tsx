@@ -1066,11 +1066,11 @@ export default function CobranzaPage() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Facturado</p>
                   <p className="text-lg font-black text-slate-900">{formatCurrency(ledgerCuenta.monto)}</p>
                 </div>
-                <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
+                <div className="rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-100 dark:border-green-500/20 p-3 text-center">
                   <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Pagado</p>
                   <p className="text-lg font-black text-green-700">{formatCurrency(ledgerCuenta.montoPagado)}</p>
                 </div>
-                <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 p-3 text-center">
                   <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Saldo</p>
                   <p className="text-lg font-black text-red-600">{formatCurrency(ledgerSaldo)}</p>
                 </div>
@@ -1104,7 +1104,7 @@ export default function CobranzaPage() {
                             type="button"
                             onClick={() => openRevertir(m)}
                             title="Reversión de cobro (C6)"
-                            className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                           >
                             <Undo2 className="w-4 h-4" />
                           </button>
@@ -1140,7 +1140,7 @@ export default function CobranzaPage() {
         submitDisabled={revertirLoading}
         onSubmit={handleRevertir}
       >
-        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-4 py-3 mb-4">
           <p className="text-sm text-amber-800">
             Nuevo saldo estimado:{' '}
             <span className="font-black">{formatCurrency(ledgerSaldo + (revertirCobro?.monto ?? 0))}</span>

@@ -290,7 +290,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
     return (
       <div className="max-w-xl mx-auto">
         <div className={posClasses.card}>
-          <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
+          <div className={cn(posClasses.alertBox, 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-300')}>
             <Lock className="w-4 h-4 shrink-0 mt-0.5" />
             <p className="text-xs font-medium">
               El turno de hoy ya cerró. El siguiente corte se habilitará después de la hora de
@@ -349,7 +349,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
           {/* Horario permitido */}
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Horario permitido</h3>
-            <div className={cn(posClasses.alertBox, 'bg-blue-50 border-blue-200 text-blue-700')}>
+            <div className={cn(posClasses.alertBox, 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-300')}>
               <Clock className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
                 Turno de {turnoConfig.apertura} a {turnoConfig.cierre} hrs · Cierre permitido:{' '}
@@ -357,7 +357,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
               </p>
             </div>
             {!allowed && (
-              <div className={cn(posClasses.alertBox, 'bg-red-50 border-red-200 text-red-700 mt-2')}>
+              <div className={cn(posClasses.alertBox, 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300 mt-2')}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <p className="text-xs font-medium">
                   Ahora mismo no está permitido cerrar caja (horario de trabajo). Se habilita después de las {turnoConfig.cierre} hrs.
@@ -550,7 +550,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
         />
         <ModalBody>
           <div className="max-h-[60vh] overflow-y-auto scrollbar-none space-y-4">
-            <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
+            <div className={cn(posClasses.alertBox, 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-300')}>
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
                 Pendiente de aprobación del Administrador.

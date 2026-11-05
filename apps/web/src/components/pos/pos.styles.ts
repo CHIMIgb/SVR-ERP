@@ -37,7 +37,7 @@ export const posClasses = {
   terminalAmount: 'font-black text-primary',
 
   // Descuento / autorización
-  approvalBox: 'bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2',
+  approvalBox: 'bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-3 flex items-start gap-2',
   approvalText: 'text-xs text-amber-700 font-medium',
 
   // Total a pagar

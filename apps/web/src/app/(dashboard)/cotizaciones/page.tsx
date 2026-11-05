@@ -743,7 +743,7 @@ export default function CotizacionesPage() {
               </div>
 
               {selected.estado === 'Rechazada' && selected.motivoRechazo && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl p-4">
                   <p className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Motivo del rechazo</p>
                   <p className="text-sm font-semibold text-red-600">{selected.motivoRechazo}</p>
                 </div>

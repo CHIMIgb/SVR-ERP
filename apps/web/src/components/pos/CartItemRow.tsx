@@ -55,7 +55,7 @@ export function CartItemRow({ item, onIncrement, onDecrement, onRemove }: CartIt
 
       <button
         onClick={onRemove}
-        className="p-1.5 rounded-lg text-ui-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+        className="p-1.5 rounded-lg text-ui-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors shrink-0"
         aria-label="Eliminar producto"
       >
         <Trash2 className="w-4 h-4" />

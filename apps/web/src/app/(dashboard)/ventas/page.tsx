@@ -339,7 +339,7 @@ export default function VentasPage() {
         <>
           {/* Bloqueo por horario fuera de atención */}
           {fueraDeHorario && turnoConfig && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
                   <Clock className="w-6 h-6" />
@@ -508,7 +508,7 @@ export default function VentasPage() {
                       <div key={r.id} className={posClasses.card}>
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center shrink-0">
+                            <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center shrink-0">
                               <ArrowDownCircle className="w-5 h-5" />
                             </div>
                             <div className="min-w-0">
