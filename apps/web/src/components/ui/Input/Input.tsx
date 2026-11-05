@@ -33,7 +33,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               inputClasses.input,
               icon && iconPosition === 'left' && 'pl-10',
               icon && iconPosition === 'right' && 'pr-10',
-              error && 'border-red-300 focus:border-red-500 focus:ring-red-100',
+              error && 'border-red-300 dark:border-red-500/40 focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-500/20',
               className
             )}
             {...props}

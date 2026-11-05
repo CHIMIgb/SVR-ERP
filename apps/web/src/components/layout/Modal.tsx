@@ -32,7 +32,8 @@ export default function LayoutModal({
   const [offsetLeft, setOffsetLeft] = useState(0);
 
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
+    // Debe coincidir con el corte en que aparece el menú lateral fijo (lg = 1024px, ver Sidebar.tsx).
+    const mq = window.matchMedia('(min-width: 1024px)');
     const update = () => setOffsetLeft(mq.matches ? SIDEBAR_WIDTH : 0);
     update();
     mq.addEventListener('change', update);
@@ -77,7 +78,7 @@ export function ModalField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+      <label className="text-[10px] font-black text-ui-400 uppercase tracking-widest ml-1">
         {label}
       </label>
       {children}
@@ -86,8 +87,8 @@ export function ModalField({
 }
 
 export const inputClass =
-  'w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:border-primary/50 transition-all bg-slate-50 focus:bg-white';
+  'w-full px-4 py-3 border border-ui-200 rounded-xl text-sm font-medium text-ui-900 focus:outline-none focus:border-primary/50 transition-all bg-ui-50 focus:bg-surface';
 
 export const selectClass =
-  'w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:border-primary/50 transition-all bg-slate-50 focus:bg-white appearance-none';
+  'w-full px-4 py-3 border border-ui-200 rounded-xl text-sm font-medium text-ui-900 focus:outline-none focus:border-primary/50 transition-all bg-ui-50 focus:bg-surface appearance-none';
 

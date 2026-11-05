@@ -188,7 +188,7 @@ export function TimePicker({
   return (
     <div ref={rootRef} className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <label htmlFor={inputId} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <label htmlFor={inputId} className="text-xs font-semibold uppercase tracking-wider text-ui-500">
           {label}
         </label>
       )}
@@ -203,24 +203,24 @@ export function TimePicker({
           disabled={disabled}
           onClick={() => !disabled && setIsOpen(!isOpen)}
           className={cn(
-            'w-full h-10 sm:h-11 px-3 sm:px-4 pr-10 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary/50 focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
-            error && 'border-red-300 focus:border-red-500 focus:ring-red-100'
+            'w-full h-10 sm:h-11 px-3 sm:px-4 pr-10 rounded-xl border border-ui-200 bg-ui-50 text-xs sm:text-sm font-medium text-ui-900 placeholder:text-ui-400 focus:outline-none focus:border-primary/50 focus:bg-surface focus:ring-2 focus:ring-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
+            error && 'border-red-300 dark:border-red-500/40 focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-500/20'
           )}
         />
-        <Clock className="absolute right-3 text-slate-400 pointer-events-none" size={16} />
+        <Clock className="absolute right-3 text-ui-400 pointer-events-none" size={16} />
       </div>
 
       {error && <p className="text-xs font-medium text-red-500">{error}</p>}
 
       {isOpen && (
         <div
-          className="bg-white rounded-xl border border-slate-200 shadow-xl p-3 w-[280px] pointer-events-auto"
+          className="bg-surface rounded-xl border border-ui-200 shadow-xl p-3 w-[280px] pointer-events-auto"
           style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 60 }}
         >
           <div className="flex gap-3">
             {/* Horas */}
             <div className="flex-1">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2">
+              <div className="text-[10px] font-bold text-ui-400 uppercase tracking-wider text-center mb-2">
                 Hora
               </div>
               <div ref={listHourRef} className="tp-scroll-list">
@@ -236,7 +236,7 @@ export function TimePicker({
                       disabled={disabledOption}
                       onClick={() => handleSelect(h, parsed?.minutes ?? 0)}
                       className={cn(
-                        'w-full text-center text-sm font-medium py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 text-slate-700',
+                        'w-full text-center text-sm font-medium py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-ui-100 text-ui-700',
                         isActive && 'bg-primary text-white hover:bg-primary-dark',
                         disabledOption && 'opacity-30 cursor-not-allowed'
                       )}
@@ -248,11 +248,11 @@ export function TimePicker({
               </div>
             </div>
 
-            <span className="text-lg font-bold text-slate-300 self-center pt-5">:</span>
+            <span className="text-lg font-bold text-ui-300 self-center pt-5">:</span>
 
             {/* Minutos */}
             <div className="flex-1">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2">
+              <div className="text-[10px] font-bold text-ui-400 uppercase tracking-wider text-center mb-2">
                 Min
               </div>
               <div ref={listMinuteRef} className="tp-scroll-list">
@@ -268,7 +268,7 @@ export function TimePicker({
                       disabled={disabledOption}
                       onClick={() => handleSelect(parsed?.hours ?? 0, m)}
                       className={cn(
-                        'w-full text-center text-sm font-medium py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 text-slate-700',
+                        'w-full text-center text-sm font-medium py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-ui-100 text-ui-700',
                         isActive && 'bg-primary text-white hover:bg-primary-dark',
                         disabledOption && 'opacity-30 cursor-not-allowed'
                       )}
@@ -281,7 +281,7 @@ export function TimePicker({
             </div>
           </div>
 
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-ui-100">
             <button
               type="button"
               onClick={handleNow}
@@ -293,7 +293,7 @@ export function TimePicker({
               <button
                 type="button"
                 onClick={handleClear}
-                className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                className="text-xs font-semibold text-ui-400 hover:text-ui-600 transition-colors cursor-pointer"
               >
                 Limpiar
               </button>

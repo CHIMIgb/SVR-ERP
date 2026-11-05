@@ -125,7 +125,7 @@ function arrowStyles(placement: TooltipPlacement): React.CSSProperties {
         transform: 'translateX(-50%)',
         borderLeft: '5px solid transparent',
         borderRight: '5px solid transparent',
-        borderTop: '5px solid #1e293b',
+        borderTop: '5px solid var(--color-tooltip)',
       };
     case 'bottom':
       return {
@@ -135,7 +135,7 @@ function arrowStyles(placement: TooltipPlacement): React.CSSProperties {
         transform: 'translateX(-50%)',
         borderLeft: '5px solid transparent',
         borderRight: '5px solid transparent',
-        borderBottom: '5px solid #1e293b',
+        borderBottom: '5px solid var(--color-tooltip)',
       };
     case 'left':
       return {
@@ -145,7 +145,7 @@ function arrowStyles(placement: TooltipPlacement): React.CSSProperties {
         transform: 'translateY(-50%)',
         borderTop: '5px solid transparent',
         borderBottom: '5px solid transparent',
-        borderLeft: '5px solid #1e293b',
+        borderLeft: '5px solid var(--color-tooltip)',
       };
     case 'right':
       return {
@@ -155,7 +155,7 @@ function arrowStyles(placement: TooltipPlacement): React.CSSProperties {
         transform: 'translateY(-50%)',
         borderTop: '5px solid transparent',
         borderBottom: '5px solid transparent',
-        borderRight: '5px solid #1e293b',
+        borderRight: '5px solid var(--color-tooltip)',
       };
   }
 }
@@ -252,7 +252,7 @@ export function Tooltip({
             maxWidth,
           }}
         >
-          <div className="bg-secondary text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-normal">
+          <div className="bg-tooltip text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-normal">
             {content}
             <div style={arrowStyles(finalPlacement)} />
           </div>

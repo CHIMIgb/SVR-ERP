@@ -11,11 +11,11 @@ export interface PageHeaderProps {
 export function PageHeader({ title, subtitle, action, className }: PageHeaderProps) {
   return (
     <div className={cn(pageHeaderClasses.wrapper, className)}>
-      <div className="min-w-0 flex-1">
+      <div className={pageHeaderClasses.heading}>
         <h1 className={pageHeaderClasses.title}>{title}</h1>
         {subtitle && <p className={pageHeaderClasses.subtitle}>{subtitle}</p>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className={pageHeaderClasses.actions}>{action}</div>}
     </div>
   );
 }

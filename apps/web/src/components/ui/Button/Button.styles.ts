@@ -4,9 +4,9 @@ export const buttonClasses = {
   loading: 'opacity-70 cursor-wait pointer-events-none',
   variants: {
     primary: 'bg-primary text-white hover:bg-primary-dark active:bg-primary-dark shadow-sm hover:shadow-primary hover:-translate-y-0.5 active:translate-y-0',
-    secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300',
-    outline: 'border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100',
-    ghost: 'text-slate-600 hover:bg-slate-100 active:bg-slate-200',
+    secondary: 'bg-ui-100 text-ui-700 hover:bg-ui-200 active:bg-ui-300',
+    outline: 'border-2 border-ui-200 text-ui-700 hover:bg-ui-50 active:bg-ui-100',
+    ghost: 'text-ui-600 hover:bg-ui-100 active:bg-ui-200',
     danger: 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 shadow-sm',
     success: 'bg-green-500 text-white hover:bg-green-600 active:bg-green-700 shadow-sm',
     warning: 'bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700 shadow-sm',

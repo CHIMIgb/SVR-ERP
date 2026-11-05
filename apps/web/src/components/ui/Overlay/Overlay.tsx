@@ -27,7 +27,7 @@ export function Overlay({
       onClick={onClick}
       className={cn(
         'fixed top-0 bottom-0 left-0 right-0 z-40 flex items-center justify-center',
-        dark ? 'bg-slate-900/50' : 'bg-white/50',
+        dark ? 'bg-slate-900/50' : 'bg-white/50 dark:bg-slate-950/60',
         blur && 'backdrop-blur-sm',
         className
       )}

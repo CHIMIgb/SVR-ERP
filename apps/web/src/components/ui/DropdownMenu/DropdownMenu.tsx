@@ -147,7 +147,7 @@ export function DropdownMenuTrigger({
       aria-expanded={isOpen}
       className={cn(
         'inline-flex items-center justify-center rounded-lg transition-colors cursor-pointer',
-        'hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/20',
+        'hover:bg-ui-100 focus:outline-none focus:ring-2 focus:ring-primary/20',
         className
       )}
     >
@@ -286,7 +286,7 @@ export function DropdownMenuContent({
       ref={contentRef}
       role="menu"
       className={cn(
-        'bg-white rounded-xl border border-slate-200 shadow-xl py-1.5',
+        'bg-surface rounded-xl border border-ui-200 shadow-xl py-1.5',
         'animate-[fadeIn_0.1s_ease-out]',
         className
       )}
@@ -344,15 +344,15 @@ export function DropdownMenuItem({
         'focus:outline-none',
         disabled && 'opacity-40 cursor-not-allowed',
         destructive
-          ? 'text-red-600 hover:bg-red-50 focus:bg-red-50'
-          : 'text-slate-700 hover:bg-slate-100 focus:bg-slate-100',
+          ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 focus:bg-red-50 dark:focus:bg-red-500/10'
+          : 'text-ui-700 hover:bg-ui-100 focus:bg-ui-100',
         className
       )}
     >
       {icon && <span className="shrink-0 w-4 h-4">{icon}</span>}
       <span className="flex-1 truncate">{children}</span>
       {shortcut && (
-        <span className="text-xs text-slate-400 shrink-0 ml-4">{shortcut}</span>
+        <span className="text-xs text-ui-400 shrink-0 ml-4">{shortcut}</span>
       )}
     </button>
   );
@@ -366,7 +366,7 @@ export function DropdownMenuSeparator({ className }: { className?: string }) {
   return (
     <div
       role="separator"
-      className={cn('my-1.5 h-px bg-slate-100', className)}
+      className={cn('my-1.5 h-px bg-ui-100', className)}
     />
   );
 }
@@ -385,7 +385,7 @@ export function DropdownMenuLabel({
   return (
     <div
       className={cn(
-        'px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400',
+        'px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ui-400',
         className
       )}
     >

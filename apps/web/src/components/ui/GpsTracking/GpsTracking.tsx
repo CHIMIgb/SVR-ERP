@@ -46,7 +46,7 @@ export interface GpsPoint {
 const statusConfig: Record<MachineStatus, { icon: React.ReactNode; color: string; label: string }> = {
   moving: { icon: <Truck size={14} />, color: 'bg-green-500', label: 'En movimiento' },
   idle: { icon: <Pause size={14} />, color: 'bg-amber-500', label: 'Detenido' },
-  offline: { icon: <WifiOff size={14} />, color: 'bg-slate-400', label: 'Sin señal' },
+  offline: { icon: <WifiOff size={14} />, color: 'bg-ui-400', label: 'Sin señal' },
   alert: { icon: <AlertTriangle size={14} />, color: 'bg-red-500', label: 'Alerta' },
 };
 
@@ -95,7 +95,7 @@ export function MachineMarker({ machine, isSelected, onClick, x, y }: MachineMar
         className={cn(
           gpsClasses.markerIcon,
           config.color,
-          isSelected && 'ring-2 ring-white ring-offset-2'
+          isSelected && 'ring-2 ring-surface ring-offset-2'
         )}
       >
         <Truck size={20} className="text-white" />
@@ -160,8 +160,8 @@ export function TrackingPanel({ machine, className }: TrackingPanelProps) {
             <Truck size={16} className="text-white" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">{machine.name}</h3>
-            <p className="text-xs text-slate-500">{machine.type}</p>
+            <h3 className="text-sm font-bold text-ui-900">{machine.name}</h3>
+            <p className="text-xs text-ui-500">{machine.type}</p>
           </div>
         </div>
         <StatusBadge status={machine.status} />
@@ -175,8 +175,8 @@ export function TrackingPanel({ machine, className }: TrackingPanelProps) {
             <div className={gpsClasses.panelRow}>
               <span className={gpsClasses.panelLabel}>Combustible</span>
               <div className="flex items-center gap-2">
-                <Fuel size={14} className="text-slate-400" />
-                <span className={cn(gpsClasses.panelValue, machine.fuel < 20 && 'text-red-600')}>
+                <Fuel size={14} className="text-ui-400" />
+                <span className={cn(gpsClasses.panelValue, machine.fuel < 20 && 'text-red-600 dark:text-red-400')}>
                   {machine.fuel}%
                 </span>
               </div>
@@ -184,8 +184,8 @@ export function TrackingPanel({ machine, className }: TrackingPanelProps) {
             <div className={gpsClasses.panelRow}>
               <span className={gpsClasses.panelLabel}>Motor</span>
               <div className="flex items-center gap-2">
-                <Thermometer size={14} className="text-slate-400" />
-                <span className={cn(gpsClasses.panelValue, machine.temperature > 90 && 'text-red-600')}>
+                <Thermometer size={14} className="text-ui-400" />
+                <span className={cn(gpsClasses.panelValue, machine.temperature > 90 && 'text-red-600 dark:text-red-400')}>
                   {machine.temperature}°C
                 </span>
               </div>
@@ -193,7 +193,7 @@ export function TrackingPanel({ machine, className }: TrackingPanelProps) {
             <div className={gpsClasses.panelRow}>
               <span className={gpsClasses.panelLabel}>Horas</span>
               <div className="flex items-center gap-2">
-                <Clock size={14} className="text-slate-400" />
+                <Clock size={14} className="text-ui-400" />
                 <span className={gpsClasses.panelValue}>{machine.hours}h</span>
               </div>
             </div>
@@ -201,7 +201,7 @@ export function TrackingPanel({ machine, className }: TrackingPanelProps) {
         </div>
 
         {/* Info adicional */}
-        <div className="pt-2 border-t border-slate-100 space-y-2">
+        <div className="pt-2 border-t border-ui-100 space-y-2">
           {machine.operator && (
             <div className="flex items-center justify-between">
               <span className={gpsClasses.panelLabel}>Operador</span>
@@ -216,7 +216,7 @@ export function TrackingPanel({ machine, className }: TrackingPanelProps) {
           )}
           <div className="flex items-center justify-between">
             <span className={gpsClasses.panelLabel}>Ubicacion</span>
-            <span className="text-xs font-mono text-slate-600">
+            <span className="text-xs font-mono text-ui-600">
               {machine.lat.toFixed(6)}, {machine.lng.toFixed(6)}
             </span>
           </div>
@@ -314,8 +314,8 @@ export function GpsMap({ machines, selectedId, onSelect, height = '400px', class
 
       {/* Road lines (simulated) */}
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <path d="M 10 90 Q 30 50 50 60 T 90 20" stroke="#cbd5e1" strokeWidth="0.8" fill="none" strokeDasharray="2 1" />
-        <path d="M 5 30 Q 40 40 60 70 T 95 50" stroke="#cbd5e1" strokeWidth="0.5" fill="none" />
+        <path d="M 10 90 Q 30 50 50 60 T 90 20" className="stroke-ui-300" strokeWidth="0.8" fill="none" strokeDasharray="2 1" />
+        <path d="M 5 30 Q 40 40 60 70 T 95 50" className="stroke-ui-300" strokeWidth="0.5" fill="none" />
       </svg>
 
       {/* Machine markers */}
@@ -344,7 +344,7 @@ export function GpsMap({ machines, selectedId, onSelect, height = '400px', class
       })}
 
       {/* Map legend */}
-      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm border border-slate-200">
+      <div className="absolute bottom-3 left-3 bg-surface/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm border border-ui-200">
         <div className="flex items-center gap-4 text-[10px] font-semibold">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-green-500" />
@@ -355,7 +355,7 @@ export function GpsMap({ machines, selectedId, onSelect, height = '400px', class
             Detenido
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <span className="w-2 h-2 rounded-full bg-ui-400" />
             Sin señal
           </span>
           <span className="flex items-center gap-1">
@@ -394,7 +394,7 @@ export function MachineList({ machines, selectedId, onSelect, className }: Machi
               'flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200',
               isSelected
                 ? 'bg-primary/5 border-primary/30 shadow-sm'
-                : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                : 'bg-surface border-ui-200 hover:border-ui-300 hover:shadow-sm'
             )}
           >
             <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', config.color)}>
@@ -402,10 +402,10 @@ export function MachineList({ machines, selectedId, onSelect, className }: Machi
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-slate-900 truncate">{machine.name}</span>
+                <span className="text-sm font-bold text-ui-900 truncate">{machine.name}</span>
                 <StatusBadge status={machine.status} />
               </div>
-              <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+              <div className="flex items-center gap-3 mt-1 text-xs text-ui-500">
                 <span className="flex items-center gap-1">
                   <Gauge size={12} />
                   {machine.speed} km/h
@@ -416,7 +416,7 @@ export function MachineList({ machines, selectedId, onSelect, className }: Machi
                 </span>
               </div>
             </div>
-            <ChevronRight size={16} className="text-slate-300 shrink-0" />
+            <ChevronRight size={16} className="text-ui-300 shrink-0" />
           </div>
         );
       })}

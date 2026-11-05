@@ -21,6 +21,7 @@ import { TrabajadoresModule } from './trabajadores/trabajadores.module';
 import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
 import { AsistenciaModule } from './asistencia/asistencia.module';
 import { NominaModule } from './nomina/nomina.module';
+import { GpsModule } from './gps/gps.module';
 import { FinanzasModule } from './finanzas/finanzas.module';
 import { ConciliacionBancariaModule } from './conciliacion-bancaria/conciliacion-bancaria.module';
 import { VentasModule } from './ventas/ventas.module';
@@ -72,6 +73,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     BitacorasRentaModule,
     AsistenciaModule,
     NominaModule,
+    GpsModule,
     // Antes que FinanzasModule: /finanzas/bancos|cuentas|movimientos estáticos
     // deben ganar sobre @Get(':id') de FinanzasController.
     ConciliacionBancariaModule,

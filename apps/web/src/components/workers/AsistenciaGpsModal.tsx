@@ -1,15 +1,13 @@
 "use client";
 
 import React, { useState } from 'react';
-import {
-  X, ShieldCheck, ShieldAlert,
-  Battery, Clock, ExternalLink, Navigation, Compass,
-  CheckCircle2, AlertTriangle, Building2, User, Flame,
-  ArrowRight
-} from 'lucide-react';
+import { Building2, User } from 'lucide-react';
 import type { RegistroAsistenciaDTO } from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
-import { Modal } from '@/components/ui/Modal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { formatCurrency } from '@/lib/formatters';
 
 interface TrabajadorResumen {
   nombre: string;
@@ -22,8 +20,24 @@ interface AsistenciaGpsModalProps {
   onClose: () => void;
   registro: RegistroAsistenciaDTO | null;
   trabajador?: TrabajadorResumen;
+  /** Sin este callback (usuario sin permiso de editar) no se muestran las acciones de validación. */
   onActualizarEstado?: (registroId: string, nuevoEstado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') => Promise<void>;
+  /** Sin este callback no se muestra el botón de autorizar horas extra. */
   onAprobarHorasExtra?: (horasExtraId: string) => Promise<void>;
+}
+
+function mensajeError(error: unknown, respaldo: string): string {
+  return error instanceof Error && error.message ? error.message : respaldo;
+}
+
+function Dato({ etiqueta, valor, detalle }: { etiqueta: string; valor: React.ReactNode; detalle?: React.ReactNode }) {
+  return (
+    <div className="bg-surface px-3 py-2.5 min-w-0">
+      <dt className="text-xs text-ui-500">{etiqueta}</dt>
+      <dd className="text-sm font-semibold text-ui-900 truncate">{valor}</dd>
+      {detalle && <dd className="text-xs text-ui-400 truncate">{detalle}</dd>}
+    </div>
+  );
 }
 
 export default function AsistenciaGpsModal({
@@ -32,24 +46,25 @@ export default function AsistenciaGpsModal({
   registro,
   trabajador,
   onActualizarEstado,
-  onAprobarHorasExtra
+  onAprobarHorasExtra,
 }: AsistenciaGpsModalProps) {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'entrada' | 'salida' | 'horas_extra'>('entrada');
   const [procesando, setProcesando] = useState(false);
 
   if (!isOpen || !registro) return null;
 
-  const distanciaFormateada = registro.distanciaMetros >= 1000
+  const distancia = registro.distanciaMetros >= 1000
     ? `${(registro.distanciaMetros / 1000).toFixed(2)} km`
-    : `${registro.distanciaMetros} metros`;
-
+    : `${registro.distanciaMetros} m`;
   const radioKm = (registro.radioPermitidoMetros / 1000).toFixed(1);
+  const horasExtra = registro.horasExtra;
+  const puedeAutorizarHorasExtra =
+    !!onAprobarHorasExtra && !!horasExtra && horasExtra.estado !== 'Aprobado' && horasExtra.estado !== 'Rechazado';
 
-  // Offset visual relativo para el mapa interactivo simulado
-  const workerOffset = registro.enSitio
-    ? { x: 53, y: 47 } // Dentro del círculo de la geocerca
-    : { x: 86, y: 18 }; // Fuera del círculo
+  // Posición esquemática del trabajador: dentro o fuera del círculo de la geocerca.
+  // La distancia real es la del texto; el dibujo no está a escala.
+  // En sitio: arriba del centro (dentro del círculo y sin tapar el nombre de la obra).
+  const posicionTrabajador = registro.enSitio ? { x: 58, y: 28 } : { x: 80, y: 22 };
 
   const googleMapsUrl = `https://www.google.com/maps?q=${registro.coordenadas.lat},${registro.coordenadas.lng}`;
 
@@ -57,12 +72,11 @@ export default function AsistenciaGpsModal({
     if (!onActualizarEstado || procesando) return;
     setProcesando(true);
     try {
-      const nuevoEstado = registro.enSitio ? 'Puntual' : 'Justificado';
-      await onActualizarEstado(registro.id, nuevoEstado);
-      showToast(`Asistencia de ${trabajador?.nombre ?? 'Trabajador'} validada.`, 'success');
+      await onActualizarEstado(registro.id, registro.enSitio ? 'Puntual' : 'Justificado');
+      showToast(`Asistencia de ${trabajador?.nombre ?? 'el trabajador'} validada.`, 'success');
       onClose();
-    } catch {
-      showToast('No se pudo actualizar la asistencia.', 'error');
+    } catch (error) {
+      showToast(mensajeError(error, 'No se pudo actualizar la asistencia.'), 'error');
     } finally {
       setProcesando(false);
     }
@@ -73,396 +87,185 @@ export default function AsistenciaGpsModal({
     setProcesando(true);
     try {
       await onActualizarEstado(registro.id, 'Falta');
-      showToast(`Marcaje rechazado por exceder el radio permitido de ${radioKm} km.`, 'error');
+      showToast(`Falta registrada: marcó fuera del radio permitido de ${radioKm} km.`, 'warning');
       onClose();
-    } catch {
-      showToast('No se pudo marcar la falta.', 'error');
+    } catch (error) {
+      showToast(mensajeError(error, 'No se pudo marcar la falta.'), 'error');
     } finally {
       setProcesando(false);
     }
   };
 
   const handleAutorizarHorasExtra = async () => {
-    if (!onAprobarHorasExtra || !registro.horasExtra || procesando) return;
+    if (!onAprobarHorasExtra || !horasExtra || procesando) return;
     setProcesando(true);
     try {
-      await onAprobarHorasExtra(registro.horasExtra.id);
-      showToast(`${registro.horasExtra.horasCalculadas} horas extra aprobadas para ${trabajador?.nombre}.`, 'success');
-    } catch {
-      showToast('No se pudieron autorizar las horas extra.', 'error');
+      await onAprobarHorasExtra(horasExtra.id);
+      showToast(`${horasExtra.horasCalculadas} h extra autorizadas para ${trabajador?.nombre ?? 'el trabajador'}.`, 'success');
+    } catch (error) {
+      showToast(mensajeError(error, 'No se pudieron autorizar las horas extra.'), 'error');
     } finally {
       setProcesando(false);
     }
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} size="xl" contentClassName="overflow-hidden">
-        {/* Modal Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${registro.enSitio ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-              <Navigation className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-black text-base text-white">Inspección de Asistencia y Geocerca</h3>
-                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                  registro.enSitio ? 'bg-green-500 text-white' : 'bg-red-500 text-white animate-pulse'
-                }`}>
-                  {registro.enSitio ? `En Sitio (Radio ${radioKm}km)` : `Fuera de Rango (> ${radioKm}km)`}
-                </span>
+    <Modal open={isOpen} onClose={onClose} size="full">
+      <ModalHeader
+        title="Detalle de asistencia"
+        subtitle={`${trabajador?.nombre ?? 'Trabajador'}${trabajador?.puesto ? ` · ${trabajador.puesto}` : ''} · ${registro.obraAsignada}`}
+        onClose={onClose}
+      />
+
+      <ModalBody className="space-y-5">
+        {/* Resultado de la geocerca */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Badge variant={registro.enSitio ? 'success' : 'error'}>{registro.enSitio ? 'En sitio' : 'Fuera de rango'}</Badge>
+          <p className="text-sm text-ui-600">
+            Marcó a <span className="font-semibold text-ui-900">{distancia}</span> de la obra · radio permitido {radioKm} km
+          </p>
+        </div>
+
+        {/* Datos del marcaje */}
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ui-200 border border-ui-200 rounded-xl overflow-hidden">
+          <Dato etiqueta="Entrada" valor={registro.horaEntrada ?? 'Sin marcar'} detalle={registro.horaMarcajeExacta} />
+          <Dato etiqueta="Salida" valor={registro.horaSalida ?? 'Jornada activa'} detalle={registro.horaSalidaExacta} />
+          <Dato etiqueta="Horas ordinarias" valor={registro.horasTrabajadasOrdinarias != null ? `${registro.horasTrabajadasOrdinarias} h` : '—'} />
+          <Dato
+            etiqueta="Dispositivo"
+            valor={registro.dispositivo || '—'}
+            detalle={registro.bateria != null ? `Batería ${registro.bateria} %` : undefined}
+          />
+        </dl>
+
+        {registro.salidaAnticipada && (
+          <div className="px-4 py-3 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-sm">
+            <p className="font-semibold text-amber-800 dark:text-amber-300">
+              Salida anticipada{registro.horasTrabajadasOrdinarias != null ? ` · ${registro.horasTrabajadasOrdinarias} h laboradas` : ''}
+            </p>
+            <p className="text-amber-700 dark:text-amber-300 mt-0.5 break-words">
+              Motivo: {registro.motivoSalidaAnticipada || 'Sin motivo capturado.'}
+            </p>
+          </div>
+        )}
+
+        {/* Esquema de la geocerca */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-ui-500">Ubicación del marcaje (esquema, no a escala)</p>
+            <a href={googleMapsUrl} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-semibold text-primary hover:underline">
+              Ver en Google Maps
+            </a>
+          </div>
+
+          <div className="relative h-56 sm:h-64 w-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 select-none">
+            <div
+              className="absolute inset-0 opacity-25"
+              style={{
+                backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.2) 1px, transparent 0)',
+                backgroundSize: '24px 24px',
+              }}
+            />
+
+            {/* Geocerca */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 border-emerald-400/70 bg-emerald-500/10" />
+
+            {/* Obra */}
+            <div className="absolute flex flex-col items-center z-10 -translate-x-1/2 -translate-y-1/2" style={{ top: '50%', left: '50%' }}>
+              <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl flex items-center justify-center border-2 border-white">
+                <Building2 className="w-4 h-4" />
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">
-                Monitoreo satelital de entrada, salida y tiempo extraordinario
+              <div className="mt-1 max-w-[140px] truncate bg-slate-950/80 text-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded">
+                {registro.obraAsignada}
+              </div>
+            </div>
+
+            {/* Línea obra → trabajador */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20" aria-hidden="true">
+              <line
+                x1="50%"
+                y1="50%"
+                x2={`${posicionTrabajador.x}%`}
+                y2={`${posicionTrabajador.y}%`}
+                stroke={registro.enSitio ? '#34d399' : '#f87171'}
+                strokeWidth="2"
+                strokeDasharray="5,5"
+              />
+            </svg>
+
+            {/* Trabajador */}
+            <div
+              className="absolute flex flex-col items-center z-30 -translate-x-1/2 -translate-y-1/2"
+              style={{ top: `${posicionTrabajador.y}%`, left: `${posicionTrabajador.x}%` }}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white border-2 border-white ${registro.enSitio ? 'bg-blue-600' : 'bg-red-600'}`}>
+                <User className="w-4 h-4" />
+              </div>
+              <div className="mt-1 whitespace-nowrap bg-slate-950/80 text-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded">
+                {distancia}
+              </div>
+            </div>
+
+            <div className="absolute bottom-2 left-2 right-2 flex flex-wrap items-center justify-between gap-x-3 bg-slate-950/80 px-3 py-1.5 rounded-lg text-[10px] font-medium text-slate-300 z-30 tabular-nums">
+              <span>GPS: {registro.coordenadas.lat.toFixed(5)}, {registro.coordenadas.lng.toFixed(5)}</span>
+              <span>Precisión ±{registro.precisionGpsMetros} m</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Horas extra */}
+        {horasExtra && (
+          <section className="space-y-3 pt-4 border-t border-ui-100">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-ui-900">Horas extra</h4>
+              <Badge variant={horasExtra.estado === 'Aprobado' ? 'success' : horasExtra.estado === 'Rechazado' ? 'error' : 'warning'} size="sm">
+                {horasExtra.estado}
+              </Badge>
+            </div>
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ui-200 border border-ui-200 rounded-xl overflow-hidden">
+              <Dato etiqueta="Horario" valor={`${horasExtra.inicio} – ${horasExtra.fin ?? 'en curso'}`} />
+              <Dato etiqueta="Horas" valor={`${horasExtra.horasCalculadas} h`} />
+              <Dato etiqueta="Tarifa" valor={`${formatCurrency(horasExtra.tarifaPorHora)} / h`} />
+              <Dato etiqueta="A pagar" valor={formatCurrency(horasExtra.montoTotal)} />
+            </dl>
+            <p className="text-sm text-ui-700 break-words">
+              <span className="text-ui-500">Motivo: </span>
+              {horasExtra.motivo || 'Sin motivo capturado.'}
+            </p>
+            {horasExtra.coordenadasInicio && (
+              <p className="text-xs text-ui-500 tabular-nums">
+                Ubicación al iniciar: {horasExtra.coordenadasInicio.lat.toFixed(5)}, {horasExtra.coordenadasInicio.lng.toFixed(5)}
               </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white flex items-center justify-center transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1">
-
-          {/* Worker Info Card */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center text-white font-black text-base shadow-md">
-                {trabajador?.avatar ?? 'OP'}
-              </div>
-              <div>
-                <h4 className="font-black text-slate-900 text-sm leading-tight">{trabajador?.nombre}</h4>
-                <p className="text-xs font-bold text-primary">{trabajador?.puesto}</p>
-                <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5 mt-0.5">
-                  <Building2 className="w-3 h-3 text-slate-400" />
-                  Obra Asignada: <strong className="text-slate-800">{registro.obraAsignada}</strong>
-                </p>
-              </div>
-            </div>
-
-            {/* Shift hours summary */}
-            <div className="flex sm:flex-col items-end justify-between sm:justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200/60 text-right">
-              <div className="text-xs font-black text-slate-900">
-                {registro.horasTrabajadasOrdinarias ?? 0}h ordinarias laboradas
-              </div>
-              <div className="flex items-center gap-2 mt-1 text-[10px] font-black uppercase tracking-wider">
-                <span className="text-green-600 flex items-center gap-0.5">
-                  <Battery className="w-3 h-3" /> {registro.bateria ?? '—'}%
-                </span>
-                <span className="text-slate-400 font-mono">{registro.dispositivo}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Inspection Tabs */}
-          <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-            <button
-              onClick={() => setActiveTab('entrada')}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-                activeTab === 'entrada'
-                  ? 'bg-slate-900 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" /> Entrada Ordinaria ({registro.horaEntrada ?? 'Sin marcar'})
-            </button>
-            <button
-              onClick={() => setActiveTab('salida')}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-                activeTab === 'salida'
-                  ? 'bg-slate-900 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" /> Salida Ordinaria ({registro.horaSalida ?? 'Pendiente'})
-            </button>
-            {registro.horasExtra && (
-              <button
-                onClick={() => setActiveTab('horas_extra')}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all ${
-                  activeTab === 'horas_extra'
-                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
-                    : 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
-                }`}
-              >
-                <Flame className="w-3.5 h-3.5" /> Horas Extra ({registro.horasExtra.horasCalculadas}h)
-              </button>
             )}
-          </div>
-
-          {/* TAB 1 & 2: ENTRADA / SALIDA ORDINARIA */}
-          {(activeTab === 'entrada' || activeTab === 'salida') && (
-            <div className="space-y-4">
-
-              {/* Geofence Alert Banner */}
-              <div className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
-                registro.enSitio
-                  ? 'bg-green-50/80 border-green-200 text-green-900'
-                  : 'bg-red-50 border-red-200 text-red-900'
-              }`}>
-                {registro.enSitio ? (
-                  <ShieldCheck className="w-6 h-6 text-green-600 shrink-0 mt-0.5" />
-                ) : (
-                  <ShieldAlert className="w-6 h-6 text-red-600 shrink-0 mt-0.5 animate-bounce" />
-                )}
-                <div className="flex-1">
-                  <h5 className="text-xs font-black uppercase tracking-wide">
-                    {registro.enSitio
-                      ? `Marcaje dentro del Polígono (${distanciaFormateada})`
-                      : `Alerta: Fuera del Radio Autorizado de ${radioKm} km`}
-                  </h5>
-                  <p className="text-xs font-medium mt-1 leading-relaxed text-slate-600">
-                    {registro.enSitio ? (
-                      <>
-                        El celular marcó a <strong className="text-green-700 font-black">{distanciaFormateada}</strong> de la obra. Como las obras de construcción y minería son extensas, el sistema admite un radio de hasta <strong className="text-slate-800">{radioKm} km</strong> a la redonda.
-                      </>
-                    ) : (
-                      <>
-                        El celular reportó una ubicación a <strong className="text-red-600 font-black">{distanciaFormateada}</strong> del centro de la obra. Supera el perímetro de seguridad configurado de {radioKm} km.
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {/* Interactive Geofence Map Visualizer */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                    <Compass className="w-3.5 h-3.5 text-primary" />
-                    Plano Satelital con Geocerca Circular ({radioKm} km de Radio)
-                  </span>
-                  <a
-                    href={googleMapsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10px] font-black text-primary hover:underline flex items-center gap-1 bg-primary/5 px-2.5 py-1 rounded-lg"
-                  >
-                    Ver en Google Maps <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-
-                <div className="relative h-64 w-full bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center group select-none">
-
-                  {/* Grid */}
-                  <div
-                    className="absolute inset-0 opacity-25"
-                    style={{
-                      backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.2) 1px, transparent 0)`,
-                      backgroundSize: '24px 24px'
-                    }}
-                  />
-
-                  {/* Highway / Project Layout curves */}
-                  <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M 0 130 Q 150 120 300 160 T 600 130" fill="none" stroke="#94a3b8" strokeWidth="14" />
-                    <path d="M 220 0 L 220 300" fill="none" stroke="#94a3b8" strokeWidth="10" />
-                    <path d="M 450 0 L 450 300" fill="none" stroke="#94a3b8" strokeWidth="6" />
-                  </svg>
-
-                  {/* Geofence Circle Zone */}
-                  <div
-                    className="absolute rounded-full border-2 border-emerald-400 bg-emerald-500/15 backdrop-blur-[1px] flex items-center justify-center transition-all animate-pulse"
-                    style={{
-                      width: '210px',
-                      height: '210px',
-                      top: 'calc(50% - 105px)',
-                      left: 'calc(50% - 105px)',
-                    }}
-                  >
-                    <span className="text-[8px] font-black uppercase text-emerald-300 tracking-wider bg-slate-950/80 px-2 py-0.5 rounded-full border border-emerald-400/40">
-                      Geocerca Obra ({radioKm} km radio)
-                    </span>
-                  </div>
-
-                  {/* Obra Center Pin */}
-                  <div
-                    className="absolute flex flex-col items-center z-10 -translate-x-1/2 -translate-y-1/2"
-                    style={{ top: '50%', left: '50%' }}
-                  >
-                    <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl shadow-lg flex items-center justify-center border-2 border-white ring-4 ring-emerald-500/30">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div className="mt-1 bg-slate-900/90 text-white text-[8px] font-black px-2 py-0.5 rounded border border-slate-700 whitespace-nowrap shadow-md">
-                      {registro.obraAsignada}
-                    </div>
-                  </div>
-
-                  {/* Distance Connecting Line */}
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
-                    <line
-                      x1="50%"
-                      y1="50%"
-                      x2={`${workerOffset.x}%`}
-                      y2={`${workerOffset.y}%`}
-                      stroke={registro.enSitio ? '#10b981' : '#ef4444'}
-                      strokeWidth="2.5"
-                      strokeDasharray="5,5"
-                    />
-                  </svg>
-
-                  {/* Worker Pin */}
-                  <div
-                    className="absolute flex flex-col items-center z-30 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-                    style={{ top: `${workerOffset.y}%`, left: `${workerOffset.x}%` }}
-                  >
-                    <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-white font-black text-xs shadow-xl border-2 border-white ${
-                      registro.enSitio ? 'bg-blue-600 ring-4 ring-blue-500/40' : 'bg-red-600 ring-4 ring-red-500/50 animate-bounce'
-                    }`}>
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div className={`mt-1 text-[8px] font-black px-2 py-0.5 rounded shadow-lg whitespace-nowrap border ${
-                      registro.enSitio ? 'bg-blue-900/90 text-blue-200 border-blue-400' : 'bg-red-900/90 text-red-200 border-red-400'
-                    }`}>
-                      📱 {trabajador?.nombre?.split(' ')[0]} ({distanciaFormateada})
-                    </div>
-                  </div>
-
-                  {/* Bottom Bar */}
-                  <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-[9px] font-bold text-slate-300 z-30">
-                    <span>GPS Celular: {registro.coordenadas.lat.toFixed(4)}, {registro.coordenadas.lng.toFixed(4)}</span>
-                    <span className="text-emerald-400 font-mono">Distancia: {distanciaFormateada}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Exact timestamps details */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-0.5">Entrada Registrada</p>
-                  <p className="font-black text-slate-900 text-sm">{registro.horaEntrada ?? 'No registrada'}</p>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">{registro.horaMarcajeExacta ?? '—'}</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-0.5">Salida Registrada</p>
-                  <p className="font-black text-slate-900 text-sm">{registro.horaSalida ?? 'Jornada activa'}</p>
-                </div>
-              </div>
-              {/* Early Departure Notice */}
-              {registro.salidaAnticipada && (
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <h6 className="text-xs font-black uppercase tracking-wide text-amber-900">
-                      Alerta de Salida Anticipada ({registro.horasTrabajadasOrdinarias ?? 0}h laboradas)
-                    </h6>
-                    <p className="text-xs text-amber-800 font-medium mt-0.5">
-                      <strong>Motivo reportado:</strong> {registro.motivoSalidaAnticipada ?? 'Retiro antes del término reglamentario de turno.'}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          )}
-
-          {/* TAB 3: HORAS EXTRAS */}
-          {activeTab === 'horas_extra' && registro.horasExtra && (
-            <div className="space-y-4">
-
-              {/* Overtime KPI Header */}
-              <div className="p-5 rounded-3xl bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 flex items-center justify-between">
-                <div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-white/80 bg-white/20 px-2 py-0.5 rounded-full">
-                    Jornada Extraordinaria
-                  </span>
-                  <h4 className="text-2xl font-black mt-2">
-                    {registro.horasExtra.horasCalculadas} <span className="text-base font-bold text-white/80">horas extras</span>
-                  </h4>
-                  <p className="text-xs text-white/90 font-medium mt-0.5">
-                    {registro.horasExtra.inicio} <ArrowRight className="inline w-3 h-3 mx-1" /> {registro.horasExtra.fin ?? 'En curso'}
-                  </p>
-                </div>
-
-                <div className="text-right bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/20">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-white/70">A Pagar en Nómina</p>
-                  <p className="text-2xl font-black text-white mt-0.5">
-                    ${registro.horasExtra.montoTotal.toFixed(2)}
-                  </p>
-                  <p className="text-[10px] font-bold text-white/80">
-                    Tarifa: ${registro.horasExtra.tarifaPorHora}/hr
-                  </p>
-                </div>
-              </div>
-
-              {/* Overtime Details */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-500">Motivo / Tarea Asignada:</span>
-                  <span className="font-black text-slate-900">{registro.horasExtra.motivo ?? 'Trabajo extraordinario'}</span>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                  <span className="font-bold text-slate-500">Estado de Aprobación:</span>
-                  <span className={`font-black uppercase px-2 py-0.5 rounded text-[10px] ${
-                    registro.horasExtra.estado === 'Aprobado'
-                      ? 'bg-green-100 text-green-700'
-                      : registro.horasExtra.estado === 'Rechazado'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {registro.horasExtra.estado}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                  <span className="font-bold text-slate-500">Geolocalización en Turno Extra:</span>
-                  <span className="font-bold text-emerald-700 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5" /> En Sitio de Obra
-                  </span>
-                </div>
-              </div>
-
-              {/* Supervisor Actions for Overtime */}
-              {registro.horasExtra.estado !== 'Aprobado' && registro.horasExtra.estado !== 'Rechazado' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAutorizarHorasExtra}
-                    disabled={procesando}
-                    className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> {procesando ? 'Autorizando...' : 'Autorizar Horas Extra para Nómina'}
-                  </button>
-                </div>
-              )}
-
-            </div>
-          )}
-
-        </div>
-
-        {/* Modal Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-100 transition-colors"
-          >
-            Cerrar
-          </button>
-
-          <div className="flex gap-2">
-            {!registro.enSitio && (
-              <button
-                onClick={handleMarcarFalta}
-                disabled={procesando}
-                className="px-4 py-2.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60 border border-red-200 font-black text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5"
-              >
-                <AlertTriangle className="w-4 h-4" /> Marcar Falta por Geocerca
-              </button>
+            {puedeAutorizarHorasExtra && (
+              <Button onClick={handleAutorizarHorasExtra} loading={procesando} className="w-full sm:w-auto">
+                Autorizar horas extra
+              </Button>
             )}
-            <button
-              onClick={handleAprobar}
-              disabled={procesando}
-              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-primary disabled:opacity-60 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5"
-            >
-              <CheckCircle2 className="w-4 h-4 text-green-400" />
-              {procesando ? 'Procesando...' : registro.enSitio ? 'Confirmar Asistencia' : 'Justificar Excepción'}
-            </button>
-          </div>
-        </div>
+          </section>
+        )}
+      </ModalBody>
 
+      <ModalFooter>
+        <Button variant="outline" onClick={onClose}>
+          Cerrar
+        </Button>
+        {onActualizarEstado && !registro.enSitio && (
+          <Button
+            variant="outline"
+            onClick={handleMarcarFalta}
+            disabled={procesando}
+            className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-500/10"
+          >
+            Marcar falta
+          </Button>
+        )}
+        {onActualizarEstado && (
+          <Button onClick={handleAprobar} loading={procesando}>
+            {registro.enSitio ? 'Confirmar asistencia' : 'Justificar excepción'}
+          </Button>
+        )}
+      </ModalFooter>
     </Modal>
   );
 }

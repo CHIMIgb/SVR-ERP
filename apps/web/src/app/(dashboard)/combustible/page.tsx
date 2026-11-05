@@ -449,7 +449,7 @@ function CombustibleForm({ form, setForm, maquinaria, rendimientoPreview, maquin
         </select>
       </ModalField>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <ModalField label="Litros Cargados" required>
           <input
             type="number"

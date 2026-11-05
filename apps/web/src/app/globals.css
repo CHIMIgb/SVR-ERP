@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Modo oscuro por clase: ThemeProvider pone `.dark` en <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* ── Brand Colors ── */
   --color-primary: #ed8238;
@@ -22,6 +25,27 @@
   --color-surface: #ffffff;
   --color-surface-alt: #f8fafc;
   --color-surface-elevated: #ffffff;
+
+  /* ── Tema adaptable (claro / oscuro) ──
+     canvas = fondo de la página; surface = tarjetas, modales, inputs.
+     ui-* = escala neutra: en claro vale EXACTAMENTE lo mismo que slate-*,
+     en oscuro se invierte (ver `.dark` abajo). Regla de migración:
+     bg-white → bg-surface, *-slate-N → *-ui-N, salvo fondos oscuros
+     intencionales (slate-600+ como fondo), que se quedan en slate. */
+  --color-canvas: oklch(98.4% 0.003 247.858);
+  --color-ui-50: oklch(98.4% 0.003 247.858);
+  --color-ui-100: oklch(96.8% 0.007 247.896);
+  --color-ui-200: oklch(92.9% 0.013 255.508);
+  --color-ui-300: oklch(86.9% 0.022 252.894);
+  --color-ui-400: oklch(70.4% 0.04 256.788);
+  --color-ui-500: oklch(55.4% 0.046 257.417);
+  --color-ui-600: oklch(44.6% 0.043 257.281);
+  --color-ui-700: oklch(37.2% 0.044 257.287);
+  --color-ui-800: oklch(27.9% 0.041 260.031);
+  --color-ui-900: oklch(20.8% 0.042 265.755);
+  --color-ui-950: oklch(12.9% 0.042 264.695);
+  /* Tooltips y globos oscuros: en modo oscuro se aclaran para no fundirse con las tarjetas. */
+  --color-tooltip: #1e293b;
 
   /* ── Typography ── */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui;
@@ -66,6 +90,33 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  color-scheme: light;
+}
+
+/* ── Modo oscuro: misma paleta de marca, neutros invertidos ──
+   Tonos tomados del login (slate oscuro + naranja). */
+.dark {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  color-scheme: dark;
+
+  --color-canvas: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-alt: #172133;
+  --color-surface-elevated: #243146;
+
+  --color-ui-50: #172133;
+  --color-ui-100: #243146;
+  --color-ui-200: #334155;
+  --color-ui-300: #475569;
+  --color-ui-400: #64748b;
+  --color-ui-500: #94a3b8;
+  --color-ui-600: #b4c0cf;
+  --color-ui-700: #cbd5e1;
+  --color-ui-800: #e2e8f0;
+  --color-ui-900: #f1f5f9;
+  --color-ui-950: #f8fafc;
+  --color-tooltip: #475569;
 }
 
 body {
@@ -184,6 +235,12 @@ body {
   background: #cbd5e1;
   border-radius: 4px;
 }
+.dark .tp-scroll-list {
+  scrollbar-color: #475569 transparent;
+}
+.dark .tp-scroll-list::-webkit-scrollbar-thumb {
+  background: #475569;
+}
 
 /* ── Scrollbar Utilities ── */
 .scrollbar-none {
@@ -201,6 +258,9 @@ body {
   }
 
   .card {
+    /* Se queda claro a propósito: lo usan vistas aún no adaptadas al modo oscuro,
+       cuyos textos siguen en slate. En vistas adaptadas usar <Card> o
+       `bg-surface border-ui-200`. */
     @apply bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-all;
   }
 }

@@ -35,7 +35,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             id={selectId}
             className={cn(
               selectClasses.select,
-              error && 'border-red-300 focus:border-red-500 focus:ring-red-100',
+              error && 'border-red-300 dark:border-red-500/40 focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-500/20',
               className
             )}
             {...props}

@@ -17,9 +17,9 @@ export default function DashboardLayout({
       <ToastProvider>
         <NotificationProvider>
           <SidebarProvider>
-            <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
+            <div className="min-h-screen bg-canvas flex flex-col lg:flex-row">
               <Sidebar />
-              <main className="flex-1 md:ml-72 min-h-screen flex flex-col overflow-x-hidden">
+              <main className="flex-1 lg:ml-72 min-h-screen flex flex-col overflow-x-hidden">
                 <Topbar />
                 <div className="h-16 shrink-0" />
                 
