@@ -278,16 +278,6 @@ export default function ReportesOperacionesPage() {
     inicial();
   }, [fetchData, fetchStats]);
 
-  // ── Chips de área ( Comparative por tipo, respetando stats.porArea) ──
-  const areaChips = [
-    { value: '', label: 'Todas las áreas', count: Object.values(stats.porArea || {}).reduce((a, b) => a + (b ?? 0), 0) },
-    ...TIPOS.map((t) => ({
-      value: t.value,
-      label: t.label,
-      count: stats.porArea?.[t.label as TipoReporte] ?? 0,
-    })),
-  ];
-
   // ── Filtros activos (chips) ──
   const activeFilters: ActiveFilter[] = [];
   if (filterValues.estado) {
@@ -300,13 +290,26 @@ export default function ReportesOperacionesPage() {
   }
   if (filterValues.tipo) {
     const label = TIPOS.find((t) => t.value === filterValues.tipo)?.label ?? filterValues.tipo;
-    activeFilters.push({ key: 'tipo', label: 'Tipo', value: label });
+    activeFilters.push({ key: 'tipo', label: 'Área', value: label });
   }
   if (soloCriticos) {
     activeFilters.push({ key: 'criticos', label: 'Vista', value: 'Solo críticos' });
   }
 
   const filterFields: FilterField[] = [
+    {
+      key: 'tipo',
+      label: 'Área',
+      type: 'select',
+      options: TIPOS.map((t) => {
+        const conteo = stats.porArea?.[t.label as TipoReporte] ?? 0;
+        return {
+          value: t.value,
+          label: conteo > 0 ? `${t.label} (${conteo})` : t.label,
+        };
+      }),
+      placeholder: 'Todas las áreas',
+    },
     {
       key: 'estado',
       label: 'Estado',
@@ -320,13 +323,6 @@ export default function ReportesOperacionesPage() {
       type: 'select',
       options: PRIORIDADES.map((p) => ({ value: p.value, label: p.label })),
       placeholder: 'Todas',
-    },
-    {
-      key: 'tipo',
-      label: 'Tipo',
-      type: 'select',
-      options: TIPOS.map((t) => ({ value: t.value, label: t.label })),
-      placeholder: 'Todos',
     },
   ];
 
@@ -899,31 +895,6 @@ export default function ReportesOperacionesPage() {
           label="Resueltos"
           color="success"
         />
-      </div>
-
-      {/* Chips de ÁREA — filtrar sin depender del panel */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
-        {areaChips.map((chip) => {
-          const activa = (filterValues.tipo ?? '') === chip.value;
-          return (
-            <button
-              key={chip.value || 'todas'}
-              onClick={() => handleFilterChange('tipo', chip.value)}
-              className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                activa
-                  ? 'bg-primary text-white border-primary shadow-md shadow-primary/25'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-primary/50 hover:text-primary'
-              }`}
-            >
-              {chip.label}
-              {chip.value !== '' && chip.count > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${activa ? 'bg-white/20' : 'bg-slate-100'}`}>
-                  {chip.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
