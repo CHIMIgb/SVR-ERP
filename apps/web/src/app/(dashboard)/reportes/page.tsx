@@ -161,7 +161,7 @@ const STATS_CERO: ReportesCampoStats = {
 };
 
 const emptyForm = {
-  tipo: 'OPERADOR' as TipoReporteApi,
+  tipo: '' as '' | TipoReporteApi,
   usuario: '',
   obraId: '',
   maquinaId: '',
@@ -301,13 +301,7 @@ export default function ReportesOperacionesPage() {
       key: 'tipo',
       label: 'Área',
       type: 'select',
-      options: TIPOS.map((t) => {
-        const conteo = stats.porArea?.[t.label as TipoReporte] ?? 0;
-        return {
-          value: t.value,
-          label: conteo > 0 ? `${t.label} (${conteo})` : t.label,
-        };
-      }),
+      options: TIPOS.map((t) => ({ value: t.value, label: t.label })),
       placeholder: 'Todas las áreas',
     },
     {
@@ -415,12 +409,8 @@ export default function ReportesOperacionesPage() {
 
   // ── Validación ──
   const validateForm = useCallback(() => {
-    if (!form.tipo || !form.usuario.trim()) {
-      showToast('Tipo y usuario son obligatorios.', 'error');
-      return false;
-    }
-    if (!form.obraId) {
-      showToast('Selecciona una obra.', 'error');
+    if (!form.tipo) {
+      showToast('Selecciona el área del reporte.', 'error');
       return false;
     }
     if (!form.fecha || !form.hora) {
@@ -435,20 +425,31 @@ export default function ReportesOperacionesPage() {
   }, [form, showToast]);
 
   // ── CRUD via API ──
+  /** "Quién reporta" = el usuario autenticado (no se captura a mano). */
+  const nombreReporta = useCallback((): string => {
+    const persona = user?.persona;
+    const nombre = [persona?.nombre, persona?.apellidoPaterno, persona?.apellidoMaterno]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return nombre || user?.email?.split('@')[0] || 'Usuario';
+  }, [user]);
+
   /** Deriva obraTexto del catálogo — el backend la persiste junto al FK. */
   const buildPayload = useCallback(
     (): ReporteCampoCreateInput => ({
-      tipo: form.tipo,
-      usuario: form.usuario.trim(),
+      tipo: form.tipo as TipoReporteApi,
+      usuario: nombreReporta(),
       maquinaId: form.maquinaId || undefined,
       obraId: form.obraId || undefined,
-      obraTexto: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? '',
+      obraTexto:
+        catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? 'Sin obra asociada',
       fecha: form.fecha,
       hora: form.hora,
       descripcion: form.descripcion.trim(),
       prioridad: form.prioridad || undefined,
     }),
-    [form, catalogos.obras],
+    [form, catalogos.obras, nombreReporta],
   );
 
   const handleCreate = useCallback(async () => {
@@ -1021,9 +1022,10 @@ export default function ReportesOperacionesPage() {
               className={modalSelectClass}
               value={form.tipo}
               onChange={(e) =>
-                setForm({ ...form, tipo: e.target.value as TipoReporteApi })
+                setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })
               }
             >
+              <option value="">Seleccionar área...</option>
               {TIPOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
@@ -1048,23 +1050,13 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Reporta (usuario)" required className="sm:col-span-2">
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Ej: Marcos G."
-              value={form.usuario}
-              onChange={(e) => setForm({ ...form, usuario: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Obra" required>
+          <ModalField label="Obra" hint="Opcional — algunos reportes no improper con obra.">
             <select
               className={modalSelectClass}
               value={form.obraId}
               onChange={(e) => setForm({ ...form, obraId: e.target.value })}
             >
-              <option value="">Seleccionar obra...</option>
+              <option value="">Sin obra asociada</option>
               {catalogos.obras.map((o) => (
                 <option key={o.id} value={o.id}>{o.nombre}</option>
               ))}
@@ -1196,9 +1188,10 @@ export default function ReportesOperacionesPage() {
               className={modalSelectClass}
               value={form.tipo}
               onChange={(e) =>
-                setForm({ ...form, tipo: e.target.value as TipoReporteApi })
+                setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })
               }
             >
+              <option value="">Seleccionar área...</option>
               {TIPOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
@@ -1223,22 +1216,13 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Reporta (usuario)" required className="sm:col-span-2">
-            <input
-              type="text"
-              className={modalInputClass}
-              value={form.usuario}
-              onChange={(e) => setForm({ ...form, usuario: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Obra" required>
+          <ModalField label="Obra" hint="Opcional — algunos reportes no improper con obra.">
             <select
               className={modalSelectClass}
               value={form.obraId}
               onChange={(e) => setForm({ ...form, obraId: e.target.value })}
             >
-              <option value="">Seleccionar obra...</option>
+              <option value="">Sin obra asociada</option>
               {catalogos.obras.map((o) => (
                 <option key={o.id} value={o.id}>{o.nombre}</option>
               ))}
