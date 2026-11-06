@@ -3,7 +3,8 @@ import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
-import { MaquinasService } from '../maquinas/maquinas.service';
+import { MaquinasService, TOPE_CATALOGO_MAQUINAS, UMBRAL_SERVICIO_HRS } from '../maquinas/maquinas.service';
+import { hoyEnZona } from '../../common/validacion';
 import { CreateMantenimientoDto } from './dto/create-mantenimiento.dto';
 import { UpdateMantenimientoDto } from './dto/update-mantenimiento.dto';
 import { QueryMantenimientoDto } from './dto/query-mantenimiento.dto';
@@ -77,9 +78,9 @@ export class MantenimientoService {
     }
 
     if (query.maquinaId) {
-      const mapa = await this.maquinasService.mapaCodigoAId();
-      const maquinaUuid = mapa.get(query.maquinaId);
-      where.maquina_id = maquinaUuid ?? '__sin_resultados__';
+      // Por código y no por UUID: antes un código inexistente metía '__sin_resultados__' en una columna uuid y
+      // la consulta tronaba con 500. Ahora da una lista vacía.
+      where.maquinas = { codigo: query.maquinaId.trim() };
     }
 
     if (query.search) {
@@ -118,50 +119,42 @@ export class MantenimientoService {
    * vez de derivarse de `findAll` en el frontend.
    */
   async findStats() {
-    const [registros, totalMaquinas, promedio] = await Promise.all([
-      this.prisma.registros_mantenimiento.findMany({
+    const hoy = hoyEnZona();
+    const inicioMes = new Date(`${hoy.slice(0, 8)}01T00:00:00Z`);
+    const inicioMesSiguiente = new Date(inicioMes);
+    inicioMesSiguiente.setUTCMonth(inicioMesSiguiente.getUTCMonth() + 1);
+    const delMes = { eliminado_en: null, fecha: { gte: inicioMes, lt: inicioMesSiguiente } };
+
+    const [maquinas, mes, correctivosMes, promedio] = await Promise.all([
+      this.prisma.maquinas.findMany({
         where: { eliminado_en: null },
-        select: { maquina_id: true, fecha: true, proximo_servicio_horas: true },
-        orderBy: { fecha: 'desc' },
+        select: { id: true, horometro: true },
+        take: TOPE_CATALOGO_MAQUINAS,
       }),
-      this.prisma.maquinas.count({ where: { eliminado_en: null } }),
-      this.prisma.registros_mantenimiento.aggregate({
-        where: { eliminado_en: null },
-        _avg: { horas_servicio: true },
-      }),
+      this.prisma.registros_mantenimiento.aggregate({ where: delMes, _count: { _all: true }, _sum: { costo: true } }),
+      this.prisma.registros_mantenimiento.count({ where: { ...delMes, tipo: 'CORRECTIVO' } }),
+      this.prisma.registros_mantenimiento.aggregate({ where: { eliminado_en: null }, _avg: { horas_servicio: true } }),
     ]);
 
-    // El más reciente por máquina (ya viene ordenado desc por fecha).
-    const ultimoPorMaquina = new Map<string, { proximo_servicio_horas: Prisma.Decimal }>();
-    for (const r of registros) {
-      if (!ultimoPorMaquina.has(r.maquina_id)) {
-        ultimoPorMaquina.set(r.maquina_id, { proximo_servicio_horas: r.proximo_servicio_horas });
-      }
-    }
-
-    const maquinaIds = Array.from(ultimoPorMaquina.keys());
-    const maquinas = maquinaIds.length
-      ? await this.prisma.maquinas.findMany({
-          where: { id: { in: maquinaIds } },
-          select: { id: true, horometro: true },
-        })
-      : [];
-
-    const UMBRAL_PROXIMO_HRS = 50;
-    let serviciosProximos = 0;
-    for (const m of maquinas) {
-      const ultimo = ultimoPorMaquina.get(m.id);
-      if (!ultimo) continue;
-      if (Number(m.horometro) >= Number(ultimo.proximo_servicio_horas) - UMBRAL_PROXIMO_HRS) {
-        serviciosProximos += 1;
-      }
-    }
+    // Misma regla que Flota y Horómetro: el próximo servicio sale del último registro de cada máquina.
+    const proximos = await this.maquinasService.proximoServicioPorMaquina(maquinas.map((m) => m.id));
+    const serviciosProximos = maquinas.filter((m) => {
+      const proximo = proximos.get(m.id);
+      return proximo !== undefined && Number(m.horometro) >= proximo - UMBRAL_SERVICIO_HRS;
+    }).length;
 
     return {
       serviciosProximos,
+      umbralServicioHoras: UMBRAL_SERVICIO_HRS,
+      serviciosMes: mes._count._all,
+      costoMes: Number(mes._sum.costo ?? 0),
+      correctivosMes,
+      sinServicioRegistrado: maquinas.filter((m) => !proximos.has(m.id)).length,
+      totalMaquinas: maquinas.length,
+      // Se conservan por compatibilidad; la vista ya no los muestra (el promedio es del horómetro al dar servicio
+      // y "óptimo" contaba como óptimas a las máquinas sin ningún servicio registrado).
       promedioHorasServicio: Math.round(Number(promedio._avg.horas_servicio ?? 0)),
-      equiposEnOptimoEstado: Math.max(0, totalMaquinas - serviciosProximos),
-      totalMaquinas,
+      equiposEnOptimoEstado: Math.max(0, maquinas.length - serviciosProximos),
     };
   }
 

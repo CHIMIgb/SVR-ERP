@@ -494,10 +494,19 @@ export interface MantenimientoDTO {
 }
 
 export interface MantenimientoStats {
+  /** Máquinas a `umbralServicioHoras` o menos de su próximo servicio, o ya pasadas. */
   serviciosProximos: number;
-  promedioHorasServicio: number;
-  equiposEnOptimoEstado: number;
+  umbralServicioHoras: number;
+  serviciosMes: number;
+  costoMes: number;
+  correctivosMes: number;
+  /** Máquinas sin ningún servicio registrado (no se sabe cuándo les toca). */
+  sinServicioRegistrado: number;
   totalMaquinas: number;
+  /** Compatibilidad: promedio del horómetro al dar servicio. La vista ya no lo muestra. */
+  promedioHorasServicio: number;
+  /** Compatibilidad: contaba como "óptimas" a las máquinas sin servicio registrado. La vista ya no lo muestra. */
+  equiposEnOptimoEstado: number;
 }
 
 export interface MantenimientoCreateInput {
