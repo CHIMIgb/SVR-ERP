@@ -1,8 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MaquinasService } from '../maquinas/maquinas.service';
+import { AuditService } from '../../audit/audit.service';
 import { CreateChecklistDto } from './dto/create-checklist.dto';
+import { QueryChecklistDto } from './dto/query-checklist.dto';
+
+const ENTITY_TYPE = 'checklists_preoperacionales';
+const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+const CHECKLIST_INCLUDE = {
+  maquinas: { select: { codigo: true } },
+  trabajadores: { select: { nombre: true } },
+} as const;
 
 /** Shape esperado por el frontend (packages/shared/types/maquinaria.ts). */
 export interface ChecklistResponse {
@@ -31,23 +40,65 @@ const ESTADO_SISTEMA_UI_A_DB = { Correcto: 'CORRECTO', Falla: 'FALLA' } as const
 export class ChecklistsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly maquinasService: MaquinasService,
+    private readonly auditService: AuditService,
   ) {}
 
-  async findAll(): Promise<ChecklistResponse[]> {
-    const checklists = await this.prisma.checklists_preoperacionales.findMany({
-      where: { eliminado_en: null },
-      include: { maquinas: { select: { codigo: true } }, trabajadores: { select: { nombre: true } } },
-      orderBy: { creado_en: 'desc' },
+  /** Audita un fallo de negocio y lanza la excepción (el actor sale del JWT en el contexto de request). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fallir<A extends new (message: string) => any>(
+    errorCode: string,
+    Excepcion: A,
+    message: string,
+    metadata: Record<string, unknown>,
+  ): Promise<never> {
+    await this.auditService.log({
+      action: AuditAction.CHECKLIST_REGISTRADO,
+      entityType: ENTITY_TYPE,
+      entityId: ENTITY_PLACEHOLDER,
+      result: AuditResult.FAIL,
+      severity: 'WARNING',
+      errorCode,
+      metadata,
     });
-
-    return checklists.map((c) => this.toResponse(c));
+    throw new Excepcion(message);
   }
 
-  async create(dto: CreateChecklistDto): Promise<ChecklistResponse> {
-    const mapa = await this.maquinasService.mapaCodigoAId();
-    const maquinaUuid = mapa.get(dto.maquinaId);
-    if (!maquinaUuid) throw new NotFoundException(`No existe la máquina "${dto.maquinaId}"`);
+  async findAll(query: QueryChecklistDto) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+
+    const where: Prisma.checklists_preoperacionalesWhereInput = { eliminado_en: null };
+    if (query.maquinaId) where.maquinas = { codigo: query.maquinaId.trim() };
+    if (query.estado) where.estado = query.estado === 'Aprobado' ? 'APROBADO' : 'CON_FALLA';
+
+    const [items, total] = await Promise.all([
+      this.prisma.checklists_preoperacionales.findMany({
+        where,
+        include: CHECKLIST_INCLUDE,
+        orderBy: [{ fecha: 'desc' }, { creado_en: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.checklists_preoperacionales.count({ where }),
+    ]);
+
+    return {
+      items: items.map((c) => this.toResponse(c)),
+      pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    };
+  }
+
+  async create(dto: CreateChecklistDto, userId: string): Promise<ChecklistResponse> {
+    const maquina = await this.prisma.maquinas.findFirst({
+      where: { codigo: dto.maquinaId, eliminado_en: null },
+      select: { id: true },
+    });
+    if (!maquina) {
+      return this.fallir('MAQUINA_NO_ENCONTRADA', NotFoundException, `No existe la máquina "${dto.maquinaId}"`, {
+        maquinaId: dto.maquinaId,
+      });
+    }
+    const maquinaUuid = maquina.id;
 
     // Misma regla que el frontend, pero aquí es la que manda: el cliente
     // no decide si el checklist queda Aprobado o Con Falla.
@@ -90,14 +141,29 @@ export class ChecklistsService {
         sistema_frenos: ESTADO_SISTEMA_UI_A_DB[dto.sistemaFrenos],
         estado: tieneFalla ? 'CON_FALLA' : 'APROBADO',
         observaciones: dto.observaciones,
+        creado_por: userId,
+        actualizado_por: userId,
         actualizado_en: new Date(),
       },
-      include: { maquinas: { select: { codigo: true } }, trabajadores: { select: { nombre: true } } },
+      include: CHECKLIST_INCLUDE,
     });
 
     // El operador mostrado es el texto que capturó el usuario, exista o
     // no como Trabajador real todavía (catalogo aun no poblado).
-    return { ...this.toResponse(creado), operador: dto.operador };
+    const serialized = { ...this.toResponse(creado), operador: dto.operador };
+    await this.auditService.log({
+      action: AuditAction.CHECKLIST_REGISTRADO,
+      entityType: ENTITY_TYPE,
+      entityId: creado.id,
+      result: AuditResult.SUCCESS,
+      // Un checklist con falla es una alerta para Mantenimiento: queda con WARNING.
+      severity: tieneFalla ? 'WARNING' : 'INFO',
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: serialized,
+    });
+    return serialized;
   }
 
   private toResponse(c: {

@@ -2,8 +2,15 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Maquina, DespachoMaquina, ChecklistPreoperacional } from '@svr-erp/shared';
-import { apiClient } from '@/lib/api';
+import type { ApiResponse, Maquina, DespachoMaquina, ChecklistPreoperacional } from '@svr-erp/shared';
+import {
+  maquinasApi,
+  despachosApi,
+  checklistsApi,
+  catalogosApi,
+  type PaginatedResponse,
+  type ProyectoCatalogoDTO,
+} from '@/lib/api';
 import { APP_TIMEZONE, formatFechaSolo } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,22 +24,28 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { Select } from '@/components/ui/Select';
 import { Tabs } from '@/components/ui/Tabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 
-interface ProyectoLite {
-  id: string;
-  nombre: string;
-  ubicacion: string;
-}
-
-type Fuente = 'maquinas' | 'despachos' | 'checklists' | 'proyectos';
+type Fuente = 'maquinas' | 'cronograma' | 'despachos' | 'checklists' | 'proyectos';
 const ETIQUETA_FUENTE: Record<Fuente, string> = {
   maquinas: 'Máquinas',
-  despachos: 'Despachos',
+  cronograma: 'Cronograma de despachos',
+  despachos: 'Lista de despachos',
   checklists: 'Checklists',
   proyectos: 'Obras para despachar',
 };
+
+const PAGE_SIZE = 10;
+/** Un cronograma de dos semanas cabe de sobra en una página de 100 (tope de la API). */
+const LIMITE_VENTANA = 100;
+// `Select` ya usa "" para su placeholder deshabilitado: "todos" lleva su propio valor.
+const FILTRO_CHECKLIST = [
+  { value: 'todos', label: 'Todos los resultados' },
+  { value: 'Aprobado', label: 'Aprobados' },
+  { value: 'Con Falla', label: 'Con falla' },
+];
 
 const VISTAS = ['equipos', 'despachos', 'checklists', 'mantenimiento'] as const;
 type Vista = (typeof VISTAS)[number];
@@ -154,16 +167,24 @@ export default function MaquinariaPage() {
   const puedeCrear = vista?.puedeCrear ?? false;
 
   const [maquinaria, setMaquinaria] = useState<Maquina[]>([]);
-  const [despachos, setDespachos] = useState<DespachoMaquina[]>([]);
-  const [checklists, setChecklists] = useState<ChecklistPreoperacional[]>([]);
-  const [proyectos, setProyectos] = useState<ProyectoLite[]>([]);
+  const [proyectos, setProyectos] = useState<ProyectoCatalogoDTO[]>([]);
+  // Despachos de las dos semanas que muestra el cronograma (la API filtra por fechas).
+  const [ventana, setVentana] = useState<PaginatedResponse<DespachoMaquina> | null>(null);
+  const [listaDespachos, setListaDespachos] = useState<PaginatedResponse<DespachoMaquina> | null>(null);
+  const [listaChecklists, setListaChecklists] = useState<PaginatedResponse<ChecklistPreoperacional> | null>(null);
   const [cargaInicial, setCargaInicial] = useState(true);
   const [recargando, setRecargando] = useState(false);
   // Un error por fuente: una que falle (p. ej. obras sin permiso) ya no deja la vista entera en error.
   const [errores, setErrores] = useState<Partial<Record<Fuente, string>>>({});
+  // Número de la última petición por fuente: una respuesta vieja (cambio rápido de página) no pisa a la nueva.
+  const secuencia = useRef<Partial<Record<Fuente, number>>>({});
 
   const [tab, setTab] = useState<Vista>('equipos');
   const [inicioCronograma, setInicioCronograma] = useState(() => lunesDe(hoyISO()));
+  const [paginaEquipos, setPaginaEquipos] = useState(1);
+  const [paginaDespachos, setPaginaDespachos] = useState(1);
+  const [paginaChecklists, setPaginaChecklists] = useState(1);
+  const [filtroChecklist, setFiltroChecklist] = useState<'' | 'Aprobado' | 'Con Falla'>('');
   const [search, setSearch] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('Todos');
 
@@ -178,47 +199,96 @@ export default function MaquinariaPage() {
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);
 
-  const cargarFuente = useCallback(async <T,>(fuente: Fuente, ruta: string, guardar: (d: T) => void) => {
-    try {
-      const res = await apiClient.get<T>(ruta);
-      if (!res.success) throw new Error(res.error.message);
-      guardar(res.data);
-      setErrores((prev) => {
-        if (!(fuente in prev)) return prev;
-        const siguiente = { ...prev };
-        delete siguiente[fuente];
-        return siguiente;
-      });
-    } catch (error) {
-      const mensaje = error instanceof Error ? error.message : 'error desconocido';
-      setErrores((prev) => ({ ...prev, [fuente]: mensaje }));
-    }
-  }, []);
+  const cargarFuente = useCallback(
+    async <T,>(fuente: Fuente, pedir: () => Promise<ApiResponse<T>>, guardar: (d: T) => void) => {
+      const numero = (secuencia.current[fuente] ?? 0) + 1;
+      secuencia.current[fuente] = numero;
+      try {
+        const res = await pedir();
+        if (secuencia.current[fuente] !== numero) return;
+        if (!res.success) throw new Error(res.error.message);
+        guardar(res.data);
+        setErrores((prev) => {
+          if (!(fuente in prev)) return prev;
+          const siguiente = { ...prev };
+          delete siguiente[fuente];
+          return siguiente;
+        });
+      } catch (error) {
+        if (secuencia.current[fuente] !== numero) return;
+        const mensaje = error instanceof Error ? error.message : 'error desconocido';
+        setErrores((prev) => ({ ...prev, [fuente]: mensaje }));
+      }
+    },
+    [],
+  );
 
-  const cargarTodo = useCallback(async () => {
-    await Promise.all([
-      cargarFuente<Maquina[]>('maquinas', '/maquinas', setMaquinaria),
-      cargarFuente<DespachoMaquina[]>('despachos', '/despachos', setDespachos),
-      cargarFuente<ChecklistPreoperacional[]>('checklists', '/checklists', setChecklists),
-      cargarFuente<ProyectoLite[]>('proyectos', '/catalogos/proyectos', setProyectos),
-    ]);
-  }, [cargarFuente]);
+  const cargarBase = useCallback(
+    () =>
+      Promise.all([
+        cargarFuente('maquinas', maquinasApi.listar, setMaquinaria),
+        cargarFuente('proyectos', catalogosApi.proyectos, setProyectos),
+      ]),
+    [cargarFuente],
+  );
+
+  const cargarCronograma = useCallback(
+    () =>
+      cargarFuente(
+        'cronograma',
+        () => despachosApi.listar({ desde: inicioCronograma, hasta: sumarDias(inicioCronograma, DIAS_CRONOGRAMA - 1), limit: LIMITE_VENTANA }),
+        setVentana,
+      ),
+    [cargarFuente, inicioCronograma],
+  );
+
+  const cargarListaDespachos = useCallback(
+    () => cargarFuente('despachos', () => despachosApi.listar({ page: paginaDespachos, limit: PAGE_SIZE }), setListaDespachos),
+    [cargarFuente, paginaDespachos],
+  );
+
+  const cargarChecklists = useCallback(
+    () =>
+      cargarFuente(
+        'checklists',
+        () => checklistsApi.listar({ estado: filtroChecklist || undefined, page: paginaChecklists, limit: PAGE_SIZE }),
+        setListaChecklists,
+      ),
+    [cargarFuente, filtroChecklist, paginaChecklists],
+  );
 
   useEffect(() => {
     (async () => {
       try {
-        await cargarTodo();
+        await cargarBase();
       } finally {
         setCargaInicial(false);
       }
     })();
-  }, [cargarTodo]);
+  }, [cargarBase]);
+
+  // Cada lista se vuelve a pedir cuando cambia su página, su filtro o la semana del cronograma.
+  useEffect(() => {
+    (async () => {
+      await cargarCronograma();
+    })();
+  }, [cargarCronograma]);
+  useEffect(() => {
+    (async () => {
+      await cargarListaDespachos();
+    })();
+  }, [cargarListaDespachos]);
+  useEffect(() => {
+    (async () => {
+      await cargarChecklists();
+    })();
+  }, [cargarChecklists]);
 
   const reintentar = async () => {
     if (recargando) return;
     setRecargando(true);
     try {
-      await cargarTodo();
+      await Promise.all([cargarBase(), cargarCronograma(), cargarListaDespachos(), cargarChecklists()]);
     } finally {
       setRecargando(false);
     }
@@ -249,24 +319,24 @@ export default function MaquinariaPage() {
       .map((t) => ({ value: t, label: t })),
   ];
 
+  // Las máquinas son el catálogo de la flota (la API las manda completas): la búsqueda y la página son locales.
   const filtradas = maquinaria.filter((m) => {
     const texto = search.trim().toLowerCase();
     const coincide = !texto || [m.id, m.nombre, m.operador].some((v) => v?.toLowerCase().includes(texto));
     return coincide && (tipoFiltro === 'Todos' || m.tipo === tipoFiltro);
   });
+  const paginasEquipos = Math.max(1, Math.ceil(filtradas.length / PAGE_SIZE));
+  const paginaEquiposVisible = Math.min(paginaEquipos, paginasEquipos);
+  const equiposPagina = filtradas.slice((paginaEquiposVisible - 1) * PAGE_SIZE, paginaEquiposVisible * PAGE_SIZE);
 
   const diasCronograma = Array.from({ length: DIAS_CRONOGRAMA }, (_, i) => sumarDias(inicioCronograma, i));
   const esSemanaActual = inicioCronograma === lunesDe(hoy);
+  const despachosVentana = ventana?.items ?? [];
   const proyectoPorId = new Map(proyectos.map((p) => [p.id, p]));
   const maquinaPorId = new Map(maquinaria.map((m) => [m.id, m]));
 
   const etapaDespacho = (d: DespachoMaquina): 'En curso' | 'Programado' | 'Terminado' =>
     d.fechaFin < hoy ? 'Terminado' : d.fechaInicio > hoy ? 'Programado' : 'En curso';
-  const ORDEN_ETAPA = { 'En curso': 0, Programado: 1, Terminado: 2 } as const;
-  // En curso y programados primero; dentro de cada grupo, el más reciente arriba.
-  const despachosOrdenados = [...despachos].sort(
-    (a, b) => ORDEN_ETAPA[etapaDespacho(a)] - ORDEN_ETAPA[etapaDespacho(b)] || b.fechaInicio.localeCompare(a.fechaInicio),
-  );
 
   // ── Abrir modales (cada uno empieza limpio) ──
   const abrirAlta = () => {
@@ -327,12 +397,12 @@ export default function MaquinariaPage() {
     if (combustible === null) e.combustible = 'Escribe el nivel de diésel, de 0 a 100 %.';
     const consumo = leerNumero(formMaquina.consumoEsperado, 0.1);
     if (consumo === null) e.consumoEsperado = 'Escribe el consumo esperado en litros por hora.';
-    if (Object.values(e).some(Boolean)) {
+    if (horometro === null || combustible === null || consumo === null || Object.values(e).some(Boolean)) {
       setErroresForm(e);
       return;
     }
     try {
-      const res = await apiClient.post<Maquina>('/maquinas', {
+      const res = await maquinasApi.crear({
         id: codigo,
         tipo: formMaquina.tipo,
         nombre,
@@ -366,14 +436,18 @@ export default function MaquinariaPage() {
       return;
     }
     try {
-      const res = await apiClient.post<DespachoMaquina>('/despachos', formDespacho);
+      const res = await despachosApi.crear(formDespacho);
       if (!res.success) {
         // La API revisa el traslape con toda la flota (409) y lo explica en el mensaje.
         showToast(res.error.message, 'error');
         return;
       }
-      setDespachos((prev) => [...prev, res.data]);
-      setInicioCronograma(lunesDe(res.data.fechaInicio));
+      // El cronograma se va a la semana del despacho y la lista vuelve a la primera página (ahí aparece).
+      const semana = lunesDe(res.data.fechaInicio);
+      if (semana === inicioCronograma) void cargarCronograma();
+      else setInicioCronograma(semana);
+      if (paginaDespachos === 1) void cargarListaDespachos();
+      else setPaginaDespachos(1);
       setDespachoOpen(false);
       const obra = proyectoPorId.get(res.data.proyectoId)?.nombre ?? 'la obra';
       showToast(`${res.data.maquinaId} despachada a ${obra} del ${formatFechaSolo(res.data.fechaInicio)} al ${formatFechaSolo(res.data.fechaFin)}.`, 'success');
@@ -394,12 +468,12 @@ export default function MaquinariaPage() {
     const observaciones = formChecklist.observaciones.trim();
     // Con una falla, el motivo es lo que necesita Mantenimiento: no puede ir vacío.
     if (conFalla && observaciones.length < 3) e.observaciones = 'Describe la falla que se encontró.';
-    if (Object.values(e).some(Boolean)) {
+    if (horometro === null || Object.values(e).some(Boolean)) {
       setErroresForm(e);
       return;
     }
     try {
-      const res = await apiClient.post<ChecklistPreoperacional>('/checklists', {
+      const res = await checklistsApi.crear({
         maquinaId: formChecklist.maquinaId,
         operador,
         horometroInicial: horometro,
@@ -416,7 +490,12 @@ export default function MaquinariaPage() {
         return;
       }
       const nuevo = res.data;
-      setChecklists((prev) => [nuevo, ...prev]);
+      // La lista vuelve a la primera página sin filtro, donde aparece el recién registrado.
+      if (paginaChecklists === 1 && filtroChecklist === '') void cargarChecklists();
+      else {
+        setPaginaChecklists(1);
+        setFiltroChecklist('');
+      }
       setMaquinaria((prev) =>
         prev.map((m) =>
           m.id === nuevo.maquinaId
@@ -809,8 +888,8 @@ export default function MaquinariaPage() {
             onChange={(k) => { if (esVista(k)) setTab(k); }}
             tabs={[
               { key: 'equipos', label: 'Equipos', count: maquinasCargadas ? maquinaria.length : undefined },
-              { key: 'despachos', label: 'Despachos', count: errores.despachos ? undefined : despachos.length },
-              { key: 'checklists', label: 'Checklists', count: errores.checklists ? undefined : checklists.length },
+              { key: 'despachos', label: 'Despachos', count: listaDespachos?.pagination.total },
+              { key: 'checklists', label: 'Checklists', count: filtroChecklist ? undefined : listaChecklists?.pagination.total },
               { key: 'mantenimiento', label: 'Mantenimiento' },
             ]}
           >
@@ -819,14 +898,18 @@ export default function MaquinariaPage() {
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <SearchBar value={search} onChange={setSearch} placeholder="Buscar por código, máquina u operador..." />
+                    <SearchBar
+                      value={search}
+                      onChange={(v) => { setSearch(v); setPaginaEquipos(1); }}
+                      placeholder="Buscar por código, máquina u operador..."
+                    />
                   </div>
                   <div className="sm:w-52">
                     <Select
                       aria-label="Filtrar por tipo"
                       placeholder="Tipo"
                       value={tipoFiltro}
-                      onChange={(e) => setTipoFiltro(e.target.value)}
+                      onChange={(e) => { setTipoFiltro(e.target.value); setPaginaEquipos(1); }}
                       options={opcionesTipo}
                     />
                   </div>
@@ -834,7 +917,7 @@ export default function MaquinariaPage() {
                 <DataTable
                   headerVariant="neutral"
                   columns={columnasEquipos}
-                  data={filtradas}
+                  data={equiposPagina}
                   keyExtractor={(m) => m.id}
                   maxBodyHeight="none"
                   emptyText={!maquinasCargadas
@@ -842,6 +925,13 @@ export default function MaquinariaPage() {
                     : maquinaria.length === 0
                       ? 'Todavía no hay máquinas dadas de alta.'
                       : 'Ninguna máquina coincide con la búsqueda o el filtro.'}
+                />
+                <Pagination
+                  currentPage={paginaEquiposVisible}
+                  totalPages={paginasEquipos}
+                  totalRecords={filtradas.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPaginaEquipos}
                 />
               </div>
             )}
@@ -900,7 +990,7 @@ export default function MaquinariaPage() {
                                 <p className="hidden sm:block text-xs text-ui-500 truncate max-w-[160px]">{m.nombre}</p>
                               </td>
                               {diasCronograma.map((d) => {
-                                const desp = despachos.find((x) => x.maquinaId === m.id && d >= x.fechaInicio && d <= x.fechaFin);
+                                const desp = despachosVentana.find((x) => x.maquinaId === m.id && d >= x.fechaInicio && d <= x.fechaFin);
                                 const obra = desp ? proyectoPorId.get(desp.proyectoId)?.nombre ?? desp.proyectoId : null;
                                 return (
                                   <td key={d} className={cn('px-1 py-2 text-center', d === hoy && 'bg-primary/5')}>
@@ -924,37 +1014,82 @@ export default function MaquinariaPage() {
                     </table>
                   </div>
                 </div>
-                {errores.despachos && <p className="text-xs text-red-600 dark:text-red-400">No se pudieron cargar los despachos: el cronograma puede estar incompleto.</p>}
+                {errores.cronograma && (
+                  <p className="text-xs text-red-600 dark:text-red-400">No se pudieron cargar los despachos de estas semanas: el cronograma está vacío.</p>
+                )}
+                {ventana && ventana.pagination.total > despachosVentana.length && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Se muestran {despachosVentana.length} de {ventana.pagination.total} despachos de estas semanas.
+                  </p>
+                )}
 
                 <h3 className="pt-3 text-sm font-semibold text-ui-900">Todos los despachos</h3>
                 <DataTable
                   headerVariant="neutral"
                   columns={columnasDespachos}
-                  data={despachosOrdenados}
+                  data={listaDespachos?.items ?? []}
+                  loading={!listaDespachos && !errores.despachos}
                   keyExtractor={(d) => d.id}
                   onRowClick={(d) => setInicioCronograma(lunesDe(d.fechaInicio))}
                   maxBodyHeight="none"
                   emptyText={errores.despachos ? 'No se pudieron cargar los despachos.' : 'Todavía no hay despachos registrados.'}
                 />
-                {despachos.length > 0 && <p className="text-xs text-ui-500">Toca un despacho para ver su semana en el cronograma.</p>}
+                {listaDespachos && (
+                  <Pagination
+                    currentPage={listaDespachos.pagination.page}
+                    totalPages={listaDespachos.pagination.totalPages}
+                    totalRecords={listaDespachos.pagination.total}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setPaginaDespachos}
+                  />
+                )}
+                {(listaDespachos?.items.length ?? 0) > 0 && <p className="text-xs text-ui-500">Toca un despacho para ver su semana en el cronograma.</p>}
               </div>
             )}
 
             {/* ── CHECKLISTS ── */}
             {tab === 'checklists' && (
               <div className="space-y-3">
-                <p className="text-sm text-ui-600">
-                  Inspección diaria antes de arrancar: aceite, hidráulico, llantas u orugas, luces, frenos y fugas. Cualquier punto en
-                  mal estado deja el checklist con falla y avisa a Mantenimiento.
-                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-sm text-ui-600">
+                    Inspección diaria antes de arrancar: aceite, hidráulico, llantas u orugas, luces, frenos y fugas. Cualquier punto en
+                    mal estado deja el checklist con falla y avisa a Mantenimiento.
+                  </p>
+                  <div className="sm:w-52 shrink-0">
+                    <Select
+                      aria-label="Filtrar por resultado"
+                      value={filtroChecklist || 'todos'}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFiltroChecklist(v === 'Aprobado' || v === 'Con Falla' ? v : '');
+                        setPaginaChecklists(1);
+                      }}
+                      options={FILTRO_CHECKLIST}
+                    />
+                  </div>
+                </div>
                 <DataTable
                   headerVariant="neutral"
                   columns={columnasChecklists}
-                  data={checklists}
+                  data={listaChecklists?.items ?? []}
+                  loading={!listaChecklists && !errores.checklists}
                   keyExtractor={(c) => c.id}
-                  maxBodyHeight="70vh"
-                  emptyText={errores.checklists ? 'No se pudieron cargar los checklists.' : 'Todavía no hay checklists registrados.'}
+                  maxBodyHeight="none"
+                  emptyText={errores.checklists
+                    ? 'No se pudieron cargar los checklists.'
+                    : filtroChecklist
+                      ? 'Ningún checklist con ese resultado.'
+                      : 'Todavía no hay checklists registrados.'}
                 />
+                {listaChecklists && (
+                  <Pagination
+                    currentPage={listaChecklists.pagination.page}
+                    totalPages={listaChecklists.pagination.totalPages}
+                    totalRecords={listaChecklists.pagination.total}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setPaginaChecklists}
+                  />
+                )}
               </div>
             )}
 

@@ -6,6 +6,9 @@ import {
   type RegisterCredentials,
   type RefreshCredentials,
   type UserAuth,
+  type Maquina,
+  type DespachoMaquina,
+  type ChecklistPreoperacional,
 } from '@svr-erp/shared';
 
 import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
@@ -601,6 +604,105 @@ export const combustibleApi = {
 };
 
 // ────────────────────────────────────────────────────────────
+// FLOTA (máquinas, despachos, checklists) Y HORÓMETRO
+// ────────────────────────────────────────────────────────────
+
+/** Arma "?a=1&b=2" con los parámetros que sí traen valor. */
+function queryString(params?: Record<string, string | number | undefined>): string {
+  const sp = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== '') sp.set(k, String(v));
+  });
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export interface MaquinaCreateInput {
+  /** Código del equipo (ej. "M005"); la API lo guarda en mayúsculas. */
+  id: string;
+  tipo: string;
+  nombre: string;
+  horometro: number;
+  combustible: number;
+  consumoEsperado: number;
+}
+
+export const maquinasApi = {
+  /** Catálogo de la flota (datos maestros, sin paginar: lo usan los selects de varias vistas). */
+  listar: () => apiClient.get<Maquina[]>('/maquinas'),
+  crear: (data: MaquinaCreateInput) => apiClient.post<Maquina>('/maquinas', data),
+};
+
+export interface DespachoCreateInput {
+  maquinaId: string;
+  /** Código del proyecto (ej. "P001"). */
+  proyectoId: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export const despachosApi = {
+  /** Paginado. Con `desde` y `hasta` trae solo los despachos que se enciman con esas fechas (cronograma). */
+  listar: (params?: { maquinaId?: string; desde?: string; hasta?: string; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResponse<DespachoMaquina>>(`/despachos${queryString(params)}`),
+  crear: (data: DespachoCreateInput) => apiClient.post<DespachoMaquina>('/despachos', data),
+};
+
+export type ChecklistCreateInput = Omit<ChecklistPreoperacional, 'id' | 'fecha' | 'hora' | 'estado'>;
+
+export const checklistsApi = {
+  listar: (params?: { maquinaId?: string; estado?: 'Aprobado' | 'Con Falla'; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResponse<ChecklistPreoperacional>>(`/checklists${queryString(params)}`),
+  crear: (data: ChecklistCreateInput) => apiClient.post<ChecklistPreoperacional>('/checklists', data),
+};
+
+export interface LecturaHorometroDTO {
+  id: string;
+  maquinaId: string;
+  maquinaNombre: string;
+  fecha: string;
+  lecturaInicial: number;
+  lecturaFinal: number;
+  horasTrabajadas: number;
+  /** Operador asignado a la máquina cuando se registró la lectura. */
+  operador: string | null;
+}
+
+export interface ServicioPorHorasDTO {
+  maquinaId: string;
+  nombre: string;
+  horometro: number;
+  proximoServicioHoras: number | null;
+  /** Negativo = el servicio ya se pasó. null = sin servicio registrado en Mantenimiento. */
+  horasRestantes: number | null;
+}
+
+export interface HorometroStats {
+  fecha: string;
+  horasHoy: number;
+  lecturasHoy: number;
+  horasSemana: number;
+  maquinasSinLecturaHoy: string[];
+  umbralServicioHoras: number;
+  serviciosProximos: number;
+  servicios: ServicioPorHorasDTO[];
+}
+
+export interface LecturaHorometroCreateInput {
+  maquinaId: string;
+  fecha: string;
+  lecturaInicial: number;
+  lecturaFinal: number;
+}
+
+export const horometroApi = {
+  listar: (params?: { search?: string; maquinaId?: string; desde?: string; hasta?: string; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResponse<LecturaHorometroDTO>>(`/lecturas-horometro${queryString(params)}`),
+  stats: () => apiClient.get<HorometroStats>('/lecturas-horometro/stats'),
+  crear: (data: LecturaHorometroCreateInput) => apiClient.post<LecturaHorometroDTO>('/lecturas-horometro', data),
+};
+
+// ────────────────────────────────────────────────────────────
 //  Incidentes API
 // ────────────────────────────────────────────────────────────
 
@@ -995,6 +1097,8 @@ export interface LiquidacionDesglose {
 export interface ProyectoCatalogoDTO {
   id: string;
   nombre: string;
+  /** Ubicación de su primera obra ('' si no tiene); `/catalogos/proyectos` la manda. */
+  ubicacion?: string;
 }
 
 export interface MaquinaCatalogoDTO {

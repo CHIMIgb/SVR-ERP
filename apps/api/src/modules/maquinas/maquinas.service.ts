@@ -1,7 +1,17 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../../audit/audit.service';
 import { CreateMaquinaDto } from './dto/create-maquina.dto';
+
+const ENTITY_TYPE = 'maquinas';
+const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+/**
+ * Tope de las consultas de la flota. Las máquinas son datos maestros que alimentan los selects de varias vistas
+ * (AGENTS.md exenta los catálogos de paginar); el tope evita una consulta sin límite.
+ */
+export const TOPE_CATALOGO_MAQUINAS = 500;
 
 /** Shape esperado por el frontend (packages/shared/types/maquinaria.ts). */
 export interface MaquinaResponse {
@@ -56,7 +66,31 @@ const TIPO_UI_A_CATALOGO: Record<string, string> = {
 
 @Injectable()
 export class MaquinasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  /** Audita un fallo de negocio y lanza la excepción (el actor sale del JWT en el contexto de request). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fallir<A extends new (message: string) => any>(
+    entityId: string | null,
+    errorCode: string,
+    Excepcion: A,
+    message: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<never> {
+    await this.auditService.log({
+      action: AuditAction.MAQUINA_CREADA,
+      entityType: ENTITY_TYPE,
+      entityId: entityId || ENTITY_PLACEHOLDER,
+      result: AuditResult.FAIL,
+      severity: 'WARNING',
+      errorCode,
+      metadata: metadata ?? null,
+    });
+    throw new Excepcion(message);
+  }
 
   /**
    * Lista de solo lectura, usada por las vistas que necesitan resolver
@@ -79,11 +113,13 @@ export class MaquinasService {
           trabajadores: { select: { nombre: true } },
         },
         orderBy: { codigo: 'asc' },
+        take: TOPE_CATALOGO_MAQUINAS,
       }),
       this.prisma.checklists_preoperacionales.findMany({
         where: { eliminado_en: null, fecha: { gte: hoy, lt: mañana } },
         include: { trabajadores: { select: { nombre: true } } },
         orderBy: { creado_en: 'desc' },
+        take: TOPE_CATALOGO_MAQUINAS,
       }),
     ]);
 
@@ -128,14 +164,16 @@ export class MaquinasService {
     });
   }
 
-  async create(dto: CreateMaquinaDto): Promise<MaquinaResponse> {
+  async create(dto: CreateMaquinaDto, userId: string): Promise<MaquinaResponse> {
     // El código se guarda en mayúsculas: se compara igual, si no "m005" pasaba la revisión y chocaba con "M005"
     // en la base (error 500 en vez de este aviso).
     const codigo = dto.id.trim().toUpperCase();
+    const duplicada = () =>
+      this.fallir(null, 'MAQUINA_DUPLICADA', ConflictException, `Ya existe una máquina con el código "${codigo}"`, {
+        codigo,
+      });
     const existente = await this.prisma.maquinas.findUnique({ where: { codigo } });
-    if (existente) {
-      throw new BadRequestException(`Ya existe una máquina con el código "${codigo}"`);
-    }
+    if (existente) return duplicada();
 
     const nombreTipo = TIPO_UI_A_CATALOGO[dto.tipo] ?? dto.tipo;
     let tipo = await this.prisma.tipos_maquina.findUnique({ where: { nombre: nombreTipo } });
@@ -157,33 +195,62 @@ export class MaquinasService {
       operadorId = trabajador?.id;
     }
 
-    const creada = await this.prisma.maquinas.create({
-      data: {
-        id: randomUUID(),
-        codigo,
-        nombre: dto.nombre.trim(),
-        tipo_id: tipo.id,
-        estado: 'APAGADA',
-        horometro: dto.horometro ?? 0,
-        combustible: dto.combustible ?? 100,
-        operador_id: operadorId,
-        // Sin geolocalizacion real todavia al dar de alta: se usa el
-        // centro de operaciones por defecto (CDMX) hasta que se asigne
-        // un dispositivo GPS real (ver tarea de GPS).
-        lat: 19.4326,
-        lng: -99.1332,
-        diesel_hoy: 0,
-        consumo_esperado_lts_hora: dto.consumoEsperado ?? 14.0,
-        rendimiento_actual_lts_hora: dto.consumoEsperado ?? 14.0,
-        alerta_consumo_anormal: false,
-        actualizado_en: new Date(),
-      },
-      include: {
-        tipos_maquina: { select: { nombre: true } },
-        trabajadores: { select: { nombre: true } },
-      },
-    });
+    let creada;
+    try {
+      creada = await this.prisma.maquinas.create({
+        data: {
+          id: randomUUID(),
+          codigo,
+          nombre: dto.nombre.trim(),
+          tipo_id: tipo.id,
+          estado: 'APAGADA',
+          horometro: dto.horometro ?? 0,
+          combustible: dto.combustible ?? 100,
+          operador_id: operadorId,
+          // Sin geolocalizacion real todavia al dar de alta: se usa el
+          // centro de operaciones por defecto (CDMX) hasta que se asigne
+          // un dispositivo GPS real (ver tarea de GPS).
+          lat: 19.4326,
+          lng: -99.1332,
+          diesel_hoy: 0,
+          consumo_esperado_lts_hora: dto.consumoEsperado ?? 14.0,
+          rendimiento_actual_lts_hora: dto.consumoEsperado ?? 14.0,
+          alerta_consumo_anormal: false,
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+        include: {
+          tipos_maquina: { select: { nombre: true } },
+          trabajadores: { select: { nombre: true } },
+        },
+      });
+    } catch (error) {
+      // Dos altas del mismo código al mismo tiempo: las dos pasan la revisión de arriba y el índice único de
+      // `codigo` frena a la segunda. Se responde el mismo 409 en vez de un 500.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return duplicada();
+      throw error;
+    }
 
+    const serialized = this.serializarCreada(creada);
+    await this.auditService.log({
+      action: AuditAction.MAQUINA_CREADA,
+      entityType: ENTITY_TYPE,
+      entityId: creada.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: serialized,
+    });
+    return serialized;
+  }
+
+  private serializarCreada(
+    creada: Prisma.maquinasGetPayload<{
+      include: { tipos_maquina: { select: { nombre: true } }; trabajadores: { select: { nombre: true } } };
+    }>,
+  ) {
     return {
       id: creada.codigo ?? creada.id,
       nombre: creada.nombre,
@@ -208,6 +275,7 @@ export class MaquinasService {
     const maquinas = await this.prisma.maquinas.findMany({
       where: { eliminado_en: null, codigo: { not: null } },
       select: { id: true, codigo: true },
+      take: TOPE_CATALOGO_MAQUINAS,
     });
     return new Map(maquinas.map((m) => [m.codigo as string, m.id]));
   }
