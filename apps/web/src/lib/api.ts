@@ -3022,6 +3022,8 @@ export interface MaquinaGpsDTO {
   hours: number;
   lastUpdate: string;
   ultimaFechaHora: string | null;
+  /** true si la última posición la generó la simulación (todavía no hay feed del proveedor). */
+  simulada?: boolean;
   operator?: string;
   geocercas: Array<{ nombre: string; color: string }>;
 }
