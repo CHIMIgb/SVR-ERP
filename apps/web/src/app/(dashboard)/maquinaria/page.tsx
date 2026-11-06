@@ -38,6 +38,8 @@ const ETIQUETA_FUENTE: Record<Fuente, string> = {
 };
 
 const PAGE_SIZE = 10;
+/** Igual que la API (UMBRAL_SERVICIO_HRS): a 50 h o menos del próximo servicio se marca "servicio cerca". */
+const UMBRAL_SERVICIO_HRS = 50;
 /** Un cronograma de dos semanas cabe de sobra en una página de 100 (tope de la API). */
 const LIMITE_VENTANA = 100;
 // `Select` ya usa "" para su placeholder deshabilitado: "todos" lleva su propio valor.
@@ -93,9 +95,6 @@ function lunesDe(fecha: string): string {
   return sumarDias(fecha, -((d.getUTCDay() + 6) % 7));
 }
 
-function diasEntre(desde: string, hasta: string): number {
-  return Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000);
-}
 
 /** Número ≥ min (y ≤ max), o null. */
 function leerNumero(valor: string, min: number, max = Number.MAX_SAFE_INTEGER): number | null {
@@ -303,12 +302,13 @@ export default function MaquinariaPage() {
   const conAlertaConsumo = maquinaria.filter((m) => m.alertaConsumoAnormal);
   const conChecklistHoy = maquinaria.filter((m) => m.checklistHoy);
   const conFallaHoy = conChecklistHoy.filter((m) => m.checklistHoy?.estado === 'Con Falla').length;
-  const servicios = maquinaria
-    .filter((m) => m.proximoMantenimiento)
-    .sort((a, b) => a.proximoMantenimiento.localeCompare(b.proximoMantenimiento));
-  // Un servicio con fecha pasada no es "próximo": se cuenta aparte como vencido.
-  const serviciosVencidos = servicios.filter((m) => m.proximoMantenimiento < hoy);
-  const proximoServicio = servicios.find((m) => m.proximoMantenimiento >= hoy);
+  // Próximo servicio por horas (del último registro de Mantenimiento). Antes salía de una fecha sembrada que
+  // ningún flujo actualiza, y marcaba "vencidas" a máquinas por un dato congelado.
+  const maquinasParaServicio = [...maquinaria].sort(
+    (a, b) => (a.horasParaServicio ?? Infinity) - (b.horasParaServicio ?? Infinity),
+  );
+  const servicioCerca = maquinasParaServicio.filter((m) => m.horasParaServicio !== undefined && m.horasParaServicio <= UMBRAL_SERVICIO_HRS);
+  const servicioMasCercano = maquinasParaServicio.find((m) => m.horasParaServicio !== undefined);
 
   // El filtro sale de los tipos que de verdad tiene la flota: antes era una lista fija con los nombres del alta
   // ("Excavación") y la API devuelve los del catálogo ("Excavadora", "Retroexcavadora"), así que nunca coincidía.
@@ -558,6 +558,19 @@ export default function MaquinariaPage() {
     return { actual, esperado, pct };
   };
 
+  const textoServicio = (m: Maquina, conInsignia = false) => {
+    const h = m.horasParaServicio;
+    if (h === undefined) {
+      return conInsignia
+        ? <Badge variant="neutral" size="sm">Sin servicio registrado</Badge>
+        : <span className="text-sm text-ui-400">—</span>;
+    }
+    const texto = h < 0 ? `Pasado por ${(-h).toLocaleString('es-MX')} h` : `Faltan ${h.toLocaleString('es-MX')} h`;
+    if (h < 0) return <Badge variant="error" size="sm">{texto}</Badge>;
+    if (h <= UMBRAL_SERVICIO_HRS) return <Badge variant="warning" size="sm">{texto}</Badge>;
+    return <span className="text-sm text-ui-700 whitespace-nowrap">{texto}</span>;
+  };
+
   const badgesEstado = (m: Maquina) => {
     const alerta = sobreconsumo(m);
     return (
@@ -626,7 +639,7 @@ export default function MaquinariaPage() {
       key: 'servicio',
       header: 'Próx. servicio',
       className: 'hidden 2xl:table-cell',
-      render: (m) => <span className="text-sm text-ui-700 whitespace-nowrap">{m.proximoMantenimiento ? formatFechaSolo(m.proximoMantenimiento) : '—'}</span>,
+      render: (m) => textoServicio(m),
     },
     {
       key: 'acciones',
@@ -707,23 +720,19 @@ export default function MaquinariaPage() {
 
   const columnasServicio: Column<Maquina>[] = [
     { key: 'equipo', header: 'Equipo', render: celdaEquipo },
-    {
-      key: 'servicio',
-      header: 'Próximo servicio',
-      render: (m) => {
-        if (!m.proximoMantenimiento) return <span className="text-sm text-ui-400">Sin programar</span>;
-        const faltan = diasEntre(hoy, m.proximoMantenimiento);
-        return (
-          <div className="whitespace-nowrap">
-            <p className="text-sm text-ui-900">{formatFechaSolo(m.proximoMantenimiento)}</p>
-            <p className={cn('text-xs', faltan < 0 ? 'text-red-600 dark:text-red-400 font-semibold' : faltan <= 7 ? 'text-amber-700 dark:text-amber-400' : 'text-ui-500')}>
-              {faltan < 0 ? `Vencido hace ${-faltan} día${faltan === -1 ? '' : 's'}` : faltan === 0 ? 'Hoy' : `En ${faltan} día${faltan === 1 ? '' : 's'}`}
-            </p>
-          </div>
-        );
-      },
-    },
     { key: 'horometro', header: 'Horómetro', align: 'right', className: 'hidden md:table-cell', render: (m) => <span className="text-sm text-ui-700 tabular-nums">{m.horometro.toLocaleString('es-MX')} h</span> },
+    {
+      key: 'proximo',
+      header: 'Próximo servicio',
+      align: 'right',
+      className: 'hidden lg:table-cell',
+      render: (m) => (
+        <span className="text-sm text-ui-700 tabular-nums whitespace-nowrap">
+          {m.proximoServicioHoras === undefined ? '—' : `${m.proximoServicioHoras.toLocaleString('es-MX')} h`}
+        </span>
+      ),
+    },
+    { key: 'estado', header: 'Estado', align: 'right', render: (m) => textoServicio(m, true) },
     {
       key: 'consumo',
       header: 'Consumo',
@@ -791,12 +800,6 @@ export default function MaquinariaPage() {
       },
     },
   ];
-
-  const maquinasParaServicio = [...maquinaria].sort((a, b) => {
-    if (!a.proximoMantenimiento) return 1;
-    if (!b.proximoMantenimiento) return -1;
-    return a.proximoMantenimiento.localeCompare(b.proximoMantenimiento);
-  });
 
   const mensajesError = (Object.entries(errores) as [Fuente, string][]).map(([f, m]) => `${ETIQUETA_FUENTE[f]}: ${m}`);
   const falla = formChecklist ? checklistConFalla(formChecklist) : false;
@@ -867,17 +870,15 @@ export default function MaquinariaPage() {
             />
             <StatsCard
               className="rounded-none border-0 hover:shadow-none hover:bg-ui-50"
-              label={serviciosVencidos.length > 0 ? 'Servicios vencidos' : 'Próximo servicio'}
-              value={!maquinasCargadas
-                ? '—'
-                : serviciosVencidos.length > 0
-                  ? serviciosVencidos.length
-                  : proximoServicio ? formatFechaSolo(proximoServicio.proximoMantenimiento) : '—'}
+              label="Servicio cerca o pasado"
+              value={maquinasCargadas ? servicioCerca.length : '—'}
               hint={!maquinasCargadas
                 ? undefined
-                : serviciosVencidos.length > 0
-                  ? serviciosVencidos.map((m) => m.id).join(', ')
-                  : proximoServicio ? `${proximoServicio.id} · ${proximoServicio.nombre}` : 'Sin servicios programados'}
+                : servicioCerca.length > 0
+                  ? servicioCerca.map((m) => m.id).join(', ')
+                  : servicioMasCercano?.horasParaServicio !== undefined
+                    ? `Más cercano: ${servicioMasCercano.id} (faltan ${servicioMasCercano.horasParaServicio.toLocaleString('es-MX')} h)`
+                    : 'Sin servicios registrados'}
               onClick={() => setTab('mantenimiento')}
             />
           </div>
@@ -1097,7 +1098,10 @@ export default function MaquinariaPage() {
             {tab === 'mantenimiento' && (
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <p className="text-sm text-ui-600">Servicios preventivos por fecha, del más próximo al más lejano.</p>
+                  <p className="text-sm text-ui-600">
+                    Horas que le faltan a cada máquina para el servicio que dejó programado su último mantenimiento, de la más
+                    urgente a la menos.
+                  </p>
                   <Button variant="outline" size="sm" onClick={() => router.push('/mantenimiento')} className="shrink-0">
                     Ir a Mantenimiento
                   </Button>

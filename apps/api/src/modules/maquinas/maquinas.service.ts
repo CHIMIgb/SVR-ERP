@@ -12,6 +12,8 @@ const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
  * (AGENTS.md exenta los catálogos de paginar); el tope evita una consulta sin límite.
  */
 export const TOPE_CATALOGO_MAQUINAS = 500;
+/** A cuántas horas (o menos) del próximo servicio se marca una máquina como "servicio cerca". */
+export const UMBRAL_SERVICIO_HRS = 50;
 
 /** Shape esperado por el frontend (packages/shared/types/maquinaria.ts). */
 export interface MaquinaResponse {
@@ -25,7 +27,15 @@ export interface MaquinaResponse {
   lat: number;
   lng: number;
   dieselHoy: number;
+  /**
+   * Fecha de `maquinas.proximo_mantenimiento`. Ningún flujo la actualiza (solo trae lo sembrado): el próximo
+   * servicio real es por horas, en `proximoServicioHoras` / `horasParaServicio`. Se deja por compatibilidad.
+   */
   proximoMantenimiento: string;
+  /** Horómetro al que toca el próximo servicio (del último registro de Mantenimiento). */
+  proximoServicioHoras?: number;
+  /** Horas que faltan para ese servicio; negativo = ya se pasó. */
+  horasParaServicio?: number;
   imagen?: string;
   consumoEsperadoLtsHora?: number;
   rendimientoActualLtsHora?: number;
@@ -123,6 +133,8 @@ export class MaquinasService {
       }),
     ]);
 
+    const proximoServicio = await this.proximoServicioPorMaquina(maquinas.map((m) => m.id));
+
     // El mas reciente por maquina (findMany ya viene ordenado desc).
     const checklistPorMaquina = new Map<string, (typeof checklistsHoy)[number]>();
     for (const c of checklistsHoy) {
@@ -133,6 +145,7 @@ export class MaquinasService {
 
     return maquinas.map((m) => {
       const checklist = checklistPorMaquina.get(m.id);
+      const proximo = proximoServicio.get(m.id);
 
       return {
         id: m.codigo ?? m.id,
@@ -146,6 +159,8 @@ export class MaquinasService {
         lng: Number(m.lng),
         dieselHoy: Number(m.diesel_hoy),
         proximoMantenimiento: m.proximo_mantenimiento?.toISOString().split('T')[0] ?? '',
+        proximoServicioHoras: proximo,
+        horasParaServicio: proximo === undefined ? undefined : Math.round((proximo - Number(m.horometro)) * 100) / 100,
         imagen: m.imagen ?? undefined,
         consumoEsperadoLtsHora: m.consumo_esperado_lts_hora != null ? Number(m.consumo_esperado_lts_hora) : undefined,
         rendimientoActualLtsHora: m.rendimiento_actual_lts_hora != null ? Number(m.rendimiento_actual_lts_hora) : undefined,
@@ -267,6 +282,21 @@ export class MaquinasService {
       rendimientoActualLtsHora: creada.rendimiento_actual_lts_hora != null ? Number(creada.rendimiento_actual_lts_hora) : undefined,
       alertaConsumoAnormal: creada.alerta_consumo_anormal,
     };
+  }
+
+  /**
+   * Horómetro al que toca el próximo servicio de cada máquina: el `proximo_servicio_horas` de su último registro
+   * de Mantenimiento. Lo usan Flota, Horómetro y Mantenimiento (una sola regla para las tres vistas).
+   * DISTINCT ON da exactamente una fila por máquina.
+   */
+  async proximoServicioPorMaquina(ids: string[]): Promise<Map<string, number>> {
+    if (ids.length === 0) return new Map();
+    const filas = await this.prisma.$queryRaw<{ maquina_id: string; proximo_servicio_horas: Prisma.Decimal }[]>`
+      SELECT DISTINCT ON (maquina_id) maquina_id, proximo_servicio_horas
+      FROM registros_mantenimiento
+      WHERE eliminado_en IS NULL AND maquina_id = ANY(${ids}::uuid[])
+      ORDER BY maquina_id, fecha DESC, creado_en DESC`;
+    return new Map(filas.map((f) => [f.maquina_id, Number(f.proximo_servicio_horas)]));
   }
 
   /** Mapa interno codigo->id real (UUID), para que otros módulos puedan

@@ -18,6 +18,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { AuditContextService } from '../../audit/audit-context.service';
 import { hoyEnZona } from '../../common/validacion';
+import { MaquinasService } from '../maquinas/maquinas.service';
 import { HorometroService } from './horometro.service';
 
 const TEST_ID = randomUUID().slice(0, 6).toUpperCase();
@@ -37,7 +38,7 @@ describe('Horómetro (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, HorometroService],
+      providers: [PrismaService, AuditContextService, AuditService, MaquinasService, HorometroService],
     }).compile();
     app = module.createNestApplication();
     await app.init();
@@ -168,7 +169,10 @@ describe('Horómetro (Real DB)', () => {
 
   it('registro_auditoria es inmutable: no se puede borrar ni modificar la auditoría de una lectura', async () => {
     const fila = await prisma.lecturas_horometro.findFirstOrThrow({ where: { maquina_id: maquinaId, lectura_inicial: 100 } });
-    const [audit] = await prisma.registro_auditoria.findMany({ where: { action: AuditAction.HOROMETRO_REGISTRADO, entity_id: fila.id } });
+    // La de SUCCESS: el FAIL del traslape también apunta a esta lectura (es la que ya tenía esas horas).
+    const [audit] = await prisma.registro_auditoria.findMany({
+      where: { action: AuditAction.HOROMETRO_REGISTRADO, entity_id: fila.id, result: AuditResult.SUCCESS },
+    });
 
     await expect(prisma.registro_auditoria.delete({ where: { event_id: audit.event_id } })).rejects.toThrow();
     await expect(

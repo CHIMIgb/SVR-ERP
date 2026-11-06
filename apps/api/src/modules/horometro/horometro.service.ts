@@ -4,6 +4,7 @@ import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { esFechaFutura, hoyEnZona } from '../../common/validacion';
+import { MaquinasService, TOPE_CATALOGO_MAQUINAS, UMBRAL_SERVICIO_HRS } from '../maquinas/maquinas.service';
 import { CreateLecturaHorometroDto } from './dto/create-lectura-horometro.dto';
 import { QueryLecturaHorometroDto } from './dto/query-lectura-horometro.dto';
 
@@ -34,10 +35,6 @@ const ENTITY_TYPE = 'lecturas_horometro';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 /** Una lectura es de un día: no puede sumar más horas que las del día. */
 const HORAS_MAX_POR_LECTURA = 24;
-/** Mismo umbral que usa Mantenimiento para "servicio próximo". */
-const UMBRAL_SERVICIO_HRS = 50;
-/** Tope de los catálogos internos (máquinas de la flota): son datos maestros, no un listado que crezca sin fin. */
-const TOPE_CATALOGO = 500;
 
 const LECTURA_INCLUDE = {
   maquinas: { select: { id: true, codigo: true, nombre: true } },
@@ -53,6 +50,7 @@ export class HorometroService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly maquinasService: MaquinasService,
   ) {}
 
   /**
@@ -147,7 +145,7 @@ export class HorometroService {
         where: { eliminado_en: null, activo: true },
         select: { id: true, codigo: true, nombre: true, horometro: true },
         orderBy: { codigo: 'asc' },
-        take: TOPE_CATALOGO,
+        take: TOPE_CATALOGO_MAQUINAS,
       }),
       this.prisma.lecturas_horometro.groupBy({
         by: ['maquina_id'],
@@ -155,17 +153,9 @@ export class HorometroService {
       }),
     ]);
 
-    // Último servicio registrado por máquina: de ahí sale a qué horómetro toca el siguiente.
-    // DISTINCT ON da exactamente una fila por máquina (el `distinct` de Prisma con `take` no lo garantiza).
-    const ids = maquinas.map((m) => m.id);
-    const ultimosServicios = ids.length
-      ? await this.prisma.$queryRaw<{ maquina_id: string; proximo_servicio_horas: Prisma.Decimal }[]>`
-          SELECT DISTINCT ON (maquina_id) maquina_id, proximo_servicio_horas
-          FROM registros_mantenimiento
-          WHERE eliminado_en IS NULL AND maquina_id = ANY(${ids}::uuid[])
-          ORDER BY maquina_id, fecha DESC, creado_en DESC`
-      : [];
-    const proximoPorMaquina = new Map(ultimosServicios.map((s) => [s.maquina_id, Number(s.proximo_servicio_horas)]));
+    // Último servicio registrado por máquina: de ahí sale a qué horómetro toca el siguiente (misma regla que Flota
+    // y Mantenimiento).
+    const proximoPorMaquina = await this.maquinasService.proximoServicioPorMaquina(maquinas.map((m) => m.id));
     const idsConLecturaHoy = new Set(conLecturaHoy.map((l) => l.maquina_id));
 
     const servicios: ServicioPorHorasResponse[] = maquinas
