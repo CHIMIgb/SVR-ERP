@@ -340,8 +340,9 @@ export class ReportesCampoService {
       );
     }
 
-    const reporte = await this.prisma.reportes_campo.update({
-      where: { id },
+    // Guard anti-carrera: solo reasigna el reporte que sigue en el estado leído
+    const actualizada = await this.prisma.reportes_campo.updateMany({
+      where: { id, estado: (existente.estado as EstadoReporteCampo), eliminado_en: null },
       data: {
         asignado_a_id: asignadoA,
         asignado_nombre: asignadoNombre,
@@ -349,8 +350,30 @@ export class ReportesCampoService {
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
+    });
+    if (actualizada.count === 0) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'CONFLICTO_CONCURRENCIA',
+        ConflictException,
+        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
       include: REPORTE_INCLUDE,
     });
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
 
     const serialized = this.serialize(reporte);
 
@@ -362,6 +385,10 @@ export class ReportesCampoService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
+      previousValue: {
+        asignadoAId: existente.asignado_a_id,
+        asignadoNombre: existente.asignado_nombre,
+      },
       newValue: {
         asignadoAId: asignadoA,
         asignadoNombre,
@@ -404,16 +431,53 @@ export class ReportesCampoService {
       );
     }
 
-    const reporte = await this.prisma.reportes_campo.update({
-      where: { id },
+    // El cliente no es confiable: RESUELTO exige responsable previo en la BD,
+    // no solo en la UI (review PR #15, sugerencia "Sin asignar").
+    if (dto.estado === EstadoReporteCampo.RESUELTO && !existente.asignado_a_id && !existente.asignado_nombre) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'RESPONSABLE_REQUERIDO',
+        BadRequestException,
+        'No se puede marcar Resuelto sin responsable: asígnale uno primero',
+      );
+    }
+
+    // Guard anti-carrera (review PR #15): solo cambia el reporte que SIGUE en
+    // el estado leído; si otro cambio simultáneo ya movió el estado, el
+    // updateMany no toca nada → conflicto en vez de sobrescribir resuelto_en.
+    const actualizada = await this.prisma.reportes_campo.updateMany({
+      where: { id, estado: estadoActual, eliminado_en: null },
       data: {
         estado: dto.estado,
         ...(dto.estado === EstadoReporteCampo.RESUELTO && { resuelto_en: new Date() }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
+    });
+    if (actualizada.count === 0) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'CONFLICTO_CONCURRENCIA',
+        ConflictException,
+        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
       include: REPORTE_INCLUDE,
     });
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
 
     const serialized = this.serialize(reporte);
 

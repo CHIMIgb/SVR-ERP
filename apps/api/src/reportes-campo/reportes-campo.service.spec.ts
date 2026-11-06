@@ -28,6 +28,9 @@ describe('ReportesCampoService', () => {
     hora: new Date('1970-01-01T14:15:00'),
     descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
     estado: EstadoReporteCampo.VISTO,
+    asignado_a_id: null,
+    asignado_nombre: 'Marcos G.',
+    asignado_en: null,
     prioridad: null,
     detalles: { litros: 200, costo: 4600 },
     obra_id: null,
@@ -296,6 +299,42 @@ describe('ReportesCampoService', () => {
         service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.VISTO }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('rechaza marcar Resuelto sin responsable (RESPONSABLE_REQUERIDO) Y audita el fallo', async () => {
+      // arrange — ni asignado_a ni asignado_nombre (el cliente no es confiable)
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoReporteCampo.ATENDIDO,
+        asignado_a_id: null,
+        asignado_nombre: null,
+      });
+
+      // act / assert
+      await expect(
+        service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.RESUELTO }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'RESPONSABLE_REQUERIDO' }),
+      );
+      expect(prisma.reportes_campo.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('carrera: si el estado ya cambió → 409 y NO sobrescribe resuelto_en', async () => {
+      // arrange
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoReporteCampo.ATENDIDO,
+      });
+      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 0 });
+
+      // act / assert
+      await expect(
+        service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.RESUELTO }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CONFLICTO_CONCURRENCIA' }),
+      );
+    });
   });
 
   describe('remove', () => {
@@ -449,15 +488,19 @@ describe('ReportesCampoService', () => {
 
       // assert
       expect(res).toBeTruthy();
-      expect(prisma.reportes_campo.update).toHaveBeenCalledWith(
+      expect(prisma.reportes_campo.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ asignado_a_id: 't-1' }),
         }),
       );
-      const data = prisma.reportes_campo.update.mock.calls[0][0].data;
+      const data = prisma.reportes_campo.updateMany.mock.calls[0][0].data;
       expect(data.asignado_en).toBeInstanceOf(Date);
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.REPORTE_ASIGNADO, result: AuditResult.SUCCESS }),
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.SUCCESS,
+          previousValue: { asignadoAId: null, asignadoNombre: 'Marcos G.' },
+        }),
       );
     });
 
@@ -467,7 +510,7 @@ describe('ReportesCampoService', () => {
 
       // assert
       expect(res).toBeTruthy();
-      expect(prisma.reportes_campo.update).toHaveBeenCalledWith(
+      expect(prisma.reportes_campo.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ asignado_nombre: 'Panchito el externo' }),
         }),
@@ -480,7 +523,7 @@ describe('ReportesCampoService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ASIGNACION_VACIA' }),
       );
-      expect(prisma.reportes_campo.update).not.toHaveBeenCalled();
+      expect(prisma.reportes_campo.updateMany).not.toHaveBeenCalled();
     });
 
     it('falla con TRABAJADOR_NO_ENCONTRADO si el FK no existe/inactivo', async () => {
@@ -515,6 +558,17 @@ describe('ReportesCampoService', () => {
         expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'REPORTE_TERMINAL' }),
       );
     });
+
+    it('carrera: otro cambio simultáneo → 409 CONFLICTO_CONCURRENCIA y no reasigna', async () => {
+      // arrange
+      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 0 });
+
+      // act / assert
+      await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CONFLICTO_CONCURRENCIA' }),
+      );
+    });
   });
 
   describe('cambiarEstado → RESUELTO marca resuelto_en', () => {
@@ -522,13 +576,13 @@ describe('ReportesCampoService', () => {
       // arrange
       const atendido = { ...mockReporte, estado: EstadoReporteCampo.ATENDIDO };
       prisma.reportes_campo.findFirst.mockResolvedValue(atendido);
-      prisma.reportes_campo.update.mockResolvedValue(atendido);
+      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 1 });
 
       // act
       await service.cambiarEstado('reporte-1', { estado: EstadoReporteCampo.RESUELTO }, 'user-1');
 
       // assert
-      const data = prisma.reportes_campo.update.mock.calls[0][0].data;
+      const data = prisma.reportes_campo.updateMany.mock.calls[0][0].data;
       expect(data.resuelto_en).toBeInstanceOf(Date);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ result: AuditResult.SUCCESS }),
@@ -539,13 +593,13 @@ describe('ReportesCampoService', () => {
       // arrange
       const pendiente = { ...mockReporte, estado: EstadoReporteCampo.PENDIENTE };
       prisma.reportes_campo.findFirst.mockResolvedValue(pendiente);
-      prisma.reportes_campo.update.mockResolvedValue(pendiente);
+      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 1 });
 
       // act
       await service.cambiarEstado('reporte-1', { estado: EstadoReporteCampo.VISTO }, 'user-1');
 
       // assert
-      const data = prisma.reportes_campo.update.mock.calls[0][0].data;
+      const data = prisma.reportes_campo.updateMany.mock.calls[0][0].data;
       expect('resuelto_en' in data).toBe(false);
     });
   });
