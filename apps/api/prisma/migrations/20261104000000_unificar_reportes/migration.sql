@@ -1,4 +1,20 @@
 -- Unificación de Reportes e Incidentes (2026-11)
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ⚠️  INSTRUCCIONES PARA EL SERVIDOR (bloqueador 4, review PR #15)
+--
+-- 1) PRE-FLIGHT antes de aplicar (verifiable data de incidentes a preservar):
+--      SELECT count(*), count(reporte_descripcion), count(reportado_en)
+--        FROM incidentes;
+--    Los campos reporto_id / reporte_descripcion / reportado_en ya NO se
+--    pierden: se preservan en reportes_campo.detalles (jsonb, condicional).
+--
+-- 2) Aplicar SOLO con `npx prisma migrate deploy` — cada migración corre en
+--    UNA transacción (si el INSERT falla, el DROP también revierte). NUNCA
+--    ejecutar este SQL crudo con psql (sin -1/ON_ERROR_STOP un error en el
+--    INSERT no detendría el DROP de abajo).
+-- ─────────────────────────────────────────────────────────────────────────────
+
 -- 1) Enum: ADMINISTRATIVO disponible como área de reporte
 ALTER TYPE "TipoReporteCampo" ADD VALUE 'ADMINISTRATIVO';
 
@@ -20,15 +36,18 @@ CREATE INDEX "reportes_campo_asignado_a_id_idx" ON "reportes_campo"("asignado_a_
 INSERT INTO "reportes_campo"
   (id, codigo, tipo, usuario, maquina_id, fecha, hora, descripcion, estado,
    prioridad, activo, creado_en, actualizado_en, actualizado_por, creado_por,
-   eliminado_en, obra_id, obra_texto, usuario_id)
+   eliminado_en, obra_id, obra_texto, usuario_id, detalles)
 SELECT
   i.id,
   i.codigo,
   'INCIDENTE'::"TipoReporteCampo",
   COALESCE(ur.email, uc.email, 'sistema'),
   i.maquina_id,
-  i.fecha::date,
-  i.fecha::time,
+  -- TZ determinista (review, bloqueador 4): el cast ::date/::time sobre un
+  -- timestamptz depende de la TZ de la sesión; con el servidor en UTC la
+  -- hora quedaba corrida 6 h. Fijamos America/Mexico_City explícito.
+  (i.fecha AT TIME ZONE 'America/Mexico_City')::date,
+  (i.fecha AT TIME ZONE 'America/Mexico_City')::time,
   i.titulo || ' — ' || i.descripcion,
   (CASE i.estado
      WHEN 'ABIERTO' THEN 'PENDIENTE'
@@ -44,7 +63,22 @@ SELECT
   i.eliminado_en,
   i.obra_id,
   i.obra_texto,
-  COALESCE(i.reportado_por, i.creado_por)
+  COALESCE(i.reportado_por, i.creado_por),
+  -- Preservación de campos que antes se perdían (review, bloqueador 4):
+  -- reporto_id (trabajador que reportó), reporte_descripcion y reportado_en
+  -- van a detalles (jsonb nullable). Solo se construye si hay algo que
+  -- preservar (nunca un objecto vacío).
+  CASE
+    WHEN i.reporto_id IS NOT NULL
+      OR i.reporte_descripcion IS NOT NULL
+      OR i.reportado_en IS NOT NULL THEN
+      jsonb_strip_nulls(jsonb_build_object(
+        'reporto_id',            i.reporto_id,
+        'reporte_descripcion',   i.reporte_descripcion,
+        'reportado_en',          i.reportado_en
+      ))
+    ELSE NULL
+  END
 FROM "incidentes" i
 LEFT JOIN "users" ur ON ur.id = i.reportado_por
 LEFT JOIN "users" uc ON uc.id = i.creado_por;
