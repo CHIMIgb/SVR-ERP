@@ -69,7 +69,7 @@ const emptyProvForm = {
 const emptyOcForm = {
   proveedorId: '',
   descripcion: '',
-  monto: '',
+  items: [] as Array<{ nombre: string; articuloId: string | null; cantidad: number; precioUnitario: number }>,
 };
 
 export default function ProveedoresPage() {
@@ -314,11 +314,17 @@ export default function ProveedoresPage() {
       showToast('El nombre del proveedor es obligatorio.', 'error');
       return;
     }
+    // RFC validado en la UI con la misma regex del backend (mayúsculas).
+    const rfc = provForm.rfc.trim().toUpperCase();
+    if (rfc && !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{2,3}$/.test(rfc)) {
+      showToast('El RFC no tiene el formato oficial (3-4 letras + 6 dígitos + homoclave), ejemplo: TOR890101ABC. Déjalo vacío si no aplica.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
         nombre: provForm.nombre.trim(),
-        rfc: provForm.rfc.trim() || undefined,
+        rfc: rfc || undefined,
         telefono: provForm.telefono.trim() || undefined,
         correo: provForm.correo.trim() || undefined,
         categoria: provForm.categoria,
@@ -334,7 +340,7 @@ export default function ProveedoresPage() {
         setProvModal(false);
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al guardar proveedor.', 'error');
+        showToast(res.error?.details?.join(' · ') || res.error?.message || 'Error al guardar proveedor.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -364,21 +370,26 @@ export default function ProveedoresPage() {
 
   // ── Handlers: órdenes de compra ──
   const handleCrearOrden = useCallback(async () => {
-    if (!ocForm.proveedorId || !ocForm.descripcion.trim() || !ocForm.monto) {
-      showToast('Todos los campos son obligatorios.', 'error');
+    if (!ocForm.proveedorId) {
+      showToast('Selecciona un proveedor.', 'error');
       return;
     }
-    const monto = parseFloat(ocForm.monto);
-    if (!monto || monto <= 0) {
-      showToast('Ingresa un monto válido.', 'error');
+    if (ocForm.items.length === 0) {
+      showToast('Agrega al menos una línea al pedido.', 'error');
       return;
+    }
+    for (const it of ocForm.items) {
+      if (!(it.cantidad > 0) || !(it.precioUnitario >= 0) || (!it.articuloId && !it.nombre.trim())) {
+        showToast('Cada línea necesita producto, cantidad y precio válidos.', 'error');
+        return;
+      }
     }
     setSubmitting(true);
     try {
       const res = await ordenesCompraApi.crear({
         proveedorId: ocForm.proveedorId,
-        descripcion: ocForm.descripcion.trim(),
-        monto,
+        descripcion: ocForm.descripcion.trim() || undefined,
+        items: ocForm.items,
       });
       if (res.success) {
         showToast('Orden de compra creada correctamente.', 'success');
@@ -386,7 +397,7 @@ export default function ProveedoresPage() {
         setOcForm(emptyOcForm);
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al crear la orden.', 'error');
+        showToast(res.error?.details?.join(' · ') || res.error?.message || 'Error al crear la orden.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -1130,26 +1141,111 @@ export default function ProveedoresPage() {
             ))}
           </select>
         </ModalField>
-        <ModalField label="Descripción" required>
+        <ModalField label="Descripción">
           <input
             type="text"
             className={modalInputClass}
-            placeholder="Filtros de aceite x12, aceite SAE 15W-40..."
+            placeholder="Filtros de aceite x12, aceite SAE 15W-40... (opcional)"
             value={ocForm.descripcion}
             onChange={(e) => setOcForm({ ...ocForm, descripcion: e.target.value })}
           />
         </ModalField>
-        <ModalField label="Monto Total (MXN)" required>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className={modalInputClass}
-            placeholder="5000"
-            value={ocForm.monto}
-            onChange={(e) => setOcForm({ ...ocForm, monto: e.target.value })}
-          />
-        </ModalField>
+        {/* Líneas de detalle del pedido (Fase 7) */}
+        <div className="sm:col-span-2">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Líneas del pedido</p>
+            <button
+              type="button"
+              onClick={() => setOcForm({ ...ocForm, items: [...ocForm.items, { nombre: '', articuloId: null, cantidad: 1, precioUnitario: 0 }] })}
+              className="text-xs font-bold text-primary hover:text-primary-dark transition-colors"
+            >
+              + Agregar línea
+            </button>
+          </div>
+          {ocForm.items.length === 0 && (
+            <p className="text-xs text-ui-400 italic py-2">Sin líneas: agrega los productos del pedido.</p>
+          )}
+          <div className="space-y-2">
+            {ocForm.items.map((it, idx) => (
+              <div key={idx} className="border border-ui-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Línea {idx + 1}</p>
+                  <button
+                    type="button"
+                    onClick={() => setOcForm({ ...ocForm, items: ocForm.items.filter((_, i) => i !== idx) })}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-700"
+                  >
+                    Quitar
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Producto</span>
+                    {it.articuloId ? (
+                      <span className="text-xs font-bold text-ui-900 px-1">Uso artículo del catálogo</span>
+                    ) : (
+                      <input
+                        type="text"
+                        className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                        placeholder="Nombre del producto (nuevo o del catálogo)"
+                        value={it.nombre}
+                        onChange={(e) =>
+                          setOcForm({
+                            ...ocForm,
+                            items: ocForm.items.map((x, i) => (i === idx ? { ...x, nombre: e.target.value } : x)),
+                          })
+                        }
+                      />
+                    )}
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Cantidad</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                      value={it.cantidad}
+                      onChange={(e) =>
+                        setOcForm({
+                          ...ocForm,
+                          items: ocForm.items.map((x, i) =>
+                            i === idx ? { ...x, cantidad: Number(e.target.value.replace(/\D/g, '').slice(0, 7)) || 0 } : x,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">P.Unitario MXN</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                      value={it.precioUnitario}
+                      onChange={(e) =>
+                        setOcForm({
+                          ...ocForm,
+                          items: ocForm.items.map((x, i) => (i === idx ? { ...x, precioUnitario: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 } : x)),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Importe</span>
+                    <span className="h-10 px-3 flex items-center text-xs font-black text-ui-900">
+                      {(it.cantidad * it.precioUnitario).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                    </span>
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-end">
+            <span className="text-sm font-black text-primary">
+              Total: {(ocForm.items.reduce((a, b) => a + b.cantidad * b.precioUnitario, 0)).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+            </span>
+          </div>
+        </div>
       </FormModal>
 
       {/* ─── Modal Abono ────────────────────────────────────────────────── */}

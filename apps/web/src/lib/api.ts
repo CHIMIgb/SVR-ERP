@@ -2279,15 +2279,22 @@ export interface ProveedorCreateInput {
 
 export type ProveedorUpdateInput = Partial<ProveedorCreateInput>;
 
+export interface OrdenCompraItemInput {
+  articuloId?: string | null; // artículo del catálogo; null → línea de ALTA
+  nombre?: string; // obligatorio si articuloId no viene (nuevo producto)
+  cantidad: number;
+  precioUnitario: number;
+}
+
 export interface OrdenCompraCreateInput {
   proveedorId: string;
-  descripcion: string;
-  monto: number;
+  descripcion?: string;
   fecha?: string; // YYYY-MM-DD
+  items: OrdenCompraItemInput[]; // monto se deriva de la suma en el backend
 }
 
 export type OrdenCompraUpdateInput = Partial<
-  Pick<OrdenCompraCreateInput, 'descripcion' | 'monto'>
+  Pick<OrdenCompraCreateInput, 'descripcion' | 'items'>
 >;
 
 export interface RegistrarAbonoInput {
@@ -2359,6 +2366,10 @@ export const ordenesCompraApi = {
   /** Aprobar / Cancelar (la recepción tiene su propio endpoint). */
   cambiarEstado: (id: string, data: CambiarEstadoOrdenInput) =>
     apiClient.post<OrdenCompraDTO>(`/ordenes-compra/${id}/cambiar-estado`, data),
+
+  /** Catálogo de artículos de inventario para las líneas de OC. */
+  catalogoArticulos: (params?: { search?: string; page?: number; limit?: number }) =>
+    inventarioApi.listar(params),
 
   /** Recibir OC aprobada: aplica al inventario (alta/entrada) y marca RECIBIDA. */
   recibir: (
