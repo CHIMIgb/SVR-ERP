@@ -53,7 +53,14 @@ LEFT JOIN "users" uc ON uc.id = i.creado_por;
 DROP TABLE "incidentes";
 DROP TYPE "EstadoIncidente";
 
--- 5) RBAC: un solo permiso-set (operaciones.reportes_campo.*) y una sola vista /reportes
+-- 5) RBAC: un solo permiso-set (operaciones.reportes_campo.*) y una sola vista
+--    unificada /reportes — que COINCIDE con la ruta real de la web
+--    (VISTA_RUTA = '/reportes' en proveedores/reportes; página (dashboard)/reportes).
+--
+-- Se REPURPUEA el mock '/reportes' (Sistema) que ya existe del dump: se actualiza
+-- in-place (sin conflicto de unique(ruta)) y conserva sus role_vistas; los roles
+-- que veían '/incidentes' o '/reportes-campo' se re-vinculan con COPIA de sus
+-- flags para que NINGUNO pierda el acceso (review PR #15, bloqueador 3).
 DELETE FROM "role_permissions"
  WHERE permiso_id IN (SELECT id FROM permissions WHERE modulo = 'operaciones' AND recurso = 'incidentes');
 DELETE FROM "permissions" WHERE modulo = 'operaciones' AND recurso = 'incidentes';
@@ -64,14 +71,34 @@ DELETE FROM "role_vistas"
 DELETE FROM "vistas" WHERE ruta = '/incidentes';
 
 UPDATE "vistas"
-   SET ruta = '/reportes-operaciones', nombre = 'Reportes de Operación', icono = 'AlertTriangle'
- WHERE ruta = '/reportes-campo';
+   SET nombre = 'Reportes', icono = 'AlertTriangle'
+ WHERE ruta = '/reportes';
 
--- Re-vincular el rol Administrador (es_sistema) a la vista unificada con todo
+-- Re-vincular a todos los roles que veían las vistas viejas, copiando sus flags
 INSERT INTO role_vistas (id, rol_id, vista_id, puede_ver, puede_crear, puede_editar, puede_eliminar, puede_exportar, asignado_en)
-SELECT gen_random_uuid(), r.id, v.id, true, true, true, true, true, now()
-FROM roles r CROSS JOIN vistas v
-WHERE v.ruta = '/reportes-operaciones' AND r.es_sistema = true
+SELECT gen_random_uuid(),
+       rvv.rol_id,
+       v_nueva.id,
+       rvv.puede_ver,
+       rvv.puede_crear,
+       rvv.puede_editar,
+       rvv.puede_eliminar,
+       rvv.puede_exportar,
+       now()
+FROM role_vistas rvv
+JOIN vistas v_vieja ON v_vieja.id = rvv.vista_id
+JOIN vistas v_nueva ON v_nueva.ruta = '/reportes'
+WHERE v_vieja.ruta IN ('/incidentes', '/reportes-campo')
   AND NOT EXISTS (
-    SELECT 1 FROM role_vistas rv WHERE rv.rol_id = r.id AND rv.vista_id = v.id
+    SELECT 1 FROM role_vistas rv
+     WHERE rv.rol_id = rvv.rol_id AND rv.vista_id = v_nueva.id
   );
+
+-- Si algún rol ya tenía la vista unificada (o venía del mock /reportes),
+-- garantiza al menos puede_ver sobre la ruta real de la web:
+INSERT INTO role_vistas (id, rol_id, vista_id, puede_ver, puede_crear, puede_editar, puede_eliminar, puede_exportar, asignado_en)
+SELECT gen_random_uuid(), r.id, v.id, true, false, false, false, false, now()
+FROM roles r JOIN vistas v ON v.ruta = '/reportes'
+WHERE NOT EXISTS (
+  SELECT 1 FROM role_vistas rv WHERE rv.rol_id = r.id AND rv.vista_id = v.id
+);
