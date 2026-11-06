@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
   ValidateIf,
@@ -19,9 +20,16 @@ export class OrdenCompraItemInput {
   /**
    * Artículo del catálogo de inventario ya existente. Si viene, se vincula y el
    * stock se actualiza al recibir (Fase 7 T4).
+   *
+   * Se valida la FORMA hex-36 (Postgres/Prisma la aceptan como @db.Uuid) y NO
+   * la versión/variante RFC: los datos heredados del dump incluyen IDs tipo
+   * "c2000000-0000-0000-0000-000000000001" (v0/variante 0) que son legítimos
+   * en la BD pero fallarían @IsUUID estándar.
    */
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, {
+    message: 'articuloId debe ser un UUID',
+  })
   articuloId?: string;
 
   /**

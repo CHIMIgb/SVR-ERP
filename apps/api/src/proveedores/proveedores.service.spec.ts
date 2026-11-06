@@ -897,4 +897,5 @@ describe('ProveedoresService', () => {
     expect(res.inventario[0].altaNueva).toBe(true);
   });
 });
+
 });

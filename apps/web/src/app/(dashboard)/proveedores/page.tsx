@@ -385,17 +385,27 @@ export default function ProveedoresPage() {
       return;
     }
     for (const it of ocForm.items) {
-      if (!(it.cantidad > 0) || !(it.precioUnitario >= 0) || (!it.articuloId && !it.nombre.trim())) {
+      if (it.modo === 'inventario' && !it.articuloId) {
+        showToast('Selecciona el artículo del inventario en cada línea (o cambia a producto nuevo).', 'error');
+        return;
+      }
+      if (!(it.cantidad > 0) || !(it.precioUnitario >= 0) || (it.modo === 'nuevo' && !it.nombre.trim())) {
         showToast('Cada línea necesita producto, cantidad y precio válidos.', 'error');
         return;
       }
     }
     setSubmitting(true);
     try {
+      // Sanitización: `modo` es estado puro de UI y se descarta. Las líneas del
+      // inventario van solo con articuloId; las nuevas con su nombre.
       const res = await ordenesCompraApi.crear({
         proveedorId: ocForm.proveedorId,
         descripcion: ocForm.descripcion.trim() || undefined,
-        items: ocForm.items,
+        items: ocForm.items.map((it) => ({
+          ...(it.articuloId ? { articuloId: it.articuloId } : { nombre: it.nombre.trim() }),
+          cantidad: it.cantidad,
+          precioUnitario: it.precioUnitario,
+        })),
       });
       if (res.success) {
         showToast('Orden de compra creada correctamente.', 'success');
