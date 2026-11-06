@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { HorometroController } from './horometro.controller';
 import { HorometroService } from './horometro.service';
-import { MaquinasModule } from '../maquinas/maquinas.module';
+import { AuditModule } from '../../audit/audit.module';
 
 @Module({
-  imports: [MaquinasModule],
+  imports: [AuditModule],
   controllers: [HorometroController],
   providers: [HorometroService],
 })
