@@ -304,4 +304,26 @@ describe('Proyectos Audit (Real DB)', () => {
       ).rejects.toThrow('al menos un campo');
     });
   });
+
+  describe('REGISTRO_AUDITORIA — inmutabilidad real (trigger)', () => {
+    it('rechaza un DELETE físico contra registro_auditoria (trigger trg_audit_immutable_delete)', async () => {
+      // arrange: cualquier audit de proyectos ya insertado por esta suite
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { entity_type: 'proyectos' },
+        select: { event_id: true },
+      });
+      expect(audit).not.toBeNull();
+
+      // act / assert: el DELETE crudo debe fallar con el mensaje del trigger
+      await expect(
+        prisma.$executeRawUnsafe(`DELETE FROM registro_auditoria WHERE event_id = '${audit!.event_id}'`),
+      ).rejects.toThrow(/registro_auditoria/i);
+      // y el registro sigue ahí (inmutable)
+      const sigueAhi = await prisma.registro_auditoria.findFirst({
+        where: { event_id: audit!.event_id },
+        select: { event_id: true },
+      });
+      expect(sigueAhi).not.toBeNull();
+    });
+  });
 });
