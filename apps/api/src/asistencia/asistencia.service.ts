@@ -328,8 +328,10 @@ export class AsistenciaService {
       dto.horasTrabajadasOrdinarias ?? this.horasEntreHoras(registro.hora_entrada, this.horaActualUtc(ahora));
     const salidaAnticipada = dto.salidaAnticipada ?? false;
 
-    const actualizado = await this.prisma.registros_asistencia.update({
-      where: { id: registro.id },
+    // Condicional: dos salidas del mismo trabajador al mismo tiempo pasaban la revisión de arriba y la segunda
+    // pisaba la hora y las coordenadas de la primera. Solo se escribe si todavía no hay salida.
+    const marcada = await this.prisma.registros_asistencia.updateMany({
+      where: { id: registro.id, hora_salida: null },
       data: {
         hora_salida: this.horaActualUtc(ahora),
         hora_salida_exacta: this.horaActualUtcConSegundos(ahora),
@@ -345,6 +347,19 @@ export class AsistenciaService {
         actualizado_por: userId,
         actualizado_en: ahora,
       },
+    });
+    if (marcada.count === 0) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_SALIDA_REGISTRADA,
+        ENTITY_TYPE,
+        registro.id,
+        'YA_REGISTRO_SALIDA_HOY',
+        BadRequestException,
+        'Este trabajador ya tiene una salida registrada hoy',
+      );
+    }
+    const actualizado = await this.prisma.registros_asistencia.findUniqueOrThrow({
+      where: { id: registro.id },
       include: REGISTRO_INCLUDE,
     });
 
@@ -964,49 +979,74 @@ export class AsistenciaService {
       );
     }
 
+    // Unas horas extra ya aprobadas no se vuelven a registrar: antes el upsert las pisaba y regresaban a
+    // pendientes (o cambiaban de monto) sin que nadie lo notara.
+    const yaAprobadas = () =>
+      this.fallir(
+        AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS,
+        ENTITY_TYPE_HORAS_EXTRA,
+        registroId,
+        'HORAS_EXTRA_YA_APROBADAS',
+        ConflictException,
+        'Las horas extra de ese día ya están aprobadas: no se pueden volver a registrar',
+      );
+    const previas = await this.prisma.horas_extra_asistencia.findUnique({ where: { registro_asistencia_id: registroId } });
+    if (previas?.estado === 'APROBADO') return yaAprobadas();
+    // Igual que el resto de cambios de asistencia: con la nómina de esa semana pagada ya no se toca.
+    await this.exigirNominaSinPagar(registro.trabajador_id, registro.fecha, registroId, AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS);
+
     const trabajador = await this.prisma.trabajadores.findFirst({ where: { id: registro.trabajador_id } });
+    const tarifaCapturada = dto.tarifaPorHora !== undefined;
     const tarifa = dto.tarifaPorHora ?? Number(trabajador?.tarifa_hora_extra ?? TARIFA_HORA_EXTRA_DEFECTO);
     const monto = Number((dto.horasCalculadas * tarifa).toFixed(2));
     const estado: EstadoHoraExtra = dto.fin ? 'PENDIENTE' : 'EN_CURSO';
     const ahora = new Date();
+    const datos = {
+      horas_calculadas: dto.horasCalculadas,
+      tarifa_por_hora: tarifa,
+      monto_total: monto,
+      estado,
+      motivo: dto.motivo,
+      inicio: this.horaAUtc(dto.inicio),
+      fin: dto.fin ? this.horaAUtc(dto.fin) : null,
+      lat_inicio: dto.latInicio,
+      lng_inicio: dto.lngInicio,
+      lat_fin: dto.latFin,
+      lng_fin: dto.lngFin,
+      actualizado_por: userId,
+      actualizado_en: ahora,
+    };
 
-    const horasExtra = await this.prisma.horas_extra_asistencia.upsert({
-      where: { registro_asistencia_id: registroId },
-      create: {
-        id: randomUUID(),
-        registro_asistencia_id: registroId,
-        horas_calculadas: dto.horasCalculadas,
-        tarifa_por_hora: tarifa,
-        monto_total: monto,
-        estado,
-        motivo: dto.motivo,
-        inicio: this.horaAUtc(dto.inicio),
-        fin: dto.fin ? this.horaAUtc(dto.fin) : null,
-        lat_inicio: dto.latInicio,
-        lng_inicio: dto.lngInicio,
-        lat_fin: dto.latFin,
-        lng_fin: dto.lngFin,
-        creado_por: userId,
-        actualizado_por: userId,
-        actualizado_en: ahora,
-      },
-      update: {
-        horas_calculadas: dto.horasCalculadas,
-        tarifa_por_hora: tarifa,
-        monto_total: monto,
-        estado,
-        motivo: dto.motivo,
-        inicio: this.horaAUtc(dto.inicio),
-        fin: dto.fin ? this.horaAUtc(dto.fin) : null,
-        lat_inicio: dto.latInicio,
-        lng_inicio: dto.lngInicio,
-        lat_fin: dto.latFin,
-        lng_fin: dto.lngFin,
-        actualizado_por: userId,
-        actualizado_en: ahora,
-      },
-    });
-
+    let horasExtraId: string;
+    if (previas) {
+      // Condicional: si alguien las aprobó entre la revisión y aquí, no se pisan.
+      const actualizadas = await this.prisma.horas_extra_asistencia.updateMany({
+        where: { id: previas.id, estado: { not: 'APROBADO' } },
+        data: datos,
+      });
+      if (actualizadas.count === 0) return yaAprobadas();
+      horasExtraId = previas.id;
+    } else {
+      try {
+        const creadas = await this.prisma.horas_extra_asistencia.create({
+          data: { id: randomUUID(), registro_asistencia_id: registroId, creado_por: userId, ...datos },
+        });
+        horasExtraId = creadas.id;
+      } catch (error) {
+        // Dos registros del mismo día al mismo tiempo: el índice único deja pasar solo uno.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          return this.fallir(
+            AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS,
+            ENTITY_TYPE_HORAS_EXTRA,
+            registroId,
+            'HORAS_EXTRA_YA_REGISTRADAS',
+            ConflictException,
+            'Ya se registraron horas extra para ese día; vuelve a cargar la vista',
+          );
+        }
+        throw error;
+      }
+    }
     const actualizado = await this.prisma.registros_asistencia.findUniqueOrThrow({
       where: { id: registroId },
       include: REGISTRO_INCLUDE,
@@ -1016,12 +1056,14 @@ export class AsistenciaService {
     await this.auditService.log({
       action: AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS,
       entityType: ENTITY_TYPE_HORAS_EXTRA,
-      entityId: horasExtra.id,
+      entityId: horasExtraId,
       result: AuditResult.SUCCESS,
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serializado.horasExtra,
+      // Una tarifa capturada a mano (y no la del trabajador) queda a la vista de quien revise la nómina.
+      metadata: { tarifaCapturada, ...(previas ? { estadoAnterior: previas.estado, montoAnterior: Number(previas.monto_total) } : {}) },
     });
 
     return serializado;

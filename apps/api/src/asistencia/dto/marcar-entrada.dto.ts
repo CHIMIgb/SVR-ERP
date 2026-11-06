@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsNumber, IsOptional, Min, Max, MinLength } from 'class-validator';
+import { IsString, IsUUID, IsNumber, IsOptional, Min, Max, MinLength, MaxLength } from 'class-validator';
 
 export class MarcarEntradaDto {
   @IsUUID()
@@ -29,6 +29,7 @@ export class MarcarEntradaDto {
 
   @IsString()
   @MinLength(2)
+  @MaxLength(100)
   dispositivo!: string;
 
   @IsOptional()
@@ -39,9 +40,11 @@ export class MarcarEntradaDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   ubicacion?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   notas?: string;
 }

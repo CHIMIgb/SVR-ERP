@@ -792,14 +792,22 @@ export default function AsistenciaPage() {
         showToast('Indica el motivo de la salida anticipada.', 'error');
         return;
       }
-      if (earlyDepartureHours.trim() === '' || !Number.isFinite(horasSalida) || horasSalida < 0 || horasSalida > 24) {
-        showToast('Indica las horas laboradas (entre 0 y 24).', 'error');
+      // Mismas reglas que MarcarSalidaDto: de 0 a 24, con hasta 2 decimales.
+      if (
+        earlyDepartureHours.trim() === '' || !Number.isFinite(horasSalida) || horasSalida < 0 || horasSalida > 24 ||
+        Number(horasSalida.toFixed(2)) !== horasSalida
+      ) {
+        showToast('Indica las horas laboradas (entre 0 y 24, hasta 2 decimales).', 'error');
         return;
       }
     }
     const horasExtra = Number(extraHoursInput);
-    if (clockInType === 'horas_extra' && !(Number.isFinite(horasExtra) && horasExtra > 0 && horasExtra <= 24)) {
-      showToast('Indica las horas extra trabajadas (mayor a 0 y hasta 24).', 'error');
+    // Mismas reglas que RegistrarHorasExtraDto: de 0.5 a 24, con hasta 2 decimales.
+    if (
+      clockInType === 'horas_extra' &&
+      !(Number.isFinite(horasExtra) && horasExtra >= 0.5 && horasExtra <= 24 && Number(horasExtra.toFixed(2)) === horasExtra)
+    ) {
+      showToast('Indica las horas extra trabajadas (de 0.5 a 24, hasta 2 decimales).', 'error');
       return;
     }
     const existente = registros.find((r) => r.trabajadorId === worker.id);

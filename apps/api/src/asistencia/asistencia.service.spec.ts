@@ -85,7 +85,9 @@ describe('AsistenciaService', () => {
       },
       horas_extra_asistencia: {
         findFirst: jest.fn(),
-        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'he-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn().mockResolvedValue({}),
       },
     };
@@ -196,7 +198,7 @@ describe('AsistenciaService', () => {
       jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 17, 5, 0)); // salida 17:05 → 10h
       await service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1');
 
-      const data = prisma.registros_asistencia.update.mock.calls[0][0].data;
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
       expect(data.horas_trabajadas_ordinarias).toBe(10);
       expect(data.hora_salida.toISOString()).toBe('1970-01-01T17:05:00.000Z');
     });
@@ -215,7 +217,7 @@ describe('AsistenciaService', () => {
         },
         'user-1',
       );
-      const data = prisma.registros_asistencia.update.mock.calls[0][0].data;
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
       expect(data.estado).toBe('SALIDA_ANTICIPADA');
       expect(data.motivo_salida_anticipada).toBe('Cita médica');
       expect(data.horas_trabajadas_ordinarias).toBe(5.5);
@@ -227,7 +229,7 @@ describe('AsistenciaService', () => {
         { trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil', salidaAnticipada: true, motivoSalidaAnticipada: 'Cita', horasTrabajadasOrdinarias: 4 },
         'user-1',
       );
-      const data = prisma.registros_asistencia.update.mock.calls[0][0].data;
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
       expect(data.estado).toBe('OMISION');
       expect(data.salida_anticipada).toBe(true);
     });
@@ -244,6 +246,16 @@ describe('AsistenciaService', () => {
       await expect(
         service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('only writes the salida if there is none yet, so two simultaneous salidas do not overwrite each other', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.registros_asistencia.updateMany.mockResolvedValue({ count: 0 }); // la otra petición ganó
+      await expect(
+        service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.registros_asistencia.updateMany.mock.calls[0][0].where).toEqual({ id: baseRegistro.id, hora_salida: null });
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'YA_REGISTRO_SALIDA_HOY' }));
     });
   });
 
@@ -341,7 +353,7 @@ describe('AsistenciaService', () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
       await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', horasCalculadas: 3 }, 'user-1');
 
-      const data = prisma.horas_extra_asistencia.upsert.mock.calls[0][0].create;
+      const data = prisma.horas_extra_asistencia.create.mock.calls[0][0].data;
       expect(data.tarifa_por_hora).toBe(90);
       expect(data.monto_total).toBe(270);
       expect(data.estado).toBe('EN_CURSO'); // sin "fin" todavía
@@ -350,8 +362,54 @@ describe('AsistenciaService', () => {
     it('marks PENDIENTE once an end time is provided, awaiting approval', async () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
       await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1');
-      const data = prisma.horas_extra_asistencia.upsert.mock.calls[0][0].create;
+      const data = prisma.horas_extra_asistencia.create.mock.calls[0][0].data;
       expect(data.estado).toBe('PENDIENTE');
+    });
+
+    it('does not overwrite horas extra that were already approved (409, nothing written)', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.horas_extra_asistencia.findUnique.mockResolvedValue({ id: 'he-1', estado: 'APROBADO', monto_total: 270 });
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '21:00', horasCalculadas: 4 }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.horas_extra_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(prisma.horas_extra_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'HORAS_EXTRA_YA_APROBADAS' }));
+    });
+
+    it('updates pending horas extra only while they are not approved, and audits the previous monto', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.horas_extra_asistencia.findUnique.mockResolvedValue({ id: 'he-1', estado: 'PENDIENTE', monto_total: 180 });
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1');
+      expect(prisma.horas_extra_asistencia.updateMany.mock.calls[0][0].where).toEqual({ id: 'he-1', estado: { not: 'APROBADO' } });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: expect.objectContaining({ tarifaCapturada: false, estadoAnterior: 'PENDIENTE', montoAnterior: 180 }) }),
+      );
+    });
+
+    it('rejects if someone approved them between the check and the write', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.horas_extra_asistencia.findUnique.mockResolvedValue({ id: 'he-1', estado: 'PENDIENTE', monto_total: 180 });
+      prisma.horas_extra_asistencia.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects horas extra on a week whose nómina is already paid', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.nominas.findFirst.mockResolvedValue({ id: 'nomina-pagada' });
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.horas_extra_asistencia.create).not.toHaveBeenCalled();
+    });
+
+    it('marks a hand-typed tarifa in the audit', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 2, tarifaPorHora: 150 }, 'user-1');
+      expect(prisma.horas_extra_asistencia.create.mock.calls[0][0].data.tarifa_por_hora).toBe(150);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ tarifaCapturada: true }) }));
     });
 
     it('404s when the registro does not exist', async () => {

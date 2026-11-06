@@ -231,6 +231,40 @@ describe('Asistencia Audit (Real DB)', () => {
       expect(auditsRegistro.length).toBeGreaterThanOrEqual(1);
       const auditsAprobado = await findAudits(AuditAction.ASISTENCIA_HORAS_EXTRA_APROBADAS, horasExtraDb.id);
       expect(auditsAprobado.length).toBeGreaterThanOrEqual(1);
+
+      // Ya aprobadas no se vuelven a registrar: antes el upsert las regresaba a pendientes con otro monto.
+      await expect(
+        service.registrarHorasExtra(registro.id, { inicio: '17:00', fin: '23:00', horasCalculadas: 6 }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+      const siguen = await prisma.horas_extra_asistencia.findUniqueOrThrow({ where: { id: horasExtraDb.id } });
+      expect(siguen.estado).toBe('APROBADO');
+      expect(Number(siguen.horas_calculadas)).toBe(3);
+      const fallos = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS, entity_id: registro.id, error_code: 'HORAS_EXTRA_YA_APROBADAS' },
+      });
+      expect(fallos).toHaveLength(1);
+    });
+  });
+
+  describe('Salidas simultáneas', () => {
+    it('dos salidas del mismo trabajador al mismo tiempo dejan una sola (la otra recibe 400)', async () => {
+      const trabajador = await crearTrabajador(`Salida Doble Test ${TEST_ID}`);
+      const registro = await service.marcarEntrada(
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        ACTOR_USER_ID,
+      );
+      const salida = (lat: number) =>
+        service.marcarSalida({ trabajadorId: trabajador.id, lat, lng: obraLng, dispositivo: 'Test' }, ACTOR_USER_ID);
+
+      const resultados = await Promise.allSettled([salida(obraLat), salida(obraLat + 0.001)]);
+      expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect((resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+
+      // La salida que quedó es la de la petición que ganó, no una mezcla de las dos.
+      const ganadora = (resultados.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<{ id: string }>).value;
+      expect(ganadora.id).toBe(registro.id);
+      const fila = await prisma.registros_asistencia.findUniqueOrThrow({ where: { id: registro.id } });
+      expect(fila.hora_salida).not.toBeNull();
     });
   });
 
