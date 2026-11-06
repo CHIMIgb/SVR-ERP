@@ -133,6 +133,8 @@ const HORA_LIMITE_JUSTIFICACION_MINUTOS = 17 * 60;
 const PRECISION_MAXIMA_UBICACION_OBRA_METROS = 100;
 const RADIO_DEFECTO_METROS = 2000;
 const TARIFA_HORA_EXTRA_DEFECTO = 80;
+/** Tope de registros del día que se revisan al pasar lista a una cuadrilla (máximo 200 trabajadores). */
+const TOPE_FILAS_CUADRILLA = 1000;
 
 const REGISTRO_INCLUDE = {
   horas_extra_asistencia: true,
@@ -409,6 +411,8 @@ export class AsistenciaService {
     const idsUnicos = Array.from(new Set(dto.trabajadorIds));
     const trabajadores = await this.prisma.trabajadores.findMany({
       where: { id: { in: idsUnicos }, eliminado_en: null },
+      // Uno por id pedido (la cuadrilla ya viene con tope de 200 desde el DTO).
+      take: idsUnicos.length,
     });
     if (trabajadores.length !== idsUnicos.length) {
       const encontrados = new Set(trabajadores.map((t) => t.id));
@@ -427,6 +431,9 @@ export class AsistenciaService {
     const existentes = await this.prisma.registros_asistencia.findMany({
       where: { trabajador_id: { in: idsUnicos }, fecha: hoy, eliminado_en: null },
       select: { trabajador_id: true },
+      // Holgado a propósito: mientras no exista el índice único (trabajador, fecha) puede haber duplicados del
+      // día, y un tope exacto podría dejar fuera a alguien que sí checó.
+      take: TOPE_FILAS_CUADRILLA,
     });
     const yaRegistrados = new Set(existentes.map((e) => e.trabajador_id));
 

@@ -4,6 +4,10 @@ import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { esFechaFutura } from '../common/validacion';
+import { TOPE_CATALOGO_MAQUINAS } from '../modules/maquinas/maquinas.service';
+
+/** Tope del catálogo de proyectos para los selects (datos maestros). */
+const TOPE_CATALOGO_PROYECTOS = 500;
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { UpdateTrabajadorDto } from './dto/update-trabajador.dto';
 import { QueryTrabajadoresDto } from './dto/query-trabajadores.dto';
@@ -147,6 +151,7 @@ export class TrabajadoresService {
     const maquinas = await this.prisma.maquinas.findMany({
       where: { operador_id: { in: items.map((t) => t.id) }, eliminado_en: null },
       select: { id: true, codigo: true, nombre: true, operador_id: true },
+      take: TOPE_CATALOGO_MAQUINAS,
     });
     const maquinaPorOperador = new Map(maquinas.map((m) => [m.operador_id as string, m]));
 
@@ -190,11 +195,14 @@ export class TrabajadoresService {
         where: { eliminado_en: null, codigo: { not: null } },
         select: { codigo: true, nombre: true, operador_id: true, trabajadores: { select: { nombre: true } } },
         orderBy: { codigo: 'asc' },
+        take: TOPE_CATALOGO_MAQUINAS,
       }),
+      // Catálogos para los selects (datos maestros): con tope, igual que el de máquinas.
       this.prisma.proyectos.findMany({
         where: { eliminado_en: null, activo: true },
         select: { id: true, nombre: true },
         orderBy: { nombre: 'asc' },
+        take: TOPE_CATALOGO_PROYECTOS,
       }),
     ]);
 
