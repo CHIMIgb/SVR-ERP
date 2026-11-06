@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import {
   asistenciaApi,
@@ -247,12 +246,10 @@ export default function AsistenciaPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
-  const router = useRouter();
 
   const vista = user?.vistas?.find((v) => v.ruta === '/asistencia');
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
-  const puedeVerNomina = user?.vistas?.some((v) => v.ruta === '/nomina' && v.puedeVer) ?? false;
 
   const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
   const [obras, setObras] = useState<ObraLite[]>([]);
@@ -1159,23 +1156,15 @@ export default function AsistenciaPage() {
         title="Asistencia"
         subtitle="Entradas, salidas y horas extra validadas por GPS en cada obra."
         action={
-          puedeCrear || puedeVerNomina ? (
+          // "Ir a nómina" se quitó: ya está en el menú lateral y el cliente pidió menos botones.
+          puedeCrear ? (
             <div className="flex flex-wrap items-center gap-2">
-              {puedeCrear && (
-                <Button onClick={abrirMarcaje} className="w-full sm:w-auto">
-                  Marcar entrada / salida
-                </Button>
-              )}
-              {puedeCrear && (
-                <Button variant="outline" onClick={abrirCuadrilla}>
-                  Pase de lista
-                </Button>
-              )}
-              {puedeVerNomina && (
-                <Button variant="ghost" onClick={() => router.push('/nomina')}>
-                  Ir a nómina
-                </Button>
-              )}
+              <Button onClick={abrirMarcaje} className="w-full sm:w-auto">
+                Marcar entrada / salida
+              </Button>
+              <Button variant="outline" onClick={abrirCuadrilla}>
+                Pase de lista
+              </Button>
             </div>
           ) : undefined
         }

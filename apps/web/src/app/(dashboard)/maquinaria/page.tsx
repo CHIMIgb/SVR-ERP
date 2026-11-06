@@ -351,14 +351,13 @@ export default function MaquinariaPage() {
     setDespachoOpen(true);
   };
 
-  const abrirChecklist = (m?: Maquina) => {
-    const maquina = m ?? maquinaria[0];
+  const abrirChecklist = (maquina: Maquina) => {
     // El operador y el horómetro salen de la máquina (dato real); antes venía "Juan Pérez" y 1240 fijos.
-    const operador = maquina && maquina.operador !== 'Sin asignar' ? maquina.operador : '';
+    const operador = maquina.operador !== 'Sin asignar' ? maquina.operador : '';
     setFormChecklist({
-      maquinaId: maquina?.id ?? '',
+      maquinaId: maquina.id,
       operador,
-      horometroInicial: maquina ? String(maquina.horometro) : '',
+      horometroInicial: String(maquina.horometro),
       nivelAceiteMotor: 'Correcto',
       nivelHidraulico: 'Correcto',
       estadoLlantasOrugas: 'Correcto',
@@ -818,7 +817,7 @@ export default function MaquinariaPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={abrirAlta} className="w-full sm:w-auto">Alta de máquina</Button>
               <Button variant="outline" onClick={() => abrirDespacho()} disabled={maquinaria.length === 0}>Despachar a obra</Button>
-              <Button variant="ghost" onClick={() => abrirChecklist()} disabled={maquinaria.length === 0}>Checklist</Button>
+              {/* El checklist se hace desde la fila de cada máquina: el botón del encabezado repetía la acción. */}
             </div>
           ) : undefined
         }
