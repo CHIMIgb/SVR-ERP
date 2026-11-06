@@ -432,6 +432,22 @@ export default function ProveedoresPage() {
     async (orden: OrdenCompraDTO, estado: EstadoOrdenApi, motivo?: string) => {
       setSubmitting(true);
       try {
+        // La recepción tiene su propio flujo (aplica al inventario y marca RECIBIDA).
+        if (estado === 'RECIBIDA') {
+          const resRecibida = await ordenesCompraApi.recibir(orden.id);
+          if (resRecibida.success) {
+            showToast(
+              `Orden ${resRecibida.data.orden.folio ?? orden.folio} recibida — inventario actualizado.`,
+              'success',
+            );
+            setConfirmCambio(null);
+            refetchAll();
+          } else {
+            showToast(resRecibida.error?.message || 'Error al recibir la orden.', 'error');
+          }
+          return;
+        }
+
         const res = await ordenesCompraApi.cambiarEstado(orden.id, { estado, motivo });
         if (res.success) {
           showToast(`Orden ${res.data.folio} marcada como ${ESTADO_LABEL[estado]}.`, 'success');

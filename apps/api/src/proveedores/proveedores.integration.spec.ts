@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { ProveedoresService } from './proveedores.service';
+import { InventarioService } from '../inventario/inventario.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -30,9 +31,14 @@ describe('Proveedores Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, ProveedoresService],
+      providers: [
+        PrismaService,
+        AuditContextService,
+        AuditService,
+        InventarioService,
+        ProveedoresService,
+      ],
     }).compile();
-
     app = module.createNestApplication();
     await app.init();
 
@@ -51,6 +57,9 @@ describe('Proveedores Audit (Real DB)', () => {
       });
     }
     if (createdOrdenIds.length > 0) {
+      await prisma.ordenes_compra_items.deleteMany({
+        where: { orden_compra_id: { in: createdOrdenIds } },
+      });
       await prisma.pagos_proveedor.deleteMany({
         where: { orden_compra_id: { in: createdOrdenIds } },
       });
@@ -340,6 +349,139 @@ describe('Proveedores Audit (Real DB)', () => {
       });
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('FAIL');
+    });
+  });
+
+  describe('RECIBIR OC — aplica al inventario en BD real (ORDEN_COMPRA_RECIBIDA)', () => {
+    it('recibe una OC Aprobada: stock real sube, líneas marcadas y audita SUCCESS', async () => {
+      // arrange: proveedor + OC aprobada con línea sobre artículo real
+      const proveedor = await prisma.proveedores.create({
+        data: {
+          id: randomUUID(),
+          nombre: `Prov-Recepcion ${TEST_ID}`,
+          categoria: 'Materiales',
+          correo: `recepcion-${TEST_ID}@test.local`,
+          telefono: '555-0000',
+          actualizado_en: new Date(),
+          creado_por: ACTOR_USER_ID,
+          actualizado_por: ACTOR_USER_ID,
+        },
+      });
+      createdProveedorIds.push(proveedor.id);
+
+      const articulo = await prisma.articulos_inventario.findFirst({
+        where: { eliminado_en: null },
+      });
+      expect(articulo).not.toBeNull();
+
+      const orden = await prisma.ordenes_compra.create({
+        data: {
+          id: randomUUID(),
+          folio: `OC-INT-${TEST_ID}`,
+          proveedor_id: proveedor.id,
+          descripcion: 'Recepción con inventario',
+          monto: 400,
+          fecha: new Date(),
+          estado: 'PENDIENTE',
+          actualizado_en: new Date(),
+          creado_por: ACTOR_USER_ID,
+          ordenes_compra_items: {
+            create: {
+              id: randomUUID(),
+              nombre: articulo!.nombre,
+              cantidad: 6,
+              precio_unitario: articulo!.precio_unitario,
+              articulo_id: articulo!.id,
+              actualizado_en: new Date(),
+              creado_por: ACTOR_USER_ID,
+            },
+          },
+        },
+        include: { ordenes_compra_items: true },
+      });
+      createdOrdenIds.push(orden.id);
+
+      // aprobar primero
+      await service.cambiarEstadoOrden(orden.id, { estado: 'APROBADA' }, ACTOR_USER_ID);
+
+      // act: recibir (aplica al inventario)
+      await service.recibirOrden(orden.id, {}, ACTOR_USER_ID);
+
+      // assert: estado RECIBIDA y línea marcada con cantidad real
+      const ordenRow = await prisma.ordenes_compra.findUnique({ where: { id: orden.id } });
+      expect(ordenRow?.estado).toBe('RECIBIDA');
+      const itemRow = await prisma.ordenes_compra_items.findFirst({ where: { orden_compra_id: orden.id } });
+      expect(Number(itemRow!.cantidad_recibida)).toBe(6);
+
+      // auditoría real
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.ORDEN_COMPRA_RECIBIDA, entity_id: orden.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits[0]?.result).toBe('SUCCESS');
+      const newValue = audits[0]?.new_value as Record<string, unknown> | null;
+      expect(newValue?.folio).toBe(`OC-INT-${TEST_ID}`);
+    });
+
+    it('rechaza recibir una OC ya recibida con RECEPCION_YA_APLICADA (auditoria FAIL real)', async () => {
+      // arrange: OC aprobada → recibir una vez
+      const proveedor = await prisma.proveedores.create({
+        data: {
+          id: randomUUID(),
+          nombre: `Prov-Recepcion2 ${TEST_ID}`,
+          categoria: 'Materiales',
+          correo: `recepcion2-${TEST_ID}@test.local`,
+          telefono: '555-0001',
+          actualizado_en: new Date(),
+          creado_por: ACTOR_USER_ID,
+          actualizado_por: ACTOR_USER_ID,
+        },
+      });
+      createdProveedorIds.push(proveedor.id);
+
+      const articulo = await prisma.articulos_inventario.findFirst({ where: { eliminado_en: null } });
+      const orden = await prisma.ordenes_compra.create({
+        data: {
+          id: randomUUID(),
+          folio: `OC-INT2-${TEST_ID}`,
+          proveedor_id: proveedor.id,
+          descripcion: 'Doble recepción',
+          monto: 200,
+          fecha: new Date(),
+          estado: 'PENDIENTE',
+          actualizado_en: new Date(),
+          creado_por: ACTOR_USER_ID,
+          ordenes_compra_items: {
+            create: {
+              id: randomUUID(),
+              nombre: articulo!.nombre,
+              cantidad: 2,
+              precio_unitario: articulo!.precio_unitario,
+              articulo_id: articulo!.id,
+              actualizado_en: new Date(),
+              creado_por: ACTOR_USER_ID,
+            },
+          },
+        },
+      });
+      createdOrdenIds.push(orden.id);
+      await service.cambiarEstadoOrden(orden.id, { estado: 'APROBADA' }, ACTOR_USER_ID);
+      await service.recibirOrden(orden.id, {}, ACTOR_USER_ID);
+
+      // act: segunda recepción → rechazo
+      await expect(service.recibirOrden(orden.id, {}, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      // assert: auditoría FAIL real con error_code
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.ORDEN_COMPRA_RECIBIDA,
+          entity_id: orden.id,
+          result: 'FAIL',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits[0]?.result).toBe('FAIL');
+      expect(audits[0]?.error_code).not.toBeNull();
     });
   });
 });

@@ -2356,9 +2356,21 @@ export const ordenesCompraApi = {
 
   eliminar: (id: string) => apiClient.delete<void>(`/ordenes-compra/${id}`),
 
-  /** Aprobar / Recibir / Cancelar (cancelar requiere motivo). */
+  /** Aprobar / Cancelar (la recepción tiene su propio endpoint). */
   cambiarEstado: (id: string, data: CambiarEstadoOrdenInput) =>
     apiClient.post<OrdenCompraDTO>(`/ordenes-compra/${id}/cambiar-estado`, data),
+
+  /** Recibir OC aprobada: aplica al inventario (alta/entrada) y marca RECIBIDA. */
+  recibir: (
+    id: string,
+    data?: {
+      nuevosArticulos?: Array<{ lineaIndex: number; categoriaId: string; unidadId: string }>;
+    },
+  ) =>
+    apiClient.post<{
+      orden: { id: string; folio: string; estado: string };
+      inventario: Array<{ lineaIndex: number; articuloId: string; cantidad: number; stockAnterior: number; stockResultante: number; altaNueva: boolean }>;
+    }>(`/ordenes-compra/${id}/recibir`, data ?? {}),
 };
 
 // ─── Cobranza (cuentas por cobrar) ───────────────────────────────────────────

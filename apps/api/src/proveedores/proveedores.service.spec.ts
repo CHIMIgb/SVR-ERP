@@ -4,13 +4,13 @@ import { AuditAction, AuditResult, EstadoOrdenCompra, Prisma } from '@prisma/cli
 import { ProveedoresService } from './proveedores.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { InventarioService } from '../inventario/inventario.service';
 
 describe('ProveedoresService', () => {
   let service: ProveedoresService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
-
   const USER_ID = 'a0000000-0000-0000-0000-000000000099';
 
   const mockProveedor = {
@@ -81,11 +81,13 @@ describe('ProveedoresService', () => {
         count: jest.fn().mockResolvedValue(5),
         create: jest.fn().mockResolvedValue(mockOrden),
         update: jest.fn().mockResolvedValue(mockOrden),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       ordenes_compra_items: {
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn().mockResolvedValue({ id: '890e8400-e29b-41d4-a716-446655440001' }),
       },
       cuentas_por_pagar: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -109,7 +111,24 @@ describe('ProveedoresService', () => {
       transacciones: {
         create: jest.fn().mockResolvedValue({ id: '990e8400-e29b-41d4-a716-446655440010' }),
       },
+      articulos_inventario: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'aa000000-0000-0000-0000-000000000001',
+          nombre: 'Cemento',
+          stock: 10,
+          activo: true,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({ id: 'aa000000-0000-0000-0000-000000000009' }),
+      },
+      movimientos_inventario: {
+        create: jest.fn().mockResolvedValue({ id: 'aa000000-0000-0000-0000-000000000002' }),
+      },
       $transaction: runTx,
+    };
+
+    const mockInventario = {
+      aplicarEntrada: jest.fn().mockResolvedValue({ stockAnterior: 10, stockResultante: 14 }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -117,6 +136,7 @@ describe('ProveedoresService', () => {
         ProveedoresService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
+        { provide: InventarioService, useValue: mockInventario },
       ],
     }).compile();
 
@@ -711,4 +731,133 @@ describe('ProveedoresService', () => {
       );
     });
   });
+
+  // ── ÓRDENES DE COMPRA — RECIBIR (T4: aplica al inventario) ─────────
+  describe('recibirOrden — recepción que aplica al inventario', () => {
+    const ordenAprobada = {
+      ...mockOrden,
+      estado: EstadoOrdenCompra.APROBADA,
+      folio: 'OC-2026-007',
+      proveedor_id: mockProveedor.id,
+      ordenes_compra_items: [
+        {
+          id: '890e8400-e29b-41d4-a716-446655440001',
+          nombre: 'Cemento CPC 30',
+          cantidad: 4,
+          cantidad_recibida: 0,
+          articulo_id: 'aa000000-0000-0000-0000-000000000001',
+          activo: true,
+          eliminado_en: null,
+        },
+      ],
+    };
+
+    it('recibe una OC Aprobada: aplica ENTRADA, marca RECIBIDA y audita SUCCESS', async () => {
+      // arrange
+      const inventario = (service as unknown as { inventarioService: { aplicarEntrada: jest.Mock } }).inventarioService;
+      prisma.ordenes_compra.findFirst.mockResolvedValue(ordenAprobada);
+      prisma.ordenes_compra.updateMany.mockResolvedValue({ count: 1 });
+
+      // act
+      const res = await service.recibirOrden(ordenAprobada.id, {}, USER_ID);
+
+      // assert
+      expect(inventario.aplicarEntrada).toHaveBeenCalledWith(
+        prisma,
+        expect.objectContaining({ articuloId: ordenAprobada.ordenes_compra_items[0].articulo_id, cantidad: 4 }),
+      );
+      const itemCall = prisma.ordenes_compra_items.update.mock.calls[0][0];
+      expect(itemCall.data.cantidad_recibida).toBe(4);
+      expect(prisma.ordenes_compra.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: ordenAprobada.id, estado: EstadoOrdenCompra.APROBADA },
+          data: expect.objectContaining({ estado: EstadoOrdenCompra.RECIBIDA }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.ORDEN_COMPRA_RECIBIDA, result: AuditResult.SUCCESS }),
+      );
+      expect(res.orden.estado).toBe('Recibida');
+    });
+
+    it('falla con ORDEN_NO_APROBADA (audita FAIL + error_code)', async () => {
+      // arrange
+      prisma.ordenes_compra.findFirst.mockResolvedValue({ ...mockOrden, estado: EstadoOrdenCompra.PENDIENTE });
+
+      // act / assert
+      await expect(service.recibirOrden(mockOrden.id, {}, USER_ID)).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ORDEN_NO_APROBADA' }),
+      );
+    });
+
+    it('falla con ORDEN_COMPRA_NO_ENCONTRADA si no existe', async () => {
+      prisma.ordenes_compra.findFirst.mockResolvedValue(null);
+      await expect(service.recibirOrden('fantasma', {}, USER_ID)).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ORDEN_COMPRA_NO_ENCONTRADA' }),
+      );
+    });
+
+    it('falla con ORDEN_SIN_LINEAS si no hay líneas activas', async () => {
+      prisma.ordenes_compra.findFirst.mockResolvedValue({ ...ordenAprobada, ordenes_compra_items: [] });
+      await expect(service.recibirOrden(ordenAprobada.id, {}, USER_ID)).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ORDEN_SIN_LINEAS' }),
+      );
+    });
+
+    it('exige alta de catálogo (ALTA_CATALOGO_REQUERIDA) si la línea no tiene artículo', async () => {
+      // arrange
+      prisma.ordenes_compra.findFirst.mockResolvedValue({
+        ...ordenAprobada,
+        ordenes_compra_items: [{ ...ordenAprobada.ordenes_compra_items[0], articulo_id: null }],
+      });
+
+      // act / assert
+      await expect(service.recibirOrden(ordenAprobada.id, {}, USER_ID)).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ALTA_CATALOGO_REQUERIDA' }),
+      );
+    });
+
+    it('carrera: otra recepción llegó primero (updateMany count 0) → RECEPCION_YA_APLICADA sin tocar inventario', async () => {
+      const inventario = (service as unknown as { inventarioService: { aplicarEntrada: jest.Mock } }).inventarioService;
+      prisma.ordenes_compra.findFirst.mockResolvedValue(ordenAprobada);
+      prisma.ordenes_compra.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.recibirOrden(ordenAprobada.id, {}, USER_ID)).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'RECEPCION_YA_APLICADA' }),
+      );
+      expect(inventario.aplicarEntrada).not.toHaveBeenCalled();
+    });
+
+    it('alta de artículo nuevo: crea el artículo y registra su ENTRADA con stock inicial', async () => {
+      const inventario = (service as unknown as { inventarioService: { aplicarEntrada: jest.Mock } }).inventarioService;
+      prisma.ordenes_compra.findFirst.mockResolvedValue({
+        ...ordenAprobada,
+        ordenes_compra_items: [{ ...ordenAprobada.ordenes_compra_items[0], articulo_id: null }],
+      });
+
+      const res = await service.recibirOrden(
+        ordenAprobada.id,
+        { nuevosArticulos: [{ lineaIndex: 0, categoriaId: 'c1111111-1111-1111-1111-111111111111', unidadId: 'u1111111-1111-1111-1111-111111111111' }] },
+        USER_ID,
+      );
+
+      expect(prisma.articulos_inventario.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ nombre: 'Cemento CPC 30', stock: 4 }),
+        }),
+      );
+      expect(prisma.movimientos_inventario.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tipo: 'ENTRADA', motivo: 'ALTA_NUEVO_ARTICULO' }),
+        }),
+      );
+      expect(res.inventario[0].altaNueva).toBe(true);
+    });
+  });
+
 });

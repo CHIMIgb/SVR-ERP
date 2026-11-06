@@ -21,6 +21,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditContextService } from '../src/audit/audit-context.service';
 import { AuditService } from '../src/audit/audit.service';
 import { ProveedoresService } from '../src/proveedores/proveedores.service';
+import { InventarioService } from '../src/inventario/inventario.service';
 import { EstadoOrdenCompra } from '@prisma/client';
 
 const SEED_PREFIX = 'SEED-PROV-';
@@ -95,7 +96,8 @@ async function main() {
   const prisma = new PrismaService();
   await prisma.$connect();
   const audit = new AuditService(prisma, new AuditContextService());
-  const service = new ProveedoresService(prisma, audit);
+  const inventarioService = new InventarioService(prisma, audit);
+  const service = new ProveedoresService(prisma, audit, inventarioService);
 
   const admin = await prisma.users.findFirst({
     where: { email: 'admin@svr-constructora.com' },

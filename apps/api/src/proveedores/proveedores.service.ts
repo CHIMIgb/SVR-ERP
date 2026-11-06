@@ -22,6 +22,8 @@ import { UpdateOrdenCompraDto } from './dto/update-orden-compra.dto';
 import { CambiarEstadoOrdenDto } from './dto/cambiar-estado-orden.dto';
 import { RegistrarAbonoDto } from './dto/registrar-abono.dto';
 import { QueryOrdenesCompraDto } from './dto/query-ordenes-compra.dto';
+import { RecibirOrdenCompraDto } from './dto/recibir-orden-compra.dto';
+import { InventarioService } from '../inventario/inventario.service';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -51,6 +53,7 @@ export class ProveedoresService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly inventarioService: InventarioService,
   ) {}
 
   /**
@@ -885,6 +888,231 @@ export class ProveedoresService {
     });
 
     return serialized;
+  }
+
+  // ────────────────────────────────────────────
+  //  ÓRDENES DE COMPRA — RECIBIR (T4: aplica al inventario)
+  // ────────────────────────────────────────────
+  /**
+   * Recepción física de una OC Aprobada. En una sola transacción:
+   *  - por cada línea activa: aplica ENTRADA al inventario con
+   *    `InventarioService.aplicarEntrada` (stock + movimiento) — si la línea
+   *    no trae `articulo_id` y recibimos `nuevosArticulos[index]`, damos de
+   *    ALTA el artículo con la categoría/unidad elegidas (stock inicial =
+   *    cantidad recibida) y luego aplica su entrada;
+   *  - marca `cantidad_recibida = cantidad` por línea;
+   *  - transición condicional APROBADA → RECIBIDA (anti-carrera);
+   *  - audita ORDEN_COMPRA_RECIBIDA (SUCCESS/FAIL con error_code).
+   */
+  async recibirOrden(id: string, dto: RecibirOrdenCompraDto, userId: string) {
+    const existente = await this.prisma.ordenes_compra.findFirst({
+      where: { id, eliminado_en: null },
+      include: {
+        ordenes_compra_items: {
+          where: { eliminado_en: null, activo: true },
+          orderBy: { creado_en: 'asc' },
+        },
+      },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.ORDEN_COMPRA_RECIBIDA,
+        id,
+        'ORDEN_COMPRA_NO_ENCONTRADA',
+        NotFoundException,
+        `Orden de compra con id "${id}" no encontrada`,
+      );
+    }
+
+    if ((existente.estado as EstadoOrdenCompra) !== EstadoOrdenCompra.APROBADA) {
+      return this.fallir(
+        AuditAction.ORDEN_COMPRA_RECIBIDA,
+        id,
+        'ORDEN_NO_APROBADA',
+        ConflictException,
+        `Solo se puede recibir una orden en estado Aprobada (estado actual: ${existente.estado})`,
+      );
+    }
+
+    if ((existente.ordenes_compra_items?.length ?? 0) === 0) {
+      return this.fallir(
+        AuditAction.ORDEN_COMPRA_RECIBIDA,
+        id,
+        'ORDEN_SIN_LINEAS',
+        BadRequestException,
+        'La orden no tiene líneas activas que recibir',
+      );
+    }
+
+    try {
+      const resultado = await this.prisma.$transaction(async (tx) => {
+        // Guard anti-carrera: solo APROBADA pasa a RECIBIDA.
+        const marcada = await tx.ordenes_compra.updateMany({
+          where: { id, estado: EstadoOrdenCompra.APROBADA },
+          data: {
+            estado: EstadoOrdenCompra.RECIBIDA,
+            actualizado_por: userId,
+            actualizado_en: new Date(),
+          },
+        });
+        if (marcada.count === 0) {
+          throw new ConflictException('La orden ya fue recibida');
+        }
+
+        const entradas: Array<{
+          lineaIndex: number;
+          articuloId: string;
+          cantidad: number;
+          stockAnterior: number;
+          stockResultante: number;
+          altaNueva: boolean;
+        }> = [];
+
+        const lineas = existente.ordenes_compra_items ?? [];
+        for (let index = 0; index < lineas.length; index++) {
+          const linea = lineas[index];
+          const cantidad = Number(linea.cantidad);
+
+          let articuloId = linea.articulo_id;
+          let stockAnterior = 0;
+
+          // Línea sin artículo del catálogo: alta de artículo novo (opcional)
+          if (!articuloId) {
+            const alta = (dto.nuevosArticulos ?? []).find(
+              (a) => a.lineaIndex === index,
+            );
+            if (!alta) {
+              throw new BadRequestException(
+                `La línea "${linea.nombre}" no tiene artículo asignado y no se recibió alta para catalogarla`,
+              );
+            }
+            stockAnterior = 0;
+            articuloId = randomUUID();
+            await tx.articulos_inventario.create({
+              data: {
+                id: articuloId,
+                nombre: linea.nombre,
+                stock: cantidad,
+                stock_minimo: 0,
+                precio_unitario: linea.precio_unitario,
+                categoria_id: alta.categoriaId,
+                unidad_id: alta.unidadId,
+                proveedor_id: existente.proveedor_id,
+                creado_por: userId,
+                actualizado_por: userId,
+                actualizado_en: new Date(),
+              },
+            });
+            await tx.movimientos_inventario.create({
+              data: {
+                id: randomUUID(),
+                articulo_id: articuloId,
+                tipo: 'ENTRADA',
+                cantidad,
+                stock_resultante: cantidad,
+                motivo: 'ALTA_NUEVO_ARTICULO',
+                referencia_tipo: 'ORDEN_COMPRA',
+                referencia_id: id,
+                fecha: new Date(),
+                creado_por: userId,
+              },
+            });
+            entradas.push({
+              lineaIndex: index,
+              articuloId,
+              cantidad,
+              stockAnterior,
+              stockResultante: cantidad,
+              altaNueva: true,
+            });
+          } else {
+            const { stockAnterior: previo, stockResultante } =
+              await this.inventarioService.aplicarEntrada(tx, {
+                articuloId,
+                cantidad,
+                motivo: 'RECEPCION_OC',
+                referenciaTipo: 'ORDEN_COMPRA',
+                referenciaId: id,
+                creadoPor: userId,
+              });
+            stockAnterior = previo;
+            entradas.push({
+              lineaIndex: index,
+              articuloId,
+              cantidad,
+              stockAnterior,
+              stockResultante,
+              altaNueva: false,
+            });
+          }
+
+          await tx.ordenes_compra_items.update({
+            where: { id: linea.id },
+            data: {
+              cantidad_recibida: cantidad,
+              actualizado_por: userId,
+              actualizado_en: new Date(),
+            },
+          });
+        }
+
+        return entradas;
+      });
+
+      await this.auditService.log({
+        action: AuditAction.ORDEN_COMPRA_RECIBIDA,
+        entityType: 'ordenes_compra',
+        entityId: id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        newValue: {
+          folio: existente.folio,
+          estado: 'RECIBIDA',
+          lineas: (resultado ?? []).map((e) => ({
+            lineaIndex: e.lineaIndex,
+            articuloId: e.articuloId,
+            cantidad: e.cantidad,
+            stockAnterior: e.stockAnterior,
+            stockResultante: e.stockResultante,
+            altaNueva: e.altaNueva,
+          })),
+        },
+      });
+
+      return {
+        orden: { id, folio: existente.folio, estado: 'Recibida' },
+        inventario: resultado,
+      };
+    } catch (e) {
+      // Carrera: otro usuario recibió primero — audita FAIL y lanza conflicto.
+      if (e instanceof ConflictException && e.message === 'La orden ya fue recibida') {
+        return this.fallir(
+          AuditAction.ORDEN_COMPRA_RECIBIDA,
+          id,
+          'RECEPCION_YA_APLICADA',
+          ConflictException,
+          'La orden ya fue recibida',
+        );
+      }
+      // Fallos de negocio dentro de la transacción (alta faltante, artículo no encontrado…)
+      if (e instanceof BadRequestException || e instanceof NotFoundException) {
+        const msg = e.message ?? 'La recepción no pudo aplicarse';
+        const errorCode = /alta|catalogarla/i.test(msg)
+          ? 'ALTA_CATALOGO_REQUERIDA'
+          : 'ARTICULO_NO_ENCONTRADO';
+        return this.fallir(
+          AuditAction.ORDEN_COMPRA_RECIBIDA,
+          id,
+          errorCode,
+          e instanceof BadRequestException ? BadRequestException : NotFoundException,
+          msg,
+        );
+      }
+      throw e;
+    }
   }
 
   // ────────────────────────────────────────────
