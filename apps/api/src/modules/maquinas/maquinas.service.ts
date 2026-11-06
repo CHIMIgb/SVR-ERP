@@ -133,7 +133,11 @@ export class MaquinasService {
       }),
     ]);
 
-    const proximoServicio = await this.proximoServicioPorMaquina(maquinas.map((m) => m.id));
+    const ids = maquinas.map((m) => m.id);
+    const [proximoServicio, ultimaCarga] = await Promise.all([
+      this.proximoServicioPorMaquina(ids),
+      this.ultimaCargaPorMaquina(ids),
+    ]);
 
     // El mas reciente por maquina (findMany ya viene ordenado desc).
     const checklistPorMaquina = new Map<string, (typeof checklistsHoy)[number]>();
@@ -163,8 +167,10 @@ export class MaquinasService {
         horasParaServicio: proximo === undefined ? undefined : Math.round((proximo - Number(m.horometro)) * 100) / 100,
         imagen: m.imagen ?? undefined,
         consumoEsperadoLtsHora: m.consumo_esperado_lts_hora != null ? Number(m.consumo_esperado_lts_hora) : undefined,
-        rendimientoActualLtsHora: m.rendimiento_actual_lts_hora != null ? Number(m.rendimiento_actual_lts_hora) : undefined,
-        alertaConsumoAnormal: m.alerta_consumo_anormal,
+        // Rendimiento y alerta de la última carga real: las columnas de la máquina ningún flujo las actualiza
+        // (solo traen lo sembrado), así que una carga nueva nunca cambiaba la alerta que muestra Flota.
+        rendimientoActualLtsHora: ultimaCarga.get(m.id)?.rendimiento,
+        alertaConsumoAnormal: ultimaCarga.get(m.id)?.alerta ?? false,
         horasOperadasHoy: m.horas_operadas_hoy != null ? Number(m.horas_operadas_hoy) : undefined,
         checklistHoy: checklist
           ? {
@@ -297,6 +303,17 @@ export class MaquinasService {
       WHERE eliminado_en IS NULL AND maquina_id = ANY(${ids}::uuid[])
       ORDER BY maquina_id, fecha DESC, creado_en DESC`;
     return new Map(filas.map((f) => [f.maquina_id, Number(f.proximo_servicio_horas)]));
+  }
+
+  /** Rendimiento (L/h) y alerta de posible ordeña de la última carga de combustible de cada máquina. */
+  async ultimaCargaPorMaquina(ids: string[]): Promise<Map<string, { rendimiento: number; alerta: boolean }>> {
+    if (ids.length === 0) return new Map();
+    const filas = await this.prisma.$queryRaw<{ maquina_id: string; rendimiento_lts_hora: Prisma.Decimal; alerta_ordena: boolean }[]>`
+      SELECT DISTINCT ON (maquina_id) maquina_id, rendimiento_lts_hora, alerta_ordena
+      FROM cargas_combustible
+      WHERE eliminado_en IS NULL AND maquina_id = ANY(${ids}::uuid[])
+      ORDER BY maquina_id, fecha DESC, creado_en DESC`;
+    return new Map(filas.map((f) => [f.maquina_id, { rendimiento: Number(f.rendimiento_lts_hora), alerta: f.alerta_ordena }]));
   }
 
   /** Mapa interno codigo->id real (UUID), para que otros módulos puedan

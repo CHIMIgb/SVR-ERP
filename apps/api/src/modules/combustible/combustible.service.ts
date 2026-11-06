@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { esFechaFutura } from '../../common/validacion';
 import { CreateCargaCombustibleDto } from './dto/create-carga-combustible.dto';
 import { UpdateCargaCombustibleDto } from './dto/update-carga-combustible.dto';
 import { QueryCargaCombustibleDto } from './dto/query-carga-combustible.dto';
@@ -150,6 +151,16 @@ export class CombustibleService {
   }
 
   async create(dto: CreateCargaCombustibleDto, userId: string): Promise<CargaCombustibleResponse> {
+    if (dto.fecha && esFechaFutura(dto.fecha)) {
+      return this.fallir(
+        AuditAction.COMBUSTIBLE_CARGADO,
+        null,
+        'FECHA_FUTURA',
+        BadRequestException,
+        'La fecha de la carga no puede ser futura',
+      );
+    }
+
     const maquina = await this.prisma.maquinas.findFirst({
       where: { codigo: dto.maquinaId, eliminado_en: null },
       include: { trabajadores: { select: { nombre: true } } },
@@ -240,6 +251,16 @@ export class CombustibleService {
         'REGISTRO_NO_ENCONTRADO',
         NotFoundException,
         `Carga de combustible con id "${id}" no encontrada`,
+      );
+    }
+
+    if (dto.fecha && esFechaFutura(dto.fecha)) {
+      return this.fallir(
+        AuditAction.COMBUSTIBLE_ACTUALIZADO,
+        id,
+        'FECHA_FUTURA',
+        BadRequestException,
+        'La fecha de la carga no puede ser futura',
       );
     }
 
