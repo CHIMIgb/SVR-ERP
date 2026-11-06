@@ -976,76 +976,106 @@ export class ProveedoresService {
 
           let articuloId = linea.articulo_id;
           let stockAnterior = 0;
+          let altaNuevaLinea = false;
 
-          // Línea sin artículo del catálogo: alta de artículo novo (opcional)
+          // Línea sin artículo del catálogo: primero intenta emparejar por nombre
+          // (case-insensitive, sin acentos) dentro del artículo del inventario —
+          // evita duplicar catálogo si el usuario escribió el nombre con otra
+          // caja ("Filtros de aceite" vs "filtros de aceite"). Si hay alta
+          // explícita (nuevosArticulos) se respeta el pedido de alta de nuevo,
+          // salvo que el finden sea exacto.
           if (!articuloId) {
             const alta = (dto.nuevosArticulos ?? []).find(
               (a) => a.lineaIndex === index,
             );
-            if (!alta) {
+            const normalizar = (s: string) =>
+              s
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase();
+            const buscarNombre = normalizar(linea.nombre);
+            const candidatos = await tx.articulos_inventario.findMany({
+              where: { eliminado_en: null, activo: true },
+              select: { id: true, nombre: true, proveedor_id: true },
+              take: 500,
+            });
+            const match = candidatos.find(
+              (c) =>
+                normalizar(c.nombre) === buscarNombre &&
+                c.proveedor_id === existente.proveedor_id,
+            );
+            const matchExacto =
+              match &&
+              normalizar(match.nombre) === normalizar(linea.nombre);
+
+            if (match && (matchExacto || !alta)) {
+              // Coincidencia de nombre del mismo proveedor: linkea en vez de dar de alta.
+              articuloId = match.id;
+            } else if (!alta) {
               throw new BadRequestException(
                 `La línea "${linea.nombre}" no tiene artículo asignado y no se recibió alta para catalogarla`,
               );
             }
-            stockAnterior = 0;
-            articuloId = randomUUID();
-            await tx.articulos_inventario.create({
-              data: {
-                id: articuloId,
-                nombre: linea.nombre,
-                stock: cantidad,
-                stock_minimo: 0,
-                precio_unitario: linea.precio_unitario,
-                categoria_id: alta.categoriaId,
-                unidad_id: alta.unidadId,
-                proveedor_id: existente.proveedor_id,
-                creado_por: userId,
-                actualizado_por: userId,
-                actualizado_en: new Date(),
-              },
-            });
-            await tx.movimientos_inventario.create({
-              data: {
-                id: randomUUID(),
-                articulo_id: articuloId,
-                tipo: 'ENTRADA',
-                cantidad,
-                stock_resultante: cantidad,
-                motivo: 'ALTA_NUEVO_ARTICULO',
-                referencia_tipo: 'ORDEN_COMPRA',
-                referencia_id: id,
-                fecha: new Date(),
-                creado_por: userId,
-              },
-            });
-            entradas.push({
-              lineaIndex: index,
-              articuloId,
-              cantidad,
-              stockAnterior,
-              stockResultante: cantidad,
-              altaNueva: true,
-            });
-          } else {
-            const { stockAnterior: previo, stockResultante } =
-              await this.inventarioService.aplicarEntrada(tx, {
-                articuloId,
-                cantidad,
-                motivo: 'RECEPCION_OC',
-                referenciaTipo: 'ORDEN_COMPRA',
-                referenciaId: id,
-                creadoPor: userId,
+
+            if (!articuloId && alta) {
+              stockAnterior = 0;
+              articuloId = randomUUID();
+              altaNuevaLinea = true;
+              await tx.articulos_inventario.create({
+                data: {
+                  id: articuloId,
+                  nombre: linea.nombre,
+                  stock: cantidad,
+                  stock_minimo: 0,
+                  precio_unitario: linea.precio_unitario,
+                  categoria_id: alta.categoriaId,
+                  unidad_id: alta.unidadId,
+                  proveedor_id: existente.proveedor_id,
+                  creado_por: userId,
+                  actualizado_por: userId,
+                  actualizado_en: new Date(),
+                },
               });
-            stockAnterior = previo;
-            entradas.push({
-              lineaIndex: index,
-              articuloId,
-              cantidad,
-              stockAnterior,
-              stockResultante,
-              altaNueva: false,
-            });
+              await tx.movimientos_inventario.create({
+                data: {
+                  id: randomUUID(),
+                  articulo_id: articuloId,
+                  tipo: 'ENTRADA',
+                  cantidad,
+                  stock_resultante: cantidad,
+                  motivo: 'ALTA_NUEVO_ARTICULO',
+                  referencia_tipo: 'ORDEN_COMPRA',
+                  referencia_id: id,
+                  fecha: new Date(),
+                  creado_por: userId,
+                },
+              });
+            }
           }
+
+          // Aplicar ENTRADA para TODAS las rutas (catálogo original, linkeado por
+          // nombre o alta nueva): el stock siempre refleja la recepción.
+          const { stockAnterior: previo, stockResultante } =
+            await this.inventarioService.aplicarEntrada(tx, {
+              articuloId: articuloId!,
+              cantidad,
+              motivo: 'RECEPCION_OC',
+              referenciaTipo: 'ORDEN_COMPRA',
+              referenciaId: id,
+              creadoPor: userId,
+            });
+          stockAnterior = previo;
+          // altaNueva: SOLO cuando se creó un artículo de cero. Si la línea se
+          // linkeó por nombre (match) el flag es false.
+          entradas.push({
+            lineaIndex: index,
+            articuloId: articuloId!,
+            cantidad,
+            stockAnterior: previo,
+            stockResultante,
+            altaNueva: altaNuevaLinea,
+          });
 
           await tx.ordenes_compra_items.update({
             where: { id: linea.id },

@@ -111,6 +111,7 @@ describe('ProveedoresService', () => {
         create: jest.fn().mockResolvedValue({ id: '990e8400-e29b-41d4-a716-446655440010' }),
       },
       articulos_inventario: {
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue({
           id: 'aa000000-0000-0000-0000-000000000001',
           nombre: 'Cemento',
@@ -857,6 +858,43 @@ describe('ProveedoresService', () => {
       );
       expect(res.inventario[0].altaNueva).toBe(true);
     });
+  it('linkea por nombre (case-insensitive) si ya existe el artículo del mismo proveedor', async () => {
+    const inventario = (service as unknown as { inventarioService: { aplicarEntrada: jest.Mock } }).inventarioService;
+    prisma.ordenes_compra.findFirst.mockResolvedValue({
+      ...ordenAprobada,
+      ordenes_compra_items: [
+        { ...ordenAprobada.ordenes_compra_items[0], articulo_id: null, nombre: 'Filtros de aceite' },
+      ],
+    });
+    prisma.articulos_inventario.findMany.mockResolvedValue([
+      { id: 'aa000000-0000-0000-0000-000000000001', nombre: 'FILTROS DE ACEITE', proveedor_id: mockProveedor.id },
+    ]);
+
+    const res = await service.recibirOrden(ordenAprobada.id, {}, USER_ID);
+
+    expect(prisma.articulos_inventario.create).not.toHaveBeenCalled();
+    expect(inventario.aplicarEntrada).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ articuloId: 'aa000000-0000-0000-0000-000000000001' }),
+    );
+    expect(res.inventario[0].altaNueva).toBe(false);
   });
 
+  it('respeta el alta explicita cuando el nombre NO existe en el catálogo', async () => {
+    prisma.ordenes_compra.findFirst.mockResolvedValue({
+      ...ordenAprobada,
+      ordenes_compra_items: [{ ...ordenAprobada.ordenes_compra_items[0], articulo_id: null }],
+    });
+    prisma.articulos_inventario.findMany.mockResolvedValue([]);
+
+    const res = await service.recibirOrden(
+      ordenAprobada.id,
+      { nuevosArticulos: [{ lineaIndex: 0, categoriaId: 'c1111111-1111-1111-1111-111111111111', unidadId: 'u1111111-1111-1111-1111-111111111111' }] },
+      USER_ID,
+    );
+
+    expect(prisma.articulos_inventario.create).toHaveBeenCalled();
+    expect(res.inventario[0].altaNueva).toBe(true);
+  });
+});
 });

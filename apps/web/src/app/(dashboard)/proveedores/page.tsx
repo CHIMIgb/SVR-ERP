@@ -19,9 +19,9 @@ import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, moda
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
-  proveedoresApi, ordenesCompraApi,
+  inventarioApi, proveedoresApi, ordenesCompraApi,
   type ProveedorDTO, type OrdenCompraDTO, type EstadoCuentaResumenDTO,
-  type LedgerDetalleDTO, type EstadoOrdenApi,
+  type LedgerDetalleDTO, type EstadoOrdenApi, type ArticuloInventarioDTO,
 } from '@/lib/api';
 
 // ─── Tipos UI ────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ const emptyProvForm = {
 const emptyOcForm = {
   proveedorId: '',
   descripcion: '',
-  items: [] as Array<{ nombre: string; articuloId: string | null; cantidad: number; precioUnitario: number }>,
+  items: [] as Array<{ nombre: string; articuloId: string | null; modo: 'inventario' | 'nuevo'; cantidad: number; precioUnitario: number }>,
 };
 
 export default function ProveedoresPage() {
@@ -163,6 +163,10 @@ export default function ProveedoresPage() {
     }
   }, [showToast]);
 
+  // Catálogo de artículos del inventario: alimenta las líneas "Del inventario"
+  // en el modal de OC (trae precio y unidad si maxlength está bien).
+  const [articulosCatalogo, setArticulosCatalogo] = useState<ArticuloInventarioDTO[]>([]);
+
   const fetchOrdenes = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
     const res = await ordenesCompraApi.listar({
       search: searchVal || undefined,
@@ -186,6 +190,8 @@ export default function ProveedoresPage() {
   const fetchCatalogo = useCallback(async () => {
     const res = await proveedoresApi.listar({ page: 1, limit: 100 });
     if (res.success && res.data) setProveedoresCatalogo(res.data.items);
+    const resArt = await inventarioApi.listar({ page: 1, limit: 100 });
+    if (resArt.success && resArt.data) setArticulosCatalogo(resArt.data.items);
   }, []);
 
   const fetchStats = useCallback(async () => {
@@ -1156,7 +1162,7 @@ export default function ProveedoresPage() {
             <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Líneas del pedido</p>
             <button
               type="button"
-              onClick={() => setOcForm({ ...ocForm, items: [...ocForm.items, { nombre: '', articuloId: null, cantidad: 1, precioUnitario: 0 }] })}
+              onClick={() => setOcForm({ ...ocForm, items: [...ocForm.items, { nombre: '', articuloId: null, modo: 'inventario', cantidad: 1, precioUnitario: 0 }] })}
               className="text-xs font-bold text-primary hover:text-primary-dark transition-colors"
             >
               + Agregar línea
@@ -1179,15 +1185,36 @@ export default function ProveedoresPage() {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <label className="flex flex-col gap-1">
+                  <label className="flex flex-col gap-1 sm:col-span-2">
                     <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Producto</span>
-                    {it.articuloId ? (
-                      <span className="text-xs font-bold text-ui-900 px-1">Uso artículo del catálogo</span>
+                    {it.modo === 'inventario' ? (
+                      <select
+                        className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                        value={it.articuloId ?? ''}
+                        onChange={(e) => {
+                          const art = articulosCatalogo.find((a) => a.id === e.target.value);
+                          setOcForm({
+                            ...ocForm,
+                            items: ocForm.items.map((x, i) =>
+                              i === idx
+                                ? { ...x, articuloId: art?.id ?? null, nombre: art?.nombre ?? '', precioUnitario: art ? art.precioUnitario : x.precioUnitario }
+                                : x,
+                            ),
+                          });
+                        }}
+                      >
+                        <option value="">Seleccionar del inventario...</option>
+                        {articulosCatalogo.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.nombre} — {formatCurrency(a.precioUnitario)} · stock {a.stock}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         type="text"
                         className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
-                        placeholder="Nombre del producto (nuevo o del catálogo)"
+                        placeholder="Nombre del producto nuevo (se dará de alta al recibir)"
                         value={it.nombre}
                         onChange={(e) =>
                           setOcForm({
@@ -1197,6 +1224,39 @@ export default function ProveedoresPage() {
                         }
                       />
                     )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOcForm({
+                          ...ocForm,
+                          items: ocForm.items.map((x, i) =>
+                            i === idx
+                              ? x.modo === 'inventario'
+                                ? { ...x, modo: 'nuevo', articuloId: null, nombre: '', precioUnitario: 0 }
+                                : { ...x, modo: 'inventario', articuloId: null, nombre: '', precioUnitario: 0 }
+                              : x,
+                          ),
+                        })
+                      }
+                      className="text-[10px] font-bold text-primary hover:text-primary-dark text-left"
+                    >
+                      {it.modo === 'inventario' ? 'Es un producto nuevo (dar de alta al recibir)' : 'Ya está en el inventario, productor del catálogo'}
+                    </button>
+                    {it.modo === 'nuevo' &&
+                      (() => {
+                        
+                        const primer = articulosCatalogo.find((a) =>
+                          a.nombre.trim().toLowerCase().includes(it.nombre.trim().toLowerCase()),
+                        );
+                        if (it.nombre.trim() && primer) {
+                          return (
+                            <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                              Atención: existe &quot;{primer.nombre}&quot; en el inventario — usa el modo &quot;Del inventario&quot; para no duplicarlo.
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Cantidad</span>
