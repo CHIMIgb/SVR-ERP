@@ -479,8 +479,8 @@ export default function InventarioPage() {
         }
       />
 
-      {lowStockCount > 0 && (
-        <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {!initialLoading && lowStockCount > 0 && (
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-[fadeScaleIn_0.2s_ease-out]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
               <AlertTriangle className="w-6 h-6" />
