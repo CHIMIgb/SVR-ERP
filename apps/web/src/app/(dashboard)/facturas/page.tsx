@@ -486,9 +486,9 @@ export default function FacturasPage() {
       header: 'Folio',
       render: (f) => (
         <div>
-          <span className="font-black text-slate-900">{f.codigo}</span>
+          <span className="font-black text-ui-900">{f.codigo}</span>
           {f.cotizacionCodigo && (
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{f.cotizacionCodigo}</div>
+            <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">{f.cotizacionCodigo}</div>
           )}
         </div>
       ),
@@ -498,21 +498,21 @@ export default function FacturasPage() {
       header: 'Cliente',
       render: (f) => (
         <div>
-          <div className="font-semibold text-slate-900">{f.empresa || f.clienteNombre}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{f.rfc}</div>
+          <div className="font-semibold text-ui-900">{f.empresa || f.clienteNombre}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">{f.rfc}</div>
         </div>
       ),
     },
     {
       key: 'fechaEmision',
       header: 'Emisión',
-      render: (f) => <span className="font-semibold text-slate-600">{f.fechaEmision}</span>,
+      render: (f) => <span className="font-semibold text-ui-600">{f.fechaEmision}</span>,
     },
     {
       key: 'total',
       header: 'Total',
       align: 'right',
-      render: (f) => <span className="font-black text-slate-900">{formatCurrency(f.total)}</span>,
+      render: (f) => <span className="font-black text-ui-900">{formatCurrency(f.total)}</span>,
     },
     {
       key: 'estado',
@@ -651,7 +651,7 @@ export default function FacturasPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -679,7 +679,7 @@ export default function FacturasPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -688,17 +688,17 @@ export default function FacturasPage() {
       )}
 
       {showFilters && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
                   value={filterValues[filter.key] || ''}
                   onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                  className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
                 >
                   <option value="">{filter.placeholder || 'Todos'}</option>
                   {filter.options?.map((opt) => (
@@ -716,7 +716,7 @@ export default function FacturasPage() {
       <div className="space-y-3">
         <div className="relative">
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -754,39 +754,39 @@ export default function FacturasPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RFC</p>
-                <p className="font-semibold text-slate-900">{selected.rfc || '—'}</p>
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">RFC</p>
+                <p className="font-semibold text-ui-900">{selected.rfc || '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Emisión</p>
-                <p className="font-semibold text-slate-900">{selected.fechaEmision}</p>
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Emisión</p>
+                <p className="font-semibold text-ui-900">{selected.fechaEmision}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Forma de pago</p>
-                <p className="font-semibold text-slate-900">{selected.formaPago || '—'}</p>
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Forma de pago</p>
+                <p className="font-semibold text-ui-900">{selected.formaPago || '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Uso de CFDI</p>
-                <p className="font-semibold text-slate-900">{selected.usoCfdi || '—'}</p>
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Uso de CFDI</p>
+                <p className="font-semibold text-ui-900">{selected.usoCfdi || '—'}</p>
               </div>
               {selected.cotizacionCodigo && (
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cotización origen</p>
-                  <p className="font-semibold text-slate-900">{selected.cotizacionCodigo}</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Cotización origen</p>
+                  <p className="font-semibold text-ui-900">{selected.cotizacionCodigo}</p>
                 </div>
               )}
               {selected.timbradoEn && (
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Timbrado</p>
-                  <p className="font-semibold text-slate-900">
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Timbrado</p>
+                  <p className="font-semibold text-ui-900">
                     {new Date(selected.timbradoEn).toLocaleString('es-MX')}
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="border-t border-slate-100 pt-3">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Conceptos</p>
+            <div className="border-t border-ui-100 pt-3">
+              <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest mb-2">Conceptos</p>
               <div className="space-y-2">
                 {selected.conceptos.map((c: FacturaConceptoDTO) => {
                   const esEditable = detailMode === 'editar' && selected.estado === 'PENDIENTE' && puedeEditar;
@@ -822,14 +822,14 @@ export default function FacturasPage() {
                   ) : (
                     <div key={c.id} className="flex items-start justify-between gap-4 text-sm">
                       <div>
-                        <p className="font-semibold text-slate-900">{c.descripcion}</p>
-                        <p className="text-xs text-slate-400">
+                        <p className="font-semibold text-ui-900">{c.descripcion}</p>
+                        <p className="text-xs text-ui-400">
                           {c.cantidad} × {formatCurrency(c.valorUnitario)} {c.unidad}
                           {c.objetoImpuesto === '04' ? ' · IVA 16%' : ' · Exento'}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <p className="font-bold text-slate-900">{formatCurrency(c.importe)}</p>
+                        <p className="font-bold text-ui-900">{formatCurrency(c.importe)}</p>
                         {esEditable && (
                           <div className="flex items-center gap-1">
                             <Button
@@ -866,8 +866,8 @@ export default function FacturasPage() {
               </div>
 
               {detailMode === 'editar' && selected.estado === 'PENDIENTE' && puedeEditar && conceptoForm.editId === null && (
-                <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                <div className="mt-3 rounded-xl border border-dashed border-ui-300 bg-ui-50 p-3">
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest mb-2">
                     Agregar concepto
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -888,16 +888,16 @@ export default function FacturasPage() {
               )}
             </div>
 
-            <div className="border-t border-slate-100 pt-3 space-y-1 text-sm">
-              <div className="flex justify-between text-slate-500">
+            <div className="border-t border-ui-100 pt-3 space-y-1 text-sm">
+              <div className="flex justify-between text-ui-500">
                 <span>Subtotal</span>
                 <span>{formatCurrency(selected.subtotal)}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ui-500">
                 <span>Impuestos</span>
                 <span>{formatCurrency(selected.impuestos)}</span>
               </div>
-              <div className="flex justify-between font-bold text-slate-900">
+              <div className="flex justify-between font-bold text-ui-900">
                 <span>Total</span>
                 <span>{formatCurrency(selected.total)}</span>
               </div>
@@ -971,9 +971,9 @@ export default function FacturasPage() {
           </select>
         </ModalField>
 
-        <div className="border-t border-slate-100 pt-4 mt-2">
+        <div className="border-t border-ui-100 pt-4 mt-2">
           <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-semibold text-slate-700">Conceptos</label>
+            <label className="block text-sm font-semibold text-ui-700">Conceptos</label>
             <Button
               variant="ghost"
               size="sm"
@@ -985,7 +985,7 @@ export default function FacturasPage() {
           </div>
 
           {form.conceptos.map((c, idx) => (
-            <div key={idx} className="space-y-3 p-3 rounded-xl border border-slate-200 bg-slate-50/50 mb-3">
+            <div key={idx} className="space-y-3 p-3 rounded-xl border border-ui-200 bg-ui-50/50 mb-3">
               <ModalField label={`Concepto ${idx + 1}`} required>
                 <input
                   type="text"
@@ -1046,7 +1046,7 @@ export default function FacturasPage() {
             </div>
           ))}
 
-          <div className="flex justify-end text-sm font-semibold text-slate-700">
+          <div className="flex justify-end text-sm font-semibold text-ui-700">
             Total con IVA: {formatCurrency(totalCalculado)}
           </div>
         </div>
@@ -1074,7 +1074,7 @@ export default function FacturasPage() {
             />
           </ModalField>
         ) : (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ui-500">
             Al timbrar la factura quedará en estado Timbrada y ya no podrá editarse.
           </p>
         )}
@@ -1092,7 +1092,7 @@ export default function FacturasPage() {
         onSubmit={handleEliminarConcepto}
         isSubmitting={submitting}
       >
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ui-500">
           ¿Eliminar el concepto “{selectedConcepto?.descripcion}” de la factura?
           El total se recalculará automáticamente.
         </p>
@@ -1110,7 +1110,7 @@ export default function FacturasPage() {
         onSubmit={handleDelete}
         isSubmitting={submitting}
       >
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ui-500">
           La factura se eliminará (soft delete) y no podrá recuperarse. Solo se eliminan facturas
           en estado Pendiente sin cuenta por cobrar asociada.
         </p>

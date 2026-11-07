@@ -23,7 +23,7 @@ export function CartItemRow({ item, onIncrement, onDecrement, onRemove }: CartIt
   return (
     <div className={posClasses.cartRow}>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold text-slate-800 truncate">{item.product.name}</p>
+        <p className="text-xs font-bold text-ui-800 truncate">{item.product.name}</p>
         <p className={posClasses.muted}>
           {formatCurrency(unitPrice)} por {itemUnitName(item)} · stock {item.product.stock}
         </p>
@@ -49,13 +49,13 @@ export function CartItemRow({ item, onIncrement, onDecrement, onRemove }: CartIt
         </button>
       </div>
 
-      <span className="text-sm font-black text-slate-900 whitespace-nowrap shrink-0 w-20 text-right">
+      <span className="text-sm font-black text-ui-900 whitespace-nowrap shrink-0 w-20 text-right">
         {formatCurrency(subtotal)}
       </span>
 
       <button
         onClick={onRemove}
-        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+        className="p-1.5 rounded-lg text-ui-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors shrink-0"
         aria-label="Eliminar producto"
       >
         <Trash2 className="w-4 h-4" />

@@ -2,14 +2,15 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { HardHat, Lock, User, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { HardHat, Lock, User, Loader2, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isInitialized, isLoading, error, clearError } = useAuth();
-  const [email, setEmail] = useState("admin@svr-constructora.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
   // Redirigir si ya está autenticado
   useEffect(() => {
@@ -18,11 +19,30 @@ export default function LoginPage() {
     }
   }, [isInitialized, isAuthenticated, router]);
 
+  // Validación en el cliente (español); el servidor repite la suya en LoginDto
+  const validate = (): { email?: string; password?: string } => {
+    const errors: { email?: string; password?: string } = {};
+    const emailTrim = email.trim();
+    if (!emailTrim) {
+      errors.email = "El correo es obligatorio";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      errors.email = "El correo no es válido";
+    }
+    if (!password) {
+      errors.password = "La contraseña es obligatoria";
+    }
+    return errors;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
 
-    const result = await login({ email, password });
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) return;
+
+    const result = await login({ email: email.trim(), password });
     if (result.success) {
       router.push("/dashboard");
     }
@@ -58,7 +78,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <h2 className="text-2xl font-bold text-white mb-2">Bienvenido al ERP</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">Bienvenido a SVR</h2>
           <p className="text-slate-400 text-sm mb-8 font-medium">Ingresa tus credenciales para continuar.</p>
 
           {error && (
@@ -68,21 +88,30 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} noValidate className="space-y-5">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Usuario</label>
               <div className="relative group">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                 <input
                   type="email"
-                  placeholder="admin@svr-constructora.com"
+                  autoComplete="email"
+                  placeholder="tu-correo@ejemplo.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
                   disabled={isLoading}
-                  required
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"
+                  aria-invalid={!!fieldErrors.email}
+                  className={fieldErrors.email
+                    ? "w-full bg-white/5 border border-red-500/60 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
+                    : "w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
                 />
               </div>
+              {fieldErrors.email && (
+                <p className="text-xs font-medium text-red-300 ml-1">{fieldErrors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -91,14 +120,23 @@ export default function LoginPage() {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                 <input
                   type="password"
+                  autoComplete="current-password"
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                  }}
                   disabled={isLoading}
-                  required
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"
+                  aria-invalid={!!fieldErrors.password}
+                  className={fieldErrors.password
+                    ? "w-full bg-white/5 border border-red-500/60 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
+                    : "w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
                 />
               </div>
+              {fieldErrors.password && (
+                <p className="text-xs font-medium text-red-300 ml-1">{fieldErrors.password}</p>
+              )}
             </div>
 
             <button
@@ -112,17 +150,14 @@ export default function LoginPage() {
                   Iniciando sesión…
                 </>
               ) : (
-                <>
-                  Iniciar Sesión
-                  <ArrowRight className="w-5 h-5" />
-                </>
+                "Iniciar Sesión"
               )}
             </button>
           </form>
 
           <div className="mt-10 text-center">
             <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">
-              SVR Constructora © 2025 — v2.0
+              Sistema desarrollado por Arazaka
             </p>
           </div>
         </div>

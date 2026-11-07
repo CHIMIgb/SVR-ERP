@@ -19,17 +19,20 @@ import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
+import { AsignarReporteDto } from './dto/asignar-reporte.dto';
 
 const REPORTE_INCLUDE = {
   maquinas: { select: { id: true, codigo: true, nombre: true } },
   obras: { select: { id: true, nombre: true } },
   clientes: { select: { id: true, nombre: true } },
   proyectos: { select: { id: true, nombre: true } },
+  asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
 
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
 const TIPO_LABELS: Record<TipoReporteCampo, string> = {
+  [TipoReporteCampo.ADMINISTRATIVO]: 'Administrativo',
   [TipoReporteCampo.MECANICO]: 'Mecanico',
   [TipoReporteCampo.OPERADOR]: 'Operador',
   [TipoReporteCampo.PIPERO]: 'Pipero',
@@ -163,7 +166,7 @@ export class ReportesCampoService {
         usuario_id: userId,
         maquina_id: dto.maquinaId ?? null,
         obra_id: dto.obraId ?? null,
-        obra_texto: dto.obraTexto.trim(),
+        obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada',
         cliente_id: dto.clienteId ?? null,
         proyecto_id: dto.proyectoId ?? null,
         monto_servicio: dto.montoServicio ?? null,
@@ -237,7 +240,7 @@ export class ReportesCampoService {
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
         ...(dto.maquinaId !== undefined && { maquina_id: dto.maquinaId ?? null }),
         ...(dto.obraId !== undefined && { obra_id: dto.obraId ?? null }),
-        ...(dto.obraTexto !== undefined && { obra_texto: dto.obraTexto.trim() }),
+        ...(dto.obraTexto !== undefined && { obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada' }),
         ...(dto.clienteId !== undefined && { cliente_id: dto.clienteId ?? null }),
         ...(dto.proyectoId !== undefined && { proyecto_id: dto.proyectoId ?? null }),
         ...(dto.montoServicio !== undefined && { monto_servicio: dto.montoServicio ?? null }),
@@ -263,6 +266,141 @@ export class ReportesCampoService {
       actorRole: 'autenticado',
       previousValue: this.serialize(existente as never),
       newValue: serialized,
+    });
+
+    return serialized;
+  }
+
+  // ────────────────────────────────────────────
+  //  ASIGNAR RESPONSABLE (quién lo debe resolver)
+  // ────────────────────────────────────────────
+  /**
+   * Define "quién le cae" al reporte: un trabajador activo (FK) y/o un nombre
+   * libre. Con ambos vacíos se limpia la asignación. Audita REPORTE_ASIGNADO
+   * como FALLIDO con error_code antes de lanzar en cada fallo.
+   */
+  async asignar(id: string, dto: AsignarReporteDto, userId: string) {
+    const asignadoA = dto.asignadoA?.trim() || null;
+    const asignadoNombre = dto.asignadoNombre?.trim() || null;
+
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if (!asignadoA && !asignadoNombre) {
+      // Ambos vacíos: se considera LIMPIEZA de asignación (permitido con datos).
+      if (dto.asignadoA === undefined && dto.asignadoNombre === undefined) {
+        return this.fallir(
+          AuditAction.REPORTE_ASIGNADO,
+          id,
+          'ASIGNACION_VACIA',
+          BadRequestException,
+          'Envía asignadoA (trabajador), asignadoNombre, o ambos',
+        );
+      }
+    }
+
+    // Validar el trabajador referenciado (activo, no eliminado) — borde real.
+    if (asignadoA) {
+      const trabajador = await this.prisma.trabajadores.findFirst({
+        where: { id: asignadoA, activo: true, eliminado_en: null },
+        select: { id: true, nombre: true },
+      });
+      if (!trabajador) {
+        return this.fallir(
+          AuditAction.REPORTE_ASIGNADO,
+          id,
+          'TRABAJADOR_NO_ENCONTRADO',
+          BadRequestException,
+          `Trabajador con id "${asignadoA}" no encontrado o inactivo`,
+        );
+      }
+    }
+
+    const saliendoEstadoTerminal =
+      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.RESUELTO ||
+      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.FACTURADO;
+    if (saliendoEstadoTerminal) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_TERMINAL',
+        BadRequestException,
+        `No se puede reasignar un reporte ${ESTADO_LABELS[(existente.estado as EstadoReporteCampo)]}`,
+      );
+    }
+
+    // Guard anti-carrera: solo reasigna el reporte que sigue en el estado Y la
+    // asignación leída (reasignaciones simultáneas → conflicto, no last-write)
+    const actualizada = await this.prisma.reportes_campo.updateMany({
+      where: {
+        id,
+        estado: (existente.estado as EstadoReporteCampo),
+        asignado_a_id: existente.asignado_a_id,
+        asignado_nombre: existente.asignado_nombre,
+        eliminado_en: null,
+      },
+      data: {
+        asignado_a_id: asignadoA,
+        asignado_nombre: asignadoNombre,
+        asignado_en: new Date(),
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      },
+    });
+    if (actualizada.count === 0) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'CONFLICTO_CONCURRENCIA',
+        ConflictException,
+        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+      include: REPORTE_INCLUDE,
+    });
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    const serialized = this.serialize(reporte);
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_ASIGNADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: {
+        asignadoAId: existente.asignado_a_id,
+        asignadoNombre: existente.asignado_nombre,
+      },
+      newValue: {
+        asignadoAId: asignadoA,
+        asignadoNombre,
+        estado: ESTADO_LABELS[existente.estado as EstadoReporteCampo],
+      },
     });
 
     return serialized;
@@ -300,15 +438,61 @@ export class ReportesCampoService {
       );
     }
 
-    const reporte = await this.prisma.reportes_campo.update({
-      where: { id },
+    // El cliente no es confiable: RESUELTO exige responsable previo en la BD,
+    // no solo en la UI (review PR #15, sugerencia "Sin asignar").
+    if (dto.estado === EstadoReporteCampo.RESUELTO && !existente.asignado_a_id && !existente.asignado_nombre) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'RESPONSABLE_REQUERIDO',
+        BadRequestException,
+        'No se puede marcar Resuelto sin responsable: asígnale uno primero',
+      );
+    }
+
+    // Guard anti-carrera (review PR #15): solo cambia el reporte que SIGUE en
+    // el estado y con la MISMA asignación que se leyó — si otro cambio
+    // simultáneo movió el estado o la asignación, el updateMany no toca nada
+    // (impide pisar resuelto_en y el caso "quitan asignación mientras otro
+    // marca Resuelto").
+    const actualizada = await this.prisma.reportes_campo.updateMany({
+      where: {
+        id,
+        estado: estadoActual,
+        asignado_a_id: existente.asignado_a_id,
+        asignado_nombre: existente.asignado_nombre,
+        eliminado_en: null,
+      },
       data: {
         estado: dto.estado,
+        ...(dto.estado === EstadoReporteCampo.RESUELTO && { resuelto_en: new Date() }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
+    });
+    if (actualizada.count === 0) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'CONFLICTO_CONCURRENCIA',
+        ConflictException,
+        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
       include: REPORTE_INCLUDE,
     });
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
 
     const serialized = this.serialize(reporte);
 
@@ -321,7 +505,12 @@ export class ReportesCampoService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: { estado: ESTADO_LABELS[estadoActual] },
-      newValue: { estado: ESTADO_LABELS[dto.estado] },
+      newValue: {
+        estado: ESTADO_LABELS[dto.estado],
+        ...(dto.estado === EstadoReporteCampo.RESUELTO && {
+          resueltoPor: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? 'Sin asignar',
+        }),
+      },
     });
 
     return serialized;
@@ -517,7 +706,7 @@ export class ReportesCampoService {
   async findStats() {
     const baseWhere = { eliminado_en: null };
 
-    const [pendientes, enRevision, atendidos, resueltos, criticosActivos] =
+    const [pendientes, enRevision, atendidos, resueltos, criticosActivos, porAreaRaw] =
       await Promise.all([
         this.prisma.reportes_campo.count({
           where: { ...baseWhere, estado: EstadoReporteCampo.PENDIENTE },
@@ -539,9 +728,21 @@ export class ReportesCampoService {
             estado: { not: EstadoReporteCampo.RESUELTO },
           },
         }),
+        // Desglose por área (tipo de reporte): alimenta los chips de filtro.
+        this.prisma.reportes_campo.groupBy({
+          by: ['tipo'],
+          where: baseWhere,
+          _count: true,
+        }),
       ]);
 
-    return { pendientes, enRevision, atendidos, resueltos, criticosActivos };
+    const porArea: Record<string, number> = {};
+    for (const agregado of porAreaRaw) {
+      const label = TIPO_LABELS[agregado.tipo as TipoReporteCampo] ?? agregado.tipo;
+      porArea[label] = agregado._count;
+    }
+
+    return { pendientes, enRevision, atendidos, resueltos, criticosActivos, porArea };
   }
 
   // ────────────────────────────────────────────
@@ -642,6 +843,11 @@ export class ReportesCampoService {
         reporte.prioridad != null
           ? PRIORIDAD_LABELS[reporte.prioridad as Prioridad]
           : null,
+      asignadoAId: reporte.asignado_a?.id ?? null,
+      asignadoANombre: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? null,
+      asignadoAPuesto: reporte.asignado_a?.puesto ?? null,
+      asignadoEn: reporte.asignado_en?.toISOString?.() ?? reporte.asignado_en ?? null,
+      resueltoEn: reporte.resuelto_en?.toISOString?.() ?? reporte.resuelto_en ?? null,
       detalles: reporte.detalles,
       activo: reporte.activo,
       creadoEn: reporte.creado_en?.toISOString?.() ?? reporte.creado_en,

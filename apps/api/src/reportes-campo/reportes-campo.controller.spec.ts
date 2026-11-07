@@ -27,6 +27,7 @@ describe('ReportesCampoController', () => {
     create: jest.fn().mockResolvedValue(mockReporte),
     update: jest.fn().mockResolvedValue(mockReporte),
     cambiarEstado: jest.fn().mockResolvedValue(mockReporte),
+    asignar: jest.fn().mockResolvedValue(mockReporte),
     remove: jest.fn().mockResolvedValue({ message: 'eliminado' }),
     facturar: jest.fn().mockResolvedValue({
       cuenta: { id: 'cxc-1', reporteId: mockReporte.id },
@@ -106,6 +107,21 @@ describe('ReportesCampoController', () => {
       const result = await controller.cambiarEstado(mockReporte.id, dto, req as never);
       expect(result).toBeDefined();
       expect(service.cambiarEstado).toHaveBeenCalledWith(mockReporte.id, dto, 'user-1');
+    });
+  });
+
+  describe('asignar', () => {
+    it('should delegate dto and userId to service', async () => {
+      // arrange
+      const req = { user: { id: 'user-1' } };
+      const dto = { asignadoA: 'trab-uuid' };
+
+      // act
+      const result = await controller.asignar(mockReporte.id, dto, req as never);
+
+      // assert
+      expect(result).toBeDefined();
+      expect(service.asignar).toHaveBeenCalledWith(mockReporte.id, dto, 'user-1');
     });
   });
 

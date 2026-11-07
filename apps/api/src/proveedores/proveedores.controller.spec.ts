@@ -20,6 +20,7 @@ describe('ProveedoresController', () => {
     updateOrden: jest.fn(),
     removeOrden: jest.fn(),
     cambiarEstadoOrden: jest.fn(),
+    recibirOrden: jest.fn(),
   };
 
   const req = { user: { id: 'a0000000-0000-0000-0000-000000000099' } };
@@ -101,7 +102,18 @@ describe('ProveedoresController', () => {
     });
 
     it('POST /ordenes-compra -> createOrden with user id', async () => {
-      const dto = { proveedorId: ID, descripcion: 'Cemento', monto: 800 };
+      const dto = {
+        proveedorId: ID,
+        descripcion: 'Cemento',
+        items: [
+          {
+            articuloId: '11111111-1111-1111-1111-111111111111',
+            nombre: 'Cemento Gris',
+            cantidad: 10,
+            precioUnitario: 80,
+          },
+        ],
+      };
       await controller.createOrden(dto, req as never);
       expect(service.createOrden).toHaveBeenCalledWith(dto, req.user.id);
     });
@@ -128,6 +140,15 @@ describe('ProveedoresController', () => {
         controller.cambiarEstadoOrden(ID, {} as never, req as never),
       ).rejects.toThrow();
       expect(service.cambiarEstadoOrden).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recibirOrden endpoint', () => {
+    it('POST /ordenes-compra/:id/recibir -> delega al service con userId', async () => {
+      service.recibirOrden.mockResolvedValue({ orden: { id: ID, folio: 'OC-1', estado: 'Recibida' }, inventario: [] });
+      const resultado = await controller.recibirOrden(ID, {}, req as never);
+      expect(resultado).toBeDefined();
+      expect(service.recibirOrden).toHaveBeenCalledWith(ID, {}, 'a0000000-0000-0000-0000-000000000099');
     });
   });
 });

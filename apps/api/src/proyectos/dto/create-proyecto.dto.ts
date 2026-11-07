@@ -9,6 +9,7 @@ import {
   IsNotEmpty,
   Min,
   Max,
+  Matches,
 } from 'class-validator';
 import { EstadoProyecto } from '@prisma/client';
 
@@ -50,4 +51,30 @@ export class CreateProyectoDto {
   @IsNumber()
   @Min(0)
   gastado?: number;
+
+  /** ── Ubicación exacta de la obra (opcional en BD, obligatoria en UI) ── */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  calle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  colonia?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  ciudad?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  estadoUbicacion?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5}$/, { message: 'El código postal debe ser de 5 dígitos' })
+  codigoPostal?: string;
 }

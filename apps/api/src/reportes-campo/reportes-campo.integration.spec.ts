@@ -88,6 +88,211 @@ describe('ReportesCampo Audit (Real DB)', () => {
       orderBy: { timestamp: 'desc' },
     });
 
+  describe('ASIGNAR — "quién le cae" (REPORTE_ASIGNADO, BD real)', () => {
+    it('asigna responsable real y audita REPORTE_ASIGNADO SUCCESS', async () => {
+      // arrange: crear reporte + usar un trabajador real del seed
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const trabajador = await prisma.trabajadores.findFirst({
+        where: { eliminado_en: null, activo: true },
+        select: { id: true, nombre: true },
+      });
+      expect(trabajador).not.toBeNull();
+
+      // act
+      const asignado = await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        () => service.asignar(reporte.id, { asignadoA: trabajador!.id }, ACTOR_USER_ID),
+      );
+
+      // assert: BD real
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.asignado_a_id).toBe(trabajador!.id);
+      expect(row!.asignado_en).not.toBeNull();
+      expect(asignado.asignadoAId).toBe(trabajador!.id);
+      expect(asignado.asignadoANombre).toBe(trabajador!.nombre);
+
+      // auditoría real
+      const audits = await findAudits(AuditAction.REPORTE_ASIGNADO, reporte.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      // previousValue: quién tenía el reporte antes (null en primera asignación)
+      expect(audits[0].previous_value).toEqual({ asignadoAId: null, asignadoNombre: null });
+    });
+
+    it('audita FAIL + error_code cuando el responsable no existe (no guarda nada)', async () => {
+      // arrange
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      // act / assert
+      await expect(
+        auditContext.run(
+          { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+          () => service.asignar(reporte.id, { asignadoA: randomUUID() }, ACTOR_USER_ID),
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      const audits = await findAudits(AuditAction.REPORTE_ASIGNADO, reporte.id);
+      const ultimo = audits[0];
+      expect(ultimo.result).toBe('FAIL');
+      expect(ultimo.error_code).toBe('TRABAJADOR_NO_ENCONTRADO');
+
+      // nada quedó asignado
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.asignado_a_id).toBeNull();
+    });
+
+    it('rechaza asignación vacía con ASIGNACION_VACIA (auditoría FAIL real)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        async () => {
+          await expect(service.asignar(reporte.id, {}, ACTOR_USER_ID)).rejects.toThrow(
+            BadRequestException,
+          );
+        },
+      );
+
+      const audits = await findAudits(AuditAction.REPORTE_ASIGNADO, reporte.id);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('ASIGNACION_VACIA');
+    });
+  });
+
+  describe('RESUELTO — resuelto_en y quién lo resolvió (BD real)', () => {
+    it('asigna → resuelve el flujo completo y persiste resuelto_en real', async () => {
+      // arrange
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const trabajador = await prisma.trabajadores.findFirst({
+        where: { eliminado_en: null, activo: true },
+        select: { id: true },
+      });
+
+      await service.asignar(reporte.id, { asignadoA: trabajador!.id }, ACTOR_USER_ID);
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        () => service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID),
+      );
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        () => service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID),
+      );
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        () => service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID),
+      );
+
+      // assert: BD real
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.estado).toBe('RESUELTO');
+      expect(row!.resuelto_en).not.toBeNull();
+      // el responsable sigue visible (quién lo resolvió)
+      expect(row!.asignado_a_id).toBe(trabajador!.id);
+    });
+  });
+
+  describe('RESUELTO sin responsable — RESPONSABLE_REQUERIDO (BD real)', () => {
+    it('rechaza marcar Resuelto sin asignación y audita FAIL real', async () => {
+      // arrange — reporte sin asignación alguna, hasta ATENDIDO (transición legal)
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
+      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID);
+
+      // act / assert
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        async () => {
+          await expect(
+            service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      const audits = await findAudits(AuditAction.ESTATUS_CAMBIADO, reporte.id);
+      const fail = audits.find((a) => a.result === 'FAIL');
+      expect(fail?.error_code).toBe('RESPONSABLE_REQUERIDO');
+      expect(fail?.actor_user_id).toBe(ACTOR_USER_ID);
+
+      // la BD quedó intacta en ATENDIDO (no se movió el estado)
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.estado).toBe('ATENDIDO');
+      expect(row!.resuelto_en).toBeNull();
+    });
+  });
+
+  describe('UNICIDAD — codigo único de reporte (BD real)', () => {
+    it('rechaza INSERT duplicado de codigo (índice único, sin carrera de duplicados)', async () => {
+      // arrange: insertar fila base con codigo único de prueba
+      const codigoDuplicado = `TESTDUPE-${TEST_ID}`;
+      const baseId = randomUUID();
+      await prisma.reportes_campo.create({
+        data: {
+          id: baseId,
+          tipo: TipoReporteCampo.PIPERO,
+          usuario: 'base-unicidad',
+          fecha: new Date(),
+          hora: new Date('1970-01-01T10:00:00'),
+          descripcion: 'base unicidad',
+          obra_texto: 'Obra test',
+          codigo: codigoDuplicado,
+          creado_en: new Date(),
+          actualizado_en: new Date(),
+        },
+      });
+      createdIds.push(baseId);
+      await expect(
+        prisma.reportes_campo.create({
+          data: {
+            id: randomUUID(),
+            tipo: TipoReporteCampo.PIPERO,
+            usuario: 'duplicado',
+            fecha: new Date(),
+            hora: new Date('1970-01-01T10:00:00'),
+            descripcion: 'intento duplicado',
+            obra_texto: 'Obra test',
+            codigo: codigoDuplicado,
+            creado_en: new Date(),
+            actualizado_en: new Date(),
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+
+      // y solo existe UNA fila con ese codigo (la carrera no creó dobles)
+      const filas = await prisma.reportes_campo.findMany({
+        where: { codigo: codigoDuplicado },
+        select: { id: true },
+      });
+      expect(filas).toHaveLength(1);
+    });
+  });
+
+  describe('REGISTRO_AUDITORIA — inmutabilidad real (trigger)', () => {
+    it('rechaza un DELETE físico contra registro_auditoria (trigger trg_audit_immutable_delete)', async () => {
+      // arrange: usar cualquier registro existente de audits de reportes
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { entity_type: 'reportes_campo' },
+        select: { event_id: true },
+      });
+      expect(audit).not.toBeNull();
+
+      // act / assert: el DELETE crudo debe fallar con el mensaje del trigger
+      await expect(
+        prisma.$executeRawUnsafe(`DELETE FROM registro_auditoria WHERE event_id = '${audit!.event_id}'`),
+      ).rejects.toThrow(/registro_auditoria/i);
+      // y el registro sigue ahí
+      const sigueAhi = await prisma.registro_auditoria.findFirst({
+        where: { event_id: audit!.event_id },
+        select: { event_id: true },
+      });
+      expect(sigueAhi).not.toBeNull();
+    });
+  });
+
   describe('REPORTE_CREADO', () => {
     it('debe crear reporte PENDIENTE y auditar', async () => {
       const dto = createDto({ prioridad: Prioridad.ALTA });
@@ -108,6 +313,8 @@ describe('ReportesCampo Audit (Real DB)', () => {
     it('debe avanzar Pendiente → Visto → Atendido → Resuelto auditando cada paso', async () => {
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
+      // El API exige responsable antes de RESUELTO (limit RESUELTO sin asignar)
+      await service.asignar(reporte.id, { asignadoNombre: 'Residente de obra' }, ACTOR_USER_ID);
 
       const ruta = [
         { desde: EstadoReporteCampo.PENDIENTE, hacia: EstadoReporteCampo.VISTO, labelDesde: 'Pendiente', labelHacia: 'Visto' },
@@ -279,6 +486,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
         ACTOR_USER_ID,
       );
       createdIds.push(reporte.id);
+      await service.asignar(reporte.id, { asignadoNombre: 'Residente de obra' }, ACTOR_USER_ID);
       await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
       await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID);
       await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID);

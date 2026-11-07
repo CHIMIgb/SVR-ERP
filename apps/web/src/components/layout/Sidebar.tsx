@@ -88,11 +88,10 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/combustible": { group: "Maquinaria" },
   "/gps": { group: "Maquinaria", live: true },
   "/operaciones": { group: "Operaciones" },
-  "/reportes-campo": { group: "Operaciones" },
+  "/reportes": { group: "Operaciones" },
   "/criba": { group: "Operaciones" },
   "/inventario": { group: "Operaciones" },
   "/proyectos": { group: "Operaciones" },
-  "/incidentes": { group: "Operaciones" },
   "/clientes": { group: "Comercial" },
   "/cotizaciones": { group: "Comercial" },
   "/facturas": { group: "Comercial", badge: "NUEVO" },
@@ -102,8 +101,6 @@ const ROUTE_META: Record<string, RouteMeta> = {
   "/ventas/corte": { group: "Comercial" },
   "/cobranza": { group: "Comercial", badge: "NUEVO" },
   "/documentos": { group: "Sistema", warn: "2" },
-  "/reportes": { group: "Sistema" },
-  "/simulador-movil": { group: "Sistema", badge: "PROTOTIPO" },
   "/configuracion": { group: "Sistema" },
 };
 
@@ -187,6 +184,7 @@ function SidebarContent() {
 
   const handleLogout = async () => {
     await logout();
+    window.location.href = "/";
   };
 
   return (
@@ -242,10 +240,10 @@ function SidebarContent() {
       <div className="p-4 border-t border-white/5">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 transition-all"
+          className="w-full flex items-center justify-center gap-2.5 px-3 py-3 rounded-xl border border-red-500 bg-red-500 text-white text-sm font-bold hover:bg-red-400 hover:border-red-400 active:scale-[0.98] transition-all"
         >
           <LogOut className="w-5 h-5" />
-          <span className="text-sm font-semibold">Cerrar Sesión</span>
+          Cerrar Sesión
         </button>
       </div>
     </>

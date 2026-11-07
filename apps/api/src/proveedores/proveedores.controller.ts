@@ -22,6 +22,7 @@ import { QueryProveedoresDto } from './dto/query-proveedores.dto';
 import { CreateOrdenCompraDto } from './dto/create-orden-compra.dto';
 import { UpdateOrdenCompraDto } from './dto/update-orden-compra.dto';
 import { CambiarEstadoOrdenDto } from './dto/cambiar-estado-orden.dto';
+import { RecibirOrdenCompraDto } from './dto/recibir-orden-compra.dto';
 import { RegistrarAbonoDto } from './dto/registrar-abono.dto';
 import { QueryOrdenesCompraDto } from './dto/query-ordenes-compra.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -216,5 +217,22 @@ export class ProveedoresController {
       throw new BadRequestException('El estado es requerido');
     }
     return this.proveedoresService.cambiarEstadoOrden(id, dto, user.id);
+  }
+
+  /**
+   * POST /api/ordenes-compra/:id/recibir
+   * Recepción física de la OC: aplica al inventario (alta/entrada de stock)
+   * y marca la orden RECIBIDA en una sola transacción.
+   * Permiso: comercial.proveedores.editar
+   */
+  @RequirePermission('comercial', 'proveedores', 'editar')
+  @Post('ordenes-compra/:id/recibir')
+  async recibirOrden(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecibirOrdenCompraDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.proveedoresService.recibirOrden(id, dto, user.id);
   }
 }

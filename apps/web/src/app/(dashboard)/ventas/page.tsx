@@ -339,7 +339,7 @@ export default function VentasPage() {
         <>
           {/* Bloqueo por horario fuera de atención */}
           {fueraDeHorario && turnoConfig && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
                   <Clock className="w-6 h-6" />
@@ -403,7 +403,7 @@ export default function VentasPage() {
                     <div className={posClasses.card}>
                       <div className="flex items-center gap-3">
                         <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-ui-500">
                           Cargando catálogo de materiales...
                         </p>
                       </div>
@@ -432,11 +432,11 @@ export default function VentasPage() {
                   <div className={posClasses.card}>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className={posClasses.sectionTitle}>Carrito</h3>
-                      <span className="text-xs font-bold text-slate-400">{itemsSold} art(s)</span>
+                      <span className="text-xs font-bold text-ui-400">{itemsSold} art(s)</span>
                     </div>
 
                     {cart.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-8">
+                      <p className="text-sm text-ui-400 text-center py-8">
                         Elige el material, la medida y presiona Agregar.
                       </p>
                     ) : (
@@ -453,7 +453,7 @@ export default function VentasPage() {
                           ))}
                         </div>
 
-                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <div className="mt-3 pt-3 border-t border-ui-100 flex items-center justify-between">
                           <span className={posClasses.cartTotalLabel}>Total</span>
                           <span className={posClasses.cartTotalValue}>{formatCurrency(total)}</span>
                         </div>
@@ -508,11 +508,11 @@ export default function VentasPage() {
                       <div key={r.id} className={posClasses.card}>
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center shrink-0">
+                            <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center shrink-0">
                               <ArrowDownCircle className="w-5 h-5" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-bold text-slate-800 text-sm truncate">{r.concepto}</p>
+                              <p className="font-bold text-ui-800 text-sm truncate">{r.concepto}</p>
                               <p className={posClasses.muted}>
                                 {r.fecha} · {r.hora} · Autorizado por:{' '}
                                 <span className="font-bold">{r.autorizadoPor}</span>

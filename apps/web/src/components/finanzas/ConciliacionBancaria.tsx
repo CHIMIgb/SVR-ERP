@@ -371,14 +371,14 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
       key: 'fecha',
       header: 'Fecha',
       nowrap: true,
-      render: (m) => <span className="text-slate-600">{m.fecha}</span>,
+      render: (m) => <span className="text-ui-600">{m.fecha}</span>,
     },
     {
       key: 'descripcion',
       header: 'Descripción',
       nowrap: true,
       render: (m) => (
-        <span className="block max-w-[220px] truncate font-medium text-slate-800" title={m.descripcion}>
+        <span className="block max-w-[220px] truncate font-medium text-ui-800" title={m.descripcion}>
           {m.descripcion}
         </span>
       ),
@@ -446,7 +446,7 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Banco</label>
+            <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Banco</label>
             <select
               value={bancoId}
               onChange={(e) => cambiarBanco(e.target.value)}
@@ -460,7 +460,7 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
             </select>
           </div>
           <div className="flex-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cuenta</label>
+            <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Cuenta</label>
             <select
               value={cuentaId}
               onChange={(e) => seleccionarCuenta(e.target.value)}
@@ -509,12 +509,12 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
                 </>
               )}
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-sm text-ui-600 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={soloNoConciliados}
                 onChange={(e) => { setSoloNoConciliados(e.target.checked); setPage(1); }}
-                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary/50"
+                className="w-4 h-4 rounded border-ui-300 text-primary focus:ring-primary/50"
               />
               Solo sin conciliar
             </label>
@@ -531,7 +531,7 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
               maxBodyHeight="500px"
             />
             {pagination.totalPages > 1 && (
-              <div className="border-t border-slate-100 px-4 py-3">
+              <div className="border-t border-ui-100 px-4 py-3">
                 <Pagination
                   currentPage={page}
                   totalPages={pagination.totalPages}
@@ -691,7 +691,7 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
             onChange={(e) => setCsvText(e.target.value)}
             placeholder={`fecha,descripcion,deposito,retiro\n2026-09-01,Depósito cliente,15000,\n2026-09-02,Combustible,,4000`}
           />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ui-500">
             Las re-importaciones no duplican movimientos: se omiten los registros repetidos.
           </p>
         </div>
@@ -711,9 +711,9 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
       >
         {movimientoSel && (
           <div className="space-y-4">
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm">
+            <div className="rounded-xl bg-ui-50 border border-ui-200 p-3 text-sm">
               <div className="flex justify-between items-center">
-                <span className="text-slate-500">{movimientoSel.fecha} · {movimientoSel.descripcion}</span>
+                <span className="text-ui-500">{movimientoSel.fecha} · {movimientoSel.descripcion}</span>
                 <strong className={movimientoSel.deposito != null ? 'text-emerald-600' : 'text-rose-600'}>
                   {formatCurrency(movimientoSel.deposito ?? movimientoSel.retiro ?? 0)}
                 </strong>
@@ -736,18 +736,18 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
                       'w-full text-left rounded-xl border p-3 text-sm transition-colors',
                       candidataSel === c.id
                         ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                        : 'border-slate-200 hover:border-primary/40',
+                        : 'border-ui-200 hover:border-primary/40',
                     )}
                   >
                     <div className="flex justify-between items-center gap-2">
                       <div className="min-w-0">
-                        <p className="font-semibold text-slate-800 truncate">{c.descripcion}</p>
-                        <p className="text-xs text-slate-500">
+                        <p className="font-semibold text-ui-800 truncate">{c.descripcion}</p>
+                        <p className="text-xs text-ui-500">
                           {c.codigo ?? '—'} · {c.categoria} · {c.fecha}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-bold text-slate-900">{formatCurrency(c.monto)}</p>
+                        <p className="font-bold text-ui-900">{formatCurrency(c.monto)}</p>
                         <Badge variant={c.tipo === 'INGRESO' ? 'success' : 'error'}>{c.tipo}</Badge>
                       </div>
                     </div>
@@ -776,10 +776,10 @@ export function ConciliacionBancaria({ puedeCrear, puedeEditar, onTotales }: Pro
             <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mb-4">
               <Undo2 className="w-7 h-7 text-amber-600" />
             </div>
-            <p className="text-sm text-slate-700">
+            <p className="text-sm text-ui-700">
               <strong>{movimientoSel.descripcion}</strong>
             </p>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-ui-500 mt-1">
               {movimientoSel.fecha} · {formatCurrency(movimientoSel.deposito ?? movimientoSel.retiro ?? 0)}
             </p>
           </div>

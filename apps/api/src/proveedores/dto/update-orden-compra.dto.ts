@@ -1,5 +1,14 @@
 import { Type } from 'class-transformer';
-import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsArray,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { OrdenCompraItemInput } from './create-orden-compra.dto';
 
 export class UpdateOrdenCompraDto {
   @IsOptional()
@@ -12,4 +21,10 @@ export class UpdateOrdenCompraDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   monto?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrdenCompraItemInput)
+  items?: OrdenCompraItemInput[];
 }

@@ -89,9 +89,24 @@ The app UI is entirely in **Spanish** (Mexican). All mock data, labels, and user
 
 ## Critical Rules
 
-- **ALL COMPONENTS MUST BE RESPONSIVE:** Every UI component (existing and future) MUST be responsive. Use Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`) for layouts, flex direction changes, grid adjustments, and text sizing. Tables must scroll horizontally on mobile. Modals must adapt to small screens. Forms must stack on mobile. This is the #1 rule — no exceptions.
+- **ALL COMPONENTS MUST BE RESPONSIVE:** Every UI component (existing and future) MUST be responsive. Use Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`) for layouts, flex direction changes, grid adjustments, and text sizing. Tables must scroll horizontally on mobile. Modals must adapt to small screens. Forms stack on mobile. This is the #1 rule — no exceptions.
 - **NO DUPLICATE KEYS:** Before writing any `.map()` over arrays that render JSX, ALWAYS verify there are no duplicate `key` values. Duplicated keys cause React console errors and broken rendering. Use unique identifiers (IDs, unique names, or index + prefix if no unique data exists). Run `npx tsc --noEmit` after changes to catch issues.
 - **DOCUMENT EVERYTHING:** Every UI component created in `src/components/ui/` MUST be documented in `COMPONENTS.md` with: Props table, Import example, Usage example, "When to use" and "When NOT to use" sections. This is non-negotiable.
+- **NUEVA VISTA = PLANTILLA `/inventario`:** Toda vista nueva se construye tomando la vista `/inventario` como base (PageHeader, StatsCards, SearchBar + filtros, DataTable con acciones por RBAC, Pagination, FormModal). Nunca se construye una vista CRUD desde cero.
+- **PLAN ANTES DE CÓDIGO (obligatorio):** Para cada cambio o cosa nueva, SIEMPRE presentar primero un plan de implementación (qué archivos se tocarán, qué harás, impacto) y esperar la autorización del usuario. **Nunca se crea ni se modifica código sin autorización previa.**
+- **TESTS REALES OBLIGATORIOS en vistas/edges de datos:** Toda vista nueva o modificación debe llevar: pruebas de unicidad (índices únicos / duplicados por carrera), pruebas de integración contra la BD real (PostgreSQL, `npm run test:integration`) que inserten registros reales, y tests específicos para la tabla `registro_auditoria` (SUCCESS/FAIL + error_code) también con inserciones reales. Los mocks unitarios no bastan para estos 3 tipos.
+- **TODA consulta listado paginada (regla dura backend):** Ningún endpoint de listado puede `findMany` sin `take`/`skip`. Patrón estándar: query `?page=&limit=`, default 10, techo 100 (`Math.min(limit, 100)`), respuesta `{ items, pagination: { page, limit, total, totalPages } }` — referencia viva: `criba.service.ts` e `inventario.service.ts`. Exentos (sin paginar): catálogos para selects (datos maestros), sub-consultas hijas acotadas al registro padre (conceptos de 1 factura, percepciones de 1 nómina), y las operaciones de negocio dentro de transacciones. Los listados "del día" (ventas/retiros) usan `take` + orden desc. Auditoría reutilizable: `node scripts/audit-pagination.cjs` (apps/api) lista todo `findMany` sin `take`. Deuda conocida: 19 endpoints de listado quedaron sin paginar (auditoría 2026-11-04: horometro, checklists, despachos, transacciones/finanzas, conciliación, listados cobranza, nominas por periodo, estadoscuenta proveedores, listado máquinas/bitácoras/mantenimiento); corregirlos conforme se toca cada módulo.
+
+## Registro de cambios obligatorio (historial-cambios/)
+
+**Regla dura para commits y PRs — aplica a todos los agentes:**
+
+1. **Un commit por cada cambio hecho.** Cada cambio terminado se commitea de inmediato, atómico y en español, sin mezclar trabajo ajeno.
+2. **Cada commit incluye su archivo de registro**, fechado, en `historial-cambios/` (raíz del repo, carpeta dedicada exclusivamente a esto):
+   - Nombre: `YYYY-MM-DD-tema-corto.md` (varios cambios el mismo día → `-2`, `-3`...).
+   - Contenido: resumen del cambio, cosas nuevas, archivos tocados, verificación/pruebas corridas, pendientes y riesgos. Ver plantilla completa en `historial-cambios/README.md`.
+3. **Commits SIEMPRE en español**, con el estilo del repo: `feat|fix|refactor|docs|test(api|web|db): descripción (contexto)`.
+4. **`git push` y PRs SOLO cuando el usuario lo ordene explícitamente.** Nunca pushear por iniciativa propia; al terminar un cambio queda commiteado localmente y nada más.
 
 ## UI Components — Reglas de Migración
 

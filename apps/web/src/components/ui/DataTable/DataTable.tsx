@@ -101,6 +101,7 @@ export function DataTable<T>({
                 {columns.map((col, index) => (
                   <th
                     key={col.key}
+                    style={col.minWidth ? { minWidth: col.minWidth } : undefined}
                     className={cn(
                       headerVariant === 'neutral'
                         ? [
@@ -141,6 +142,7 @@ export function DataTable<T>({
                         col.nowrap && 'whitespace-nowrap',
                         col.className
                       )}
+                      style={col.minWidth ? { minWidth: col.minWidth } : undefined}
                     >
                       {col.render
                         ? col.render(item)

@@ -353,7 +353,7 @@ export default function CribaPage() {
       key: 'fecha',
       header: 'Fecha',
       render: (item) => (
-        <span className="whitespace-nowrap font-bold text-slate-600">{formatFechaSolo(item.fecha)}</span>
+        <span className="whitespace-nowrap font-bold text-ui-600">{formatFechaSolo(item.fecha)}</span>
       ),
     },
     {
@@ -367,7 +367,7 @@ export default function CribaPage() {
       key: 'operador',
       header: 'Operador',
       render: (item) => (
-        <span className="font-bold text-slate-700">{item.operador || '—'}</span>
+        <span className="font-bold text-ui-700">{item.operador || '—'}</span>
       ),
     },
     {
@@ -384,8 +384,8 @@ export default function CribaPage() {
       header: 'Producido',
       align: 'right',
       render: (item) => (
-        <span className="font-black text-slate-900">
-          {item.materialProducido} <span className="text-slate-400 font-bold text-xs">m³</span>
+        <span className="font-black text-ui-900">
+          {item.materialProducido} <span className="text-ui-400 font-bold text-xs">m³</span>
         </span>
       ),
     },
@@ -404,7 +404,7 @@ export default function CribaPage() {
       header: 'Horas',
       align: 'right',
       render: (item) => (
-        <span className="font-bold text-slate-600">{item.horasTrabajadas}h</span>
+        <span className="font-bold text-ui-600">{item.horasTrabajadas}h</span>
       ),
     },
     {
@@ -424,8 +424,8 @@ export default function CribaPage() {
       key: 'observaciones',
       header: 'Observaciones',
       render: (item) => (
-        <span className="text-slate-500 font-medium text-xs max-w-[180px] truncate block">
-          {item.observaciones || <span className="text-slate-300">—</span>}
+        <span className="text-ui-500 font-medium text-xs max-w-[180px] truncate block">
+          {item.observaciones || <span className="text-ui-300">—</span>}
         </span>
       ),
     },
@@ -517,7 +517,7 @@ export default function CribaPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${materialDot[tipo]}`} />
-                  <span className="font-black text-slate-800 text-sm truncate">{tipo}</span>
+                  <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
                 </div>
                 <Badge variant={colorEficiencia(ef)} size="sm">Efic. {ef}%</Badge>
               </div>
@@ -525,30 +525,30 @@ export default function CribaPage() {
               {/* Tres métricas del material */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Producido</p>
-                  <p className="text-base font-black text-slate-900">{producido}</p>
-                  <p className="text-[9px] text-slate-400 font-bold">m³</p>
+                  <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Producido</p>
+                  <p className="text-base font-black text-ui-900">{producido}</p>
+                  <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Al banco</p>
+                  <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Al banco</p>
                   <p className="text-base font-black text-green-700">{alBanco}</p>
-                  <p className="text-[9px] text-slate-400 font-bold">m³</p>
+                  <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Merma</p>
-                  <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-slate-900'}`}>
+                  <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Merma</p>
+                  <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-900'}`}>
                     {merma}
                   </p>
-                  <p className="text-[9px] text-slate-400 font-bold">m³</p>
+                  <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
               </div>
 
               {/* Merma explícita en m³ y % */}
-              <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              <div className="flex items-center justify-between bg-ui-50 border border-ui-100 rounded-lg px-3 py-2">
+                <span className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   Merma del material
                 </span>
-                <span className={`text-xs font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-slate-700'}`}>
+                <span className={`text-xs font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-700'}`}>
                   {merma} m³ · {mermaPct}%
                 </span>
               </div>
@@ -574,7 +574,7 @@ export default function CribaPage() {
         >
           <span className="whitespace-nowrap">Filtros</span>
           {activeFilters.length > 0 && (
-            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+            <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
               {activeFilters.length}
             </span>
           )}
@@ -602,7 +602,7 @@ export default function CribaPage() {
           {activeFilters.length > 1 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -611,17 +611,17 @@ export default function CribaPage() {
       )}
 
       {showFilters && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {filterFields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
                   value={filterValues[filter.key] || ''}
                   onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                  className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
                 >
                   <option value="">{filter.placeholder || 'Todos'}</option>
                   {filter.options?.map((opt) => (
@@ -639,7 +639,7 @@ export default function CribaPage() {
       <div className="space-y-3">
         <div className="relative">
           {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
+            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
           )}
@@ -885,13 +885,13 @@ export default function CribaPage() {
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-slate-700 mb-1">
+            <p className="text-sm text-ui-700 mb-1">
               ¿Estás seguro de eliminar este registro?
             </p>
-            <p className="font-black text-slate-900 text-lg mb-2">
+            <p className="font-black text-ui-900 text-lg mb-2">
               {formatFechaSolo(selectedItem.fecha)} · {selectedItem.turno}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ui-500">
               {selectedItem.operador || 'Sin operador'} · {selectedItem.tipoMaterial}
             </p>
           </div>
