@@ -45,3 +45,18 @@ sección 5 reescrita con el SQL del reviewer (validado por él con EXPLAIN):
   (quién ve qué hoy) y comparar tras el deploy.
 - Nadie validó el SQL del reviewer contra las migraciones `20261105*`
   del otro PR (van después de estas) — no tocan vistas.
+
+## ✅ Addendum: verificación contra la BD REAL `svr_erp` (PostgreSQL 18)
+Re-run de la sección 5 real contra la BD de producción local, dentro de
+transacción (probe sintético con ROLLBACK — la BD queda intacta):
+- **`ON CONFLICT (rol_id, vista_id) DO UPDATE` validado contra la tabla
+  real** (índice real `role_vistas_rol_id_vista_id_key`): probe A con
+  vínculo previo a `/reportes` (ver+editar) y las 2 vistas viejas
+  (crear+exportar) → fusionó a **ver/crear/editar/exportar = true,
+  eliminar = false** (OR-merge exacto al diseño; no pisó flags altos).
+- probe B (solo una vista vieja → insert directo): ver=true, resto false ✔
+- run 2 (idempotencia sobre la BD real): 0 errores ✅
+- Tras ROLLBACK: roles=2 (igual que antes), 0 vistas viejas,
+  vínculos de `/reportes` = 1 (solo admin, intacto) — la BD real no
+  cambió ni un byte.
+
