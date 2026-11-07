@@ -13,6 +13,18 @@
 --    UNA transacción (si el INSERT falla, el DROP también revierte). NUNCA
 --    ejecutar este SQL crudo con psql (sin -1/ON_ERROR_STOP un error en el
 --    INSERT no detendría el DROP de abajo).
+--
+-- 3) Estado de accesos HOY en el servidor (comparar tras el deploy — re-revisión
+--    PR #15): guarda la salida de esta consulta y contrasta con la post-deploy;
+--    ningún rol debe ganar ni perder acceso a /reportes respecto de lo que
+--    hoy ve en /incidentes, /reportes-campo o /reportes.
+--      SELECT r.nombre, v.ruta, rv.puede_ver, rv.puede_crear, rv.puede_editar,
+--             rv.puede_eliminar, rv.puede_exportar
+--        FROM role_vistas rv
+--        JOIN roles r ON r.id = rv.rol_id
+--        JOIN vistas v ON v.id = rv.vista_id
+--       WHERE v.ruta IN ('/incidentes', '/reportes-campo', '/reportes')
+--       ORDER BY r.nombre, v.ruta;
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Idempotencia (sugerencia review PR #15): un re-run no rompe — enum/columnas/
@@ -114,47 +126,37 @@ END $$;
 --    (VISTA_RUTA = '/reportes' en proveedores/reportes; página (dashboard)/reportes).
 --
 -- Se REPURPUEA el mock '/reportes' (Sistema) que ya existe del dump: se actualiza
--- in-place (sin conflicto de unique(ruta)) y conserva sus role_vistas; los roles
--- que veían '/incidentes' o '/reportes-campo' se re-vinculan con COPIA de sus
--- flags para que NINGUNO pierda el acceso (review PR #15, bloqueador 3).
+-- in-place (sin conflicto de unique(ruta)) y conserva sus role_vistas.
+-- PERDIDA DE ACCESO: ningún rol gana ni pierde — la copia de flags corre ANTES
+-- de borrar las vistas viejas (re-revisión PR #15, bloqueador RBAC).
 DELETE FROM "role_permissions"
  WHERE permiso_id IN (SELECT id FROM permissions WHERE modulo = 'operaciones' AND recurso = 'incidentes');
 DELETE FROM "permissions" WHERE modulo = 'operaciones' AND recurso = 'incidentes';
-
-DELETE FROM "role_vistas"
- WHERE vista_id IN (SELECT id FROM vistas WHERE ruta IN ('/incidentes', '/reportes-campo'));
-
-DELETE FROM "vistas" WHERE ruta = '/incidentes';
 
 UPDATE "vistas"
    SET nombre = 'Reportes', icono = 'AlertTriangle'
  WHERE ruta = '/reportes';
 
--- Re-vincular a todos los roles que veían las vistas viejas, copiando sus flags
+-- 5a) Primero copiar: cada rol que veía /incidentes o /reportes-campo pasa a
+--     /reportes con sus flags. GROUP BY + bool_or: un rol con las dos vistas
+--     daría dos filas y role_vistas tiene unique (rol_id, vista_id).
+--     ON CONFLICT: si el rol ya tenía el mock /reportes, conserva el mayor
+--     de los dos niveles (re-revisión PR #15 — SQL validado por el reviewer).
 INSERT INTO role_vistas (id, rol_id, vista_id, puede_ver, puede_crear, puede_editar, puede_eliminar, puede_exportar, asignado_en)
-SELECT gen_random_uuid(),
-       rvv.rol_id,
-       v_nueva.id,
-       rvv.puede_ver,
-       rvv.puede_crear,
-       rvv.puede_editar,
-       rvv.puede_eliminar,
-       rvv.puede_exportar,
-       now()
-FROM role_vistas rvv
-JOIN vistas v_vieja ON v_vieja.id = rvv.vista_id
+SELECT gen_random_uuid(), rv.rol_id, v_nueva.id,
+       bool_or(rv.puede_ver), bool_or(rv.puede_crear), bool_or(rv.puede_editar),
+       bool_or(rv.puede_eliminar), bool_or(rv.puede_exportar), now()
+FROM role_vistas rv
+JOIN vistas v_vieja ON v_vieja.id = rv.vista_id AND v_vieja.ruta IN ('/incidentes', '/reportes-campo')
 JOIN vistas v_nueva ON v_nueva.ruta = '/reportes'
-WHERE v_vieja.ruta IN ('/incidentes', '/reportes-campo')
-  AND NOT EXISTS (
-    SELECT 1 FROM role_vistas rv
-     WHERE rv.rol_id = rvv.rol_id AND rv.vista_id = v_nueva.id
-  );
+GROUP BY rv.rol_id, v_nueva.id
+ON CONFLICT (rol_id, vista_id) DO UPDATE SET
+  puede_ver      = role_vistas.puede_ver      OR EXCLUDED.puede_ver,
+  puede_crear    = role_vistas.puede_crear    OR EXCLUDED.puede_crear,
+  puede_editar   = role_vistas.puede_editar   OR EXCLUDED.puede_editar,
+  puede_eliminar = role_vistas.puede_eliminar OR EXCLUDED.puede_eliminar,
+  puede_exportar = role_vistas.puede_exportar OR EXCLUDED.puede_exportar;
 
--- Si algún rol ya tenía la vista unificada (o venía del mock /reportes),
--- garantiza al menos puede_ver sobre la ruta real de la web:
-INSERT INTO role_vistas (id, rol_id, vista_id, puede_ver, puede_crear, puede_editar, puede_eliminar, puede_exportar, asignado_en)
-SELECT gen_random_uuid(), r.id, v.id, true, false, false, false, false, now()
-FROM roles r JOIN vistas v ON v.ruta = '/reportes'
-WHERE NOT EXISTS (
-  SELECT 1 FROM role_vistas rv WHERE rv.rol_id = r.id AND rv.vista_id = v.id
-);
+-- 5b) Después borrar las vistas viejas, también /reportes-campo
+DELETE FROM role_vistas WHERE vista_id IN (SELECT id FROM vistas WHERE ruta IN ('/incidentes', '/reportes-campo'));
+DELETE FROM vistas WHERE ruta IN ('/incidentes', '/reportes-campo');
