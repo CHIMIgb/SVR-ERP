@@ -313,7 +313,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
         <div className={posClasses.summaryCard}>
           <Banknote className="w-5 h-5 text-green-600" />
           <span className={posClasses.summaryValue}>
-            {loading ? <Loader2 className="w-5 h-5 text-green-600 animate-spin" /> : formatCurrency(totalSales)}
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(totalSales)}
           </span>
           <span className={posClasses.summaryLabel}>Total ventas</span>
         </div>
@@ -327,14 +327,14 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
         <div className={posClasses.summaryCard}>
           <CreditCard className="w-5 h-5 text-blue-600"/>
           <span className={posClasses.summaryValue}>
-            {loading ? <Loader2 className="w-5 h-5 text-blue-600 animate-spin" /> : formatCurrency(metodos.tarjeta)}
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(metodos.tarjeta)}
           </span>
           <span className={posClasses.summaryLabel}>Tarjeta</span>
         </div>
         <div className={posClasses.summaryCard}>
           <Banknote className="w-5 h-5 text-indigo-600" />
           <span className={posClasses.summaryValue}>
-            {loading ? <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" /> : formatCurrency(metodos.transferencia)}
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(metodos.transferencia)}
           </span>
           <span className={posClasses.summaryLabel}>Transferencia</span>
         </div>

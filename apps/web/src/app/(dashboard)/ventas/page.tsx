@@ -87,9 +87,9 @@ export default function VentasPage() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
 
   const cargarDatos = useCallback(async () => {
-    await sleepDemo();
     setCatalogoError(false);
     setCargandoCatalogo(true);
+    await sleepDemo();
     try {
       // Cargar config de turno + catálogo en paralelo
       const [resConfig, res] = await Promise.all([
