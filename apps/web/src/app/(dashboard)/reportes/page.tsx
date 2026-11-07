@@ -911,24 +911,28 @@ export default function ReportesOperacionesPage() {
           value={stats.pendientes}
           label="Pendientes"
           color={stats.pendientes > 0 ? 'warning' : 'neutral'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Eye size={22} />}
           value={stats.enRevision}
           label="En Revisión"
           color={stats.enRevision > 0 ? 'primary' : 'neutral'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<CheckCircle2 size={22} />}
           value={stats.atendidos}
           label="Atendidos"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ShieldAlert size={22} />}
           value={stats.resueltos}
           label="Resueltos"
           color="success"
+        loading={initialLoading}
         />
       </div>
 

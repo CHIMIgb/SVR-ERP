@@ -816,18 +816,21 @@ export default function ProveedoresPage() {
           value={formatCurrency(stats.porPagar)}
           label="Por Pagar"
           color={stats.porPagar > 0 ? 'error' : 'success'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ClipboardList className="w-6 h-6" />}
           value={`${stats.ordenesActivas} activas`}
           label="Órdenes Activas"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ShoppingCart className="w-6 h-6" />}
           value={formatCurrency(stats.totalCompras)}
           label="Total Compras"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 

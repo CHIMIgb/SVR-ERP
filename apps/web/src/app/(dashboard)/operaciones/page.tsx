@@ -413,18 +413,21 @@ export default function OperacionesPage() {
           value={stats.totalRegistros}
           label="Total Operaciones"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Clock className="w-6 h-6" />}
           value={`${stats.horasTotales} hrs`}
           label="Horas Totales"
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<HardHat className="w-6 h-6" />}
           value={stats.maquinasActivas}
           label="Máquinas Activas"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 

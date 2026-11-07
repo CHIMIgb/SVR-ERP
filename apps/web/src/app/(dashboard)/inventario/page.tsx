@@ -509,6 +509,7 @@ export default function InventarioPage() {
           value={`${stats.totalArticulos} tipos`}
           label="Total Artículos"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<TrendingDown className="w-6 h-6" />}
@@ -516,12 +517,14 @@ export default function InventarioPage() {
           label="Stock Bajo"
           color={stats.stockBajo > 0 ? 'error' : 'success'}
           onClick={stats.stockBajo > 0 ? handleFilterLowStock : undefined}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ShoppingCart className="w-6 h-6" />}
           value={formatCurrency(stats.valorTotal)}
           label="Valor Inventario"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 

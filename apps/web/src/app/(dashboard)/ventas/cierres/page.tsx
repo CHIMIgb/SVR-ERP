@@ -343,18 +343,21 @@ export default function CierresCajaPage() {
           value={`${stats.total} cierres`}
           label="Total Registrados"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<CheckCircle2 className="w-6 h-6" />}
           value={`${stats.aprobados} aprobados`}
           label="Aprobados"
           color={stats.aprobados > 0 ? 'success' : 'neutral'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<AlertTriangle className="w-6 h-6" />}
           value={`${stats.pendientes} pendientes`}
           label="Pendientes de Aprobación"
           color={stats.pendientes > 0 ? 'warning' : 'success'}
+        loading={initialLoading}
         />
       </div>
 

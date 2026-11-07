@@ -449,18 +449,21 @@ export default function FinanzasPage() {
           value={formatCurrency(stats.balance)}
           label="Balance Total"
           color={stats.balance >= 0 ? 'success' : 'error'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ArrowUpCircle className="w-6 h-6" />}
           value={formatCurrency(stats.totalIngresos)}
           label="Ingresos"
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ArrowDownCircle className="w-6 h-6" />}
           value={formatCurrency(stats.totalEgresos)}
           label="Egresos"
           color="error"
+        loading={initialLoading}
         />
         {tab === 'conciliacion' && (
           <>
@@ -469,18 +472,21 @@ export default function FinanzasPage() {
               value={formatCurrency(concTotales.cargado)}
               label="Total cargado"
               color="primary"
+            loading={initialLoading}
             />
             <StatsCard
               icon={<BadgeCheck className="w-6 h-6" />}
               value={formatCurrency(concTotales.conciliado)}
               label="Conciliado"
               color="success"
+            loading={initialLoading}
             />
             <StatsCard
               icon={<Unlink className="w-6 h-6" />}
               value={formatCurrency(concTotales.sinConciliar)}
               label="Sin conciliar"
               color={concTotales.sinConciliar === 0 ? 'success' : 'warning'}
+            loading={initialLoading}
             />
           </>
         )}

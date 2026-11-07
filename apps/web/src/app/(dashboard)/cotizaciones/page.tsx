@@ -464,6 +464,7 @@ export default function CotizacionesPage() {
           value={`${stats.total} totales`}
           label="Total Cotizaciones"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Clock className="w-6 h-6" />}
@@ -471,6 +472,7 @@ export default function CotizacionesPage() {
           label="En Espera"
           color="warning"
           onClick={stats.pendientes > 0 ? () => handleFilterChange('estado', 'PENDIENTE') : undefined}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<TrendingUp className="w-6 h-6" />}
@@ -478,6 +480,7 @@ export default function CotizacionesPage() {
           label={`${stats.aceptadas} Aceptadas`}
           color="success"
           onClick={stats.aceptadas > 0 ? () => handleFilterChange('estado', 'ACEPTADA') : undefined}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ThumbsDown className="w-6 h-6" />}
@@ -485,6 +488,7 @@ export default function CotizacionesPage() {
           label="Rechazadas"
           color="neutral"
           onClick={stats.rechazadas > 0 ? () => handleFilterChange('estado', 'RECHAZADA') : undefined}
+        loading={initialLoading}
         />
       </div>
 

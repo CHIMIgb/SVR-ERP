@@ -630,10 +630,10 @@ export default function FacturasPage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
-        <StatsCard icon={<Receipt className="w-6 h-6" />} value={`${stats.total}`} label="Total Facturas" color="info" />
-        <StatsCard icon={<Clock className="w-6 h-6" />} value={`${stats.pendientes}`} label="Pendientes" color="warning" />
-        <StatsCard icon={<BadgeCheck className="w-6 h-6" />} value={`${stats.timbradas}`} label="Timbradas" color="success" />
-        <StatsCard icon={<Banknote className="w-6 h-6" />} value={formatCurrency(stats.montoTotal)} label="Total facturado" color="primary" />
+        <StatsCard icon={<Receipt className="w-6 h-6" />} value={`${stats.total}`} label="Total Facturas" color="info" loading={initialLoading} />
+        <StatsCard icon={<Clock className="w-6 h-6" />} value={`${stats.pendientes}`} label="Pendientes" color="warning" loading={initialLoading} />
+        <StatsCard icon={<BadgeCheck className="w-6 h-6" />} value={`${stats.timbradas}`} label="Timbradas" color="success" loading={initialLoading} />
+        <StatsCard icon={<Banknote className="w-6 h-6" />} value={formatCurrency(stats.montoTotal)} label="Total facturado" color="primary" loading={initialLoading} />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

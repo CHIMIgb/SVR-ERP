@@ -484,24 +484,28 @@ export default function CribaPage() {
           value={`${stats.totalProducido} m³`}
           label="Total Produ."
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ArrowUpRight size={22} />}
           value={`${stats.totalAlBanco} m³`}
           label="Al Banco"
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Clock size={22} />}
           value={`${stats.totalHoras} h`}
           label="Horas Trab."
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Gauge size={22} />}
           value={`${stats.eficiencia}%`}
           label="Eficiencia"
           color={colorEficiencia(stats.eficiencia)}
+        loading={initialLoading}
         />
       </div>
 

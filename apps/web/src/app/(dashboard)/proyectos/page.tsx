@@ -601,18 +601,21 @@ export default function ProyectosPage() {
           value={stats.total}
           label="Total Proyectos"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<HardHat className="w-6 h-6" />}
           value={stats.enProceso}
           label="En Proceso"
           color={stats.enProceso > 0 ? 'primary' : 'neutral'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<CheckCircle2 className="w-6 h-6" />}
           value={stats.finalizados}
           label="Finalizados"
           color={stats.finalizados > 0 ? 'success' : 'neutral'}
+        loading={initialLoading}
         />
       </div>
 

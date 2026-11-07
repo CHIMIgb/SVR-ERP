@@ -655,10 +655,10 @@ export default function CobranzaPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatsCard icon={<Wallet className="w-5 h-5" />} label="Por cobrar" value={formatCurrency(stats.totalPorCobrar)} color="error" />
-        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" />
-        <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" />
-        <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" />
+        <StatsCard icon={<Wallet className="w-5 h-5" />} label="Por cobrar" value={formatCurrency(stats.totalPorCobrar)} color="error" loading={initialLoading} />
+        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" loading={initialLoading} />
+        <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" loading={initialLoading} />
+        <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" loading={initialLoading} />
         <StatsCard
           icon={<Wallet className="w-5 h-5" />}
           label={
@@ -671,24 +671,28 @@ export default function CobranzaPage() {
           }
           value={formatCurrency(totalesPorProyecto.monto)}
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<HandCoins className="w-5 h-5" />}
           label="Pagado"
           value={formatCurrency(totalesPorProyecto.pagado)}
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Building2 className="w-5 h-5" />}
           label="Saldo por obra"
           value={formatCurrency(totalesPorProyecto.saldo)}
           color="warning"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<AlertTriangle className="w-5 h-5" />}
           label="Vencido por obra"
           value={formatCurrency(totalesPorProyecto.vencido)}
           color="error"
+        loading={initialLoading}
         />
       </div>
 

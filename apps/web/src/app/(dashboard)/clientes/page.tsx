@@ -580,18 +580,21 @@ export default function ClientesPage() {
           value={`${stats.totalClientes} clientes`}
           label="Total Clientes"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<FolderKanban className="w-6 h-6" />}
           value={`${stats.clientesActivos} activos`}
           label="Clientes Activos"
           color="primary"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Building2 className="w-6 h-6" />}
           value={`${stats.empresas} empresas`}
           label="Empresas"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 
@@ -1012,24 +1015,28 @@ export default function ClientesPage() {
                   value={formatCurrency(consolidadoData.saldoTotal)}
                   label="Saldo total"
                   color="primary"
+                loading={initialLoading}
                 />
                 <StatsCard
                   icon={<Receipt className="w-5 h-5" />}
                   value={`${consolidadoData.cuentasPorCobrar.length}`}
                   label="Cuentas por cobrar"
                   color="info"
+                loading={initialLoading}
                 />
                 <StatsCard
                   icon={<FileText className="w-5 h-5" />}
                   value={`${consolidadoData.facturas.length}`}
                   label="Facturas recientes"
                   color="neutral"
+                loading={initialLoading}
                 />
                 <StatsCard
                   icon={<HandCoins className="w-5 h-5" />}
                   value={`${consolidadoData.cobros.length}`}
                   label="Cobros recientes"
                   color="success"
+                loading={initialLoading}
                 />
               </div>
 
