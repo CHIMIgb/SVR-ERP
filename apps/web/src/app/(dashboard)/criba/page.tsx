@@ -527,7 +527,7 @@ export default function CribaPage() {
                   <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
                 </div>
                 <Badge size="sm" variant={initialLoading ? 'neutral' : colorEficiencia(ef)}>
-                  {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-ui-400 animate-spin" /> : `Efic. ${ef}%`}
+                  {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `Efic. ${ef}%`}
                 </Badge>
               </div>
 
@@ -543,14 +543,14 @@ export default function CribaPage() {
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Al banco</p>
                   <p className="text-base font-black text-green-700">
-                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-green-500 animate-spin" /> : alBanco}
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : alBanco}
                   </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Merma</p>
                   <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-900'}`}>
-                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-yellow-500 animate-spin" /> : merma}
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : merma}
                   </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
