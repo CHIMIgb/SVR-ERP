@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Plus, Package, ArrowUpRight, Clock, Gauge,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -526,25 +526,31 @@ export default function CribaPage() {
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${materialDot[tipo]}`} />
                   <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
                 </div>
-                <Badge variant={colorEficiencia(ef)} size="sm">Efic. {ef}%</Badge>
+                <Badge size="sm" variant={initialLoading ? 'neutral' : colorEficiencia(ef)}>
+                  {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-ui-400 animate-spin" /> : `Efic. ${ef}%`}
+                </Badge>
               </div>
 
               {/* Tres métricas del material */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Producido</p>
-                  <p className="text-base font-black text-ui-900">{producido}</p>
+                  <p className="text-base font-black text-ui-900">
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : producido}
+                  </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Al banco</p>
-                  <p className="text-base font-black text-green-700">{alBanco}</p>
+                  <p className="text-base font-black text-green-700">
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-green-500 animate-spin" /> : alBanco}
+                  </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Merma</p>
                   <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-900'}`}>
-                    {merma}
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-yellow-500 animate-spin" /> : merma}
                   </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
@@ -556,7 +562,7 @@ export default function CribaPage() {
                   Merma del material
                 </span>
                 <span className={`text-xs font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-700'}`}>
-                  {merma} m³ · {mermaPct}%
+                  {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `${merma} m³ · ${mermaPct}%`}
                 </span>
               </div>
             </Card>
