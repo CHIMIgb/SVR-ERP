@@ -285,6 +285,13 @@ describe('Asistencia Audit (Real DB)', () => {
       const ahora = new Date();
       return new Date(Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()));
     };
+    // Día laboral ya pasado ("YYYY-MM-DD"). Con "hoy" la prueba dependía del reloj: antes de la entrada más la
+    // tolerancia todavía no hay omisión (AUN_EN_TOLERANCIA), y el domingo no hay omisión (DIA_DE_DESCANSO).
+    const diaLaboralPasado = () => {
+      const d = hoy();
+      do d.setUTCDate(d.getUTCDate() - 1); while (d.getUTCDay() === 0);
+      return d.toISOString().slice(0, 10);
+    };
 
     it('la omisión de quien checó tarde se resuelve como retardo, con motivo y auditada (una sola vez)', async () => {
       const trabajador = await crearTrabajador(`Omision Tarde Test ${TEST_ID}`);
@@ -336,7 +343,7 @@ describe('Asistencia Audit (Real DB)', () => {
 
     it('a quien no checó nada se le crea el día ya resuelto como falta (y no se duplica)', async () => {
       const trabajador = await crearTrabajador(`Omision Sin Marcaje Test ${TEST_ID}`);
-      const dto = { trabajadorId: trabajador.id, resolucion: 'Falta' as const, motivo: 'No avisó' };
+      const dto = { trabajadorId: trabajador.id, resolucion: 'Falta' as const, motivo: 'No avisó', fecha: diaLaboralPasado() };
 
       const registro = await service.resolverOmisionSinMarcaje(dto, ACTOR_USER_ID);
       expect(registro.estado).toBe('Falta');
