@@ -12,6 +12,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { sleepDemo } from '@/lib/demo-delay';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -86,6 +87,7 @@ export default function VentasPage() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
 
   const cargarDatos = useCallback(async () => {
+    await sleepDemo();
     setCatalogoError(false);
     setCargandoCatalogo(true);
     try {

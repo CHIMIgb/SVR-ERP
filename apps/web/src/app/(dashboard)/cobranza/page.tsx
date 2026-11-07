@@ -24,6 +24,8 @@ import {
   type GrupoProyectoDTO,
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
+import { sleepDemo } from '@/lib/demo-delay';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 8;
@@ -184,6 +186,7 @@ export default function CobranzaPage() {
 
   // ── Carga de datos (patrón /proveedores: fetch + initialLoading) ──
   const fetchCuentas = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    await sleepDemo();
     const res = await cobranzaApi.listar({
       search: searchVal || undefined,
       estado: filters?.estado as EstadoCuentaCobranza | undefined,
@@ -743,7 +746,7 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <EmptyState title="Cargando cuentas por cobrar..." subtitle="Espera un momento." />
+              <Skeleton variant="table" lines={6} />
             ) : cuentas.length === 0 ? (
               <EmptyState
                 title="Sin cuentas por cobrar"
@@ -808,7 +811,7 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <EmptyState title="Cargando movimientos de cobro..." subtitle="Espera un momento." />
+              <Skeleton variant="table" lines={6} />
             ) : cobros.length === 0 ? (
               <EmptyState
                 title="Sin movimientos de cobro"
@@ -873,7 +876,7 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <EmptyState title="Cargando vencimientos..." subtitle="Espera un momento." />
+              <Skeleton variant="table" lines={6} />
             ) : vencimientos.length === 0 ? (
               <EmptyState
                 title="Sin vencimientos pendientes"
@@ -937,7 +940,7 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <EmptyState title="Cargando cartera por obra..." subtitle="Espera un momento." />
+              <Skeleton variant="table" lines={6} />
             ) : grupos.length === 0 ? (
               <EmptyState
                 title="Sin saldos por proyecto"

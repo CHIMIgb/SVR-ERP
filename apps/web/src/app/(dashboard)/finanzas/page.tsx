@@ -29,6 +29,7 @@ import {
   type VentanaFlujoItem,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { sleepDemo } from '@/lib/demo-delay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -56,6 +57,7 @@ export default function FinanzasPage() {
     items: [],
     totales: { porCobrar: 0, porPagar: 0, neto: 0 },
   });
+  const [flujoLoading, setFlujoLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -82,7 +84,7 @@ export default function FinanzasPage() {
   const puedeExportar = vista?.puedeExportar ?? false;
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => { await sleepDemo();
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {
@@ -119,9 +121,15 @@ export default function FinanzasPage() {
   }, []);
 
   const fetchFlujo = useCallback(async () => {
-    const res = await finanzasApi.flujoNeto();
-    if (res.success && res.data) {
-      setFlujo(res.data);
+    setFlujoLoading(true);
+    try {
+      await sleepDemo();
+      const res = await finanzasApi.flujoNeto();
+      if (res.success && res.data) {
+        setFlujo(res.data);
+      }
+    } finally {
+      setFlujoLoading(false);
     }
   }, []);
 
@@ -508,6 +516,7 @@ export default function FinanzasPage() {
           columns={flujoColumns}
           data={flujo.items}
           keyExtractor={(item) => item.ventana}
+          loading={flujoLoading}
           emptyText="Sin cuentas por cobrar ni por pagar activas."
           className="min-w-[560px]"
         />

@@ -24,6 +24,7 @@ import {
   type FacturasStats,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { sleepDemo } from '@/lib/demo-delay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -171,7 +172,7 @@ export default function FacturasPage() {
   }, []);
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => { await sleepDemo();
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {

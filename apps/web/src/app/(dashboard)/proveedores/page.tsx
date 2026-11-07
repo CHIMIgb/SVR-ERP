@@ -23,6 +23,8 @@ import {
   type ProveedorDTO, type OrdenCompraDTO, type EstadoCuentaResumenDTO,
   type LedgerDetalleDTO, type EstadoOrdenApi, type ArticuloInventarioDTO,
 } from '@/lib/api';
+import { sleepDemo } from '@/lib/demo-delay';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 // ─── Tipos UI ────────────────────────────────────────────────────────────────
 type CategoriaProveedor = 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
@@ -149,6 +151,7 @@ export default function ProveedoresPage() {
 
   // ── Carga de datos (patrón /inventario: initialLoading + refreshing) ──
   const fetchProveedores = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    await sleepDemo();
     const res = await proveedoresApi.listar({
       search: searchVal || undefined,
       categoria: filters?.categoria || undefined,
@@ -887,7 +890,7 @@ export default function ProveedoresPage() {
             )}
 
             {initialLoading ? (
-              <EmptyState title="Cargando proveedores..." subtitle="Espera un momento." />
+              <Skeleton variant="table" lines={6} />
             ) : proveedores.length === 0 ? (
               <EmptyState
                 title="Sin proveedores"
@@ -957,7 +960,7 @@ export default function ProveedoresPage() {
             )}
 
             {initialLoading ? (
-              <EmptyState title="Cargando órdenes..." subtitle="Espera un momento." />
+              <Skeleton variant="table" lines={6} />
             ) : ordenes.length === 0 ? (
               <EmptyState
                 title="Sin órdenes de compra"
