@@ -1002,7 +1002,7 @@ export default function MaquinariaPage() {
                                         {obra}
                                       </span>
                                     ) : (
-                                      <span className="text-ui-300 text-xs">—</span>
+                                      <span className="text-ui-500 text-xs">—</span>
                                     )}
                                   </td>
                                 );

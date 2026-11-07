@@ -933,7 +933,7 @@ export default function AsistenciaPage() {
       ) : (
         <div className="flex items-center gap-2 text-sm whitespace-nowrap">
           <span className="font-semibold text-ui-900 tabular-nums">{reg.horaEntrada ?? '—'}</span>
-          <span className="text-ui-300">–</span>
+          <span className="text-ui-500">–</span>
           {reg.horaSalida ? (
             <span className="text-ui-700 tabular-nums">{reg.horaSalida}</span>
           ) : (
@@ -980,7 +980,7 @@ export default function AsistenciaPage() {
             +{reg.horasExtra.horasCalculadas} h <span className="text-ui-500">· {formatCurrency(reg.horasExtra.montoTotal)}</span>
           </span>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-ui-500">—</span>
         ),
     },
     {
@@ -1053,7 +1053,7 @@ export default function AsistenciaPage() {
           );
         }
         if (he.estado === 'Aprobado') return <span className="text-xs text-ui-500 whitespace-nowrap">En nómina</span>;
-        return <span className="text-ui-300">—</span>;
+        return <span className="text-ui-500">—</span>;
       },
     },
   ];
@@ -1132,7 +1132,7 @@ export default function AsistenciaPage() {
             Resolver
           </Button>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-ui-500">—</span>
         ),
     },
   ];
@@ -1320,7 +1320,7 @@ export default function AsistenciaPage() {
                                 {item.dias.map((d) => {
                                   if (d.fecha > hoyISO) {
                                     return (
-                                      <td key={d.dia} className="px-2 py-3 text-center text-ui-300" aria-label="Día por venir">—</td>
+                                      <td key={d.dia} className="px-2 py-3 text-center text-ui-500" aria-label="Día por venir">—</td>
                                     );
                                   }
                                   // Estado no previsto por la API: se muestra tal cual y en neutro (nunca como falta).

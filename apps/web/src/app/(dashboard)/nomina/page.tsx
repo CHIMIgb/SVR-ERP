@@ -353,7 +353,7 @@ export default function NominaPage() {
       render: (item) =>
         item.sueldoEfectivo > 0
           ? <span className="text-sm text-ui-700 tabular-nums">{formatCurrency(item.sueldoEfectivo)}</span>
-          : <span className="text-ui-300">—</span>,
+          : <span className="text-ui-500">—</span>,
     },
     {
       key: 'percepciones',
@@ -367,7 +367,7 @@ export default function NominaPage() {
             {item.horasExtra > 0 && <p className="text-xs text-ui-500">{item.horasExtra} h extra</p>}
           </div>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-ui-500">—</span>
         ),
     },
     {
@@ -376,7 +376,7 @@ export default function NominaPage() {
       align: 'right',
       className: 'hidden min-[1400px]:table-cell',
       render: (item) => {
-        if (item.totalDeducciones <= 0) return <span className="text-ui-300">—</span>;
+        if (item.totalDeducciones <= 0) return <span className="text-ui-500">—</span>;
         const conceptos = item.deducciones.map((d) => d.concepto).join(', ');
         return (
           <div className="flex flex-col items-end">

@@ -302,7 +302,7 @@ export default function TrabajadoresPage() {
             )}
           </div>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-ui-500">—</span>
         ),
     },
     {
@@ -313,7 +313,7 @@ export default function TrabajadoresPage() {
         t.proyectos.length > 0 ? (
           <span className="block text-sm text-ui-700 truncate max-w-[180px]">{t.proyectos.join(', ')}</span>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-ui-500">—</span>
         ),
     },
     {
