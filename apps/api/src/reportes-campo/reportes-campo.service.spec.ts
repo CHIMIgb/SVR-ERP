@@ -334,6 +334,16 @@ describe('ReportesCampoService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CONFLICTO_CONCURRENCIA' }),
       );
+      // el where condiciona por la asignación leída (re-revisión: "quitan la
+      // asignación mientras otro marca Resuelto" → 409 en vez de resolverse sin responsable)
+      const where = prisma.reportes_campo.updateMany.mock.calls[0][0].where;
+      expect(where).toEqual(
+        expect.objectContaining({
+          estado: EstadoReporteCampo.ATENDIDO,
+          asignado_a_id: mockReporte.asignado_a_id,
+          asignado_nombre: mockReporte.asignado_nombre,
+        }),
+      );
     });
   });
 
@@ -567,6 +577,15 @@ describe('ReportesCampoService', () => {
       await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(ConflictException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CONFLICTO_CONCURRENCIA' }),
+      );
+      // el where condiciona por la asignación leída (re-revisión: carreras de reasignación)
+      const where = prisma.reportes_campo.updateMany.mock.calls[0][0].where;
+      expect(where).toEqual(
+        expect.objectContaining({
+          estado: mockReporte.estado,
+          asignado_a_id: mockReporte.asignado_a_id,
+          asignado_nombre: mockReporte.asignado_nombre,
+        }),
       );
     });
   });

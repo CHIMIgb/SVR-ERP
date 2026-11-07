@@ -340,9 +340,16 @@ export class ReportesCampoService {
       );
     }
 
-    // Guard anti-carrera: solo reasigna el reporte que sigue en el estado leído
+    // Guard anti-carrera: solo reasigna el reporte que sigue en el estado Y la
+    // asignación leída (reasignaciones simultáneas → conflicto, no last-write)
     const actualizada = await this.prisma.reportes_campo.updateMany({
-      where: { id, estado: (existente.estado as EstadoReporteCampo), eliminado_en: null },
+      where: {
+        id,
+        estado: (existente.estado as EstadoReporteCampo),
+        asignado_a_id: existente.asignado_a_id,
+        asignado_nombre: existente.asignado_nombre,
+        eliminado_en: null,
+      },
       data: {
         asignado_a_id: asignadoA,
         asignado_nombre: asignadoNombre,
@@ -444,10 +451,18 @@ export class ReportesCampoService {
     }
 
     // Guard anti-carrera (review PR #15): solo cambia el reporte que SIGUE en
-    // el estado leído; si otro cambio simultáneo ya movió el estado, el
-    // updateMany no toca nada → conflicto en vez de sobrescribir resuelto_en.
+    // el estado y con la MISMA asignación que se leyó — si otro cambio
+    // simultáneo movió el estado o la asignación, el updateMany no toca nada
+    // (impide pisar resuelto_en y el caso "quitan asignación mientras otro
+    // marca Resuelto").
     const actualizada = await this.prisma.reportes_campo.updateMany({
-      where: { id, estado: estadoActual, eliminado_en: null },
+      where: {
+        id,
+        estado: estadoActual,
+        asignado_a_id: existente.asignado_a_id,
+        asignado_nombre: existente.asignado_nombre,
+        eliminado_en: null,
+      },
       data: {
         estado: dto.estado,
         ...(dto.estado === EstadoReporteCampo.RESUELTO && { resuelto_en: new Date() }),
