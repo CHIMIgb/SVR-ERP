@@ -70,6 +70,16 @@ src/
 - Currency formatting: `new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })` — duplicated in 17 files (no shared utility yet).
 - Icons: import individual icons from `lucide-react`, never the barrel.
 
+### Loaders/Skeletons — regla dura (todas las vistas: Operaciones, Comercial y TODOS los módulos)
+
+**La primera impresión de una vista cargando SIEMPRE es un esqueleto (skeleton), nunca un spinner.**
+
+1. **Tablas:** `<DataTable loading={cargando} ...>` — pinta skeleton de filas internamente + `emptyText` cuando no hay datos. NUNCA renderizar un spinner encima del DataTable para la carga inicial.
+2. **Bloques no tabulares** (tab de detalle, paneles, cards de contenido): `<Skeleton variant="card" />` / `row` / `text` (con `SkeletonText` cuando el contenido simula párrafos).
+3. **Refetches con datos ya en pantalla** (filtros, paginación, búsqueda): `<RefreshOverlay show={refetch} />` dentro de un padre `relative` — nunca un skeleton completo ni un spinner suelto.
+4. **`LoadingState` (spinner centrado)** queda reservado para: estados de autenticación/layout (RouteGuard, login) y acciones que no tienen esqueleto asociado. No es la primera impresión de una vista de datos.
+5. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
+
 ## Data Layer
 
 `src/lib/data.ts` is the single source of truth for all types and mock data. **28 files import from it.** Treat it carefully — any change can cascade re-compilations. Types are organized by domain but live in this one file.

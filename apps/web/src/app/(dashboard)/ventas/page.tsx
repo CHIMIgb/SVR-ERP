@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Clock,
 } from 'lucide-react';
-import { LoadingState } from '@/components/ui/LoadingState';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -401,7 +401,7 @@ export default function VentasPage() {
                 <div className="lg:col-span-3 space-y-4">
                   {!catalogoCargado && !catalogoError && (
                     <div className={posClasses.card}>
-                      <LoadingState text="Cargando catálogo de materiales..." className="py-8" />
+                      <Skeleton variant="card" />
                     </div>
                   )}
                   {!catalogoCargado && catalogoError && (

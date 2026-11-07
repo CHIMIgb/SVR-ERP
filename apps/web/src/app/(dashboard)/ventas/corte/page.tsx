@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Lock, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +26,7 @@ export default function CorteDelDiaPage() {
   // Configuración de turno + validación de ventana de cierre
   const [turnoConfig, setTurnoConfig] = useState<TurnoConfig | null>(null);
   const [fueraDeVentana, setFueraDeVentana] = useState(false);
+  const [cargandoConfig, setCargandoConfig] = useState(true);
 
   useEffect(() => {
     ventasApi.config().then((res) => {
@@ -37,7 +39,7 @@ export default function CorteDelDiaPage() {
         const fuera = !permiteCerrarCaja(nowMin, aH * 60 + aM, cH * 60 + cM);
         setFueraDeVentana(fuera);
       }
-    });
+    }).finally(() => setCargandoConfig(false));
   }, []);
 
   return (
@@ -46,6 +48,8 @@ export default function CorteDelDiaPage() {
         title="Corte del Día"
         subtitle={`Cierre de caja · Cajero: ${cashierName}`}
       />
+
+      {cargandoConfig && <Skeleton variant="card" />}
 
       {!puedeVer ? (
         <EmptyState
