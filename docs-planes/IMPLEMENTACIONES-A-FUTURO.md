@@ -19,7 +19,7 @@
 | §0 | Fases ejecutadas — ciclo de dinero |
 | §1 | Resumen ejecutivo |
 | §2 | Diagnóstico técnico actual (`cotizaciones`, integraciones) |
-| §3 | Flujos pendientes: **P1** cotización→factura→CxC · **P2** partidas · **P3** cotización↔proyecto · **P4** bajada de inventario (**+ descuento por venta POS**) · **P5** pagos a CxC · **P6** vendedor real · **P7** precios por medida (**+ editor fácil para encargados**) |
+| §3 | Flujos pendientes: **P1** cotización→factura→CxC · **P2** partidas · **P3** cotización↔proyecto · **P4** bajada de inventario (**+ descuento por venta POS**) · **P5** pagos a CxC · **P6** vendedor real · **P7** precios por medida (**+ editor fácil para encargados**) · **P8** metas de progreso con fecha límite |
 | §4 | Diagrama de la cadena de valor objetivo |
 | §5 | Validación y riesgos |
 | §6 | Mapa de integración de vistas (6.1–6.8) |
@@ -365,7 +365,58 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 
 ---
 
-## 4. Diagrama de la cadena de valor objetivo
+### P8 — Metas de progreso del proyecto con fechas límite (idea del cliente)
+
+**Objetivo:** el progreso del proyecto deja de ser un número manual capturado a mano.
+Al registrar un proyecto (o después, desde "Ver detalle") se capturan **metas a
+cumplir, cada una con su fecha límite**; conforme se marcan **CUMPLIDAS**, el
+`proyectos.progreso` se llena proporcionalmente al peso de cada meta.
+
+**Estado verificado en schema:** el modelo `hitos_progreso` **YA EXISTE** y hoy solo
+alimenta (en el mock) la curva S del modal: `proyecto_id`, `nombre`, `descripcion`,
+`periodo`, `fecha`, `planificado`/`real` (Decimal 5,2). Le faltan exactamente las
+piezas de "meta": `fecha_limite` y el estado de cumplimiento.
+
+**Cómo se aplicará (diseño sobre lo existente, sin modelo nuevo):**
+1. **Schema:** ampliar `hitos_progreso` con `fecha_limite` (Date?, nullable) y
+   `estado` (`PENDIENTE`/`CUMPLIDA`, default PENDIENTE). El `planificado` de la meta
+   es el **% objetivo acumulado** al cumplirla (misma escala que `proyectos.progreso`
+   0–100). Migración con defaults para las filas existentes.
+2. **Derivación del progreso (regla central):**
+   - Proyecto **con metas** → `progreso` = % del planificado de la última meta
+     CUMPLIDA (o suma ponderada si hay pesos) — **derivado, no editable a mano**.
+   - Proyecto **sin metas** → captura manual como hoy (comportamiento actual sin
+     romper nada).
+   - Al marcar una meta CUMPLIDA: en la misma `$transaction` — transición condicional
+     `PENDIENTE → CUMPLIDA` (estado leído contra dobles → `CONFLICTO_CONCURRENCIA`
+     en doble-marca), update de `proyectos.progreso`, e insert del punto real en
+     `hitos_progreso` del periodo (para la curva S). Todo audita SUCCESS/FAIL.
+3. **Fecha límite:** la meta que pasó su `fecha_limite` sigue PENDIENTE → badge
+   "Vencida" en el modal (dato derivado, no estado persistido).
+4. **Frontend (modal Ver detalle, 6.6.1):** sección "Metas del proyecto" con la lista
+   (nombre, fecha límite, % objetivo, estado) + botón «Marcar cumplida» por RBAC
+   `puede_editar`; en el registro/edición del proyecto una tabla para dar de alta las
+   metas. Badge histórico de metas vencidas en la página de proyectos.
+5. **Cruce con 6.3 (futuro):** los reportes-campo con avance pueden sugerir
+   auto-marcar la meta correspondiente; nunca auto-cumplirla sin confirmación humana.
+6. **Tests:** unit (transición condicional, doble marca → 409, progreso
+   recalculado) + integración real (marcar meta cumple → fila SUCCESS en
+   `registro_auditoria`, `proyectos.progreso` actualizado, punto de curva S creado).
+
+**Impacto:** combinación con FLUJO-PROGRESO-PROYECTOS (6.3): la fuente de la verdad
+del progreso pasa de "capturado" a "derivado de metas cumplidas", y el modal obtiene
+la curva S con datos reales en vez del mock.
+
+**Workflow entre pantallas:**
+```
+/proyectos ──(crear/editar proyecto → tabla de metas con fecha límite)──►
+   └─ modal Ver detalle ──(«Marcar cumplida»)──►
+      └─ $transaction: meta PENDIENTE→CUMPLIDA (condicional)
+           ├─► proyectos.progreso recalculado (página de proyectos)
+           └─► punto real en curva S del modal (6.6.1)
+```
+
+---
 
 ```
                        ┌─────────────────────┐
@@ -460,6 +511,14 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
   facturación.
 - **Gap de modelo:** verificar que `bitacoras_operacion` tenga el cruce a `maquinas`,
   `trabajadores` y `proyectos` (despachos_maquina ya cruza máquina+proyecto+operador).
+- **Gap confirmado en BD real (2026-11-06) — solo 3 obras al registrar operaciones:**
+  el catálogo de obras del registro y de los filtros (`GET /bitacora/catalogos`) es
+  correcto (excluye FINALIZADA). El dato real: la BD tiene solo **3 obras**, y de los
+  6 proyectos EN_PROCESO **solo 2 tienen obra** (1 obra más pertenece a un proyecto
+  FINALIZADO). El registro de operaciones se amarra a obras, no a proyectos → los
+  4 proyectos en proceso sin obra quedan imposibilitados. Arreglo por cerrar: el flujo
+  "proyecto → obra" de 6.6 (crear la obra al iniciar el proyecto) y/o sembrar las
+  obras de los proyectos activos existentes.
 
 **Workflow entre pantallas:**
 ```
@@ -544,16 +603,48 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 
 ### 6.6 `/proyectos` ↔ Clientes, obras, despachos & cotizaciones (`proyectos`, `obras`, `despachos_maquina`)
 
-- **Hoy:** CRUD por API; `ProjectDetailsModal.tsx` aún filtra mock (único residuo de
-  `@/lib/data`) — **por migrar a API real**.
+- **Hoy:** CRUD por API. **Actualización 2026-11-06:** el `ProjectDetailsModal`
+  ("Ver detalle") está detallado abajo; sigue filtrando mock de `@/lib/data`
+  (**único residuo** junto a `MachineCard`/dashboard/gps/documentos).
 - **Flujo pendiente:**
   - **Proyecto → Obra(s):** `proyectos` tiene `obras[]`; cerrar el flujo de creación de
-    obra desde un proyecto.
+    obra desde un proyecto. **Gap confirmado en BD real (2026-11-06):** de los
+    **6 proyectos EN_PROCESO, solo 2 tienen obra** (la BD total tiene 3 obras, una en
+    un proyecto FINALIZADO). Consecuencia directa en `/operaciones`: el catálogo de
+    registros (`GET /bitacora/catalogos`, obras `estado != FINALIZADA`) solo muestra
+    3 — **no es bug de filtro, es falta de obras**. Los proyectos sin obra no reciben
+    operaciones hasta que exista la obra → cerrar este flujo (o sembrar obras) es
+    prerrequisito operativo, no cosmético.
   - **Proyecto → Despacho de máquina:** `despachos_maquina` cruza `maquina_id +
     proyecto_id + operador_id`; alimentar el detalle del proyecto con las máquinas
     despachadas.
   - **Proyecto → Cotización (P3):** crear proyecto desde cotización aceptada.
-  - **Avance/estado:** `proyectos.progreso` deriva de hitos/obras/reportes-campo.
+  - **Avance/estado:** `proyectos.progreso` deriva de metas/hitos — ver **P8** §3.
+
+#### 6.6.1 Anatomía del modal "Ver detalle" (`ProjectDetailsModal.tsx`)
+
+Para qué sirve: es la **ficha de control de la obra** en un solo vistazo — progreso
+frente al plan, salud financiera y recursos humanos/flota asignados. Muestra, por bloques:
+
+| Bloque | Qué muestra | Tipo de dato | Fuente hoy |
+|---|---|---|---|
+| Header | Nombre, cliente, vigencia (fecha init→fin), Badge de estado | fechas/enum | mock |
+| 1 · Curva S | LineChart "Progreso de Obra": avance acumulado Planificado (naranja) vs Real (oscuro), con leyenda | series % por fecha | mock (`historicoProgreso`) — el modelo real existe: `hitos_progreso` |
+| 2 · Rentabilidad y costo | Presupuesto contratado, ingreso facturado/cobrado, desglose de gastos (nómina+HE, diésel, refacciones, materiales/criba), utilidad neta y badge de margen % (>20 verde, >0 ámbar, ≤0 rojo) | `formatCurrency` MXN | mock (API solo entrega `finanzas{ingresoCobrado,gastado}`; el desglose por concepto falta — Fase 3 de FLUJO-PROGRESO-PROYECTOS) |
+| 3 · Desempeño (EVM) | **CPI** = valor ganado (presupuesto×%avance)/costo real y **SPI** = avance real/planificado, con semáforo (≥1 verde) | índices calculados | calculado local |
+| 4 · Recursos | Personal en obra (Avatar + puesto + indicador activo) y Flota asignada (despachos activos + estado de máquina como Badge) | listas | mock (`trabajadores`, `despachosFlota`) |
+
+**Pendientes del modal:**
+1. **Migración a API real** (cosen las partes alimentables: finanzas de proyecto,
+   personal por proyecto, despachos); los índices CPI/SPI se calculan igual con datos
+   reales.
+2. **Contraste en modo oscuro (fix de letras):** el modal usa colores de modo claro
+   hardcodeados (`text-slate-900`, `text-slate-600/500`, `text-slate-400`,
+   fondos `bg-green-100`, `bg-blue-50`, `bg-slate-100`) **sin variantes `dark:`** —
+   en modo oscuro varios textos pierden contraste (títulos casi negros sobre fondo
+   oscuro). La corrección: variantes `dark:` consistentes con el resto del modo
+   oscuro del proyecto para textos y fondos de icono, en TODOS los bloques del
+   modal (FinRow incluido).
 
 **Workflow entre pantallas:**
 ```
@@ -626,12 +717,13 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
 | P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
-| 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02) |
+| 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02). **Gap de datos 2026-11-06:** BD con solo 3 obras — 4 de 6 proyectos EN_PROCESO sin obra → flujo proyecto→obra pendiente (6.6) |
 | 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente (verificado: `incidentes` no deriva nada) |
-| 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente (verificado: no toca `progreso` ni `transacciones`) |
+| 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente (verificado: no toca `progreso` ni `transacciones`) — **P8** propone derivar el progreso de metas cumplidas |
+| P8 | Metas de proyecto con fecha límite → progreso derivado | `/proyectos` (registro y modal) | ⏳ Pendiente (base: `hitos_progreso` existe; faltan `fecha_limite` + estado CUMPLIDA + derivación) |
 | 6.4 | Criba → máquina/obra + producción → inventario | `/criba` → `/maquinaria` → `/inventario` | ⏳ Pendiente (gap confirmado en schema: `registros_criba` solo FK a trabajadores) |
 | 6.5 | Inventario → entradas criba / salidas cotización | `/inventario` ↔ `/criba` ↔ `/cotizaciones` | ⏳ Pendiente (criba no genera movimientos) |
-| 6.6 | Proyecto → obras/despachos; `ProjectDetailsModal` mock | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + dashboard/gps/documentos/Topbar en mock) |
+| 6.6 | Proyecto → obras/despachos; modal Ver detalle (curva S, EVM, contraste oscuro) | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + detalle anatomía 6.6.1 y fix de contraste dark pendiente) |
 | 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ✅ **Realizado** (`GET /clientes/:id/consolidado` + tabs cuentas/facturas/cobros/cotizaciones). Falta tab de trabajadores por proyecto |
 | 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
 | F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
