@@ -39,7 +39,7 @@
 |------|-------------------------------------------|---------|
 | 🟢 **0 — Triviales** | 1. Sembrar obras de los 4 proyectos EN_PROCESO sin obra (catálogo /operaciones pasa de 3 a 6+) · 2. Contraste dark en modal Ver Detalle · 3. **F2** loaders/skeletons (aplicar los existentes) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
-| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (crear proyecto nace su obra base + sincronizar estados + labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
+| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
 
 ---
@@ -637,21 +637,34 @@ la curva S con datos reales en vez del mock.
    `obras` hereda `nombre` del proyecto + `proyecto_id` (FK que ya existe), activo,
    sin ubicación (se captura después para GPS). Con guard idempotente: si al correr
    de nuevo el proyecto ya tiene obra, no duplica (reutilizable como seed).
-2. **Crear obra extra para multi-frente:** botón "Agregar obra" en el detalle del
-   proyecto (nombre del frente + ubicación + radio GPS) — necesita un módulo/endpoint
-   de `obras` con los 4 checkpoints (hoy no existe backend de obras).
-3. **Sincronización de estados:** al marcar proyecto FINALIZADO/PAUSADO, sus obras
-   activas toman el mismo estado en la misma transacción → desaparecen del catálogo
-   de registro de operaciones/horas (termina con el caso "Puente Atizapán" apareciendo
-   con proyecto FINALIZADO).
-4. **Catálogos con filtro por proyecto:** `GET /bitacora/catalogos` (y asistencia)
+2. **Obras múltiples por proyecto (multi-frente):** un proyecto puede registrar
+   varias obras (p. ej. "Fraccionamiento Valle Sur" → "calle A", "calle B").
+   **Regla del cliente (2026-11-07):** al registrar la primera obra manual del
+   proyecto, la **obra base automática (la que heredó el nombre del proyecto) se
+   retira** (soft-delete `eliminado_en` en la misma transacción) — quedan **solo la
+   obra u obras que el encargado creó**. Registro 0→N: proyecto sin obras manuales
+   muestra la base; con ≥1 manual, solo las manuales.
+3. **Ubicación del botón "Agregar obra": decisión (2026-11-07).** Va como **acción
+   contextual del proyecto** (en las acciones de fila y/o en el modal Ver Detalle,
+   como "Obras (N)"), **NO al lado del botón "Registrar proyecto"**: una obra SIEMPRE
+   nace con un `proyecto_id` — ponerla junto al registro de proyectos permitiría
+   crear obras huérfanas, que es exactamente el bug de hoy. Nace la obra → abre un
+   mini-modal desde el proyecto (nombre del frente + ubicación + radio GPS).
+   Necesita un módulo/endpoint de `obras` con los 4 checkpoints (hoy no existe
+   backend de obras).
+4. **Sincronización de estados:** al marcar proyecto FINALIZADO/PAUSADO, sus obras
+   activas toman el mismo estado en la misma transacción (incluida la base que aún
+   exista) → desaparecen del catálogo de registro de operaciones/horas (termina con
+   el caso "Puente Atizapán" apareciendo con proyecto FINALIZADO).
+5. **Catálogos con filtro por proyecto:** `GET /bitacora/catalogos` (y asistencia)
    exponen también el `proyecto_id/proyecto nombre` de cada obra para mostrarlos
    agrupados en el select (obra — proyecto).
-5. **Nomenclatura UI:** actualizar labels de `/proyectos` ("obra" → "proyecto") para
+6. **Nomenclatura UI:** actualizar labels de `/proyectos` ("obra" → "proyecto") para
    que la palabra "obra" queda reservada al frente físico — evita la confusión actual
    del personal de campo.
-6. **Tests:** unit + integración (obra nace con proyecto, no duplica on re-run,
-   estados sincronizados, catálogo filtrado).
+7. **Tests:** unit + integración (obra nace con proyecto, no duplica on re-run,
+   base se retira al crear primera obra manual, estados sincronizados, catálogo
+   filtrado).
 
 **Impacto:** cierra el puente comercial→operación tipo contrato real: proyecto = lo
 que se factura; obra(s) = donde se ejecuta. Sin él, la operación de campo depende de
