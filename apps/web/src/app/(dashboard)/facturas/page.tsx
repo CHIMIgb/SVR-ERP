@@ -615,12 +615,22 @@ export default function FacturasPage() {
           (puedeCrear || puedeExportar) ? (
             <div className="flex flex-wrap gap-3">
               {puedeExportar && (
-                <Button variant="outline" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+                <Button
+                  skeleton={initialLoading}
+                  variant="outline"
+                  icon={<Download className="w-4 h-4" />}
+                  onClick={handleExportar}
+                >
                   Exportar
                 </Button>
               )}
               {puedeCrear && (
-                <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={() => setCreateOpen(true)}>
+                <Button
+                  skeleton={initialLoading}
+                  variant="primary"
+                  icon={<Plus className="w-5 h-5" />}
+                  onClick={() => setCreateOpen(true)}
+                >
                   Nueva factura
                 </Button>
               )}

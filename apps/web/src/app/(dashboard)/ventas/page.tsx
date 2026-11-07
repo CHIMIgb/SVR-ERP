@@ -318,6 +318,7 @@ export default function VentasPage() {
         action={
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
+              skeleton={cargandoCatalogo}
               variant="secondary"
               icon={<ReceiptText className="w-4 h-4" />}
               onClick={() => setShowHistory(true)}
@@ -367,24 +368,28 @@ export default function VentasPage() {
               value={ventasHoy.length}
               label="Ventas de hoy"
               color="primary"
+              loading={cargandoCatalogo}
             />
             <StatsCard
               icon={<Banknote className="w-5 h-5" />}
               value={formatCurrency(ingresosNetos)}
               label="Ingresos del día (netos)"
               color="success"
+              loading={cargandoCatalogo}
             />
             <StatsCard
               icon={<ReceiptText className="w-5 h-5" />}
               value={formatCurrency(ticketPromedio)}
               label="Ticket promedio"
               color="info"
+              loading={cargandoCatalogo}
             />
             <StatsCard
               icon={<Plus className="w-5 h-5" />}
               value={piezasHoy}
               label="Artículos vendidos"
               color="warning"
+              loading={cargandoCatalogo}
             />
           </div>
 

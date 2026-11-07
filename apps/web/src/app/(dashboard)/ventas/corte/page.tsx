@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { Lock, Clock } from 'lucide-react';
@@ -9,12 +9,12 @@ import { sleepDemo } from '@/lib/demo-delay';
 import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
-import { ventasApi, type TurnoConfig } from '@/lib/api';
+import { ventasApi, ventaDtoToSale, type TurnoConfig } from '@/lib/api';
 import { parseHM, permiteCerrarCaja } from '@/lib/pos';
 
 export default function CorteDelDiaPage() {
   const { user } = useAuth();
-  const { sales, retiros } = usePOS();
+  const { sales, retiros, addSale } = usePOS();
 
   const cashierName = user?.persona && user.persona.nombre
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
@@ -24,17 +24,18 @@ export default function CorteDelDiaPage() {
 
   const puedeVer = user?.vistas.find((v) => v.ruta === '/ventas/corte')?.puedeVer ?? false;
 
-  // Configuración de turno + validación de ventana de cierre
+  // ConfiguraciÃ³n de turno + validaciÃ³n de ventana de cierre
   const [turnoConfig, setTurnoConfig] = useState<TurnoConfig | null>(null);
   const [fueraDeVentana, setFueraDeVentana] = useState(false);
   const [cargandoConfig, setCargandoConfig] = useState(true);
+  const [cargandoVentas, setCargandoVentas] = useState(true);
 
   useEffect(() => {
     ventasApi.config().then(async (res) => {
       await sleepDemo();
       if (res.success) {
         setTurnoConfig(res.data);
-        // Verificar si se puede cerrar (según el tipo de turno: diurno/nocturno)
+        // Verificar si se puede cerrar (segÃºn el tipo de turno: diurno/nocturno)
         const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
         const { h: cH, m: cM } = parseHM(res.data.cierre);
         const { h: aH, m: aM } = parseHM(res.data.apertura);
@@ -42,13 +43,21 @@ export default function CorteDelDiaPage() {
         setFueraDeVentana(fuera);
       }
     }).finally(() => setCargandoConfig(false));
+
+    // Ventas del dÃ­a: el proveedor comparte el estado, pero si se entra directo
+    // a /ventas/corte nadie las cargÃ³ â€” fetch idempotente (addSale dedup).
+    ventasApi.hoy().then((res) => {
+      if (res.success) {
+        for (const venta of res.data.ventas) addSale(ventaDtoToSale(venta, []));
+      }
+    }).finally(() => setCargandoVentas(false));
   }, []);
 
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
-        title="Corte del Día"
-        subtitle={`Cierre de caja · Cajero: ${cashierName}`}
+        title="Corte del DÃ­a"
+        subtitle={`Cierre de caja Â· Cajero: ${cashierName}`}
       />
 
       {cargandoConfig && <Skeleton variant="card" />}
@@ -71,7 +80,7 @@ export default function CorteDelDiaPage() {
                 <div>
                   <p className="text-red-900 dark:text-red-300 font-bold text-lg">Fuera de la ventana de cierre de caja</p>
                   <p className="text-red-700 dark:text-red-400 text-sm font-medium mt-1">
-                    El cierre solo está permitido después de las <strong>{turnoConfig.cierre}</strong> y hasta antes de las <strong>{turnoConfig.apertura}</strong> hrs (siguiente turno).
+                    El cierre solo estÃ¡ permitido despuÃ©s de las <strong>{turnoConfig.cierre}</strong> y hasta antes de las <strong>{turnoConfig.apertura}</strong> hrs (siguiente turno).
                     Hora actual: <strong>{new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong>.
                   </p>
                 </div>
@@ -79,7 +88,7 @@ export default function CorteDelDiaPage() {
             </div>
           )}
 
-          <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} />
+          <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} loading={cargandoConfig || cargandoVentas} />
         </>
       )}
     </div>

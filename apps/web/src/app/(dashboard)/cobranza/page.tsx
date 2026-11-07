@@ -646,7 +646,13 @@ export default function CobranzaPage() {
         subtitle="Saldos por cliente · Estados de cuenta · Control de cobros"
         action={
           puedeExportar && (
-            <Button variant="secondary" size="md" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+            <Button
+              skeleton={initialLoading}
+              variant="secondary"
+              size="md"
+              icon={<Download className="w-4 h-4" />}
+              onClick={handleExportar}
+            >
               Exportar
             </Button>
           )
