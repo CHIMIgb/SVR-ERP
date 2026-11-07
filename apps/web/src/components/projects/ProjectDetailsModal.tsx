@@ -2,7 +2,7 @@
 
 import React from 'react';
 import {
-  Calendar, Truck, Users,
+  Truck, Users,
   BarChart2, CheckCircle2, AlertCircle, Clock,
   Banknote, TrendingUp, Fuel, Wrench, Package,
 } from 'lucide-react';
@@ -108,12 +108,8 @@ export default function ProjectDetailsModal({
       />
 
       <ModalBody>
-        {/* Estado */}
         <div className="flex items-center gap-2 mb-5">
           <Badge variant={estadoBadgeVariant[proyecto.estado]} size="md">{proyecto.estado}</Badge>
-          <span className="text-xs text-ui-400 font-bold flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5" /> Vigencia del proyecto
-          </span>
         </div>
 
         <div className="space-y-6">
