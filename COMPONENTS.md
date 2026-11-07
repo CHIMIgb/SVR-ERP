@@ -3081,6 +3081,49 @@ import { SkeletonText } from '@/components/ui/SkeletonText';
 
 ---
 
+### 4.7 RefreshOverlay
+
+Overlay translúcido que indica un refetch en curso **sobre contenido ya cargado** (no mueve ni vacía la pantalla). El repo lo extrae de la copia manual que existía en ~10 vistas.
+
+**Archivos:**
+- `src/components/ui/RefreshOverlay/RefreshOverlay.tsx`
+- `src/components/ui/RefreshOverlay/RefreshOverlay.styles.ts`
+- `src/components/ui/RefreshOverlay/index.ts`
+
+**Importación:**
+```tsx
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripción |
+|------|------|---------|-------------|
+| `show` | `boolean` | `false` | Mostrar el overlay (típicamente `refreshing && !initialLoading`) |
+| `className` | `string` | `undefined` | Clases extra sobre el contenedor (`absolute inset-0`) |
+
+#### Ejemplo
+
+```tsx
+<div className="relative">          {/* el overlay SE POSICIONA dentro → el padre SIEMPRE es relative */}
+  <RefreshOverlay show={refreshing && !initialLoading} />
+  <DataTable columns={columns} data={items} loading={initialLoading} ... />
+</div>
+```
+
+#### Cuando usar
+
+- Refetch en vivo (filtros/paginación/búsqueda) donde ya hay datos y NO se debe usar el loading completo de `DataTable`.
+- Sobre listados/tablas/tab-paneles dentro de un contenedor `relative`.
+
+#### No usar cuando
+
+- **Primera carga** de la vista — usar `loading={}` de `DataTable` o `<LoadingState>`.
+- Estados vacíos o primer render — arrastraría un overlay sin sentido.
+- La sección no puede tener clase `relative` en su padre (no hay dónde anclarse).
+
+---
+
 ## 5. Componentes de Datos
 
 ### 5.1 DataTable

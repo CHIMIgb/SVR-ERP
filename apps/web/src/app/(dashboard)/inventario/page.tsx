@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Package, AlertTriangle, TrendingDown, ShoppingCart,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Eye,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -21,6 +21,7 @@ import {
   type ArticuloInventarioDTO,
   type InventarioCatalogos,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -603,12 +604,7 @@ export default function InventarioPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={articulos}

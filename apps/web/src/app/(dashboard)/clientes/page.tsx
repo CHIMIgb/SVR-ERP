@@ -28,6 +28,8 @@ import {
   type CotizacionDTO,
   type ConsolidadoClienteDTO,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { LoadingState } from '@/components/ui/LoadingState';
 
 // ── Constantes ──
 const PAGE_SIZE = 8;
@@ -631,11 +633,7 @@ export default function ClientesPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={clientes}
@@ -821,11 +819,7 @@ export default function ClientesPage() {
                         </li>
                       ))}
                     </ul>
-                    {historialPaging && (
-                      <div className="absolute inset-0 bg-surface/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
-                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                      </div>
-                    )}
+                    <RefreshOverlay show={historialPaging} />
                   </div>
                   {historialPagination.totalPages > 1 && (
                     <Pagination
@@ -1007,9 +1001,7 @@ export default function ClientesPage() {
         />
         <ModalBody>
           {consolidadoLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            </div>
+            <LoadingState size="md" />
           ) : consolidadoData ? (
             <>
               <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">

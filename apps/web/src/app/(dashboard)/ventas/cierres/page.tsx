@@ -22,6 +22,7 @@ import {
   type CierreVentaDTO,
   type QueryCierresDto,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -446,11 +447,7 @@ export default function CierresCajaPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={cierres}

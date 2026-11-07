@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Plus, Package, ArrowUpRight, Clock, Gauge,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -25,6 +25,7 @@ import {
   type CribaCatalogos,
   type TurnoCribaApi,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -638,11 +639,7 @@ export default function CribaPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={registros}

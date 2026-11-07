@@ -7,8 +7,9 @@ import {
   Truck, ArrowRight, AlertTriangle, ShieldCheck, Hammer,
   ClipboardCheck, CheckCircle2, XCircle, Clock, AlertCircle,
   Wrench, Fuel, Gauge, Navigation, Building2, ChevronRight,
-  Zap, CalendarDays, Award, Layers, Loader2
+  Zap, CalendarDays, Award, Layers
 } from 'lucide-react';
+import { LoadingState } from '@/components/ui/LoadingState';
 import type { Maquina, DespachoMaquina, ChecklistPreoperacional } from '@svr-erp/shared';
 import { apiClient } from '@/lib/api';
 import MachineCard from '@/components/machinery/MachineCard';
@@ -271,11 +272,7 @@ export default function MaquinariaPage() {
   };
 
   if (cargando) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
+    return <LoadingState size="lg" className="py-24" />;
   }
 
   if (errorCarga) {

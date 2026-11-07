@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, ClipboardList, Clock, HardHat, MapPin,
-  Eye, Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
+  Eye, Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -19,6 +19,7 @@ import { TimelineCard } from '@/components/ui/TimelineCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { bitacoraApi, type BitacoraDTO, type BitacoraCatalogos } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -510,12 +511,7 @@ export default function OperacionesPage() {
       {/* ── Tabla + paginación ── */}
       <div className="space-y-3">
         <div className="relative">
-          {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={registros}

@@ -35,6 +35,7 @@ import {
   type PrioridadReporte,
   type TrabajadorDTO,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -1009,11 +1010,7 @@ export default function ReportesOperacionesPage() {
 
       {/* Tabla de reportes (patrón /inventario) */}
       <div className="relative">
-        {refreshing && !initialLoading && (
-          <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-            <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
+        <RefreshOverlay show={refreshing && !initialLoading} />
 
         <DataTable
           columns={columns}

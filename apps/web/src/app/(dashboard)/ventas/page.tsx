@@ -8,10 +8,10 @@ import {
   ArrowDownCircle,
   Trash2,
   Banknote,
-  Loader2,
   RefreshCw,
   Clock,
 } from 'lucide-react';
+import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -401,12 +401,7 @@ export default function VentasPage() {
                 <div className="lg:col-span-3 space-y-4">
                   {!catalogoCargado && !catalogoError && (
                     <div className={posClasses.card}>
-                      <div className="flex items-center gap-3">
-                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                        <p className="text-sm text-ui-500">
-                          Cargando catálogo de materiales...
-                        </p>
-                      </div>
+                      <LoadingState text="Cargando catálogo de materiales..." className="py-8" />
                     </div>
                   )}
                   {!catalogoCargado && catalogoError && (

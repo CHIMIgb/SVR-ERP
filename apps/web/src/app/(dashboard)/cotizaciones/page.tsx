@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Plus, FileText, SlidersHorizontal, X, Pencil,
-  Loader2, Eye, Clock, CheckCircle2, XCircle, CalendarDays,
+  Eye, Clock, CheckCircle2, XCircle, CalendarDays,
   Building2, TrendingUp, ThumbsDown,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -29,6 +29,7 @@ import {
   type ClienteDTO,
   type EstadoCotizacionApi,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -573,11 +574,7 @@ export default function CotizacionesPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={cotizaciones}

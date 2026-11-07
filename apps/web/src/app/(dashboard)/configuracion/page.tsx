@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Settings, Clock, Save, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Settings, Clock, Save, AlertCircle, CheckCircle2 } from "lucide-react";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -113,9 +114,7 @@ export default function ConfiguracionPage() {
       {/* Estado de carga inicial */}
       {loading && (
         <Card>
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
-          </div>
+          <LoadingState size="md" className="py-12" />
         </Card>
       )}
 

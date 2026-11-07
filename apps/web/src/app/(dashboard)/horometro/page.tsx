@@ -6,8 +6,9 @@ import {
   Timer, ArrowUpRight, ArrowDownRight, Search, Filter,
   Calendar, Plus, Gauge, DollarSign, Wrench, ShieldCheck,
   AlertTriangle, Truck, User, Building2, ChevronRight,
-  Printer, CheckCircle2, Clock, Activity, Zap, Loader2
+  Printer, CheckCircle2, Clock, Activity, Zap
 } from 'lucide-react';
+import { LoadingState } from '@/components/ui/LoadingState';
 import type { LecturaHorometro, Maquina } from '@svr-erp/shared';
 import { apiClient } from '@/lib/api';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
@@ -144,11 +145,7 @@ export default function HorometroPage() {
   };
 
   if (cargando) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
+    return <LoadingState size="lg" className="py-24" />;
   }
 
   if (errorCarga) {
