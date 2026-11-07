@@ -39,8 +39,8 @@
 |------|-------------------------------------------|---------|
 | 🟢 **0 — Triviales** | 1. Sembrar obras de los 4 proyectos EN_PROCESO sin obra (catálogo /operaciones pasa de 3 a 6+) · 2. Contraste dark en modal Ver Detalle · 3. **F2** loaders/skeletons (aplicar los existentes) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
-| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.2** incidente resuelto → deriva mantenimiento/reporte · 12. **6.4** criba con FK a máquina/proyecto · 13. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
-| 🔴 **3 — Difíciles** | 14. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
+| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (crear proyecto nace su obra base + sincronizar estados + labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
+| 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
 
 ---
 
@@ -619,7 +619,45 @@ la curva S con datos reales en vez del mock.
 - **Hoy:** CRUD por API. **Actualización 2026-11-06:** el `ProjectDetailsModal`
   ("Ver detalle") está detallado abajo; sigue filtrando mock de `@/lib/data`
   (**único residuo** junto a `MachineCard`/dashboard/gps/documentos).
-- **Flujo pendiente:**
+- **Flujo de datos proyecto ↔ obra — HOY (verificado 2026-11-07):** el flujo
+**no existe**; peor, la nomenclatura genera confusión:
+1. La vista `/proyectos` llama "obra" a lo que crea ("Registra una nueva obra...",
+   "Ubicación de la obra") — nomenclatura heredada — pero `proyectos.service.create`
+   solo inserta en la tabla `proyectos` (calles/colonia/ciudad como "ubicación").
+   **No toca `obras`.**
+2. La tabla `obras` (frente físico con `lat/lng/radio_permitido_metros`, que alimentan
+   bitácoras, asistencia GPS y reportes-campo) **no tiene endpoint de creación ni UI**:
+   un `grep` completo confirma que solo la leen catálogos; sus 3 filas vinieron del
+   dump/seed manual.
+3. Consecuencia: los proyectos se registran pero las obras no se generan → el
+   catálogo de `/operaciones`/`/asistencia` queda cojo (solo obras del dump).
+
+**Flujo de datos proyecto ↔ obra — DEBE SER (diseño a implementar en 6.6):**
+1. **Crear proyecto (EN_PROCESO) → nace obra base** en la misma `$transaction`:
+   `obras` hereda `nombre` del proyecto + `proyecto_id` (FK que ya existe), activo,
+   sin ubicación (se captura después para GPS). Con guard idempotente: si al correr
+   de nuevo el proyecto ya tiene obra, no duplica (reutilizable como seed).
+2. **Crear obra extra para multi-frente:** botón "Agregar obra" en el detalle del
+   proyecto (nombre del frente + ubicación + radio GPS) — necesita un módulo/endpoint
+   de `obras` con los 4 checkpoints (hoy no existe backend de obras).
+3. **Sincronización de estados:** al marcar proyecto FINALIZADO/PAUSADO, sus obras
+   activas toman el mismo estado en la misma transacción → desaparecen del catálogo
+   de registro de operaciones/horas (termina con el caso "Puente Atizapán" apareciendo
+   con proyecto FINALIZADO).
+4. **Catálogos con filtro por proyecto:** `GET /bitacora/catalogos` (y asistencia)
+   exponen también el `proyecto_id/proyecto nombre` de cada obra para mostrarlos
+   agrupados en el select (obra — proyecto).
+5. **Nomenclatura UI:** actualizar labels de `/proyectos` ("obra" → "proyecto") para
+   que la palabra "obra" queda reservada al frente físico — evita la confusión actual
+   del personal de campo.
+6. **Tests:** unit + integración (obra nace con proyecto, no duplica on re-run,
+   estados sincronizados, catálogo filtrado).
+
+**Impacto:** cierra el puente comercial→operación tipo contrato real: proyecto = lo
+que se factura; obra(s) = donde se ejecuta. Sin él, la operación de campo depende de
+inserts manuales (hoy).
+
+**Flujo pendiente:**
   - **Proyecto → Obra(s):** `proyectos` tiene `obras[]`; cerrar el flujo de creación de
     obra desde un proyecto. **Gap confirmado en BD real (2026-11-06):** de los
     **6 proyectos EN_PROCESO, solo 2 tienen obra** (la BD total tiene 3 obras, una en
@@ -627,7 +665,9 @@ la curva S con datos reales en vez del mock.
     registros (`GET /bitacora/catalogos`, obras `estado != FINALIZADA`) solo muestra
     3 — **no es bug de filtro, es falta de obras**. Los proyectos sin obra no reciben
     operaciones hasta que exista la obra → cerrar este flujo (o sembrar obras) es
-    prerrequisito operativo, no cosmético.
+    prerrequisito operativo, no cosmético. Este punto queda aclarado por completo en
+    el flujo "DEBE SER" de arriba (el seed de Tier 0 resuelve el hoy; el flujo 6.6
+    resuelve el futuro).
   - **Proyecto → Despacho de máquina:** `despachos_maquina` cruza `maquina_id +
     proyecto_id + operador_id`; alimentar el detalle del proyecto con las máquinas
     despachadas.
