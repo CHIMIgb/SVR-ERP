@@ -43,7 +43,7 @@ export default function CorteDelDiaPage() {
         setFueraDeVentana(fuera);
       }
     }).finally(() => setCargandoConfig(false));
-
+  }, []);
 
   // Ventas del dia: si se entra directo a /ventas/corte, el provider
   // puede estar vacio - fetch idempotente (addSale dedupe por id).
@@ -53,7 +53,7 @@ export default function CorteDelDiaPage() {
         for (const venta of res.data.ventas) addSale(ventaDtoToSale(venta, []));
       }
     }).finally(() => setCargandoVentas(false));
-  }, []);  }, []);
+  }, []);
 
   return (
     <div className="space-y-6 sm:space-y-8">
