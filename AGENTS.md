@@ -59,7 +59,7 @@ src/
 - **Tailwind v4 only.** Custom tokens are in `globals.css` `@theme {}` block (colors: primary, secondary, sidebar, background; fonts: sans, display; radii: lg, xl, 2xl).
 - `tailwind.config.ts` is legacy v3 config — **ignore it, do not edit**.
 - Two reusable CSS classes exist: `.btn-primary` and `.card` (defined in `@layer components`).
-- Two keyframes: `slideInRight` (toasts), `fadeScaleIn` (modals). Use via `animate-[slideInRight_0.3s_ease-out]`.
+- Two keyframes: `slideInRight` (toasts), `fadeScaleIn` (modals and post-load conditional alert banners). Use via `animate-[slideInRight_0.3s_ease-out]` / `animate-[fadeScaleIn_0.2s_ease-out]`.
 - `cn()` utility (clsx + tailwind-merge) is defined locally in `Sidebar.tsx` — not extracted yet. If you need it elsewhere, import from `Sidebar` or create `src/lib/utils.ts`.
 
 ## Component Patterns
@@ -79,7 +79,8 @@ src/
 3. **Bloques no tabulares** (tab de detalle, paneles, cards de contenido): `<Skeleton variant="card" />` / `row` / `text` (con `SkeletonText` cuando el contenido simula párrafos).
 4. **Refetches con datos ya en pantalla** (filtros, paginación, búsqueda): `<RefreshOverlay show={refetch} />` dentro de un padre `relative` — nunca un skeleton completo ni un spinner suelto.
 5. **`Button skeleton`** placeholder en las acciones principales durante la carga inicial; **`LoadingState`** queda reservado para estados de autenticación/layout.
-6. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading/skeleton`, `StatsCard.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
+6. Banners/alertas condicionales (stock crítico, incidentes críticos, etc.): **NO existen durante la carga** (gatear con `!initialLoading && <condición>`) y al aparecer usan `animate-[fadeScaleIn_0.2s_ease-out]`. NUNCA un skeleton rojo de banner — simularía una alerta inexistente. Effect documentado en COMPONENTS.md (keyframes).
+7. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading/skeleton`, `StatsCard.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
 
 ## Data Layer
 

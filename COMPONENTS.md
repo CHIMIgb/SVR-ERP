@@ -212,7 +212,7 @@ const { preferencia, temaAplicado, setPreferencia } = useTheme();
 
 Keyframes adicionales (no en `@theme`, usados con notacion arbitraria):
 - `slideInRight` — para toasts: `animate-[slideInRight_0.3s_ease-out]`
-- `fadeScaleIn` — para modales: `animate-[fadeScaleIn_0.2s_ease-out]`
+- `fadeScaleIn` — para modales **y para banners/alertas condicionales que aparecen tras cargar la vista** (gateados por `!initialLoading` — ver regla de Loaders/Skeletons en AGENTS.md): `animate-[fadeScaleIn_0.2s_ease-out]`
 
 ### 1.3 Iconografia
 
