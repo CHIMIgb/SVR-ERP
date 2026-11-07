@@ -42,11 +42,28 @@ export function StatsCard({
   const TrendIcon = trend ? trendIcons[trend] : null;
 
   if (loading) {
+    // Spinner SOLO en el espacio del valor: icono y etiqueta se muestran reales.
+    const valueSpinner = <Loader2 className="w-6 h-6 text-primary animate-spin" />;
     return (
       <div className={cn(statsCardClasses.base, className)} aria-busy="true">
-        <div className="flex items-center justify-center py-6">
-          <Loader2 className="w-5 h-5 text-primary animate-spin" />
-        </div>
+        {icon ? (
+          <>
+            <div className="flex items-start justify-between">
+              <div className={cn(statsCardClasses.iconWrapper, statsCardClasses.iconVariants[color])}>
+                {icon}
+              </div>
+            </div>
+            <p className={statsCardClasses.value}>{valueSpinner}</p>
+            <p className={statsCardClasses.label}>{label}</p>
+          </>
+        ) : (
+          <>
+            <div className={statsCardClasses.plainHeader}>
+              <p className={statsCardClasses.plainLabel}>{label}</p>
+            </div>
+            <p className={statsCardClasses.plainValue}>{valueSpinner}</p>
+          </>
+        )}
       </div>
     );
   }

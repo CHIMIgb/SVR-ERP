@@ -75,7 +75,7 @@ src/
 **La primera impresión de una vista cargando nunca es un bloque vacío ni un "0" falso: tablas con skeleton, KPIs con spinner.**
 
 1. **Tablas:** `<DataTable loading={cargando} ...>` — pinta skeleton de filas internamente + `emptyText` cuando no hay datos. NUNCA renderizar un spinner encima del DataTable para la carga inicial.
-2. **KPIs (`StatsCard`):** con `loading={...}` muestran **spinner centrado** (conservan la tarjeta y su tamaño; nunca "0" falso — las KPIs siempre cargan números, no skeleton).
+2. **KPIs (`StatsCard`):** con `loading={...}` el **spinner vive solo en el espacio del valor** (el icono y la etiqueta se ven reales desde el primer render; nunca "0" falso — las KPIs siempre cargan números, no skeleton).
 3. **Bloques no tabulares** (tab de detalle, paneles, cards de contenido): `<Skeleton variant="card" />` / `row` / `text` (con `SkeletonText` cuando el contenido simula párrafos).
 4. **Refetches con datos ya en pantalla** (filtros, paginación, búsqueda): `<RefreshOverlay show={refetch} />` dentro de un padre `relative` — nunca un skeleton completo ni un spinner suelto.
 5. **`Button skeleton`** placeholder en las acciones principales durante la carga inicial; **`LoadingState`** queda reservado para estados de autenticación/layout.
