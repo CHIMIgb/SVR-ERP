@@ -29,6 +29,19 @@
 | §10 | Futuro — Fecha de vencimiento en CxP |
 | §11 | **Plataforma, POS y experiencia (NUEVO):** **F1** notificaciones · **F2** loaders/skeletons · **F3** validación en todos los formularios · **F4** comprobación de flujos de datos Operaciones/Comercial · **F5** configuración de POS (horario de caja + categorías visibles) · **F6** seeds demo de todos los workflows |
 
+### Orden de ejecución por dificultad (meta: revisión del martes)
+
+> Vista de prioridad para la ejecución — el detalle de cada tarea vive en su sección
+> (índice de arriba). Regla del orden: fácil→difícil Y visibilidad en la demo del
+> martes. Rama de trabajo: `plataforma-experiencia`.
+
+| Tier | Tareas (de la más fácil a la más difícil) | Sección |
+|------|-------------------------------------------|---------|
+| 🟢 **0 — Triviales** | 1. Sembrar obras de los 4 proyectos EN_PROCESO sin obra (catálogo /operaciones pasa de 3 a 6+) · 2. Contraste dark en modal Ver Detalle · 3. **F2** loaders/skeletons (aplicar los existentes) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
+| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.2** incidente resuelto → deriva mantenimiento/reporte · 12. **6.4** criba con FK a máquina/proyecto · 13. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
+| 🔴 **3 — Difíciles** | 14. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
+
 ---
 
 ## 0. Fases ejecutadas — ciclo de dinero (plan `implementation_plan copy.md`)
