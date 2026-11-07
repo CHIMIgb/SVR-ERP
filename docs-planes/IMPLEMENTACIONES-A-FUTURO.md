@@ -12,6 +12,25 @@
 
 ---
 
+## Índice
+
+| Sección | Contenido |
+|---------|-----------|
+| §0 | Fases ejecutadas — ciclo de dinero |
+| §1 | Resumen ejecutivo |
+| §2 | Diagnóstico técnico actual (`cotizaciones`, integraciones) |
+| §3 | Flujos pendientes: **P1** cotización→factura→CxC · **P2** partidas · **P3** cotización↔proyecto · **P4** bajada de inventario (**+ descuento por venta POS**) · **P5** pagos a CxC · **P6** vendedor real · **P7** precios por medida (**+ editor fácil para encargados**) |
+| §4 | Diagrama de la cadena de valor objetivo |
+| §5 | Validación y riesgos |
+| §6 | Mapa de integración de vistas (6.1–6.8) |
+| §7 | Estado de cada flujo (tabla P1–P7, 6.1–6.8, **F1–F6**) |
+| §8 | Flujo completo de `/cobranza` |
+| §9 | Futuro — Asignación **vista → cuenta bancaria** (conciliación asistida con CSV; decisión: por vista, no por concepto) |
+| §10 | Futuro — Fecha de vencimiento en CxP |
+| §11 | **Plataforma, POS y experiencia (NUEVO):** **F1** notificaciones · **F2** loaders/skeletons · **F3** validación en todos los formularios · **F4** comprobación de flujos de datos Operaciones/Comercial · **F5** configuración de POS (horario de caja + categorías visibles) · **F6** seeds demo de todos los workflows |
+
+---
+
 ## 0. Fases ejecutadas — ciclo de dinero (plan `implementation_plan copy.md`)
 
 Estado real del plan de integración cobranza/finanzas. **Todas ejecutadas** en la rama
@@ -189,7 +208,33 @@ venta/factura se descarga **`articulos_inventario`** y se registra un
 
 **Hoy:** no hay vínculo cotización → inventario. Depende de P2 (partidas).
 
+#### P4b — La venta del POS descuenta el inventario (SIN depender de P2)
+
+**Hallazgo verificado en schema:** `ventas_items` **ya tiene FK a
+`articulos_inventario`** (`articulo_id`). Es decir, la venta del punto de venta ya
+sabe **qué artículo** vendió — lo que NO hace hoy es descontar stock ni registrar el
+movimiento. Este sub-flujo es implementable **ya**, sin esperar P2 ni P7.
+
 **Cómo se aplicará:**
+1. **`ventas.service.ts`** — en la `$transaction` que registra la venta, por cada
+   `ventas_items.articulo_id`: validar stock suficiente → descontar
+   `articulos_inventario.stock` → insertar `movimientos_inventario` (tipo SALIDA,
+   motivo `VENTA_POS`, obra opcional).
+2. **Medida vs stock:** el stock se maneja en la **medida base** del artículo
+   (ver nota de stock por medida en P7); mientras no exista stock por medida, la
+   conversión cantidad-vendida → medida base se valida solo para artículos con
+   `articulos_precio` (si la medida del item ≠ medida base y no hay factor,
+   rechazar con `MEDIDA_SIN_FACTOR` — audita FAIL antes de lanzar).
+3. **Idempotencia:** el descuento corre dentro de la misma transacción protegida por
+   `idempotencia_key` del POS — un reintento de la misma venta no descuenta doble.
+4. **Frontend:** sin cambios en `/ventas`; `/inventario` ya muestra los movimientos
+   (la SALIDA nueva aparece con motivo `VENTA_POS`).
+5. **Tests:** unit + integración real (venta descuenta stock, genera movimiento,
+   reintento idéntico no duplica descuento, stock insuficiente → FAIL auditado).
+
+**Impacto:** cierra el círculo POS → bodega sin tocar el esquema del cotizador.
+
+**Cómo se aplicará (original — cotizaciones):**
 - En la transacción de aceptación, por cada `cotizacion_item` con `articulo_id`, validar
   stock → descontar → insertar movimiento (todo en la misma `$transaction`).
 - Salida de inventario auditable y consistente con el movimiento.
@@ -274,6 +319,14 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
    `articulos_precio`, mostrar un editor de **tabla de medidas/precios** en lugar (o además)
    del campo `precio_unitario` bloqueado. (Hoy ese campo está `readonly` para los artículos
    con código `MAT-*` y muestra un hint; la gestión por medida reemplazará ese bloqueo.)
+   - **Requisito del cliente (2026-11-06):** el registro del **tipo de unidad ligado a un
+     precio** debe poder hacerse y **editarse de forma fácil por los encargados** — editor
+     de tabla simple (medida + precio, agregar/quitar filas) sin pasar por pantalla
+     técnica; acceso por RBAC `puede_editar` de la vista `/inventario` (los encargados no
+     necesitan rol administrador).
+   - El `articulo_id + medida` tiene índice único en schema (`articulos_precio`),
+     así que alta duplicada de medida se responde con `CODIGO_DUPLICADO`→
+     mensaje "esa medida ya existe para este artículo".
 4. **DTOs estrictos:** `class-validator` (`@IsUUID`, `@Min`, `@IsArray`/`@ValidateNested`
    para el arreglo de medidas).
 5. **Tests:** unit + integración (real contra PostgreSQL) cubriendo la sincronización
@@ -569,7 +622,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | P1 | Aceptar cot. → Factura + Cuenta por Cobrar | `/cotizaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 3, workflow 01) |
 | P2 | Partidas de cotización (`cotizacion_items`) | `/cotizaciones` (editor interno) | ⏳ Pendiente (`cotizacion_items` no existe en schema — verificado) |
 | P3 | Cotización ↔ Proyecto/obra | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
-| P4 | Bajada de inventario por líneas | `/cotizaciones` → `/inventario` | ⏳ Pendiente (depende de P2) |
+| P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | ⏳ Pendiente (**P4b no depende de P2** — `ventas_items.articulo_id` ya cruza a inventario) |
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
 | P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
@@ -581,12 +634,21 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | 6.6 | Proyecto → obras/despachos; `ProjectDetailsModal` mock | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + dashboard/gps/documentos/Topbar en mock) |
 | 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ✅ **Realizado** (`GET /clientes/:id/consolidado` + tabs cuentas/facturas/cobros/cotizaciones). Falta tab de trabajadores por proyecto |
 | 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
+| F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
+| F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ⏳ Pendiente (componentes `LoadingState`/`Skeleton` existen en `@/components/ui`; falta aplicar en vistas con spinners manuales) |
+| F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ⏳ Pendiente (el API ya responde 422 con `details`; falta validación UI y toasts con `details` universalizados) |
+| F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ⏳ Pendiente (ciclo de dinero y OC→stock ya al 100% — ver §11 F4; la matriz detectará qué vista aún come mock) |
+| F5 | Config POS: horario de caja que gatee + categorías visibles | `/configuracion` → `/ventas` | ⏳ Pendiente (verificado: `aperturas_caja`/`cierres_caja` NO tienen campos de horario; el gate no existe hoy) |
+| F6 | Seeds demo funcionales de todos los workflows | transversal | ⏳ Pendiente (solo existen `seed-proveedores.ts` y seeds de RBAC) |
 
 > **Regla general:** cada flujo se construye cuando el módulo destino está completo,
 > para evitar acoplar a un destino que no existe. El orden sugerido original
 > (P1 → P2 → P3 → P4 → P5 → P6) se cumplió en la primera mitad; el siguiente bloque
 > natural es **P2 → P4 → P7** (partidas habilitan inventario y precios por medida),
-> con **6.4 → 6.5** en paralelo. **P7** puede ejecutarse en paralelo con cualquiera.
+> con **6.4 → 6.5** en paralelo. **P7** y **P4b** (venta POS descuenta inventario)
+> pueden ejecutarse en paralelo con cualquiera. El bloque **F1–F6** (§11) es
+> transversal y no bloquea a los flujos de dinero; se puede avanzar por piezas
+> (sugerido: F5 y P4b van juntos — ambos tocan la `$transaction` de ventas).
 
 ---
 
@@ -699,6 +761,13 @@ bancaria** (solo para vistas que manejan dinero: `/cobranza`, `/proveedores`, `/
 **automáticamente el `movimiento_bancario`** en la cuenta asignada, de modo que el tab
 Conciliación solo necesite la **carga del CSV del banco** para confirmar.
 
+> **Decisión (2026-11-06): la asignación queda POR VISTA, no por concepto.** No se
+> separan cuentas por concepto (nómina, inventario, combustible, etc.) — una vista
+> (monto de dinero) ↔ una cuenta bancaria. Esto simplifica el flujo: la vista que
+> origina el movimiento ya sabe a qué cuenta cae, sin capa intermedia de mapeo
+> concepto→cuenta. Si a futuro se ocupa granularidad, `config_cuentas_origen` ya lo
+> contempla vía `origen_id` (p.ej. por cliente/proveedor), sin cambiar el diseño base.
+
 **Diseño propuesto (ajuste del arquitecto):**
 
 1. **Schema:** modelo nuevo `config_cuentas_origen` con `(origen, origen_id, cuenta_id)`
@@ -764,3 +833,167 @@ desde el cobro).
 **Nota:** el KPI "Por pagar" de /proveedores ya se corrigió para excluir órdenes
 CANCELADAS (commit de pulido visual pre-PR, `proveedores.service.ts`), con lo que
 cuadra con el flujo neto. Esta sección cubre únicamente la granularidad temporal.
+
+---
+
+## 11. Plataforma, POS y experiencia (F1–F6)
+
+> **Nuevo bloque (2026-11-06):** trabajos transversales que no acoplan módulos de
+> negocio entre sí, pero que unifican calidad de plataforma y operaciones del POS.
+> Lo que ya está al 100% (verificado en código, no asumido): el **ciclo de vida del
+> dinero** completo (cotización→factura→CxC→cobro, bitácoras-renta y reportes
+> facturables, OC→recepción→CxP→abono→egreso) y las **órdenes de compra que al
+> registrarse aplican entrada de stock en inventario** (Fase 7, transaccional con
+> auditoría). Fuente de verdad de flujos implementados: `workflow/README.md`.
+
+### F1 — Sistema de notificaciones funcional
+
+**Estado:** ⏳ Pendiente. Hoy `NotificationProvider`/`NotificationContext` (front) es
+**solo frontend, en memoria**: no hay modelo `notificaciones` en schema (verificado),
+ni API, ni persistencia — al recargar la página se pierde todo.
+
+**Objetivo:** notificaciones reales, emitidas por los eventos del ERP, persistentes y
+por audiencia.
+
+**Cómo se aplicará:**
+1. **Schema:** modelo `notificaciones` (`id`, `tipo`, `titulo`, `cuerpo`, `referencia_tipo`,
+   `referencia_id`, `audiencia_rol_id?` o `destinatario_user_id?`, `leido_en?`, +
+   `creado_en/creado_por` estándar). Sin fanout usuario-por-usuario: una fila por
+   evento con audiencia por rol (las consultas front filtran por el rol del usuario,
+   igual que `role_vistas`).
+2. **API:** módulo `notificaciones` con los 4 checkpoints (JWT + blacklist + audit
+   SUCCESS en mutaciones + FAIL en errores): `GET /notificaciones` (paginado, leído de
+   tabla), `POST /notificaciones` (sistema interno), `PATCH /notificaciones/:id/leer`,
+   `PATCH /notificaciones/leer-todas`. Consultas NO tienen DELETE (se expiran por job
+   posterior, fuera de alcance inicial).
+3. **Emisión desde eventos existentes** (en el service que ya maneja el evento, misma
+   `$transaction` donde cabe, o justo después con best-effort que no revierte el
+   evento de negocio): CxC por vencer 7 días, OC recibida, reporte-campo asignado,
+   cierre de caja PENDIENTE de aprobación, nómina pagada, incidente CRITICA, venta con
+   idempotencia_colision (falla operativa). Empezar con 3–4 eventos de dinero.
+4. **Frontend:** el centro del Topbar ya existe — coserlo al API real (badge con
+   contador de no leídas + lista paginada + botón "marcar todas"), reemplazando el
+   mock en memoria; auto-refresco (polling simple, p.ej. cada 60s, sin websockets).
+5. **RBAC:** audiencia por rol vía `role_vistas` (una notificación de CxC solo la ven
+   roles con `/finanzas` o `/cobranza` visible).
+6. **Tests:** unit (service de emisión por evento) + integración real (emitir evento →
+   fila en `notificaciones` con audiencia correcta; marcar leído audita SUCCESS).
+
+### F2 — Componentes de loader/skeleton estandarizados
+
+**Estado:** ⏳ Pendiente de auditoría + unificación. Los componentes YA EXISTEN en
+`@/components/ui` (`LoadingState`, `Skeleton`, `SkeletonText`, documentados en
+`COMPONENTS.md`) — el problema es que **no todas las vistas los usan**: hay páginas
+que muestran contenido vacío o spinners manuales `Loader2` durante la carga inicial.
+
+**Cómo se aplicará:**
+1. **Auditoría:** grep de `Loader2`, `animate-spin`, `nulo estado de carga` en
+   `(dashboard)/**/page.tsx` → lista de vistas que no cargan con
+   `LoadingState`/`Skeleton`.
+2. **Regla:** toda vista con datos de API muestra `<LoadingState>` (o
+   `<Skeleton>`/`<SkeletonText>` en tabs/detalles) mientras carga y `<EmptyState>`
+   cuando no hay datos — reutilizar lo que existe, no crear nada nuevo.
+3. **Alcance:** solo changear páginas para usar lo existente; prohibido crear un
+   "nuevo sistema de loading" paralelo.
+
+### F3 — Validación consistente en todos los formularios existentes
+
+**Estado:** ⏳ Pendiente de unificación. El backend ya cumple su parte: ValidationPipe
+global con `whitelist + forbidNonWhitelisted` responde 422 con `details[]`
+(`message = 'Error de validación'`). El problema es el frontend: algunos módulos
+tocados recientemente muestran `details?.join(' · ')` en el toast; el resto de las
+vistas muestra un error genérico o nada.
+
+**Cómo se aplicará:**
+1. **Auditoría:** inventario de todos los `FormModal` presentes en
+   `(dashboard)/**/page.tsx` (y modales de `components/*`) con su handler de error.
+2. **Regla base (una sola):** en el catch del submit, si `error.details?.length`
+   → toast con `error.details.join(' · ')`; si no, `error.message`. Mejor en un solo
+   helper compartido (p.ej. `mostrarErrorApi(err)` en `lib/`) que copiar el patrón 30
+   veces — si existe un toast con ese comportamiento ya, usar ese.
+3. **Validación client-side mínima:** required/formatos numéricos integral solo donde
+   ya hay validación en otros modales del mismo estándar (no inventar librería de
+   forms; nada de react-hook-form nuevo).
+4. **Tests:** del helper compartido (unit front simple si aplica).
+
+### F4 — Comprobación de flujos de datos: qué vista de Operaciones/Comercial necesita a cuál
+
+**Estado:** ⏳ Pendiente de auditoría formal. Objetivo: matriz **vista → insumos que
+necesita para funcionar al 100%**, detectando vistas que aún comen mock o que le
+faltan su insumo de otra vista.
+
+**Lo que YA está al 100% (verificado):**
+- Ciclo de vida del dinero completo: cotización → factura → CxC → cobro → ingresos;
+  bitácoras-renta y reportes-campo facturables → CxC.
+- Proveedores/OC: OC con líneas y recepción → al aplicarse la entrada, registra o
+  actualiza stock en inventario (Fase 7, transaccional + audit FAIL/SUCCESS).
+
+**Cómo se aplicará:**
+1. Reporte por vista (desde §6 de este doc + `workflow/README.md`): columnas
+   `vista | insumo que consume | fuente | estado del insumo (real/mock/faltante)`.
+2. Sospechosos conocidos (de la auditoría §6): `dashboard`, `gps`, `documentos`,
+   `ProjectDetailsModal`, `MachineCard`, `ProjectCard` siguen en mock de `@/lib/data`.
+3. Salida esperada: la matriz en este mismo doc (o doc aparte en `docs-planes/`)
+   + decisión por gap: "corregir insumo X" / "ese mock sobra" / "pendiente a flujo Y".
+
+### F5 — Configuración del POS: horario de caja que gatee + categorías visibles
+
+**Estado:** ⏳ Pendiente. **Verificado en schema:** `aperturas_caja`/`cierres_caja` NO
+tienen ningún campo de horario de apertura/cierre — hoy la caja se abre y cierra a
+cualquier hora (el único gate es unique(fecha): una apertura y un cierre por día).
+Tampoco existe configuración de qué categorías de producto muestra el catálogo del POS.
+
+**F5a — Horario de apertura/cierre que gatee de verdad:**
+1. **Schema:** campos de horario en la configuración del POS (tabla de settings del
+   POS: `pos_hora_apertura`, `pos_hora_cierre`, editables desde `/configuracion` con
+   un formulario, acceso admin).
+2. **Backend `ventas.service.ts`:** validar contra ese horario en:
+   - apertura de caja (`aperturas_caja`) — si `abierta_en` está fuera del horario →
+     `FUERA_DE_HORARIO` (400, audita FAIL).
+   - registrar venta — venta fuera de horario → `FUERA_DE_HORARIO` (con override
+     opcional para admin, ya que existe `autorizado_por` en ventas).
+   - cierre de caja — permitir cierre aunque sea última hora; cierre "fuera de
+     horario" se registra con flag `fuera_horario` para el aprobador.
+3. **TZ America/Mexico_City:** la comparación de hora contra el horario configurado
+   usa la TZ del main (`America/Mexico_City`) — cuidado con `@db.Date` + Timestamptz
+   (la fecha de caja cambia a medianoche local, no UTC).
+4. **Tests:** unit + integración (vender/abrir/cerrar dentro y fuera de horario con
+   fechas simuladas; edge: cambia de día entre apertura y cierre).
+
+**F5b — Categorías visibles en el POS (por configuración):**
+1. **Schema/Config:** `pos_categorias_visibles` (lista de categorías de
+   `articulos_inventario.categoria`) editable desde `/configuracion` con formulario.
+   **Por ahora solo Materiales de Construcción** — pero editable, sin hardcode.
+2. **Backend:** el catálogo que entrega `/ventas` (o el catálogo de artículos vendibles)
+   filtra por esa lista; si no hay config, muestra todas (comportamiento actual).
+3. **Frontend:** el POS consume el catálogo ya filtrado; `/configuracion` muestra un
+   multiselect de categorías.
+4. **Tests:** unit de filtro + integración con BD real (artículo fuera de categoría no
+   aparece en catálogo POS).
+
+### F6 — Seeds demo funcionales de todos los workflows
+
+**Estado:** ⏳ Pendiente. Hoy solo existen `seed-proveedores.ts` y los seeds de RBAC.
+Cuando los datos son escasos (BD restaurada del dump), las vistas ven vacío o datos
+viejos que no ilustran ningún flujo completo.
+
+**Cómo se aplicará:**
+1. **`apps/api/scripts/seed-demo-workflows.ts`:** poblar datos demo que ejerciten
+   **workflows completos** end-to-end, con `idempotencia` (poder re-correr sin
+   duplicar — upserts por legible `demo-*`/códigos únicos), entre ellos:
+   - cliente + cotización ACEPTADA → factura → CxC → pago parcial (+ reversión demo).
+   - proveedor + OC con líneas → recepción → CxP → abono → egreso.
+   - bitácora-renta cerrada → facturada → CxC.
+   - reporte-campo en los 6 estados de la máquina.
+   - inventario: artículo con precios por medida (`articulos_precio`) + movimientos
+     ENTRADA/SALIDA.
+   - POS: venta de hoy + apertura + retiro (+ cierre si aplica al día).
+   - nómina: periodo + trabajadores + asistencia.
+2. **Límite duro: NO correr en producción** — el script imprime advertencia y falla si
+   detecta hostname/productiva (verificable por `NODE_ENV` o variable de entorno
+   `DEMO_SEED=permiso-explicito`).
+3. **Documentación:** documentar el uso (dev-only) en LEEME/README de scripts.
+
+**Qué NO es este bloque:** F1–F6 no tocan el ciclo de dinero ya verificado al 100% —
+lo usan como insumo (eventos de negocio para F1, flows a sembrar en F6), sin
+acoplar módulos entre sí.
