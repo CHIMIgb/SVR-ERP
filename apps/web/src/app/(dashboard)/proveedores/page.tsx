@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
@@ -890,29 +889,14 @@ export default function ProveedoresPage() {
               />
             )}
 
-            {initialLoading ? (
-              <DataTable
-                columns={proveedorColumns}
-                data={proveedores}
-                keyExtractor={(p) => p.id}
-                loading
-                emptyText="No se encontraron proveedores."
-                maxBodyHeight="500px"
-              />
-            ) : proveedores.length === 0 ? (
-              <EmptyState
-                title="Sin proveedores"
-                subtitle="No se encontraron proveedores para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={proveedorColumns}
                   data={proveedores}
                   keyExtractor={(p) => p.id}
-                  emptyText="No se encontraron proveedores."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading}
+              emptyText="No se encontraron proveedores para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationProv.page}
                   totalPages={paginationProv.totalPages}
@@ -920,8 +904,6 @@ export default function ProveedoresPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchProveedores(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -967,29 +949,14 @@ export default function ProveedoresPage() {
               />
             )}
 
-            {initialLoading ? (
-              <DataTable
-                columns={ordenColumns}
-                data={ordenes}
-                keyExtractor={(o) => o.id}
-                loading
-                emptyText="No se encontraron órdenes de compra."
-                maxBodyHeight="500px"
-              />
-            ) : ordenes.length === 0 ? (
-              <EmptyState
-                title="Sin órdenes de compra"
-                subtitle="No se encontraron órdenes para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={ordenColumns}
                   data={ordenes}
                   keyExtractor={(o) => o.id}
-                  emptyText="No se encontraron órdenes de compra."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading}
+              emptyText="No se encontraron órdenes para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationOC.page}
                   totalPages={paginationOC.totalPages}
@@ -997,8 +964,6 @@ export default function ProveedoresPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchOrdenes(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -1044,32 +1009,14 @@ export default function ProveedoresPage() {
               />
             )}
 
-            {initialLoading ? (
-              <DataTable
-                columns={estadoResumenColumns}
-                data={resumenPagina}
-                keyExtractor={(r) => r.proveedorId}
-                loading
-                emptyText="Sin proveedores con operaciones."
-                maxBodyHeight="500px"
-              />
-            ) : resumenFiltrado.length === 0 ? (
-              <EmptyState
-                title="Sin estados de cuenta"
-                subtitle="No se encontraron proveedores con operaciones para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <p className="text-xs text-ui-500 font-medium">
-                  Usa el botón <span className="font-bold">Ver</span> de cada proveedor para consultar su estado de cuenta completo (saldo corrido por operación).
-                </p>
-                <DataTable
+            <DataTable
                   columns={estadoResumenColumns}
                   data={resumenPagina}
                   keyExtractor={(r) => r.proveedorId}
-                  emptyText="Sin proveedores con operaciones."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading}
+              emptyText="No se encontraron proveedores con operaciones para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={pageEstados}
                   totalPages={totalPagesEstados}
@@ -1077,8 +1024,6 @@ export default function ProveedoresPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={setPageEstados}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
       </Tabs>

@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
@@ -25,6 +24,7 @@ import {
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
 import { sleepDemo } from '@/lib/demo-delay';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 8;
@@ -748,29 +748,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <DataTable
-                columns={cuentaColumns}
-                data={cuentas}
-                keyExtractor={(c) => c.id}
-                loading
-                emptyText="No se encontraron cuentas."
-                maxBodyHeight="500px"
-              />
-            ) : cuentas.length === 0 ? (
-              <EmptyState
-                title="Sin cuentas por cobrar"
-                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={cuentaColumns}
                   data={cuentas}
                   keyExtractor={(c) => c.id}
-                  emptyText="No se encontraron cuentas."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationCuentas.page}
                   totalPages={paginationCuentas.totalPages}
@@ -778,8 +763,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchCuentas(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -820,29 +803,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <DataTable
-                columns={cobroColumns}
-                data={cobros}
-                keyExtractor={(c) => c.id}
-                loading
-                emptyText="No se encontraron cobros."
-                maxBodyHeight="500px"
-              />
-            ) : cobros.length === 0 ? (
-              <EmptyState
-                title="Sin movimientos de cobro"
-                subtitle="No se encontraron cobros para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={cobroColumns}
                   data={cobros}
                   keyExtractor={(c) => c.id}
-                  emptyText="No se encontraron cobros."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No se encontraron cobros para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationCobros.page}
                   totalPages={paginationCobros.totalPages}
@@ -850,8 +818,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchCobros(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -892,29 +858,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <DataTable
-                columns={vencColumns}
-                data={vencimientos}
-                keyExtractor={(v) => v.id}
-                loading
-                emptyText="No se encontraron vencimientos."
-                maxBodyHeight="500px"
-              />
-            ) : vencimientos.length === 0 ? (
-              <EmptyState
-                title="Sin vencimientos pendientes"
-                subtitle="No hay saldos por cobrar con vencimientos para este rango."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={vencColumns}
                   data={vencimientos}
                   keyExtractor={(v) => v.id}
-                  emptyText="No se encontraron vencimientos."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No hay saldos por cobrar con vencimientos para este rango."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationVenc.page}
                   totalPages={paginationVenc.totalPages}
@@ -922,8 +873,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchVenc(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
       {/* ─── POR OBRA (cartera agrupada por proyecto, O2) ─────────────── */}
@@ -963,29 +912,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <DataTable
-                columns={porObraColumns}
-                data={porObraPaginated}
-                keyExtractor={(g) => g.proyecto?.id ?? 'sin-proyecto'}
-                loading
-                emptyText="No se encontraron grupos para la búsqueda."
-                maxBodyHeight="500px"
-              />
-            ) : grupos.length === 0 ? (
-              <EmptyState
-                title="Sin saldos por proyecto"
-                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={porObraColumns}
                   data={porObraPaginated}
                   keyExtractor={(g) => g.proyecto?.id ?? 'sin-proyecto'}
-                  emptyText="No se encontraron grupos para la búsqueda."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={porObraPage}
                   totalPages={porObraTotalPages}
@@ -993,8 +927,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={setPorObraPage}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
       </Tabs>
