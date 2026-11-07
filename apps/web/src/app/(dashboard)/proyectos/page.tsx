@@ -587,7 +587,8 @@ export default function ProyectosPage() {
         subtitle="Control físico y financiero de obras activas."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Proyecto
             </Button>
           ) : undefined

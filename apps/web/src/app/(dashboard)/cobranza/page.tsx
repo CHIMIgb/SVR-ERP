@@ -25,7 +25,6 @@ import {
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
 import { sleepDemo } from '@/lib/demo-delay';
-import { Skeleton } from '@/components/ui/Skeleton';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 8;
@@ -746,7 +745,14 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <Skeleton variant="table" lines={6} />
+              <DataTable
+                columns={cuentaColumns}
+                data={cuentas}
+                keyExtractor={(c) => c.id}
+                loading
+                emptyText="No se encontraron cuentas."
+                maxBodyHeight="500px"
+              />
             ) : cuentas.length === 0 ? (
               <EmptyState
                 title="Sin cuentas por cobrar"
@@ -811,7 +817,14 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <Skeleton variant="table" lines={6} />
+              <DataTable
+                columns={cobroColumns}
+                data={cobros}
+                keyExtractor={(c) => c.id}
+                loading
+                emptyText="No se encontraron cobros."
+                maxBodyHeight="500px"
+              />
             ) : cobros.length === 0 ? (
               <EmptyState
                 title="Sin movimientos de cobro"
@@ -876,7 +889,14 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <Skeleton variant="table" lines={6} />
+              <DataTable
+                columns={vencColumns}
+                data={vencimientos}
+                keyExtractor={(v) => v.id}
+                loading
+                emptyText="No se encontraron vencimientos."
+                maxBodyHeight="500px"
+              />
             ) : vencimientos.length === 0 ? (
               <EmptyState
                 title="Sin vencimientos pendientes"
@@ -940,7 +960,14 @@ export default function CobranzaPage() {
             />
 
             {initialLoading || refreshing ? (
-              <Skeleton variant="table" lines={6} />
+              <DataTable
+                columns={porObraColumns}
+                data={porObraPaginated}
+                keyExtractor={(g) => g.proyecto?.id ?? 'sin-proyecto'}
+                loading
+                emptyText="No se encontraron grupos para la búsqueda."
+                maxBodyHeight="500px"
+              />
             ) : grupos.length === 0 ? (
               <EmptyState
                 title="Sin saldos por proyecto"

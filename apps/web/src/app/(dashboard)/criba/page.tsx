@@ -469,7 +469,8 @@ export default function CribaPage() {
         subtitle="Producción diaria por turno — material producido y enviado al banco."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Registrar Turno
             </Button>
           ) : undefined

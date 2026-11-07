@@ -450,7 +450,8 @@ export default function CotizacionesPage() {
         subtitle="Presupuestos enviados, seguimiento y cierre de ventas por contratar."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCrear}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCrear}>
               Nueva Cotización
             </Button>
           ) : undefined

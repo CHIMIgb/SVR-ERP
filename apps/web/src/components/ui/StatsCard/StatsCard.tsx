@@ -1,6 +1,7 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { statsCardClasses } from './StatsCard.styles';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export type StatsColor = keyof typeof statsCardClasses.iconVariants;
 export type StatsTrend = 'up' | 'down' | 'neutral';
@@ -16,6 +17,8 @@ export interface StatsCardProps {
   trend?: StatsTrend;
   trendValue?: string;
   onClick?: () => void;
+  /** Mostrar skeleton mientras el dato carga (primera impresión, nunca 0 falso). */
+  loading?: boolean;
   className?: string;
 }
 
@@ -34,9 +37,31 @@ export function StatsCard({
   trend,
   trendValue,
   onClick,
+  loading = false,
   className,
 }: StatsCardProps) {
   const TrendIcon = trend ? trendIcons[trend] : null;
+
+  if (loading) {
+    return (
+      <div className={cn(statsCardClasses.base, className)} aria-busy="true">
+        {icon ? (
+          <>
+            <div className="flex items-start justify-between">
+              <Skeleton variant="avatar" width="w-9" height="h-9" className="rounded-lg" />
+            </div>
+            <Skeleton variant="title" lines={1} width="w-24" />
+            <Skeleton variant="text" lines={1} width="w-28" />
+          </>
+        ) : (
+          <>
+            <Skeleton variant="text" lines={1} width="w-28" />
+            <Skeleton variant="title" lines={1} width="w-20" />
+          </>
+        )}
+      </div>
+    );
+  }
 
   const trendBadge = trend && TrendIcon && (
     <span

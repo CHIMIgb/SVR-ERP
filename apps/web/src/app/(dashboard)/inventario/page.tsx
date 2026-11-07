@@ -471,7 +471,8 @@ export default function InventarioPage() {
         subtitle="Control de stock, órdenes de compra y almacén central."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Artículo
             </Button>
           ) : undefined

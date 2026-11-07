@@ -868,7 +868,8 @@ export default function ReportesOperacionesPage() {
         subtitle="Incidentes, mecánicos, administrativos y demás áreas — con responsable asignado."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
               Nuevo Reporte
             </Button>
           ) : undefined

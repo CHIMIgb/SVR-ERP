@@ -398,7 +398,8 @@ export default function OperacionesPage() {
         subtitle="Registro diario de actividades realizadas por maquinaria en obra."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Registro
             </Button>
           ) : undefined

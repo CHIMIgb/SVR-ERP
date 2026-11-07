@@ -566,7 +566,8 @@ export default function ClientesPage() {
         subtitle="Gestión de contactos comerciales y empresas contratantes."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Cliente
             </Button>
           ) : undefined
