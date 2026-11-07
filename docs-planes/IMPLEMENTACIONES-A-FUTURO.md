@@ -37,7 +37,7 @@
 
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
-| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · 2. Contraste dark en modal Ver Detalle · 3. **F2** loaders/skeletons (aplicar los existentes) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · ✅ **2. Contraste dark en modal Ver Detalle** (2026-11-07: migración a tokens `ui-*`/`dark:` según regla del repo en ProjectDetailsModal.tsx) · 3. **F2** loaders/skeletons (aplicar los existentes) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
@@ -704,13 +704,11 @@ frente al plan, salud financiera y recursos humanos/flota asignados. Muestra, po
 1. **Migración a API real** (cosen las partes alimentables: finanzas de proyecto,
    personal por proyecto, despachos); los índices CPI/SPI se calculan igual con datos
    reales.
-2. **Contraste en modo oscuro (fix de letras):** el modal usa colores de modo claro
-   hardcodeados (`text-slate-900`, `text-slate-600/500`, `text-slate-400`,
-   fondos `bg-green-100`, `bg-blue-50`, `bg-slate-100`) **sin variantes `dark:`** —
-   en modo oscuro varios textos pierden contraste (títulos casi negros sobre fondo
-   oscuro). La corrección: variantes `dark:` consistentes con el resto del modo
-   oscuro del proyecto para textos y fondos de icono, en TODOS los bloques del
-   modal (FinRow incluido).
+2. ~~Contraste en modo oscuro~~ → ✅ **REALIZADO (2026-11-07, Tier 0 tarea 2):**
+   migración de las 18 clases `slate-*` crudas a **tokens `ui-*`** según la regla
+   oficial de `globals.css` (mismo valor en claro, se invierte en oscuro) + chips de
+   color con `dark:bg-{c}-500/15` / `dark:text-{c}-400` (convención ya usada en
+   `/inventario`). Verificado: `tsc` sin error y sin rastro `slate-*` en el archivo; vista en claro intacta por diseño.
 
 **Workflow entre pantallas:**
 ```

@@ -37,11 +37,11 @@ const estadoBadgeVariant = {
 /* Iconos minimalistas para los renglones financieros */
 const finIconColors = {
   primary: 'bg-primary/10 text-primary',
-  success: 'bg-green-100 text-green-600',
-  info: 'bg-blue-100 text-blue-600',
-  warning: 'bg-amber-100 text-amber-600',
-  error: 'bg-red-100 text-red-600',
-  neutral: 'bg-slate-100 text-slate-500',
+  success: 'bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400',
+  info: 'bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
+  warning: 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
+  error: 'bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400',
+  neutral: 'bg-ui-100 text-ui-500',
 } as const;
 
 type FinColor = keyof typeof finIconColors;
@@ -58,9 +58,9 @@ function FinRow({ icon, color, label, value }: {
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${finIconColors[color]}`}>
           {icon}
         </div>
-        <span className="font-semibold text-slate-600 truncate">{label}</span>
+        <span className="font-semibold text-ui-600 truncate">{label}</span>
       </div>
-      <span className="font-black text-slate-900 whitespace-nowrap">{value}</span>
+      <span className="font-black text-ui-900 whitespace-nowrap">{value}</span>
     </div>
   );
 }
@@ -111,7 +111,7 @@ export default function ProjectDetailsModal({
         {/* Estado */}
         <div className="flex items-center gap-2 mb-5">
           <Badge variant={estadoBadgeVariant[proyecto.estado]} size="md">{proyecto.estado}</Badge>
-          <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
+          <span className="text-xs text-ui-400 font-bold flex items-center gap-1">
             <Calendar className="w-3.5 h-3.5" /> Vigencia del proyecto
           </span>
         </div>
@@ -145,7 +145,7 @@ export default function ProjectDetailsModal({
           {/* ═══ Fila 2: Rentabilidad y Costo Real ═══ */}
           <Card className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider">
+              <h3 className="font-black text-ui-900 text-sm uppercase tracking-wider">
                 Rentabilidad y Costo Real
               </h3>
               <Badge
@@ -171,7 +171,7 @@ export default function ProjectDetailsModal({
             <Separator />
 
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Utilidad Neta Real</span>
+              <span className="text-xs font-black uppercase tracking-widest text-ui-500">Utilidad Neta Real</span>
               <span className={`text-xl font-black ${(proyecto.utilidadReal ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                 {formatCurrency(proyecto.utilidadReal ?? 0)}
               </span>
@@ -186,11 +186,11 @@ export default function ProjectDetailsModal({
               </div>
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Desempeño Costo (CPI)</span>
+                  <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Desempeño Costo (CPI)</span>
                   {cpi >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
                 </div>
-                <h4 className="text-xl font-black text-slate-900">{cpi.toFixed(2)}</h4>
-                <p className="text-[10px] font-medium text-slate-500">
+                <h4 className="text-xl font-black text-ui-900">{cpi.toFixed(2)}</h4>
+                <p className="text-[10px] font-medium text-ui-500">
                   {cpi >= 1 ? 'Bajo el presupuesto asignado.' : 'Gastando más de lo planificado.'}
                 </p>
               </div>
@@ -202,11 +202,11 @@ export default function ProjectDetailsModal({
               </div>
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Desempeño Tiempo (SPI)</span>
+                  <span className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Desempeño Tiempo (SPI)</span>
                   {spi >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                 </div>
-                <h4 className="text-xl font-black text-slate-900">{spi.toFixed(2)}</h4>
-                <p className="text-[10px] font-medium text-slate-500">
+                <h4 className="text-xl font-black text-ui-900">{spi.toFixed(2)}</h4>
+                <p className="text-[10px] font-medium text-ui-500">
                   {spi >= 1 ? 'Al corriente u obra adelantada.' : 'Presenta un desfase de tiempo.'}
                 </p>
               </div>
@@ -219,7 +219,7 @@ export default function ProjectDetailsModal({
             {/* Workers Assigned */}
             <Card padding="sm" className="space-y-4">
               <div className="flex items-center justify-between pb-2">
-                <h3 className="font-black text-slate-900 text-xs uppercase tracking-widest">Personal en Obra</h3>
+                <h3 className="font-black text-ui-900 text-xs uppercase tracking-widest">Personal en Obra</h3>
                 <Badge variant="neutral" size="sm">{trabajadoresAsignados.length}</Badge>
               </div>
               <div className="space-y-3 max-h-[180px] overflow-y-auto scrollbar-none">
@@ -228,8 +228,8 @@ export default function ProjectDetailsModal({
                     <div className="flex items-center gap-2 min-w-0">
                       <Avatar name={t.nombre} size="sm" color="primary" />
                       <div className="min-w-0">
-                        <p className="font-black text-slate-900 truncate">{t.nombre}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">{t.puesto}</p>
+                        <p className="font-black text-ui-900 truncate">{t.nombre}</p>
+                        <p className="text-[9px] text-ui-400 font-bold uppercase tracking-wider truncate">{t.puesto}</p>
                       </div>
                     </div>
                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" />
@@ -249,19 +249,19 @@ export default function ProjectDetailsModal({
             {/* Machinery Assigned */}
             <Card padding="sm" className="space-y-4">
               <div className="flex items-center justify-between pb-2">
-                <h3 className="font-black text-slate-900 text-xs uppercase tracking-widest">Flota Asignada</h3>
+                <h3 className="font-black text-ui-900 text-xs uppercase tracking-widest">Flota Asignada</h3>
                 <Badge variant="neutral" size="sm">{maquinariaAsignada.length}</Badge>
               </div>
               <div className="space-y-3 max-h-[180px] overflow-y-auto scrollbar-none">
                 {maquinariaAsignada.map(m => (
                   <div key={m.id} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                      <div className="w-7 h-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0 dark:bg-blue-500/15 dark:text-blue-400">
                         <Truck className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-black text-slate-900 truncate">{m.id}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">{m.nombre}</p>
+                        <p className="font-black text-ui-900 truncate">{m.id}</p>
+                        <p className="text-[9px] text-ui-400 font-bold uppercase tracking-wider truncate">{m.nombre}</p>
                       </div>
                     </div>
                     <Badge
