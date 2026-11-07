@@ -1,6 +1,7 @@
 {
   "name": "svr-erp",
   "private": true,
+  "packageManager": "npm@11.20.0",
   "workspaces": [
     "apps/web",
     "packages/*"
@@ -16,6 +17,6 @@
     "db:studio": "turbo db:studio --filter=api"
   },
   "devDependencies": {
-    "turbo": "^2.4.0"
+    "turbo": "^2.11.10"
   }
 }

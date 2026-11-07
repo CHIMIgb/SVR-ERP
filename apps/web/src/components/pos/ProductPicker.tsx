@@ -44,7 +44,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
   if (!product) {
     return (
       <div className={posClasses.card}>
-        <p className="text-sm text-slate-400 text-center py-4">No hay productos en el catálogo.</p>
+        <p className="text-sm text-ui-400 text-center py-4">No hay productos en el catálogo.</p>
       </div>
     );
   }

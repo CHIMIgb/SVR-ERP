@@ -22,6 +22,8 @@ import { UpdateOrdenCompraDto } from './dto/update-orden-compra.dto';
 import { CambiarEstadoOrdenDto } from './dto/cambiar-estado-orden.dto';
 import { RegistrarAbonoDto } from './dto/registrar-abono.dto';
 import { QueryOrdenesCompraDto } from './dto/query-ordenes-compra.dto';
+import { RecibirOrdenCompraDto } from './dto/recibir-orden-compra.dto';
+import { InventarioService } from '../inventario/inventario.service';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -29,7 +31,7 @@ const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 /** Transiciones válidas de estado en órdenes de compra. */
 const TRANSICIONES: Record<EstadoOrdenCompra, EstadoOrdenCompra[]> = {
   PENDIENTE: ['APROBADA', 'CANCELADA'],
-  APROBADA: ['RECIBIDA', 'CANCELADA'],
+  APROBADA: ['CANCELADA'], // RECIBIDA solo llega vía POST /:id/recibir (recepción física)
   RECIBIDA: [],
   CANCELADA: [],
 };
@@ -51,6 +53,7 @@ export class ProveedoresService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly inventarioService: InventarioService,
   ) {}
 
   /**
@@ -439,6 +442,10 @@ export class ProveedoresService {
         where,
         include: {
           proveedores: { select: { id: true, nombre: true } },
+          ordenes_compra_items: {
+            where: { activo: true, eliminado_en: null },
+            orderBy: { creado_en: 'asc' },
+          },
         },
         orderBy: [{ fecha: 'desc' }, { folio: 'desc' }],
         skip: (page - 1) * limit,
@@ -466,6 +473,10 @@ export class ProveedoresService {
       where: { id, eliminado_en: null },
       include: {
         proveedores: { select: { id: true, nombre: true } },
+        ordenes_compra_items: {
+          where: { activo: true, eliminado_en: null },
+          orderBy: { creado_en: 'asc' },
+        },
         pagos_proveedor: {
           where: { eliminado_en: null },
           orderBy: { fecha_pago: 'asc' },
@@ -522,13 +533,18 @@ export class ProveedoresService {
       const creada = await this.prisma.$transaction(async (tx) => {
         const folio = await this.generarFolioOrden(tx, fecha);
 
+        const montoTotal = dto.items.reduce(
+          (total, item) => total + item.cantidad * item.precioUnitario,
+          0,
+        );
+
         const orden = await tx.ordenes_compra.create({
           data: {
             id,
             folio,
             proveedor_id: dto.proveedorId,
-            descripcion: dto.descripcion.trim(),
-            monto: dto.monto,
+            descripcion: dto.descripcion?.trim() ?? '',
+            monto: montoTotal,
             pagado: 0,
             fecha,
             estado: EstadoOrdenCompra.PENDIENTE,
@@ -538,12 +554,25 @@ export class ProveedoresService {
           },
         });
 
+        await tx.ordenes_compra_items.createMany({
+          data: dto.items.map((item) => ({
+            id: randomUUID(),
+            orden_compra_id: orden.id,
+            articulo_id: item.articuloId ?? null,
+            nombre: item.nombre ?? '',
+            cantidad: item.cantidad,
+            cantidad_recibida: 0,
+            precio_unitario: item.precioUnitario,
+            actualizado_en: now,
+          })),
+        });
+
         await tx.cuentas_por_pagar.create({
           data: {
             id: randomUUID(),
             proveedor_id: dto.proveedorId,
             orden_compra_id: orden.id,
-            monto: dto.monto,
+            monto: montoTotal,
             monto_pagado: 0,
             estado: 'PENDIENTE',
             activo: true,
@@ -623,26 +652,51 @@ export class ProveedoresService {
       );
     }
 
+    const montoNuevo =
+      dto.items !== undefined
+        ? dto.items.reduce((total, item) => total + item.cantidad * item.precioUnitario, 0)
+        : dto.monto;
+
     const orden = await this.prisma.$transaction(async (tx) => {
+      const dataMonto = montoNuevo !== undefined ? { monto: montoNuevo } : {};
       const actualizada = await tx.ordenes_compra.update({
         where: { id },
         data: {
           ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
-          ...(dto.monto !== undefined && { monto: dto.monto }),
+          ...dataMonto,
           actualizado_por: userId,
           actualizado_en: new Date(),
         },
       });
 
-      // Mantener CxP coherente con el monto de la OC.
-      if (dto.monto !== undefined) {
+      // Reemplazar líneas de detalle (snapshot de nombre siempre preservado).
+      if (dto.items !== undefined) {
+        await tx.ordenes_compra_items.deleteMany({
+          where: { orden_compra_id: id },
+        });
+        await tx.ordenes_compra_items.createMany({
+          data: dto.items.map((item) => ({
+            id: randomUUID(),
+            orden_compra_id: id,
+            articulo_id: item.articuloId ?? null,
+            nombre: item.nombre ?? '',
+            cantidad: item.cantidad,
+            cantidad_recibida: 0,
+            precio_unitario: item.precioUnitario,
+            actualizado_en: new Date(),
+          })),
+        });
+      }
+
+      // Mantener CxP coherente con el monto de la OC (derivado o explícito).
+      if (montoNuevo !== undefined) {
         const cxp = await tx.cuentas_por_pagar.findUnique({
           where: { orden_compra_id: id },
         });
         if (cxp) {
           await tx.cuentas_por_pagar.update({
             where: { id: cxp.id },
-            data: { monto: dto.monto, actualizado_en: new Date() },
+            data: { monto: montoNuevo, actualizado_en: new Date() },
           });
         }
       }
@@ -699,6 +753,11 @@ export class ProveedoresService {
       await tx.ordenes_compra.update({
         where: { id },
         data: { eliminado_en: new Date(), activo: false },
+      });
+      // Soft-delete de líneas para conservar trazabilidad de la OC eliminada.
+      await tx.ordenes_compra_items.updateMany({
+        where: { orden_compra_id: id, activo: true },
+        data: { activo: false, actualizado_en: new Date() },
       });
       const cxp = await tx.cuentas_por_pagar.findUnique({
         where: { orden_compra_id: id },
@@ -832,6 +891,261 @@ export class ProveedoresService {
   }
 
   // ────────────────────────────────────────────
+  //  ÓRDENES DE COMPRA — RECIBIR (T4: aplica al inventario)
+  // ────────────────────────────────────────────
+  /**
+   * Recepción física de una OC Aprobada. En una sola transacción:
+   *  - por cada línea activa: aplica ENTRADA al inventario con
+   *    `InventarioService.aplicarEntrada` (stock + movimiento) — si la línea
+   *    no trae `articulo_id` y recibimos `nuevosArticulos[index]`, damos de
+   *    ALTA el artículo con la categoría/unidad elegidas (stock inicial =
+   *    cantidad recibida) y luego aplica su entrada;
+   *  - marca `cantidad_recibida = cantidad` por línea;
+   *  - transición condicional APROBADA → RECIBIDA (anti-carrera);
+   *  - audita ORDEN_COMPRA_RECIBIDA (SUCCESS/FAIL con error_code).
+   */
+  async recibirOrden(id: string, dto: RecibirOrdenCompraDto, userId: string) {
+    const existente = await this.prisma.ordenes_compra.findFirst({
+      where: { id, eliminado_en: null },
+      include: {
+        ordenes_compra_items: {
+          where: { eliminado_en: null, activo: true },
+          orderBy: { creado_en: 'asc' },
+        },
+      },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.ORDEN_COMPRA_RECIBIDA,
+        id,
+        'ORDEN_COMPRA_NO_ENCONTRADA',
+        NotFoundException,
+        `Orden de compra con id "${id}" no encontrada`,
+      );
+    }
+
+    if ((existente.estado as EstadoOrdenCompra) !== EstadoOrdenCompra.APROBADA) {
+      return this.fallir(
+        AuditAction.ORDEN_COMPRA_RECIBIDA,
+        id,
+        'ORDEN_NO_APROBADA',
+        ConflictException,
+        `Solo se puede recibir una orden en estado Aprobada (estado actual: ${existente.estado})`,
+      );
+    }
+
+    if ((existente.ordenes_compra_items?.length ?? 0) === 0) {
+      return this.fallir(
+        AuditAction.ORDEN_COMPRA_RECIBIDA,
+        id,
+        'ORDEN_SIN_LINEAS',
+        BadRequestException,
+        'La orden no tiene líneas activas que recibir',
+      );
+    }
+
+    try {
+      const resultado = await this.prisma.$transaction(async (tx) => {
+        // Guard anti-carrera: solo APROBADA pasa a RECIBIDA.
+        const marcada = await tx.ordenes_compra.updateMany({
+          where: { id, estado: EstadoOrdenCompra.APROBADA },
+          data: {
+            estado: EstadoOrdenCompra.RECIBIDA,
+            actualizado_por: userId,
+            actualizado_en: new Date(),
+          },
+        });
+        if (marcada.count === 0) {
+          throw new ConflictException('La orden ya fue recibida');
+        }
+
+        const entradas: Array<{
+          lineaIndex: number;
+          articuloId: string;
+          cantidad: number;
+          stockAnterior: number;
+          stockResultante: number;
+          altaNueva: boolean;
+        }> = [];
+
+        const lineas = existente.ordenes_compra_items ?? [];
+        for (let index = 0; index < lineas.length; index++) {
+          const linea = lineas[index];
+          const cantidad = Number(linea.cantidad);
+
+          let articuloId = linea.articulo_id;
+          let stockAnterior = 0;
+          let altaNuevaLinea = false;
+
+          // Línea sin artículo del catálogo: primero intenta emparejar por nombre
+          // (case-insensitive, sin acentos) dentro del artículo del inventario —
+          // evita duplicar catálogo si el usuario escribió el nombre con otra
+          // caja ("Filtros de aceite" vs "filtros de aceite"). Si hay alta
+          // explícita (nuevosArticulos) se respeta el pedido de alta de nuevo,
+          // salvo que el finden sea exacto.
+          if (!articuloId) {
+            const alta = (dto.nuevosArticulos ?? []).find(
+              (a) => a.lineaIndex === index,
+            );
+            const normalizar = (s: string) =>
+              s
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase();
+            const buscarNombre = normalizar(linea.nombre);
+            const candidatos = await tx.articulos_inventario.findMany({
+              where: { eliminado_en: null, activo: true },
+              select: { id: true, nombre: true, proveedor_id: true },
+              take: 500,
+            });
+            const match = candidatos.find(
+              (c) =>
+                normalizar(c.nombre) === buscarNombre &&
+                c.proveedor_id === existente.proveedor_id,
+            );
+            const matchExacto =
+              match &&
+              normalizar(match.nombre) === normalizar(linea.nombre);
+
+            if (match && (matchExacto || !alta)) {
+              // Coincidencia de nombre del mismo proveedor: linkea en vez de dar de alta.
+              articuloId = match.id;
+            } else if (!alta) {
+              throw new BadRequestException(
+                `La línea "${linea.nombre}" no tiene artículo asignado y no se recibió alta para catalogarla`,
+              );
+            }
+
+            if (!articuloId && alta) {
+              stockAnterior = 0;
+              articuloId = randomUUID();
+              altaNuevaLinea = true;
+              await tx.articulos_inventario.create({
+                data: {
+                  id: articuloId,
+                  nombre: linea.nombre,
+                  stock: cantidad,
+                  stock_minimo: 0,
+                  precio_unitario: linea.precio_unitario,
+                  categoria_id: alta.categoriaId,
+                  unidad_id: alta.unidadId,
+                  proveedor_id: existente.proveedor_id,
+                  creado_por: userId,
+                  actualizado_por: userId,
+                  actualizado_en: new Date(),
+                },
+              });
+              await tx.movimientos_inventario.create({
+                data: {
+                  id: randomUUID(),
+                  articulo_id: articuloId,
+                  tipo: 'ENTRADA',
+                  cantidad,
+                  stock_resultante: cantidad,
+                  motivo: 'ALTA_NUEVO_ARTICULO',
+                  referencia_tipo: 'ORDEN_COMPRA',
+                  referencia_id: id,
+                  fecha: new Date(),
+                  creado_por: userId,
+                },
+              });
+            }
+          }
+
+          // Aplicar ENTRADA para TODAS las rutas (catálogo original, linkeado por
+          // nombre o alta nueva): el stock siempre refleja la recepción.
+          const { stockAnterior: previo, stockResultante } =
+            await this.inventarioService.aplicarEntrada(tx, {
+              articuloId: articuloId!,
+              cantidad,
+              motivo: 'RECEPCION_OC',
+              referenciaTipo: 'ORDEN_COMPRA',
+              referenciaId: id,
+              creadoPor: userId,
+            });
+          stockAnterior = previo;
+          // altaNueva: SOLO cuando se creó un artículo de cero. Si la línea se
+          // linkeó por nombre (match) el flag es false.
+          entradas.push({
+            lineaIndex: index,
+            articuloId: articuloId!,
+            cantidad,
+            stockAnterior: previo,
+            stockResultante,
+            altaNueva: altaNuevaLinea,
+          });
+
+          await tx.ordenes_compra_items.update({
+            where: { id: linea.id },
+            data: {
+              cantidad_recibida: cantidad,
+              actualizado_por: userId,
+              actualizado_en: new Date(),
+            },
+          });
+        }
+
+        return entradas;
+      });
+
+      await this.auditService.log({
+        action: AuditAction.ORDEN_COMPRA_RECIBIDA,
+        entityType: 'ordenes_compra',
+        entityId: id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        newValue: {
+          folio: existente.folio,
+          estado: 'RECIBIDA',
+          lineas: (resultado ?? []).map((e) => ({
+            lineaIndex: e.lineaIndex,
+            articuloId: e.articuloId,
+            cantidad: e.cantidad,
+            stockAnterior: e.stockAnterior,
+            stockResultante: e.stockResultante,
+            altaNueva: e.altaNueva,
+          })),
+        },
+      });
+
+      return {
+        orden: { id, folio: existente.folio, estado: 'Recibida' },
+        inventario: resultado,
+      };
+    } catch (e) {
+      // Carrera: otro usuario recibió primero — audita FAIL y lanza conflicto.
+      if (e instanceof ConflictException && e.message === 'La orden ya fue recibida') {
+        return this.fallir(
+          AuditAction.ORDEN_COMPRA_RECIBIDA,
+          id,
+          'RECEPCION_YA_APLICADA',
+          ConflictException,
+          'La orden ya fue recibida',
+        );
+      }
+      // Fallos de negocio dentro de la transacción (alta faltante, artículo no encontrado…)
+      if (e instanceof BadRequestException || e instanceof NotFoundException) {
+        const msg = e.message ?? 'La recepción no pudo aplicarse';
+        const errorCode = /alta|catalogarla/i.test(msg)
+          ? 'ALTA_CATALOGO_REQUERIDA'
+          : 'ARTICULO_NO_ENCONTRADO';
+        return this.fallir(
+          AuditAction.ORDEN_COMPRA_RECIBIDA,
+          id,
+          errorCode,
+          e instanceof BadRequestException ? BadRequestException : NotFoundException,
+          msg,
+        );
+      }
+      throw e;
+    }
+  }
+
+  // ────────────────────────────────────────────
   //  ABONOS — REGISTRAR ($transaction: pago + OC + CxP + finanzas)
   // ────────────────────────────────────────────
   async registrarAbono(
@@ -914,10 +1228,11 @@ export class ProveedoresService {
 
     const pago = await this.prisma.$transaction(async (tx) => {
       const nuevoPagado = pagado + dto.monto;
-      const estadoOrden =
-        nuevoPagado >= monto - 0.0001
-          ? EstadoOrdenCompra.RECIBIDA
-          : orden.estado;
+      // Regla de negocio (T3): el abono NO deriva la OC a RECIBIDA. Recibir la
+      // mercancía es un evento explícito (`recibirOrden`); aquí solo se avanza
+      // el monto pagado y la CxP. La OC conserva su estado (APROBADA en
+      // adelante; PENDIENTE está bloqueado por el guard de arriba).
+      const estadoOrden = orden.estado;
       const estadoCxp =
         nuevoPagado >= monto - 0.0001
           ? 'PAGADA'
@@ -1098,6 +1413,16 @@ export class ProveedoresService {
       estado: orden.estado,
       motivoCancelacion: orden.motivo_cancelacion ?? null,
       activo: orden.activo,
+      items: (orden.ordenes_compra_items ?? [])
+        .filter((item: any) => item.activo && item.eliminado_en === null)
+        .map((item: any) => ({
+          id: item.id,
+          articuloId: item.articulo_id ?? null,
+          nombre: item.nombre,
+          cantidad: Number(item.cantidad),
+          cantidadRecibida: Number(item.cantidad_recibida),
+          precioUnitario: Number(item.precio_unitario),
+        })),
     };
   }
 }

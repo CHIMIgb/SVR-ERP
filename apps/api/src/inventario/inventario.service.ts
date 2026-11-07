@@ -443,6 +443,63 @@ export class InventarioService {
   // ────────────────────────────────────────────
   //  MOVIMIENTO DE STOCK (entrada/salida)
   // ────────────────────────────────────────────
+
+  /**
+   * Aplica una ENTRADA dentro de una transacción ya iniciada (`tx`), actualizando
+   * `stock` (suma) y registrando el `movimientos_inventario`. Reutilizable desde
+   * flujos atómicos de recepción de OC (Fase 7) sin anidar transacciones.
+   *
+   * `@param tx`        Cliente transaccional (Prisma.TransactionClient).
+   * `@param params`    Datos de la entrada (artículo, cantidad, referencia, usuario).
+   * `@returns          `{ stockAnterior, stockResultante }` para auditoría/cadenas.
+   */
+  async aplicarEntrada(
+    tx: Prisma.TransactionClient,
+    params: {
+      articuloId: string;
+      cantidad: number;
+      motivo?: string;
+      referenciaTipo?: string;
+      referenciaId?: string;
+      creadoPor: string;
+    },
+  ): Promise<{ stockAnterior: number; stockResultante: number }> {
+    const articulo = await tx.articulos_inventario.findFirst({
+      where: { id: params.articuloId, eliminado_en: null },
+    });
+
+    if (!articulo) {
+      throw new NotFoundException(
+        `Artículo con id "${params.articuloId}" no encontrado`,
+      );
+    }
+
+    const stockAnterior = Number(articulo.stock);
+    const stockResultante = stockAnterior + params.cantidad;
+
+    await tx.articulos_inventario.update({
+      where: { id: params.articuloId },
+      data: { stock: stockResultante },
+    });
+
+    await tx.movimientos_inventario.create({
+      data: {
+        id: randomUUID(),
+        articulo_id: params.articuloId,
+        tipo: 'ENTRADA',
+        cantidad: params.cantidad,
+        stock_resultante: stockResultante,
+        motivo: params.motivo,
+        referencia_tipo: params.referenciaTipo,
+        referencia_id: params.referenciaId,
+        fecha: new Date(),
+        creado_por: params.creadoPor,
+      },
+    });
+
+    return { stockAnterior, stockResultante };
+  }
+
   async crearMovimiento(dto: CreateMovimientoDto, userId: string) {
     const articulo = await this.prisma.articulos_inventario.findFirst({
       where: { id: dto.articuloId, eliminado_en: null },
@@ -459,7 +516,17 @@ export class InventarioService {
     let nuevoStock: number;
 
     if (dto.tipo === 'ENTRADA') {
-      nuevoStock = stockActual + dto.cantidad;
+      const entrada = await this.prisma.$transaction((tx) =>
+        this.aplicarEntrada(tx, {
+          articuloId: dto.articuloId,
+          cantidad: dto.cantidad,
+          motivo: dto.motivo,
+          referenciaTipo: dto.referenciaTipo,
+          referenciaId: dto.referenciaId,
+          creadoPor: userId,
+        }),
+      );
+      nuevoStock = entrada.stockResultante;
     } else {
       if (dto.cantidad > stockActual) {
         await this.auditService.logFailure({
@@ -483,26 +550,32 @@ export class InventarioService {
       nuevoStock = stockActual - dto.cantidad;
     }
 
-    await this.prisma.$transaction([
-      this.prisma.articulos_inventario.update({
-        where: { id: dto.articuloId },
-        data: { stock: nuevoStock },
-      }),
-      this.prisma.movimientos_inventario.create({
-        data: {
-          id: randomUUID(),
-          articulo_id: dto.articuloId,
-          tipo: dto.tipo,
-          cantidad: dto.cantidad,
-          stock_resultante: nuevoStock,
-          motivo: dto.motivo,
-          referencia_tipo: dto.referenciaTipo,
-          referencia_id: dto.referenciaId,
-          fecha: new Date(),
-          creado_por: userId,
-        },
-      }),
-    ]);
+    if (dto.tipo === 'SALIDA') {
+    if (dto.tipo === 'SALIDA') {
+    if (dto.tipo === 'SALIDA') {
+      await this.prisma.$transaction([
+        this.prisma.articulos_inventario.update({
+          where: { id: dto.articuloId },
+          data: { stock: nuevoStock },
+        }),
+        this.prisma.movimientos_inventario.create({
+          data: {
+            id: randomUUID(),
+            articulo_id: dto.articuloId,
+            tipo: dto.tipo,
+            cantidad: dto.cantidad,
+            stock_resultante: nuevoStock,
+            motivo: dto.motivo,
+            referencia_tipo: dto.referenciaTipo,
+            referencia_id: dto.referenciaId,
+            fecha: new Date(),
+            creado_por: userId,
+          },
+        }),
+      ]);
+    }
+    }
+    }
 
     await this.auditService.log({
       action: AuditAction.MOVIMIENTO_REGISTRADO,

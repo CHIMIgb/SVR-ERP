@@ -290,7 +290,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
     return (
       <div className="max-w-xl mx-auto">
         <div className={posClasses.card}>
-          <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
+          <div className={cn(posClasses.alertBox, 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-300')}>
             <Lock className="w-4 h-4 shrink-0 mt-0.5" />
             <p className="text-xs font-medium">
               El turno de hoy ya cerró. El siguiente corte se habilitará después de la hora de
@@ -349,7 +349,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
           {/* Horario permitido */}
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Horario permitido</h3>
-            <div className={cn(posClasses.alertBox, 'bg-blue-50 border-blue-200 text-blue-700')}>
+            <div className={cn(posClasses.alertBox, 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-300')}>
               <Clock className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
                 Turno de {turnoConfig.apertura} a {turnoConfig.cierre} hrs · Cierre permitido:{' '}
@@ -357,7 +357,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
               </p>
             </div>
             {!allowed && (
-              <div className={cn(posClasses.alertBox, 'bg-red-50 border-red-200 text-red-700 mt-2')}>
+              <div className={cn(posClasses.alertBox, 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300 mt-2')}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <p className="text-xs font-medium">
                   Ahora mismo no está permitido cerrar caja (horario de trabajo). Se habilita después de las {turnoConfig.cierre} hrs.
@@ -370,18 +370,18 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
           <div className={posClasses.card}>
             <h3 className={cn(posClasses.sectionTitle, 'mb-2')}>Arqueo de efectivo</h3>
             <div className="mb-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+              <p className="text-[10px] font-bold text-ui-400 uppercase tracking-wide mb-1.5">
                 Fondo inicial del turno
               </p>
               <p className={cn(posClasses.resultValue)}>{formatCurrency(initial)}</p>
             </div>
-            <p className="text-xs text-slate-500 mb-3">
+            <p className="text-xs text-ui-500 mb-3">
               Efectivo esperado: {formatCurrency(expectedCash)}
             </p>
 
             <div className="space-y-3">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                <p className="text-[10px] font-bold text-ui-400 uppercase tracking-wide mb-1.5">
                   Billetes
                 </p>
                 <div className={cn('grid gap-1.5', 'grid-cols-3')}>
@@ -389,13 +389,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                     <div key={d} className={posClasses.denomEntry}>
                       <p className={posClasses.denomLabel}>${d.toLocaleString('es-MX')}</p>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
                         inputMode="numeric"
                         placeholder="0"
                         className={posClasses.denomInput}
                         value={counts[d] ?? ''}
-                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value.replace(/\D/g, '').slice(0, 7) }))}
                       />
                     </div>
                   ))}
@@ -403,7 +402,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
               </div>
 
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                <p className="text-[10px] font-bold text-ui-400 uppercase tracking-wide mb-1.5">
                   Monedas
                 </p>
                 <div className={cn('grid gap-1.5', 'grid-cols-4')}>
@@ -411,13 +410,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                     <div key={d} className={posClasses.denomEntry}>
                       <p className={posClasses.denomLabel}>${d.toLocaleString('es-MX')}</p>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
                         inputMode="numeric"
                         placeholder="0"
                         className={posClasses.denomInput}
                         value={counts[d] ?? ''}
-                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [d]: e.target.value.replace(/\D/g, '').slice(0, 7) }))}
                       />
                     </div>
                   ))}
@@ -426,7 +424,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
             </div>
 
             {/* Resultados */}
-            <div className="mt-3 pt-3 border-t border-slate-100">
+            <div className="mt-3 pt-3 border-t border-ui-100">
               <div className={posClasses.resultRow}>
                 <span className={posClasses.resultLabel}>Total contado</span>
                 <span className={posClasses.resultValue}>{formatCurrency(counted)}</span>
@@ -496,8 +494,8 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
         />
         <ModalBody>
           <div className="space-y-3">
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
-              <p className="text-sm font-medium text-slate-500">Diferencia</p>
+            <div className="rounded-xl bg-ui-50 border border-ui-200 p-4 text-center">
+              <p className="text-sm font-medium text-ui-500">Diferencia</p>
               <p
                 className={cn(
                   'text-2xl font-black mt-1',
@@ -509,13 +507,13 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                 {difference > 0 ? ' · A favor' : difference < 0 ? ' · En contra' : ''}
               </p>
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ui-600">
               {difference < 0
                 ? 'Hay un faltante en la caja. Asegúrate de revisar el arqueo y registra una nota antes de cerrar.'
                 : 'Hay un sobrante en la caja. Revisa el arqueo y registra una nota antes de cerrar.'}
             </p>
             <label className="block">
-              <span className="text-xs font-bold text-slate-500 mb-1 block">
+              <span className="text-xs font-bold text-ui-500 mb-1 block">
                 Nota obligatoria
               </span>
               <Textarea
@@ -550,7 +548,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
         />
         <ModalBody>
           <div className="max-h-[60vh] overflow-y-auto scrollbar-none space-y-4">
-            <div className={cn(posClasses.alertBox, 'bg-amber-50 border-amber-200 text-amber-700')}>
+            <div className={cn(posClasses.alertBox, 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-300')}>
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
                 Pendiente de aprobación del Administrador.
@@ -559,7 +557,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
 
             {/* Ventas por grupo */}
             <div>
-              <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
+              <p className="text-xs font-black text-ui-500 uppercase tracking-wide mb-2">
                 Ventas del día
               </p>
               <div className="space-y-2">
@@ -567,12 +565,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                   const grupo = salesByGroup[group];
                   const subtotal = grupo.reduce((sum, s) => sum + s.total, 0);
                   return (
-                    <div key={group} className="rounded-lg border border-slate-100 p-3">
+                    <div key={group} className="rounded-lg border border-ui-100 p-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-slate-700">
+                        <span className="text-sm font-bold text-ui-700">
                           {groupName(group)} · {grupo.length} venta{grupo.length !== 1 ? 's' : ''}
                         </span>
-                        <span className="font-black text-slate-900">{formatCurrency(subtotal)}</span>
+                        <span className="font-black text-ui-900">{formatCurrency(subtotal)}</span>
                       </div>
                       {grupo.length === 0 ? (
                         <p className={posClasses.historyMeta}>Sin ventas en {groupName(group).toLowerCase()}.</p>
@@ -581,12 +579,12 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                           {grupo.map((sale) => {
                             const { time } = formatTicketDate(sale.createdAt);
                             return (
-                              <div key={sale.id} className="bg-slate-50 rounded-lg p-2">
+                              <div key={sale.id} className="bg-ui-50 rounded-lg p-2">
                                 <div className="flex justify-between">
                                   <span className="text-xs font-black text-primary">
                                     {sale.ticketNumber} · {time}
                                   </span>
-                                  <span className="text-xs font-black text-slate-800">
+                                  <span className="text-xs font-black text-ui-800">
                                     {formatCurrency(sale.total)}
                                   </span>
                                 </div>
@@ -598,7 +596,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                                 {sale.items.map((item, index) => (
                                   <div
                                     key={`${sale.id}-${item.product.id}-${index}`}
-                                    className="flex justify-between text-[11px] text-slate-600 pl-2"
+                                    className="flex justify-between text-[11px] text-ui-600 pl-2"
                                   >
                                     <span>
                                       {item.quantity} × {item.product.name} ({itemUnitName(item)})
@@ -619,7 +617,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
 
             {/* Retiros del turno */}
             <div>
-              <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
+              <p className="text-xs font-black text-ui-500 uppercase tracking-wide mb-2">
                 Retiros del turno
               </p>
               {retirosHoy.length === 0 ? (
@@ -634,8 +632,8 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
             </div>
 
             {/* Arqueo */}
-            <div className="rounded-lg border border-slate-100 p-3 space-y-1">
-              <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">
+            <div className="rounded-lg border border-ui-100 p-3 space-y-1">
+              <p className="text-xs font-black text-ui-500 uppercase tracking-wide mb-2">
                 Arqueo de efectivo
               </p>
               <div className={posClasses.resultRow}>
@@ -672,7 +670,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                 </span>
               </div>
 
-              <p className="text-xs font-black text-slate-500 uppercase tracking-wide pt-2">
+              <p className="text-xs font-black text-ui-500 uppercase tracking-wide pt-2">
                 Billetes y monedas contados
               </p>
               {countedDenominations.length === 0 ? (
@@ -697,7 +695,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
                 </span>
               </div>
               {notes.trim() && (
-                <p className="text-xs text-slate-500 pt-1">
+                <p className="text-xs text-ui-500 pt-1">
                   <strong>Observaciones:</strong> {notes}
                 </p>
               )}

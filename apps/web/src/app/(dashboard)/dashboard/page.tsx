@@ -92,10 +92,10 @@ export default function DashboardPage() {
               <Banknote className="w-4 h-4 text-orange-400" /> Nómina y Sobres
             </button>
             <button
-              onClick={() => router.push('/reportes-campo')}
+              onClick={() => router.push('/reportes')}
               className="px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
             >
-              <FileText className="w-4 h-4" /> Reportes de Campo
+              <FileText className="w-4 h-4" /> Reportes
             </button>
           </div>
         </div>

@@ -92,6 +92,7 @@ model articulos_inventario {
   movimientos_inventario                            movimientos_inventario[]
   articulos_precio                                  articulos_precio[]
   ventas_items                                      ventas_items[]
+  ordenes_compra_items                             ordenes_compra_items[]
 
   @@index([categoria_id])
   @@index([proveedor_id])
@@ -747,37 +748,6 @@ model horas_extra_asistencia {
   registros_asistencia                                registros_asistencia @relation(fields: [registro_asistencia_id], references: [id], onDelete: Cascade)
 }
 
-model incidentes {
-  id                                      String          @id @db.Uuid
-  codigo                                  String?         @unique
-  titulo                                  String
-  descripcion                             String
-  prioridad                               Prioridad
-  estado                                  EstadoIncidente @default(ABIERTO)
-  fecha                                   DateTime        @db.Timestamptz()
-  maquina_id                              String?         @db.Uuid
-  activo                                  Boolean         @default(true)
-  creado_en                               DateTime        @default(now()) @db.Timestamptz()
-  actualizado_en                          DateTime        @db.Timestamptz()
-  actualizado_por                         String?         @db.Uuid
-  creado_por                              String?         @db.Uuid
-  eliminado_en                            DateTime?       @db.Timestamptz()
-  obra_id                                 String?         @db.Uuid
-  obra_texto                              String
-  reporto_id                              String?         @db.Uuid
-  reporte_descripcion                     String?
-  reportado_por                           String?         @db.Uuid
-  reportado_en                            DateTime?       @db.Timestamptz()
-  users_incidentes_actualizado_porTousers users?          @relation("incidentes_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_incidentes_actualizado_por")
-  users_incidentes_creado_porTousers      users?          @relation("incidentes_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_incidentes_creado_por")
-  users_incidentes_reportado_porTousers   users?          @relation("incidentes_reportado_porTousers", fields: [reportado_por], references: [id], onUpdate: NoAction, map: "fk_incidentes_reportado_por")
-  trabajadores                            trabajadores?   @relation(fields: [reporto_id], references: [id], onUpdate: NoAction, map: "fk_incidentes_reporto")
-  maquinas                                maquinas?       @relation(fields: [maquina_id], references: [id])
-  obras                                   obras?          @relation(fields: [obra_id], references: [id])
-
-  @@index([maquina_id])
-}
-
 model intentos_login {
   id              String   @id @db.Uuid
   user_id         String?  @db.Uuid
@@ -920,7 +890,6 @@ model maquinas {
   documentos                            documentos[]
   fallas_mecanicas                      fallas_mecanicas[]
   geocerca_maquinas                     geocerca_maquinas[]
-  incidentes                            incidentes[]
   lecturas_horometro                    lecturas_horometro[]
   maquina_componentes                   maquina_componentes[]
   maquina_operadores                    maquina_operadores[]
@@ -990,9 +959,35 @@ model ordenes_compra {
   proveedores                                 proveedores         @relation(fields: [proveedor_id], references: [id])
   users_ordenes_compra_actualizado_porTousers users?              @relation("ordenes_compra_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_ordenes_compra_actualizado_por")
   users_ordenes_compra_creado_porTousers      users?              @relation("ordenes_compra_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_ordenes_compra_creado_por")
+  ordenes_compra_items                        ordenes_compra_items[]
 
   @@index([proveedor_id, estado])
   @@index([fecha])
+}
+
+/// Líneas/detalle de una orden de compra. `articulo_id` es nullable a propósito:
+/// (a) artículo ya catalogado → se vincula y se actualiza stock al recibir;
+/// (b) artículo nuevo → se crea al recibir usando `nombre` como base.
+model ordenes_compra_items {
+  id                String                @id @db.Uuid
+  orden_compra_id   String                @db.Uuid
+  articulo_id       String?               @db.Uuid // NULO si aún no está catalogado
+  nombre            String // Snapshot SIEMPRE (aunque exista articulo_id)
+  cantidad          Decimal               @db.Decimal(10, 2)
+  cantidad_recibida Decimal               @default(0) @db.Decimal(10, 2) // permite recepción parcial futura
+  precio_unitario   Decimal               @db.Decimal(12, 2)
+  activo            Boolean               @default(true)
+  creado_en         DateTime              @default(now()) @db.Timestamptz()
+  actualizado_en    DateTime              @db.Timestamptz()
+  actualizado_por   String?               @db.Uuid
+  creado_por        String?               @db.Uuid
+  eliminado_en      DateTime?             @db.Timestamptz()
+
+  ordenes_compra     ordenes_compra         @relation(fields: [orden_compra_id], references: [id])
+  articulos_inventario articulos_inventario? @relation(fields: [articulo_id], references: [id])
+
+  @@index([orden_compra_id])
+  @@index([articulo_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1046,7 +1041,6 @@ model obras {
   eliminado_en                       DateTime?                @db.Timestamptz()
   bitacoras_operacion                bitacoras_operacion[]
   bitacoras_renta_diaria             bitacoras_renta_diaria[]
-  incidentes                         incidentes[]
   users_obras_actualizado_porTousers users?                   @relation("obras_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_obras_actualizado_por")
   users_obras_creado_porTousers      users?                   @relation("obras_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_obras_creado_por")
   proyectos                          proyectos?               @relation(fields: [proyecto_id], references: [id])
@@ -1161,7 +1155,7 @@ model permisos {
   users_permisos_actualizado_porTousers users?        @relation("permisos_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_permisos_actualizado_por")
   users_permisos_aprobador_idTousers    users?        @relation("permisos_aprobador_idTousers", fields: [aprobador_id], references: [id], onUpdate: NoAction, map: "fk_permisos_aprobador")
   users_permisos_creado_porTousers      users?        @relation("permisos_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_permisos_creado_por")
-  trabajadores                          trabajadores  @relation(fields: [trabajador_id], references: [id])
+  trabajadores                          trabajadores  @relation(fields: [trabajador_id], references: [id], onUpdate: NoAction)
 
   @@index([trabajador_id])
 }
@@ -1242,6 +1236,12 @@ model proyectos {
   gastado                                Decimal                  @default(0) @db.Decimal(14, 2)
   fecha_inicio                           DateTime                 @db.Date
   fecha_fin                              DateTime                 @db.Date
+  // ── Ubicación exacta de la obra (calle incluye número; estado = entidad federativa) ──
+  calle                                  String?
+  colonia                                String?
+  ciudad                                 String?
+  estado_ubicacion                       String?
+  codigo_postal                          String?                  @db.VarChar(10)
   activo                                 Boolean                  @default(true)
   creado_en                              DateTime                 @default(now()) @db.Timestamptz()
   actualizado_en                         DateTime                 @db.Timestamptz()
@@ -1450,7 +1450,7 @@ model reportes_campo {
   detalles                                    Json?
   activo                                      Boolean            @default(true)
   creado_en                                   DateTime           @default(now()) @db.Timestamptz()
-  actualizado_en                              DateTime           @db.Timestamptz()
+  actualizado_en                              DateTime           @default(now()) @db.Timestamptz()
   actualizado_por                             String?            @db.Uuid
   creado_por                                  String?            @db.Uuid
   eliminado_en                                DateTime?          @db.Timestamptz()
@@ -1461,6 +1461,11 @@ model reportes_campo {
   cliente_id                                  String?            @db.Uuid
   proyecto_id                                 String?            @db.Uuid
   monto_servicio                              Decimal?           @db.Decimal(14, 2)
+  asignado_a_id                               String?            @db.Uuid
+  asignado_en                                 DateTime?          @db.Timestamptz()
+  asignado_nombre                             String?
+  resuelto_en                                 DateTime?          @db.Timestamptz()
+  asignado_a                                  trabajadores?      @relation("reportes_campo_asignado_a", fields: [asignado_a_id], references: [id])
   users_reportes_campo_actualizado_porTousers users?             @relation("reportes_campo_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_actualizado_por")
   users_reportes_campo_creado_porTousers      users?             @relation("reportes_campo_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_creado_por")
   users_reportes_campo_usuario_idTousers      users?             @relation("reportes_campo_usuario_idTousers", fields: [usuario_id], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_usuario")
@@ -1474,6 +1479,8 @@ model reportes_campo {
   @@index([maquina_id])
   @@index([cliente_id])
   @@index([proyecto_id])
+  @@index([tipo, estado])
+  @@index([asignado_a_id])
 }
 
 model role_permissions {
@@ -1608,8 +1615,8 @@ model trabajadores {
   despachos_maquina                         despachos_maquina[]
   documentos                                documentos[]
   fallas_mecanicas                          fallas_mecanicas[]
-  incidentes                                incidentes[]
   lecturas_horometro                        lecturas_horometro[]
+  reportes_campo_asignados                  reportes_campo[]              @relation("reportes_campo_asignado_a")
   licencias_trabajador                      licencias_trabajador?
   maquina_operadores                        maquina_operadores[]
   maquinas                                  maquinas[]
@@ -1948,9 +1955,6 @@ model users {
   horas_extra_asistencia_horas_extra_asistencia_aprobador_idTousers              horas_extra_asistencia[]      @relation("horas_extra_asistencia_aprobador_idTousers")
   horas_extra_asistencia_horas_extra_asistencia_actualizado_porTousers           horas_extra_asistencia[]      @relation("horas_extra_asistencia_actualizado_porTousers")
   horas_extra_asistencia_horas_extra_asistencia_creado_porTousers                horas_extra_asistencia[]      @relation("horas_extra_asistencia_creado_porTousers")
-  incidentes_incidentes_actualizado_porTousers                                   incidentes[]                  @relation("incidentes_actualizado_porTousers")
-  incidentes_incidentes_reportado_porTousers                                     incidentes[]                  @relation("incidentes_reportado_porTousers")
-  incidentes_incidentes_creado_porTousers                                        incidentes[]                  @relation("incidentes_creado_porTousers")
   intentos_login                                                                 intentos_login[]
   lecturas_horometro_lecturas_horometro_actualizado_porTousers                   lecturas_horometro[]          @relation("lecturas_horometro_actualizado_porTousers")
   lecturas_horometro_lecturas_horometro_creado_porTousers                        lecturas_horometro[]          @relation("lecturas_horometro_creado_porTousers")
@@ -2168,6 +2172,7 @@ enum AuditAction {
   REGISTRO_CRIBA_CREADO
   REGISTRO_CRIBA_ACTUALIZADO
   REGISTRO_CRIBA_ELIMINADO
+  REPORTE_ASIGNADO
   TRABAJADOR_CREADO
   TRABAJADOR_ACTUALIZADO
   TRABAJADOR_ELIMINADO
@@ -2223,6 +2228,7 @@ enum AuditAction {
   ORDEN_COMPRA_ACTUALIZADA
   ORDEN_COMPRA_ELIMINADA
   ORDEN_COMPRA_ESTADO_CAMBIADO
+  ORDEN_COMPRA_RECIBIDA
   PAGO_PROVEEDOR_REGISTRADO
   CXC_CREADA
   CXC_ACTUALIZADA
@@ -2329,12 +2335,6 @@ enum EstadoHoraExtra {
   RECHAZADO
 }
 
-enum EstadoIncidente {
-  ABIERTO
-  EN_REVISION
-  RESUELTO
-}
-
 enum EstadoLlantas {
   CORRECTO
   DESGASTE_SEVERO
@@ -2432,6 +2432,7 @@ enum TipoPermiso {
 }
 
 enum TipoReporteCampo {
+  ADMINISTRATIVO
   MECANICO
   OPERADOR
   PIPERO

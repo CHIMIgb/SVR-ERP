@@ -1,0 +1,53 @@
+# /reportes pasa a tabla (patrón /inventario) — fuera las tarjetas
+
+**Fecha:** 2026-11-04
+**Autor:** agente OpenCode (a petición del usuario)
+
+## Cambios realizados
+- El feed de tarjetas de `/reportes` se reemplaza por un **`<DataTable>`**
+  (componente existente de `src/components/ui/DataTable`, el mismo patrón de la
+  vista /inventario, con scroll horizontal y sombras en móvil).
+- **Ajuste posterior (commit 6d7d9639):** la Descripción ya no se corta con
+  '…' a 1 línea — colapsa a máximo **2 líneas** (`line-clamp-2`, native de
+  Tailwind; el Tooltip sigue mostrando el texto completo). Los botones de
+  acción dejaron de ser solo os iconos: icono + texto ("Asignar"/"Reasignar",
+  "Marcar X", "Facturar", "Editar", "Eliminar").
+- **Ajuste posterior (bc7aad15):** columnas más anchas — Descripción 420px
+  (texto hasta ~448px útiles) y Acciones 440px con los botones SIEMPRE en
+  una sola fila (se quitó el wrap).
+- **Ajuste posterior (d055994f):** Descripción a 560px útiles (`max-w-2xl`)
+  y el texto completo SIEMPRE visible — se fueron los '…' del `line-clamp`
+  (el Tooltip permanece por si sale de pantalla).
+- **Fix de raíz (0feb8933):** el componente `DataTable` IGNORABA el `minWidth`
+  declarado en las columnas (todas las vistas lo pasaban y nunca se aplicaba —
+  por eso la Descripción se veía angosta palabra a palabra). Ahora `th`/`td`
+  aplican `minWidth: <style>`; cobranza/proveedores/ui-showcase también se
+  benefician de sus anchos declarados desde siempre.
+- **Ajuste posterior (896f17a0):** los chips de área de arriba se quitaron — el
+  filtrado por área vive como filtro **"Área" dentro del panel Filtros** (primera
+  opción, con conteo "Incidente (4)" en cada opción; placeholder "Todas las
+  áreas"). El segundo se ven activos como "Área: <área>" cuando se aplica.
+- **Ajuste posterior (ad63eec7):** paginación a 10 registros por página (era 6).
+- Columnas: **Fecha/Hora · Área** (icono+color del tipo) **· Reporta** (usuario,
+  cliente debajo) **· Obra/Máq. · Prioridad · Estado** (Badges) **· Responsable**
+  (quién le cae; si ya está resuelto, muestra en verde quién resolvió con Tooltip
+  de la fecha) **· Descripción** (line-clamp-2 con Tooltip del texto completo +
+  mini-chips de detalles costo/litros + servicio facturable) **· Acciones**
+  (iconos+texto con Tooltip por RBAC: Asignar/Reasignar · Marcar etapa · Facturar ·
+  Editar · Eliminar).
+- Regla del negocio intacta: botón de avanzar exige responsable antes de
+  "Marcar Resuelto" (igual que en tarjetas).
+- Sin cambios: PageHeader, banner de críticos, StatsCards, chips de área con
+  conteos, SearchBar + panel de filtros, 6 modales, paginación server-side,
+  toda la lógica/handlers.
+
+## Archivos tocados
+- `apps/web/src/app/(dashboard)/reportes/page.tsx` (solo este archivo)
+
+## Pruebas / verificación
+- `npx tsc --noEmit` (web) ✔; eslint del archivo: 0 errores/warnings ✔.
+- Upgrade visual en navegador pendiente del usuario.
+
+## Pendientes y riesgos
+- Ninguno funcional; en pantallas angostas la tabla scrollea horizontal por
+  diseño (regla #1 responsive).

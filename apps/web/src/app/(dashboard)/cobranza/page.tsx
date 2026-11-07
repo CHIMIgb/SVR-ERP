@@ -99,7 +99,7 @@ function FiltrosCobranza({
           {active.length > 1 && (
             <button
               onClick={onClear}
-              className="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors ml-1"
+              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
             >
               Limpiar todo
             </button>
@@ -108,17 +108,17 @@ function FiltrosCobranza({
       )}
 
       {show && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             {fields.map((filter) => (
               <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   {filter.label}
                 </label>
                 <select
                   value={values[filter.key] || ''}
                   onChange={(e) => onChange(filter.key, e.target.value)}
-                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-primary/50"
+                  className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
                 >
                   <option value="">{filter.placeholder || 'Todos'}</option>
                   {filter.options?.map((opt) => (
@@ -501,12 +501,12 @@ export default function CobranzaPage() {
       nowrap: true,
       render: (c) => (
         <div>
-          <p className="font-semibold text-slate-800 truncate">{c.empresa}</p>
-          <p className="text-xs text-slate-400 truncate">{c.clienteNombre} · {c.obra}</p>
+          <p className="font-semibold text-ui-800 truncate">{c.empresa}</p>
+          <p className="text-xs text-ui-400 truncate">{c.clienteNombre} · {c.obra}</p>
         </div>
       ),
     },
-    { key: 'factura', header: 'Factura', minWidth: '110px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs font-semibold">{c.facturaFolio}</span> },
+    { key: 'factura', header: 'Factura', minWidth: '110px', nowrap: true, render: (c) => <span className="text-ui-500 text-xs font-semibold">{c.facturaFolio}</span> },
     {
       key: 'proyecto',
       header: 'Proyecto',
@@ -514,17 +514,17 @@ export default function CobranzaPage() {
       nowrap: true,
       render: (c) =>
         c.proyecto ? (
-          <span className="text-slate-600 text-xs font-semibold truncate">
-            <span className="text-slate-400 font-mono">{c.proyecto.codigo}</span> · {c.proyecto.nombre}
+          <span className="text-ui-600 text-xs font-semibold truncate">
+            <span className="text-ui-400 font-mono">{c.proyecto.codigo}</span> · {c.proyecto.nombre}
           </span>
         ) : (
           <Badge variant="neutral" size="sm">Sin proyecto</Badge>
         ),
     },
-    { key: 'monto', header: 'Total', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{formatCurrency(c.monto)}</span> },
+    { key: 'monto', header: 'Total', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-ui-600 font-medium">{formatCurrency(c.monto)}</span> },
     { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '120px', nowrap: true, render: (c) => <span className="text-green-600 font-medium">{formatCurrency(c.montoPagado)}</span> },
-    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-slate-900">{formatCurrency(c.saldo)}</span> },
-    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-500 text-sm">{c.fechaVencimiento}</span> },
+    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (c) => <span className="font-black text-ui-900">{formatCurrency(c.saldo)}</span> },
+    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (c) => <span className="text-ui-500 text-sm">{c.fechaVencimiento}</span> },
     {
       key: 'situacion',
       header: 'Situación',
@@ -555,9 +555,9 @@ export default function CobranzaPage() {
 
   // ── Columnas: movimientos de cobro ──
   const cobroColumns: Column<CobroDTO>[] = [
-    { key: 'fecha', header: 'Fecha', minWidth: '120px', nowrap: true, render: (c) => <span className="text-slate-600 font-medium">{c.fecha}</span> },
-    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (c) => <span className="font-semibold text-slate-800 truncate">{c.clienteNombre}</span> },
-    { key: 'referencia', header: 'Referencia', minWidth: '130px', nowrap: true, render: (c) => <span className="text-slate-500 text-xs">{c.referencia}</span> },
+    { key: 'fecha', header: 'Fecha', minWidth: '120px', nowrap: true, render: (c) => <span className="text-ui-600 font-medium">{c.fecha}</span> },
+    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (c) => <span className="font-semibold text-ui-800 truncate">{c.clienteNombre}</span> },
+    { key: 'referencia', header: 'Referencia', minWidth: '130px', nowrap: true, render: (c) => <span className="text-ui-500 text-xs">{c.referencia}</span> },
     {
       key: 'metodo',
       header: 'Método',
@@ -572,9 +572,9 @@ export default function CobranzaPage() {
 
   // ── Columnas: vencimientos ──
   const vencColumns: Column<VencimientoDTO>[] = [
-    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (v) => <span className="font-semibold text-slate-800 truncate">{v.clienteNombre}</span> },
-    { key: 'obra', header: 'Obra', minWidth: '220px', nowrap: true, render: (v) => <span className="text-slate-500 truncate">{v.obra}</span> },
-    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (v) => <span className="text-slate-600 font-medium">{v.fechaVencimiento}</span> },
+    { key: 'cliente', header: 'Cliente', minWidth: '220px', nowrap: true, render: (v) => <span className="font-semibold text-ui-800 truncate">{v.clienteNombre}</span> },
+    { key: 'obra', header: 'Obra', minWidth: '220px', nowrap: true, render: (v) => <span className="text-ui-500 truncate">{v.obra}</span> },
+    { key: 'vencimiento', header: 'Vencimiento', minWidth: '120px', nowrap: true, render: (v) => <span className="text-ui-600 font-medium">{v.fechaVencimiento}</span> },
     {
       key: 'dias',
       header: 'Días atraso',
@@ -591,7 +591,7 @@ export default function CobranzaPage() {
           <span className="text-green-600 font-semibold">Al corriente</span>
         ),
     },
-    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (v) => <span className="font-black text-slate-900">{formatCurrency(v.monto)}</span> },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (v) => <span className="font-black text-ui-900">{formatCurrency(v.monto)}</span> },
   ];
 
   // ── Columnas: cartera por proyecto ──
@@ -604,7 +604,7 @@ export default function CobranzaPage() {
       render: (g) =>
         g.proyecto ? (
           <div className="min-w-0">
-            <p className="font-semibold text-slate-800 truncate">
+            <p className="font-semibold text-ui-800 truncate">
               <span className="font-mono text-primary/70 mr-1.5">{g.proyecto.codigo}</span>
               {g.proyecto.nombre}
             </p>
@@ -613,10 +613,10 @@ export default function CobranzaPage() {
           <Badge variant="neutral" size="sm">Sin proyecto</Badge>
         ),
     },
-    { key: 'cuentas', header: 'Cuentas', align: 'right', minWidth: '90px', nowrap: true, render: (g) => <span className="text-slate-500 font-bold">{g.totalCuentas}</span> },
-    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-slate-600 font-medium">{formatCurrency(g.monto)}</span> },
+    { key: 'cuentas', header: 'Cuentas', align: 'right', minWidth: '90px', nowrap: true, render: (g) => <span className="text-ui-500 font-bold">{g.totalCuentas}</span> },
+    { key: 'monto', header: 'Monto', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-ui-600 font-medium">{formatCurrency(g.monto)}</span> },
     { key: 'pagado', header: 'Pagado', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="text-green-600 font-medium">{formatCurrency(g.pagado)}</span> },
-    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="font-black text-slate-900">{formatCurrency(g.saldo)}</span> },
+    { key: 'saldo', header: 'Saldo', align: 'right', minWidth: '130px', nowrap: true, render: (g) => <span className="font-black text-ui-900">{formatCurrency(g.saldo)}</span> },
     {
       key: 'vencido',
       header: 'Vencido',
@@ -627,7 +627,7 @@ export default function CobranzaPage() {
         g.vencido > 0 ? (
           <span className="text-red-600 font-black">{formatCurrency(g.vencido)}</span>
         ) : (
-          <span className="text-slate-300 font-medium">—</span>
+          <span className="text-ui-300 font-medium">—</span>
         ),
     },
   ];
@@ -662,7 +662,7 @@ export default function CobranzaPage() {
           label={
             <>
               Monto
-              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+              <span className="block text-[10px] font-bold text-ui-400 uppercase tracking-widest mt-0.5">
                 {grupos.reduce((n, g) => n + g.totalCuentas, 0)} cuentas · {grupos.length} proyecto{grupos.length !== 1 ? 's' : ''}
               </span>
             </>
@@ -725,7 +725,7 @@ export default function CobranzaPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -790,7 +790,7 @@ export default function CobranzaPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -855,7 +855,7 @@ export default function CobranzaPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -919,7 +919,7 @@ export default function CobranzaPage() {
               >
                 Filtros
                 {activeFilters.length > 0 && (
-                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  <span className="ml-1 inline-flex w-5 h-5 shrink-0 items-center justify-center rounded-full bg-surface/20 text-[10px] font-bold">
                     {activeFilters.length}
                   </span>
                 )}
@@ -993,9 +993,9 @@ export default function CobranzaPage() {
         </ModalField>
 
         {cuentaSeleccionada && (
-          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-            Factura <span className="font-bold text-slate-700">{cuentaSeleccionada.facturaFolio}</span> · Saldo actual{' '}
-            <span className="font-bold text-slate-700">{formatCurrency(cuentaSeleccionada.saldo)}</span>
+          <p className="text-xs text-ui-500 bg-ui-50 border border-ui-100 rounded-lg px-3 py-2">
+            Factura <span className="font-bold text-ui-700">{cuentaSeleccionada.facturaFolio}</span> · Saldo actual{' '}
+            <span className="font-bold text-ui-700">{formatCurrency(cuentaSeleccionada.saldo)}</span>
           </p>
         )}
 
@@ -1062,15 +1062,15 @@ export default function CobranzaPage() {
           {ledgerCuenta && (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Facturado</p>
-                  <p className="text-lg font-black text-slate-900">{formatCurrency(ledgerCuenta.monto)}</p>
+                <div className="rounded-xl bg-ui-50 border border-ui-200 p-3 text-center">
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Facturado</p>
+                  <p className="text-lg font-black text-ui-900">{formatCurrency(ledgerCuenta.monto)}</p>
                 </div>
-                <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
+                <div className="rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-100 dark:border-green-500/20 p-3 text-center">
                   <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Pagado</p>
                   <p className="text-lg font-black text-green-700">{formatCurrency(ledgerCuenta.montoPagado)}</p>
                 </div>
-                <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 p-3 text-center">
                   <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Saldo</p>
                   <p className="text-lg font-black text-red-600">{formatCurrency(ledgerSaldo)}</p>
                 </div>
@@ -1086,13 +1086,13 @@ export default function CobranzaPage() {
                   {ledgerMovs.map((m) => (
                     <div
                       key={m.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-ui-100 bg-surface px-4 py-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-800">{metodoLabel[m.metodoPago]}</p>
-                          <p className="text-xs text-slate-400 truncate">
+                          <p className="text-sm font-semibold text-ui-800">{metodoLabel[m.metodoPago]}</p>
+                          <p className="text-xs text-ui-400 truncate">
                             {m.fecha} · {m.referencia}
                           </p>
                         </div>
@@ -1104,7 +1104,7 @@ export default function CobranzaPage() {
                             type="button"
                             onClick={() => openRevertir(m)}
                             title="Reversión de cobro (C6)"
-                            className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            className="ml-2 p-1.5 rounded-lg text-ui-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                           >
                             <Undo2 className="w-4 h-4" />
                           </button>
@@ -1140,7 +1140,7 @@ export default function CobranzaPage() {
         submitDisabled={revertirLoading}
         onSubmit={handleRevertir}
       >
-        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-4 py-3 mb-4">
           <p className="text-sm text-amber-800">
             Nuevo saldo estimado:{' '}
             <span className="font-black">{formatCurrency(ledgerSaldo + (revertirCobro?.monto ?? 0))}</span>
