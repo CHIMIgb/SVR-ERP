@@ -23,7 +23,6 @@ import {
   type GrupoProyectoDTO,
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
-import { sleepDemo } from '@/lib/demo-delay';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -185,7 +184,6 @@ export default function CobranzaPage() {
 
   // ── Carga de datos (patrón /proveedores: fetch + initialLoading) ──
   const fetchCuentas = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
-    await sleepDemo();
     const res = await cobranzaApi.listar({
       search: searchVal || undefined,
       estado: filters?.estado as EstadoCuentaCobranza | undefined,

@@ -30,7 +30,6 @@ import {
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { sleepDemo } from '@/lib/demo-delay';
 
 // ── Constantes ──
 const PAGE_SIZE = 8;
@@ -105,7 +104,7 @@ export default function ClientesPage() {
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => { await sleepDemo();
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {

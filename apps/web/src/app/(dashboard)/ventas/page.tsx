@@ -12,7 +12,6 @@ import {
   Clock,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { sleepDemo } from '@/lib/demo-delay';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -89,7 +88,6 @@ export default function VentasPage() {
   const cargarDatos = useCallback(async () => {
     setCatalogoError(false);
     setCargandoCatalogo(true);
-    await sleepDemo();
     try {
       // Cargar config de turno + catálogo en paralelo
       const [resConfig, res] = await Promise.all([

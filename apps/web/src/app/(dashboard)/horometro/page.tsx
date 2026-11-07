@@ -14,7 +14,6 @@ import { apiClient } from '@/lib/api';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
-import { sleepDemo } from '@/lib/demo-delay';
 
 export default function HorometroPage() {
   const { showToast } = useToast();
@@ -32,7 +31,7 @@ export default function HorometroPage() {
   const [selectedMachineFilter, setSelectedMachineFilter] = useState<string>('Todas');
   const [guardando, setGuardando] = useState(false);
 
-  const cargarDatos = useCallback(async () => { await sleepDemo();
+  const cargarDatos = useCallback(async () => {
     setCargando(true);
     setErrorCarga(null);
     const [resLecturas, resMaquinas] = await Promise.all([

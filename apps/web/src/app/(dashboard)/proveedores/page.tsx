@@ -22,7 +22,6 @@ import {
   type ProveedorDTO, type OrdenCompraDTO, type EstadoCuentaResumenDTO,
   type LedgerDetalleDTO, type EstadoOrdenApi, type ArticuloInventarioDTO,
 } from '@/lib/api';
-import { sleepDemo } from '@/lib/demo-delay';
 // ─── Tipos UI ────────────────────────────────────────────────────────────────
 type CategoriaProveedor = 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
 type EstadoOrden = 'Pendiente' | 'Aprobada' | 'Recibida' | 'Cancelada';
@@ -148,7 +147,6 @@ export default function ProveedoresPage() {
 
   // ── Carga de datos (patrón /inventario: initialLoading + refreshing) ──
   const fetchProveedores = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
-    await sleepDemo();
     const res = await proveedoresApi.listar({
       search: searchVal || undefined,
       categoria: filters?.categoria || undefined,

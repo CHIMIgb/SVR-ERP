@@ -5,7 +5,6 @@ import { Lock, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { sleepDemo } from '@/lib/demo-delay';
 import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
@@ -32,7 +31,6 @@ export default function CorteDelDiaPage() {
 
   useEffect(() => {
     ventasApi.config().then(async (res) => {
-      await sleepDemo();
       if (res.success) {
         setTurnoConfig(res.data);
         // Verificar si se puede cerrar (según el tipo de turno: diurno/nocturno)

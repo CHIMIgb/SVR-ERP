@@ -20,7 +20,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { bitacoraApi, type BitacoraDTO, type BitacoraCatalogos } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
-import { sleepDemo } from '@/lib/demo-delay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -78,7 +77,7 @@ export default function OperacionesPage() {
   }, []);
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => { await sleepDemo();
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
     // Primera carga: skeleton dentro del DataTable
     // Refetches: overlay sutil sobre datos existentes
     if (!hasLoaded.current) {

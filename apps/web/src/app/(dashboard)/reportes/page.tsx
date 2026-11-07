@@ -36,7 +36,6 @@ import {
   type TrabajadorDTO,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
-import { sleepDemo } from '@/lib/demo-delay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -234,7 +233,6 @@ export default function ReportesOperacionesPage() {
 
   // ── Cargar datos ──
   const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>, criticos?: boolean) => {
-    await sleepDemo();
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {

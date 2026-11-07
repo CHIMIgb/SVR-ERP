@@ -29,7 +29,6 @@ import {
   type VentanaFlujoItem,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
-import { sleepDemo } from '@/lib/demo-delay';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -84,7 +83,7 @@ export default function FinanzasPage() {
   const puedeExportar = vista?.puedeExportar ?? false;
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => { await sleepDemo();
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {
@@ -123,7 +122,6 @@ export default function FinanzasPage() {
   const fetchFlujo = useCallback(async () => {
     setFlujoLoading(true);
     try {
-      await sleepDemo();
       const res = await finanzasApi.flujoNeto();
       if (res.success && res.data) {
         setFlujo(res.data);

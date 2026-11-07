@@ -37,7 +37,7 @@
 
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
-| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · ✅ **2. Contraste dark en modal Ver Detalle** (2026-11-07: migración a tokens `ui-*`/`dark:` según regla del repo en ProjectDetailsModal.tsx) · ✅ **3. F2 loaders/skeletons** (2026-11-07: `RefreshOverlay` nuevo documentado + 11 overlays consolidados · refuerzo OP/Com: proveedores/cobranza dejan EmptyState "Cargando" por `Skeleton variant="table"`, /reportes y /finanzas(tab flujo) reciben `loading`, /ventas POS y /corte con skeleton, y `sleepDemo(3000)` en 13 vistas para la demo — quitar tras el martes) · 3. **F2** loaders/skeletons (aplicar los existentes) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · ✅ **2. Contraste dark en modal Ver Detalle** (2026-11-07: migración a tokens `ui-*`/`dark:` según regla del repo en ProjectDetailsModal.tsx) · ✅ **3. F2 loaders/skeletons — REALIZADO 2026-11-07** (ver detalle en §11 F2 y §7; el delay `sleepDemo` de demo se retiró el mismo día) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
@@ -791,7 +791,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ✅ **Realizado** (`GET /clientes/:id/consolidado` + tabs cuentas/facturas/cobros/cotizaciones). Falta tab de trabajadores por proyecto |
 | 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
 | F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
-| F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ⏳ Pendiente (componentes `LoadingState`/`Skeleton` existen en `@/components/ui`; falta aplicar en vistas con spinners manuales) |
+| F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ✅ **Realizado 2026-11-07** (ver §11 F2): `RefreshOverlay` nuevo + 11 overlays consolidados, cargas a pulmón → `LoadingState`/`Skeleton`, paginación siempre visible, KPIs con spinner en el valor, botones con `skeleton`, banners post-carga animados, regla dura en `AGENTS.md` |
 | F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ⏳ Pendiente (el API ya responde 422 con `details`; falta validación UI y toasts con `details` universalizados) |
 | F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ⏳ Pendiente (ciclo de dinero y OC→stock ya al 100% — ver §11 F4; la matriz detectará qué vista aún come mock) |
 | F5 | Config POS: horario de caja que gatee + categorías visibles | `/configuracion` → `/ventas` | ⏳ Pendiente (verificado: `aperturas_caja`/`cierres_caja` NO tienen campos de horario; el gate no existe hoy) |
@@ -1037,10 +1037,13 @@ por audiencia.
 
 ### F2 — Componentes de loader/skeleton estandarizados
 
-**Estado:** ⏳ Pendiente de auditoría + unificación. Los componentes YA EXISTEN en
-`@/components/ui` (`LoadingState`, `Skeleton`, `SkeletonText`, documentados en
-`COMPONENTS.md`) — el problema es que **no todas las vistas los usan**: hay páginas
-que muestran contenido vacío o spinners manuales `Loader2` durante la carga inicial.
+**Estado:** ✅ **REALIZADO (2026-11-07).** La primera impresión de toda vista es
+skeleton (tablas → `DataTable.loading`), spinner en KPIs (`StatsCard.loading`),
+botones con `skeleton`, refetches con `RefreshOverlay` (componente nuevo en ui,
+documentado en `COMPONENTS.md`), banners/alertas post-carga con `fadeScaleIn`,
+y la regla dura completa vive en `AGENTS.md` (Loaders/Skeletons, 7 puntos).
+El delay de demo (`sleepDemo` 3s) se usó durante la demo y **se retiró el mismo
+día** (helper `lib/demo-delay.ts` eliminado).
 
 **Cómo se aplicará:**
 1. **Auditoría:** grep de `Loader2`, `animate-spin`, `nulo estado de carga` en

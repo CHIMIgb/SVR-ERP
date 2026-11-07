@@ -28,7 +28,6 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
-import { sleepDemo } from '@/lib/demo-delay';
 
 /** Punto de referencia usado solo cuando una obra aún no tiene coordenadas configuradas. */
 const FALLBACK_COORD = { lat: 19.3421, lng: -99.1843 };
@@ -308,7 +307,7 @@ export default function AsistenciaPage() {
 
   // No lanza (cada fuente reporta su error en el aviso): si la acción ya se guardó, un fallo al
   // refrescar no se confunde con un fallo de la acción.
-  const refetchAll = useCallback(async () => { await sleepDemo();
+  const refetchAll = useCallback(async () => {
     await Promise.all([fetchRegistros(), fetchSemanal()]);
   }, [fetchRegistros, fetchSemanal]);
 
