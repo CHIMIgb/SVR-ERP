@@ -24,8 +24,6 @@ import {
   type LedgerDetalleDTO, type EstadoOrdenApi, type ArticuloInventarioDTO,
 } from '@/lib/api';
 import { sleepDemo } from '@/lib/demo-delay';
-import { Skeleton } from '@/components/ui/Skeleton';
-
 // ─── Tipos UI ────────────────────────────────────────────────────────────────
 type CategoriaProveedor = 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
 type EstadoOrden = 'Pendiente' | 'Aprobada' | 'Recibida' | 'Cancelada';
@@ -798,10 +796,10 @@ export default function ProveedoresPage() {
         action={
           puedeCrear ? (
             <div className="flex flex-wrap gap-3">
-              <Button variant="primary" icon={<FileText className="w-4 h-4" />} onClick={() => { setOcForm(emptyOcForm); setOcModal(true); }}>
+              <Button skeleton={initialLoading} variant="primary" icon={<FileText className="w-4 h-4" />} onClick={() => { setOcForm(emptyOcForm); setOcModal(true); }}>
                 Nueva Orden
               </Button>
-              <Button variant="outline" icon={<Plus className="w-4 h-4" />} onClick={openCreateProv}>
+              <Button skeleton={initialLoading} variant="outline" icon={<Plus className="w-4 h-4" />} onClick={openCreateProv}>
                 Proveedor
               </Button>
             </div>
@@ -893,7 +891,14 @@ export default function ProveedoresPage() {
             )}
 
             {initialLoading ? (
-              <Skeleton variant="table" lines={6} />
+              <DataTable
+                columns={proveedorColumns}
+                data={proveedores}
+                keyExtractor={(p) => p.id}
+                loading
+                emptyText="No se encontraron proveedores."
+                maxBodyHeight="500px"
+              />
             ) : proveedores.length === 0 ? (
               <EmptyState
                 title="Sin proveedores"
@@ -963,7 +968,14 @@ export default function ProveedoresPage() {
             )}
 
             {initialLoading ? (
-              <Skeleton variant="table" lines={6} />
+              <DataTable
+                columns={ordenColumns}
+                data={ordenes}
+                keyExtractor={(o) => o.id}
+                loading
+                emptyText="No se encontraron órdenes de compra."
+                maxBodyHeight="500px"
+              />
             ) : ordenes.length === 0 ? (
               <EmptyState
                 title="Sin órdenes de compra"
@@ -1032,7 +1044,16 @@ export default function ProveedoresPage() {
               />
             )}
 
-            {resumenFiltrado.length === 0 ? (
+            {initialLoading ? (
+              <DataTable
+                columns={estadoResumenColumns}
+                data={resumenPagina}
+                keyExtractor={(r) => r.proveedorId}
+                loading
+                emptyText="Sin proveedores con operaciones."
+                maxBodyHeight="500px"
+              />
+            ) : resumenFiltrado.length === 0 ? (
               <EmptyState
                 title="Sin estados de cuenta"
                 subtitle="No se encontraron proveedores con operaciones para la búsqueda o filtros aplicados."
@@ -1547,6 +1568,7 @@ export default function ProveedoresPage() {
                     columns={ledgerColumns}
                     data={ledger.movimientos}
                     keyExtractor={(r) => r.folio}
+                    loading={!ledger}
                     emptyText="Sin operaciones registradas."
                     maxBodyHeight="320px"
                   />

@@ -430,12 +430,12 @@ export default function FinanzasPage() {
         action={
           <div className="flex items-center gap-2">
             {puedeExportar && (
-              <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={handleExportar}>
+              <Button skeleton={initialLoading} variant="outline" icon={<Download className="w-5 h-5" />} onClick={handleExportar}>
                 Exportar
               </Button>
             )}
             {puedeCrear && (
-              <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+              <Button skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
                 Nueva Transacción
               </Button>
             )}
