@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MaquinasService, TOPE_CATALOGO_MAQUINAS } from '../modules/maquinas/maquinas.service';
+import { hoyEnZona, inicioDelDiaEnZona, sumarDiasFecha } from '../common/validacion';
 import { CreateGeocercaDto } from './dto/create-geocerca.dto';
 import { UpdateGeocercaDto } from './dto/update-geocerca.dto';
 import { QueryGeocercasDto } from './dto/query-geocercas.dto';
@@ -18,6 +20,11 @@ const MINUTOS_SIN_SENAL = 15;
 const VELOCIDAD_MINIMA_MOVIMIENTO = 2;
 /** Tope de cruces de geocerca en el historial del día (hay uno por geocerca con movimiento). */
 const LIMITE_CRUCES_HISTORIAL = 200;
+/**
+ * Tope de geocercas activas que se evalúan en cada lectura (datos maestros, no un listado que crezca sin fin).
+ * Los cruces máquina-geocerca se acotan con máquinas × geocercas, que es su máximo real.
+ */
+const TOPE_GEOCERCAS_ACTIVAS = 500;
 
 export type EstadoGpsMaquina = 'moving' | 'idle' | 'offline' | 'alert';
 
@@ -26,6 +33,7 @@ export class GpsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly maquinasService: MaquinasService,
   ) {}
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -284,11 +292,14 @@ export class GpsService {
         trabajadores: { select: { nombre: true } },
       },
       orderBy: { codigo: 'asc' },
+      take: TOPE_CATALOGO_MAQUINAS,
     });
 
     if (maquinas.length === 0) return [];
 
     const ids = maquinas.map((m) => m.id);
+    // La alerta de consumo sale de la última carga real (la columna de la máquina no la actualiza ningún flujo).
+    const ultimaCarga = await this.maquinasService.ultimaCargaPorMaquina(ids);
 
     // Un solo query para el último ping de cada máquina (DISTINCT ON), en vez
     // de N queries — el historial crece rápido y esta vista se refresca sola.
@@ -303,11 +314,12 @@ export class GpsService {
         temperatura_motor: Prisma.Decimal | null;
         horometro: Prisma.Decimal | null;
         ignition: boolean | null;
+        proveedor_gps: string;
       }>
     >`
       SELECT DISTINCT ON (maquina_id)
         maquina_id, fecha_hora, lat, lng, velocidad_kmh, heading,
-        temperatura_motor, horometro, ignition
+        temperatura_motor, horometro, ignition, proveedor_gps
       FROM rastreo_gps
       WHERE maquina_id IN (${Prisma.join(ids)}) AND activo = true
       ORDER BY maquina_id, fecha_hora DESC
@@ -317,6 +329,7 @@ export class GpsService {
     const cruces = await this.prisma.geocerca_maquinas.findMany({
       where: { maquina_id: { in: ids }, dentro: true, geocercas: { eliminado_en: null, activa: true } },
       include: { geocercas: { select: { nombre: true, color: true } } },
+      take: ids.length * TOPE_GEOCERCAS_ACTIVAS,
     });
     const geocercasPorMaquina = new Map<string, Array<{ nombre: string; color: string }>>();
     for (const c of cruces) {
@@ -336,7 +349,7 @@ export class GpsService {
       let status: EstadoGpsMaquina;
       if (sinSenal) {
         status = 'offline';
-      } else if (m.estado === 'MANTENIMIENTO' || m.alerta_consumo_anormal) {
+      } else if (m.estado === 'MANTENIMIENTO' || ultimaCarga.get(m.id)?.alerta) {
         status = 'alert';
       } else if (velocidad >= VELOCIDAD_MINIMA_MOVIMIENTO) {
         status = 'moving';
@@ -362,6 +375,8 @@ export class GpsService {
         hours: Math.round(Number(ping?.horometro ?? m.horometro)),
         lastUpdate: ping ? this.formatoRelativo(minutosDesdePing) : 'Sin registro',
         ultimaFechaHora: ping ? ping.fecha_hora.toISOString() : null,
+        // Mientras no llegue el feed del proveedor, las posiciones las genera la simulación: la vista lo avisa.
+        simulada: ping?.proveedor_gps === 'SIMULADO',
         operator: m.trabajadores?.nombre ?? undefined,
         geocercas: dentroDe,
       };
@@ -383,10 +398,11 @@ export class GpsService {
     });
     if (!maquina) throw new NotFoundException(`Máquina "${maquinaCodigo}" no encontrada`);
 
-    const fecha = query.fecha ? new Date(`${query.fecha}T00:00:00.000Z`) : new Date();
-    const inicio = new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate(), 0, 0, 0));
-    const fin = new Date(inicio);
-    fin.setUTCDate(fin.getUTCDate() + 1);
+    // El día se corta en la zona de la empresa. Antes se cortaba a medianoche UTC y "hoy" incluía de las
+    // 6 p.m. a la medianoche de ayer (y lo de hoy después de las 6 p.m. no salía hasta el día siguiente).
+    const dia = query.fecha ? query.fecha.slice(0, 10) : hoyEnZona();
+    const inicio = inicioDelDiaEnZona(dia);
+    const fin = inicioDelDiaEnZona(sumarDiasFecha(dia, 1));
 
     const puntos = await this.prisma.rastreo_gps.findMany({
       where: { maquina_id: maquina.id, activo: true, fecha_hora: { gte: inicio, lt: fin } },
@@ -423,7 +439,7 @@ export class GpsService {
     return {
       maquinaId: maquina.codigo ?? maquina.id,
       maquinaNombre: maquina.nombre,
-      fecha: inicio.toISOString().split('T')[0],
+      fecha: dia,
       puntos: puntos.map((p) => ({
         lat: Number(p.lat),
         lng: Number(p.lng),
@@ -451,6 +467,7 @@ export class GpsService {
     const maquinas = await this.prisma.maquinas.findMany({
       where: { eliminado_en: null, activo: true },
       select: { id: true, codigo: true, lat: true, lng: true, horometro: true, estado: true },
+      take: TOPE_CATALOGO_MAQUINAS,
     });
     if (maquinas.length === 0) {
       return this.fallir(
@@ -570,6 +587,7 @@ export class GpsService {
     const geocercas = await this.prisma.geocercas.findMany({
       where: { eliminado_en: null, activa: true },
       select: { id: true, nombre: true, centro_lat: true, centro_lng: true, radio_metros: true },
+      take: TOPE_GEOCERCAS_ACTIVAS,
     });
 
     const entradas: Array<{ maquinaId: string; geocerca: string }> = [];
@@ -579,6 +597,8 @@ export class GpsService {
     const maquinaIds = posiciones.map((p) => p.maquinaId);
     const estadosPrevios = await this.prisma.geocerca_maquinas.findMany({
       where: { maquina_id: { in: maquinaIds }, geocerca_id: { in: geocercas.map((g) => g.id) } },
+      // Como máximo una fila por pareja máquina-geocerca.
+      take: maquinaIds.length * geocercas.length,
     });
     const clave = (geocercaId: string, maquinaId: string) => `${geocercaId}:${maquinaId}`;
     const previoPorClave = new Map(estadosPrevios.map((e) => [clave(e.geocerca_id, e.maquina_id), e]));

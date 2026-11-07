@@ -9,7 +9,12 @@ export interface Maquina {
   lat: number;
   lng: number;
   dieselHoy: number;
+  /** Fecha sembrada que ningún flujo actualiza; el próximo servicio real es por horas (campos de abajo). */
   proximoMantenimiento: string;
+  /** Horómetro al que toca el próximo servicio (del último registro de Mantenimiento). */
+  proximoServicioHoras?: number;
+  /** Horas que faltan para ese servicio; negativo = ya se pasó. Sin servicio registrado: undefined. */
+  horasParaServicio?: number;
   imagen?: string;
   consumoEsperadoLtsHora?: number;
   rendimientoActualLtsHora?: number;

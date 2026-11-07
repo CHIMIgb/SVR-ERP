@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import { Request } from 'express';
 import { MaquinasService } from './maquinas.service';
 import { CreateMaquinaDto } from './dto/create-maquina.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -10,6 +11,7 @@ import { RequirePermission } from '../../auth/guards/require-permission.decorato
 export class MaquinasController {
   constructor(private readonly maquinasService: MaquinasService) {}
 
+  /** Catálogo de la flota (datos maestros): lo consumen los selects de Horómetro, Mantenimiento, Combustible y GPS. */
   @RequirePermission('maquinaria', 'flota', 'ver')
   @Get()
   async findAll() {
@@ -18,7 +20,9 @@ export class MaquinasController {
 
   @RequirePermission('maquinaria', 'flota', 'crear')
   @Post()
-  async create(@Body() dto: CreateMaquinaDto) {
-    return this.maquinasService.create(dto);
+  @HttpCode(HttpStatus.CREATED)
+  async create(@Body() dto: CreateMaquinaDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.maquinasService.create(dto, user.id);
   }
 }

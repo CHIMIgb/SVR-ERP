@@ -1,7 +1,7 @@
 import { IsIn, IsOptional, IsString, IsUUID, IsDateString, IsBooleanString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export const ESTADOS_ASISTENCIA = ['Puntual', 'Retardo', 'Falta', 'Justificado', 'No Presentado', 'Salida Anticipada'] as const;
+export const ESTADOS_ASISTENCIA = ['Puntual', 'Retardo', 'Falta', 'Justificado', 'No Presentado', 'Salida Anticipada', 'Omisión'] as const;
 
 export class QueryAsistenciaDto {
   @IsOptional()

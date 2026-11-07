@@ -177,6 +177,37 @@ describe('NominaService', () => {
       prisma.periodos_nomina.findFirst.mockResolvedValue(null);
       await expect(service.sincronizarAsistencia('missing', 'user-1')).rejects.toThrow(NotFoundException);
     });
+
+    it('never rewrites a nómina that was already paid (the delivered receipt would change)', async () => {
+      prisma.nominas.findMany.mockResolvedValue([{ ...mockNomina, estado: 'PAGADA', trabajadores: mockTrabajador }]);
+      mockAsistencia.findSemanal.mockResolvedValue([
+        { trabajadorId: mockTrabajador.id, totalDiasAsistidos: 4, totalFaltas: 2, totalHorasOrdinarias: 32, totalHorasExtra: 1 },
+      ]);
+      const result = await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      expect(prisma.deducciones_nomina.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.nominas.update).not.toHaveBeenCalled();
+      expect(result.nominasPagadasSinCambio).toBe(1);
+      expect(result.totalFaltasAplicadas).toBe(0);
+    });
+
+    it('reports how many faltas come from unresolved omisiones and how many are still pending today', async () => {
+      mockAsistencia.findSemanal.mockResolvedValue([
+        {
+          trabajadorId: mockTrabajador.id,
+          totalDiasAsistidos: 3,
+          totalFaltas: 2,
+          totalOmisionesVencidas: 1,
+          totalOmisionesPendientes: 1,
+          totalHorasOrdinarias: 24,
+          totalHorasExtra: 0,
+        },
+      ]);
+      const result = await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      expect(result.totalOmisionesVencidas).toBe(1);
+      expect(result.totalOmisionesPendientes).toBe(1);
+      expect(result.totalFaltasAplicadas).toBe(2);
+    });
   });
 
   describe('registrarAjuste', () => {

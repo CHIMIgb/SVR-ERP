@@ -251,6 +251,31 @@ body {
   display: none;
 }
 
+/* ── Impresión de documentos ──
+   Un bloque `.solo-impresion` montado como hijo directo de <body> (con <Portal>) no se ve
+   en pantalla; al imprimir, se imprime SOLO ese bloque y se oculta el resto de la app
+   (menú, página de fondo, velo del modal). Lo usan los recibos de nómina. */
+.solo-impresion {
+  display: none;
+}
+@media print {
+  /* Papel blanco aunque la app esté en modo oscuro. */
+  html:has(.solo-impresion),
+  body:has(> .solo-impresion) {
+    background: #fff !important;
+    color-scheme: light;
+    /* El modal abierto bloquea el scroll del body; al imprimir no debe recortar a una hoja. */
+    overflow: visible !important;
+    height: auto !important;
+  }
+  body:has(> .solo-impresion) > :not(.solo-impresion) {
+    display: none !important;
+  }
+  .solo-impresion {
+    display: block;
+  }
+}
+
 /* ── Legacy component classes (deprecated, use new UI components) ── */
 @layer components {
   .btn-primary {

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { esFechaFutura } from '../common/validacion';
 import { CreateBitacoraRentaDto } from './dto/create-bitacora-renta.dto';
 import { UpdateBitacoraRentaDto } from './dto/update-bitacora-renta.dto';
 import { QueryBitacorasRentaDto } from './dto/query-bitacoras-renta.dto';
@@ -47,6 +48,9 @@ const BITACORA_INCLUDE = {
   clientes: { select: { nombre: true } },
   firmas_cliente: true,
 } as const;
+
+/** Una hoja de bitácora es de un solo día. */
+const HORAS_MAXIMAS_DIA = 24;
 
 const ENTITY_TYPE = 'bitacoras_renta_diaria';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -121,6 +125,26 @@ export class BitacorasRentaService {
   }
 
   async create(dto: CreateBitacoraRentaDto, userId: string): Promise<BitacoraRentaResponse> {
+    if (esFechaFutura(dto.fecha)) {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_CREADA,
+        null,
+        'FECHA_FUTURA',
+        BadRequestException,
+        'La hoja de bitácora no puede ser de una fecha futura',
+      );
+    }
+
+    if (dto.horasEfectivas + (dto.horasExtras ?? 0) > HORAS_MAXIMAS_DIA) {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_CREADA,
+        null,
+        'HORAS_INVALIDAS',
+        BadRequestException,
+        `Las horas efectivas más las extras no pueden pasar de ${HORAS_MAXIMAS_DIA} en un día`,
+      );
+    }
+
     if (dto.horometroFinal < dto.horometroInicial) {
       return this.fallir(
         AuditAction.BITACORA_RENTA_CREADA,
@@ -247,6 +271,66 @@ export class BitacorasRentaService {
       );
     }
 
+    // Ya facturada: su importe es el de la cuenta por cobrar que generó, así que no se toca.
+    if (existente.estado_cobro === 'FACTURADO') {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ACTUALIZADA,
+        id,
+        'BITACORA_YA_FACTURADA',
+        ConflictException,
+        'La bitácora ya fue facturada y no se puede modificar',
+      );
+    }
+    // "Facturado" solo se alcanza con POST /:id/facturar, que es el que crea la cuenta por cobrar.
+    if (dto.estadoCobro === 'Facturado') {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ACTUALIZADA,
+        id,
+        'FACTURAR_CON_ACCION',
+        BadRequestException,
+        'Para facturar una bitácora usa la acción Facturar, que crea la cuenta por cobrar',
+      );
+    }
+    const firmadaAlFinal = dto.firmado ?? existente.firmas_cliente?.firmado ?? false;
+    if (dto.estadoCobro === 'Listo para Facturar' && !firmadaAlFinal) {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ACTUALIZADA,
+        id,
+        'FALTA_FIRMA_CLIENTE',
+        BadRequestException,
+        'La bitácora no puede quedar lista para facturar sin la firma del residente del cliente',
+      );
+    }
+    if (dto.estadoCobro === 'Pendiente Firma' && firmadaAlFinal) {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ACTUALIZADA,
+        id,
+        'ESTADO_INCOHERENTE',
+        BadRequestException,
+        'Una bitácora firmada no puede quedar pendiente de firma',
+      );
+    }
+    if (dto.fecha !== undefined && esFechaFutura(dto.fecha)) {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ACTUALIZADA,
+        id,
+        'FECHA_FUTURA',
+        BadRequestException,
+        'La hoja de bitácora no puede ser de una fecha futura',
+      );
+    }
+    const horasDelDia =
+      (dto.horasEfectivas ?? Number(existente.horas_efectivas)) + (dto.horasExtras ?? Number(existente.horas_extras));
+    if (horasDelDia > HORAS_MAXIMAS_DIA) {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ACTUALIZADA,
+        id,
+        'HORAS_INVALIDAS',
+        BadRequestException,
+        `Las horas efectivas más las extras no pueden pasar de ${HORAS_MAXIMAS_DIA} en un día`,
+      );
+    }
+
     const horometroInicialEfectivo = dto.horometroInicial ?? Number(existente.horometro_inicial);
     const horometroFinalEfectivo = dto.horometroFinal ?? Number(existente.horometro_final);
     if (horometroFinalEfectivo < horometroInicialEfectivo) {
@@ -286,58 +370,80 @@ export class BitacorasRentaService {
 
     const now = new Date();
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.bitacoras_renta_diaria.update({
-        where: { id },
-        data: {
-          ...(maquinaId && { maquina_id: maquinaId }),
-          ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
-          ...(clienteId && { cliente_id: clienteId }),
-          ...(dto.obraUbicacion !== undefined && { obra_ubicacion: dto.obraUbicacion }),
-          ...(dto.horaInicio !== undefined && { hora_inicio: this.horaAUtc(dto.horaInicio) }),
-          ...(dto.horaFin !== undefined && { hora_fin: this.horaAUtc(dto.horaFin) }),
-          ...(dto.horasEfectivas !== undefined && { horas_efectivas: dto.horasEfectivas }),
-          ...(dto.horasExtras !== undefined && { horas_extras: dto.horasExtras }),
-          ...(dto.horometroInicial !== undefined && { horometro_inicial: dto.horometroInicial }),
-          ...(dto.horometroFinal !== undefined && { horometro_final: dto.horometroFinal }),
-          ...(dto.actividadRealizada !== undefined && { actividad_realizada: dto.actividadRealizada }),
-          tarifa_hora_renta: tarifaEfectiva,
-          importe_total_renta: importeTotalRenta,
-          ...(dto.estadoCobro !== undefined && { estado_cobro: ESTADO_COBRO_UI_A_DB[dto.estadoCobro] as never }),
-          actualizado_por: userId,
-          actualizado_en: now,
-        },
-      });
-
-      if (dto.firmado !== undefined || dto.nombreResidente !== undefined || dto.cargoResidente !== undefined) {
-        await tx.firmas_cliente.upsert({
-          where: { bitacora_id: id },
-          create: {
-            id: randomUUID(),
-            bitacora_id: id,
-            firmado: dto.firmado ?? false,
-            nombre_residente: dto.nombreResidente,
-            cargo_residente: dto.cargoResidente,
-            fecha_firma: dto.firmado ? now : undefined,
-            creado_por: userId,
-            actualizado_por: userId,
-            actualizado_en: now,
-          },
-          update: {
-            ...(dto.firmado !== undefined && { firmado: dto.firmado, fecha_firma: dto.firmado ? now : null }),
-            ...(dto.nombreResidente !== undefined && { nombre_residente: dto.nombreResidente }),
-            ...(dto.cargoResidente !== undefined && { cargo_residente: dto.cargoResidente }),
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Escritura condicional: si entre la lectura de arriba y este punto otra petición la facturó, no se toca
+        // (si no, la cuenta por cobrar quedaría con un importe y la bitácora con otro).
+        const escrita = await tx.bitacoras_renta_diaria.updateMany({
+          where: { id, eliminado_en: null, estado_cobro: { not: 'FACTURADO' } },
+          data: {
+            ...(maquinaId && { maquina_id: maquinaId }),
+            ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
+            ...(clienteId && { cliente_id: clienteId }),
+            ...(dto.obraUbicacion !== undefined && { obra_ubicacion: dto.obraUbicacion }),
+            ...(dto.horaInicio !== undefined && { hora_inicio: this.horaAUtc(dto.horaInicio) }),
+            ...(dto.horaFin !== undefined && { hora_fin: this.horaAUtc(dto.horaFin) }),
+            ...(dto.horasEfectivas !== undefined && { horas_efectivas: dto.horasEfectivas }),
+            ...(dto.horasExtras !== undefined && { horas_extras: dto.horasExtras }),
+            ...(dto.horometroInicial !== undefined && { horometro_inicial: dto.horometroInicial }),
+            ...(dto.horometroFinal !== undefined && { horometro_final: dto.horometroFinal }),
+            ...(dto.actividadRealizada !== undefined && { actividad_realizada: dto.actividadRealizada }),
+            tarifa_hora_renta: tarifaEfectiva,
+            importe_total_renta: importeTotalRenta,
+            ...(dto.estadoCobro !== undefined && { estado_cobro: ESTADO_COBRO_UI_A_DB[dto.estadoCobro] as never }),
             actualizado_por: userId,
             actualizado_en: now,
           },
         });
-
-        // Si se firma y el estado seguia pendiente, avanza automaticamente.
-        if (dto.firmado && !dto.estadoCobro && existente.estado_cobro === 'PENDIENTE_FIRMA') {
-          await tx.bitacoras_renta_diaria.update({ where: { id }, data: { estado_cobro: 'LISTO_FACTURAR' } });
+        if (escrita.count === 0) {
+          throw new ConflictException('La bitácora ya fue facturada y no se puede modificar');
         }
+
+        if (dto.firmado !== undefined || dto.nombreResidente !== undefined || dto.cargoResidente !== undefined) {
+          await tx.firmas_cliente.upsert({
+            where: { bitacora_id: id },
+            create: {
+              id: randomUUID(),
+              bitacora_id: id,
+              firmado: dto.firmado ?? false,
+              nombre_residente: dto.nombreResidente,
+              cargo_residente: dto.cargoResidente,
+              fecha_firma: dto.firmado ? now : undefined,
+              creado_por: userId,
+              actualizado_por: userId,
+              actualizado_en: now,
+            },
+            update: {
+              ...(dto.firmado !== undefined && { firmado: dto.firmado, fecha_firma: dto.firmado ? now : null }),
+              ...(dto.nombreResidente !== undefined && { nombre_residente: dto.nombreResidente }),
+              ...(dto.cargoResidente !== undefined && { cargo_residente: dto.cargoResidente }),
+              actualizado_por: userId,
+              actualizado_en: now,
+            },
+          });
+
+          // Si se firma y el estado seguia pendiente, avanza automaticamente.
+          if (dto.firmado && !dto.estadoCobro && existente.estado_cobro === 'PENDIENTE_FIRMA') {
+            await tx.bitacoras_renta_diaria.update({ where: { id }, data: { estado_cobro: 'LISTO_FACTURAR' } });
+          }
+          // Y al revés: sin firma ya no está lista para facturar.
+          if (dto.firmado === false && existente.estado_cobro === 'LISTO_FACTURAR') {
+            await tx.bitacoras_renta_diaria.update({ where: { id }, data: { estado_cobro: 'PENDIENTE_FIRMA' } });
+          }
+        }
+      });
+    } catch (e) {
+      if (e instanceof ConflictException) {
+        return this.fallir(
+          AuditAction.BITACORA_RENTA_ACTUALIZADA,
+          id,
+          'BITACORA_YA_FACTURADA',
+          ConflictException,
+          'La bitácora ya fue facturada y no se puede modificar',
+        );
       }
-    });
+      throw e;
+    }
 
     const actualizada = await this.prisma.bitacoras_renta_diaria.findUniqueOrThrow({
       where: { id },
@@ -372,6 +478,16 @@ export class BitacorasRentaService {
         'BITACORA_NO_ENCONTRADA',
         NotFoundException,
         `Bitácora de renta con id "${id}" no encontrada`,
+      );
+    }
+    // Facturada: es el respaldo de una cuenta por cobrar; borrarla dejaría la cuenta sin soporte.
+    if (existente.estado_cobro === 'FACTURADO') {
+      return this.fallir(
+        AuditAction.BITACORA_RENTA_ELIMINADA,
+        id,
+        'BITACORA_YA_FACTURADA',
+        ConflictException,
+        'Una bitácora facturada no se puede eliminar: respalda una cuenta por cobrar',
       );
     }
 
@@ -457,11 +573,12 @@ export class BitacorasRentaService {
       await this.prisma.$transaction(async (tx) => {
         // Guard anti doble clic: solo marca FACTURADO la fila que sigue LISTO_FACTURAR.
         const actualizada = await tx.bitacoras_renta_diaria.updateMany({
-          where: { id, estado_cobro: 'LISTO_FACTURAR' },
+          // Y con el mismo importe que se leyó: si alguien la editó en medio, la CxC no nace con un monto viejo.
+          where: { id, estado_cobro: 'LISTO_FACTURAR', importe_total_renta: bitacora.importe_total_renta },
           data: { estado_cobro: 'FACTURADO', actualizado_por: userId, actualizado_en: now },
         });
         if (actualizada.count === 0) {
-          throw new ConflictException('La bitácora ya fue facturada');
+          throw new ConflictException('La bitácora ya fue facturada o cambió mientras se facturaba');
         }
 
         await tx.cuentas_por_cobrar.create({
@@ -479,14 +596,14 @@ export class BitacorasRentaService {
         });
       });
     } catch (e) {
-      // Carrera de doble clic: el updateMany no marcó nada → conflicto con audit FAIL.
+      // Carrera (doble clic, o una edición en medio): el updateMany no marcó nada → conflicto con audit FAIL.
       if (e instanceof ConflictException) {
         return this.fallir(
           AuditAction.BITACORA_FACTURADA,
           id,
           'BITACORA_YA_FACTURADA',
           ConflictException,
-          'La bitácora ya fue facturada',
+          'La bitácora ya fue facturada o cambió mientras se facturaba; recarga y vuelve a intentar',
         );
       }
       throw e;

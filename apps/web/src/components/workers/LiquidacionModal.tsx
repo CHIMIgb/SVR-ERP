@@ -1,318 +1,493 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Printer, UserX, Loader2 } from 'lucide-react';
-import type { TrabajadorDTO } from '@/lib/api';
-import { trabajadoresApi } from '@/lib/api';
+import React, { useEffect, useRef, useState } from 'react';
+import { trabajadoresApi, type LiquidarInput, type TrabajadorDTO } from '@/lib/api';
+import { APP_TIMEZONE, formatCurrency, formatFechaSolo } from '@/lib/formatters';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
-import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Select } from '@/components/ui/Select';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { Portal } from '@/components/ui/Portal';
+
+/** Razón social que firma el convenio (la que ya usaba la carta; RFC y domicilio se dejaron fuera por no ser reales). */
+const EMPRESA = 'CONSTRUCTORA SVR S.A. DE C.V.';
+
+type TipoTerminacion = LiquidarInput['tipoTerminacion'];
+
+const MOTIVOS: { value: TipoTerminacion; label: string; descripcion: string }[] = [
+  { value: 'Despido', label: 'Despido', descripcion: 'Finiquito + indemnización de 90 días, 20 días por año y prima de antigüedad.' },
+  { value: 'Renuncia', label: 'Renuncia o fin de obra', descripcion: 'Solo el finiquito proporcional.' },
+  { value: 'Convenio', label: 'Convenio entre las partes', descripcion: 'Finiquito + gratificación de 45 días.' },
+];
+
+const TITULO_CONVENIO: Record<TipoTerminacion, string> = {
+  Despido: 'LIQUIDACIÓN E INDEMNIZACIÓN LABORAL',
+  Renuncia: 'RENUNCIA VOLUNTARIA',
+  Convenio: 'CONVENIO MUTUO',
+};
+
+// Mismos topes que LiquidarTrabajadorDto de la API.
+const DIAS_PERIODO_MAX = 31;
+const DIAS_VACACIONES_MAX = 365;
+const PRESTAMO_MAX = 99_999_999;
+const MONTO_VALIDO = /^\d+(\.\d{1,2})?$/;
+
+interface Desglose {
+  diasAntiguedad: number;
+  aniosAntiguedad: number;
+  sueldoDiario: number;
+  montoDiasTrabajados: number;
+  diasAguinaldo: number;
+  montoAguinaldo: number;
+  montoVacaciones: number;
+  montoPrimaVacacional: number;
+  subtotalFiniquito: number;
+  indemnizacion90: number;
+  indemnizacion20PorAnio: number;
+  primaAntiguedad: number;
+  subtotalIndemnizaciones: number;
+  granTotalNeto: number;
+}
+
+const r2 = (n: number) => Number(n.toFixed(2));
+
+/**
+ * Vista previa con la misma fórmula que `TrabajadoresService.liquidar()`. La API recalcula al confirmar y su
+ * resultado es el que se paga y se audita.
+ */
+function calcular(t: TrabajadorDTO, fechaIngreso: string, tipo: TipoTerminacion, dias: number, vac: number, prestamos: number): Desglose {
+  const diasAntiguedad = Math.max(0, Math.ceil((Date.now() - Date.parse(fechaIngreso)) / 86400000));
+  const aniosAntiguedad = Math.max(0.1, r2(diasAntiguedad / 365.25));
+  const sueldoDiario = (t.sueldoFiscal + t.sueldoEfectivo) / 6;
+  const montoDiasTrabajados = r2(dias * sueldoDiario);
+  const diasAguinaldo = r2((diasAntiguedad % 365) * (15 / 365));
+  const montoAguinaldo = r2(diasAguinaldo * sueldoDiario);
+  const montoVacaciones = r2(vac * sueldoDiario);
+  const montoPrimaVacacional = r2(montoVacaciones * 0.25);
+  const subtotalFiniquito = montoDiasTrabajados + montoAguinaldo + montoVacaciones + montoPrimaVacacional;
+  let indemnizacion90 = 0;
+  let indemnizacion20PorAnio = 0;
+  let primaAntiguedad = 0;
+  if (tipo === 'Despido') {
+    indemnizacion90 = r2(90 * sueldoDiario);
+    indemnizacion20PorAnio = r2(20 * aniosAntiguedad * sueldoDiario);
+    primaAntiguedad = r2(12 * aniosAntiguedad * Math.min(sueldoDiario, 498));
+  } else if (tipo === 'Convenio') {
+    indemnizacion90 = r2(45 * sueldoDiario);
+  }
+  const subtotalIndemnizaciones = indemnizacion90 + indemnizacion20PorAnio + primaAntiguedad;
+  const granTotalNeto = Math.max(0, r2(subtotalFiniquito + subtotalIndemnizaciones - prestamos));
+  return {
+    diasAntiguedad, aniosAntiguedad, sueldoDiario: r2(sueldoDiario), montoDiasTrabajados, diasAguinaldo, montoAguinaldo,
+    montoVacaciones, montoPrimaVacacional, subtotalFiniquito, indemnizacion90, indemnizacion20PorAnio, primaAntiguedad,
+    subtotalIndemnizaciones, granTotalNeto,
+  };
+}
+
+/** Número dentro de [0, max], o null si no lo es. */
+function leerNumero(valor: string, max: number): number | null {
+  if (valor.trim() === '') return null;
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n < 0 || n > max) return null;
+  return n;
+}
+
+function fechaLarga(): string {
+  return new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: APP_TIMEZONE });
+}
+
+function Fila({ concepto, monto, negativo }: { concepto: string; monto: number; negativo?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-ui-100 last:border-0">
+      <span className="text-sm text-ui-600 min-w-0">{concepto}</span>
+      <span className={negativo ? 'text-sm tabular-nums text-red-600 dark:text-red-400 shrink-0' : 'text-sm tabular-nums text-ui-900 shrink-0'}>
+        {negativo ? '−' : ''}{formatCurrency(monto)}
+      </span>
+    </div>
+  );
+}
+
+interface CartaProps {
+  trabajador: TrabajadorDTO;
+  tipo: TipoTerminacion;
+  d: Desglose;
+  prestamos: number;
+}
+
+/** Hoja del convenio: siempre en blanco y negro (se imprime así aunque la pantalla esté en modo oscuro). */
+function CartaFiniquito({ trabajador, tipo, d, prestamos }: CartaProps) {
+  return (
+    <div className="bg-white text-slate-900 p-6 sm:p-10 rounded-xl border border-slate-200 space-y-6 text-[13px] leading-relaxed">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 border-b-2 border-slate-900 pb-4">
+        <p className="text-lg font-bold tracking-tight">{EMPRESA}</p>
+        <div className="sm:text-right">
+          <p className="text-xs font-bold uppercase">Convenio de finiquito</p>
+          <p className="text-xs text-slate-600">{fechaLarga()}</p>
+        </div>
+      </div>
+
+      <div className="space-y-3 sm:text-justify">
+        <p>
+          En ______________________, a {fechaLarga()}, comparecen por una parte <strong>{EMPRESA}</strong> (en lo
+          sucesivo “EL PATRÓN”) y por la otra el C. <strong>{trabajador.nombre}</strong> (en lo sucesivo “EL
+          TRABAJADOR”), quien desempeñaba el puesto de <strong>{trabajador.puesto}</strong>, con fecha de ingreso
+          el <strong>{formatFechaSolo(trabajador.fechaContratacion)}</strong> y una antigüedad de{' '}
+          <strong>{d.aniosAntiguedad} años</strong>.
+        </p>
+        <p>
+          Ambas partes convienen en dar por terminada la relación de trabajo de forma definitiva bajo el concepto de{' '}
+          <strong>{TITULO_CONVENIO[tipo]}</strong>.
+        </p>
+        <p>EL TRABAJADOR manifiesta recibir en este acto, a su entera satisfacción, la cantidad neta de:</p>
+        <div className="py-3 px-4 border border-slate-400 rounded-lg text-center">
+          <p className="text-2xl font-bold">{formatCurrency(d.granTotalNeto)} MXN</p>
+          <p className="text-[11px] text-slate-600 mt-1">
+            Finiquito {formatCurrency(d.subtotalFiniquito)} · Indemnizaciones {formatCurrency(d.subtotalIndemnizaciones)} ·
+            Deducciones {formatCurrency(prestamos)}
+          </p>
+        </div>
+        <p>
+          EL TRABAJADOR otorga a {EMPRESA} el más amplio finiquito que en derecho proceda y manifiesta que durante el
+          tiempo que prestó sus servicios le fueron cubiertos sus salarios, horas extra, aguinaldo, vacaciones, prima
+          vacacional y demás prestaciones de ley, sin reservarse acción ni derecho alguno en contra de la empresa.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8 sm:gap-12 pt-10 text-center">
+        <div>
+          <div className="border-b border-slate-900 h-12" />
+          <p className="mt-2 text-xs font-bold uppercase">{trabajador.nombre}</p>
+          <p className="text-[11px] text-slate-600">Recibí de conformidad</p>
+        </div>
+        <div>
+          <div className="border-b border-slate-900 h-12" />
+          <p className="mt-2 text-xs font-bold uppercase">Nombre y firma</p>
+          <p className="text-[11px] text-slate-600">Por {EMPRESA}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface LiquidacionModalProps {
-  isOpen: boolean;
   onClose: () => void;
+  /** Si viene, se liquida a ese trabajador; si no, se elige de la lista de activos. */
   trabajador?: TrabajadorDTO | null;
   onLiquidado: () => void;
 }
 
-export default function LiquidacionModal({
-  isOpen,
-  onClose,
-  trabajador: initialTrabajador,
-  onLiquidado,
-}: LiquidacionModalProps) {
+export default function LiquidacionModal({ onClose, trabajador: trabajadorInicial, onLiquidado }: LiquidacionModalProps) {
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
-  const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
-  // Lista completa de trabajadores activos para el selector — independiente
-  // de cualquier paginación que tenga la página que abre este modal.
-  const [activos, setActivos] = useState<TrabajadorDTO[]>(initialTrabajador ? [initialTrabajador] : []);
-  const [selectedWorkerId, setSelectedWorkerId] = useState<string>(initialTrabajador?.id ?? '');
+  // Lista de activos solo cuando se abre sin trabajador (botón del encabezado).
+  const conSelector = !trabajadorInicial;
+  const [activos, setActivos] = useState<TrabajadorDTO[]>([]);
+  const [totalActivos, setTotalActivos] = useState(0);
+  const [cargandoActivos, setCargandoActivos] = useState(conSelector);
+  const [errorActivos, setErrorActivos] = useState<string | null>(null);
+  const [intentoActivos, setIntentoActivos] = useState(0);
+  const [seleccionId, setSeleccionId] = useState('');
 
-  const fetchActivos = useCallback(async () => {
-    const res = await trabajadoresApi.listar({ estado: 'Activo', limit: 100 });
-    if (res.success) {
-      setActivos(res.data.items);
-      setSelectedWorkerId((prev) => prev || initialTrabajador?.id || res.data.items[0]?.id || '');
-    }
-  }, [initialTrabajador?.id]);
+  const [vista, setVista] = useState<'calculo' | 'carta'>('calculo');
+  const [tipo, setTipo] = useState<TipoTerminacion>('Despido');
+  const [diasPeriodo, setDiasPeriodo] = useState('0');
+  const [diasVacaciones, setDiasVacaciones] = useState('0');
+  const [deduccion, setDeduccion] = useState('0');
+  const [confirmarOpen, setConfirmarOpen] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen) fetchActivos();
-  }, [isOpen, fetchActivos]);
+    if (!conSelector) return;
+    let vigente = true;
+    (async () => {
+      try {
+        const res = await trabajadoresApi.listar({ estado: 'Activo', limit: 100 });
+        if (!vigente) return;
+        if (res.success) {
+          setActivos(res.data.items);
+          setTotalActivos(res.data.pagination.total);
+          setErrorActivos(null);
+        } else {
+          setErrorActivos(res.error.message);
+        }
+      } catch (error) {
+        if (vigente) setErrorActivos(error instanceof Error ? error.message : 'No se pudo cargar la lista de trabajadores.');
+      } finally {
+        if (vigente) setCargandoActivos(false);
+      }
+    })();
+    return () => {
+      vigente = false;
+    };
+  }, [conSelector, intentoActivos]);
 
-  const worker = activos.find((t) => t.id === selectedWorkerId) ?? initialTrabajador ?? activos[0];
+  const reintentarActivos = () => {
+    setCargandoActivos(true);
+    setIntentoActivos((n) => n + 1);
+  };
 
-  const [tipoTerminacion, setTipoTerminacion] = useState<'Despido' | 'Renuncia' | 'Convenio'>('Despido');
-  const [diasTrabajadosPeriodo, setDiasTrabajadosPeriodo] = useState('6');
-  const [diasVacacionesPendientes, setDiasVacacionesPendientes] = useState('8');
-  const [deduccionesPrestamos, setDeduccionesPrestamos] = useState('0');
-  const [viewMode, setViewMode] = useState<'calculadora' | 'carta_firma'>('calculadora');
-  const [submitting, setSubmitting] = useState(false);
+  const worker = trabajadorInicial ?? activos.find((t) => t.id === seleccionId) ?? null;
+  const fechaIngreso = worker?.fechaContratacion ?? null;
 
-  const fechaBaja = new Date().toISOString().split('T')[0];
+  const dias = leerNumero(diasPeriodo, DIAS_PERIODO_MAX);
+  const vac = leerNumero(diasVacaciones, DIAS_VACACIONES_MAX);
+  // Mismo tope que LiquidarTrabajadorDto; con hasta 2 decimales (es dinero).
+  const prestamos = MONTO_VALIDO.test(deduccion.trim()) ? leerNumero(deduccion, PRESTAMO_MAX) : null;
+  const valoresValidos = dias !== null && vac !== null && prestamos !== null;
+  const d = worker && fechaIngreso ? calcular(worker, fechaIngreso, tipo, dias ?? 0, vac ?? 0, prestamos ?? 0) : null;
+  // La API recorta el neto a 0: se avisa en vez de dejar que el descuento "desaparezca".
+  const deduccionExcede = !!d && (prestamos ?? 0) > d.subtotalFiniquito + d.subtotalIndemnizaciones;
+  const puedeConfirmar = !!worker && !!d && valoresValidos && worker.estado !== 'Inactivo';
 
-  const handlePrint = () => window.print();
-
-  const handleEjecutarBaja = async () => {
-    if (!worker) return;
-    setSubmitting(true);
-    const res = await trabajadoresApi.liquidar(worker.id, {
-      tipoTerminacion,
-      diasTrabajadosPeriodo: parseFloat(diasTrabajadosPeriodo) || 0,
-      diasVacacionesPendientes: parseFloat(diasVacacionesPendientes) || 0,
-      deduccionesPrestamos: parseFloat(deduccionesPrestamos) || 0,
-    });
-    setSubmitting(false);
-
-    if (res.success) {
-      showToast(`Baja y liquidación de ${worker.nombre} registrada por ${fmt.format(res.data.granTotalNeto)}.`, 'success');
-      addNotification({
-        titulo: `Empleado Liquidado: ${worker.nombre}`,
-        mensaje: `Se procesó la baja por ${tipoTerminacion}. Importe total a liquidar: ${fmt.format(res.data.granTotalNeto)}. Equipo liberado.`,
-        tipo: 'alerta',
-      });
-      onLiquidado();
-      onClose();
-    } else {
-      showToast(res.error.message, 'error');
+  const imprimir = () => {
+    try {
+      window.print();
+    } catch (error) {
+      showToast(`El navegador no permitió imprimir: ${error instanceof Error ? error.message : 'error desconocido'}.`, 'error');
     }
   };
 
-  if (!worker) return null;
+  const ejecutarBaja = async () => {
+    if (!worker || !puedeConfirmar || enviandoRef.current) return;
+    enviandoRef.current = true;
+    setEnviando(true);
+    try {
+      const res = await trabajadoresApi.liquidar(worker.id, {
+        tipoTerminacion: tipo,
+        diasTrabajadosPeriodo: dias ?? 0,
+        diasVacacionesPendientes: vac ?? 0,
+        deduccionesPrestamos: prestamos ?? 0,
+      });
+      if (!res.success) {
+        if (res.error.code === 'CONFLICT') {
+          // Ya estaba dado de baja (otra pestaña, otra persona, o una respuesta que se perdió): se refresca la
+          // vista en vez de dejar el modal abierto con un botón que ya no puede funcionar.
+          showToast(`${res.error.message}. Se actualizó la lista.`, 'warning');
+          setConfirmarOpen(false);
+          onLiquidado();
+          onClose();
+          return;
+        }
+        showToast(res.error.message, 'error');
+        return;
+      }
+      showToast(`${worker.nombre} quedó dado de baja. Total del finiquito: ${formatCurrency(res.data.granTotalNeto)}.`, 'success');
+      addNotification({
+        titulo: `Baja de ${worker.nombre}`,
+        mensaje: `${MOTIVOS.find((m) => m.value === tipo)?.label}: ${formatCurrency(res.data.granTotalNeto)}. Su máquina quedó libre.`,
+        tipo: 'alerta',
+      });
+      setConfirmarOpen(false);
+      onLiquidado();
+      onClose();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'No se pudo registrar la baja.', 'error');
+    } finally {
+      enviandoRef.current = false;
+      setEnviando(false);
+    }
+  };
 
-  // Cálculo client-side solo para PREVISUALIZAR mientras se ajustan los
-  // parámetros — el servidor recalcula todo con la misma fórmula al confirmar
-  // y es la única fuente de verdad de lo que finalmente se paga y se audita.
-  const fechaIngreso = new Date(worker.fechaContratacion ?? '2023-01-15');
-  const diffDays = Math.max(0, Math.ceil((new Date(fechaBaja).getTime() - fechaIngreso.getTime()) / 86400000));
-  const aniosAntiguedad = Math.max(0.1, +(diffDays / 365.25).toFixed(2));
-  const sueldoDiario = +((worker.sueldoFiscal + worker.sueldoEfectivo) / 6).toFixed(2);
-  const diasPeriodo = parseFloat(diasTrabajadosPeriodo) || 0;
-  const diasVac = parseFloat(diasVacacionesPendientes) || 0;
-  const prestamos = parseFloat(deduccionesPrestamos) || 0;
-  const montoDiasTrabajados = +(diasPeriodo * sueldoDiario).toFixed(2);
-  const diasAguinaldoProp = +((diffDays % 365) * (15 / 365)).toFixed(2);
-  const montoAguinaldo = +(diasAguinaldoProp * sueldoDiario).toFixed(2);
-  const montoVacaciones = +(diasVac * sueldoDiario).toFixed(2);
-  const montoPrimaVacacional = +(montoVacaciones * 0.25).toFixed(2);
-  const subtotalFiniquito = montoDiasTrabajados + montoAguinaldo + montoVacaciones + montoPrimaVacacional;
-  let montoIndemnizacion90Dias = 0;
-  let montoIndemnizacion20DiasPorAno = 0;
-  let montoPrimaAntiguedad = 0;
-  if (tipoTerminacion === 'Despido') {
-    montoIndemnizacion90Dias = +(90 * sueldoDiario).toFixed(2);
-    montoIndemnizacion20DiasPorAno = +(20 * aniosAntiguedad * sueldoDiario).toFixed(2);
-    const salarioTopado = Math.min(sueldoDiario, 498);
-    montoPrimaAntiguedad = +(12 * aniosAntiguedad * salarioTopado).toFixed(2);
-  } else if (tipoTerminacion === 'Convenio') {
-    montoIndemnizacion90Dias = +(45 * sueldoDiario).toFixed(2);
-  }
-  const subtotalIndemnizaciones = montoIndemnizacion90Dias + montoIndemnizacion20DiasPorAno + montoPrimaAntiguedad;
-  const granTotalNeto = Math.max(0, +(subtotalFiniquito + subtotalIndemnizaciones - prestamos).toFixed(2));
+  const cerrar = () => {
+    if (!enviando) onClose();
+  };
+
+  const motivo = MOTIVOS.find((m) => m.value === tipo);
 
   return (
-    <Modal open={isOpen} onClose={onClose} size="xl">
-      <ModalHeader
-        title="Calculadora de Finiquito y Liquidación Laboral"
-        subtitle="Cálculo de indemnizaciones constitucionales, partes proporcionales y generación de convenio con firma (Ley Federal del Trabajo)."
-        onClose={onClose}
-      />
+    <>
+      {/* persistent con la confirmación abierta: si no, Escape cerraría los dos modales. */}
+      <Modal open onClose={cerrar} size="full" persistent={confirmarOpen}>
+        <ModalHeader title="Baja y finiquito" subtitle={worker ? `${worker.nombre} · ${worker.puesto}` : 'Elige al trabajador'} onClose={cerrar} />
 
-      <ModalBody>
-        <div className="space-y-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
-            <button onClick={() => setViewMode('calculadora')} className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${viewMode === 'calculadora' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-              Calculadora
-            </button>
-            <button onClick={() => setViewMode('carta_firma')} className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${viewMode === 'carta_firma' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-              Carta con Firma
-            </button>
-          </div>
-
-          {viewMode === 'calculadora' && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card padding="sm" className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Empleado a Liquidar</label>
-                  <select className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-primary" value={selectedWorkerId} onChange={(e) => setSelectedWorkerId(e.target.value)}>
-                    {activos.map((t) => (
-                      <option key={t.id} value={t.id}>{t.nombre} — {t.puesto} ({t.categoriaPuesto})</option>
-                    ))}
-                  </select>
-
-                  <div className="pt-2 text-[11px] space-y-1 text-slate-500">
-                    <p>Fecha Ingreso: <strong className="text-slate-800">{worker.fechaContratacion ?? '2023-01-15'}</strong></p>
-                    <p>Antigüedad: <strong className="text-slate-800">{aniosAntiguedad} años</strong> ({diffDays} días)</p>
-                    <p>Sueldo Diario: <strong className="text-emerald-700">{fmt.format(sueldoDiario)}/día</strong></p>
-                    {worker.maquinaAsignadaNombre && <p className="text-orange-700 font-bold">Equipo Asignado: {worker.maquinaAsignadaNombre}</p>}
-                  </div>
-                </Card>
-
-                <Card padding="sm" className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Motivo de Separación</label>
-                  <div className="space-y-1.5">
-                    {[
-                      { id: 'Despido', label: 'Despido / Liquidación LFT', desc: 'Indemnización 90 días + 20 días/año' },
-                      { id: 'Renuncia', label: 'Renuncia Voluntaria / Fin Obra', desc: 'Solo finiquito proporcional' },
-                      { id: 'Convenio', label: 'Convenio Mutuo Acordado', desc: 'Finiquito + 45 días gratificación' },
-                    ].map((t) => (
-                      <label key={t.id} className={`flex items-start gap-2 p-2 rounded-xl border cursor-pointer transition-all ${tipoTerminacion === t.id ? 'border-primary bg-primary/5 text-slate-900 font-bold' : 'border-slate-200 bg-white text-slate-600'}`}>
-                        <input type="radio" name="tipoTerminacion" checked={tipoTerminacion === t.id} onChange={() => setTipoTerminacion(t.id as 'Despido' | 'Renuncia' | 'Convenio')} className="mt-0.5" />
-                        <div className="text-xs">
-                          <p className="font-bold">{t.label}</p>
-                          <p className="text-[10px] text-slate-400 font-normal">{t.desc}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </Card>
-
-                <Card padding="sm" className="space-y-3">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Variables de Ajuste</label>
-                  <div className="space-y-2 text-xs">
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-500">Días laborados semana actual</span>
-                      <input type="number" className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold" value={diasTrabajadosPeriodo} onChange={(e) => setDiasTrabajadosPeriodo(e.target.value)} />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-500">Vacaciones pendientes (días)</span>
-                      <input type="number" className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold" value={diasVacacionesPendientes} onChange={(e) => setDiasVacacionesPendientes(e.target.value)} />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-500">Deducción / Préstamo ($ MXN)</span>
-                      <input type="number" className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-red-600" value={deduccionesPrestamos} onChange={(e) => setDeduccionesPrestamos(e.target.value)} />
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              <Card padding="md" className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <h4 className="font-black text-slate-900 text-base">Desglose de Conceptos a Liquidar</h4>
-                  <span className="text-xs font-black uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
-                    Sueldo Base Diario: {fmt.format(sueldoDiario)}
-                  </span>
+        <ModalBody className="space-y-5">
+          {conSelector && (
+            <div className="space-y-2">
+              {errorActivos ? (
+                <div role="alert" className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10">
+                  <p className="text-sm text-red-700 dark:text-red-300">No se pudo cargar la lista de trabajadores: {errorActivos}</p>
+                  <Button variant="outline" size="sm" onClick={reintentarActivos} disabled={cargandoActivos} className="shrink-0">
+                    {cargandoActivos ? 'Reintentando…' : 'Reintentar'}
+                  </Button>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2 text-xs">
-                    <p className="font-black uppercase text-slate-400 text-[10px] tracking-wider border-b border-slate-100 pb-1">1. Finiquito de Prestaciones Devengadas</p>
-                    <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Sueldo Días Laborados ({diasPeriodo} días):</span><strong className="text-slate-900">{fmt.format(montoDiasTrabajados)}</strong></div>
-                    <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Aguinaldo Proporcional ({diasAguinaldoProp} días):</span><strong className="text-slate-900">{fmt.format(montoAguinaldo)}</strong></div>
-                    <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Vacaciones No Gozadas ({diasVac} días):</span><strong className="text-slate-900">{fmt.format(montoVacaciones)}</strong></div>
-                    <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Prima Vacacional (25%):</span><strong className="text-slate-900">{fmt.format(montoPrimaVacacional)}</strong></div>
-                    <div className="flex justify-between pt-1 font-black text-slate-800"><span>Subtotal Finiquito:</span><span className="text-emerald-700">{fmt.format(subtotalFiniquito)}</span></div>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <p className="font-black uppercase text-slate-400 text-[10px] tracking-wider border-b border-slate-100 pb-1">2. Indemnizaciones y Gratificaciones</p>
-                    {tipoTerminacion === 'Despido' ? (
-                      <>
-                        <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Indemnización Constitucional (90 días):</span><strong className="text-red-700 font-bold">{fmt.format(montoIndemnizacion90Dias)}</strong></div>
-                        <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">20 días por año ({aniosAntiguedad} años):</span><strong className="text-red-700 font-bold">{fmt.format(montoIndemnizacion20DiasPorAno)}</strong></div>
-                        <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Prima de Antigüedad (12 días/año topada):</span><strong className="text-red-700 font-bold">{fmt.format(montoPrimaAntiguedad)}</strong></div>
-                      </>
-                    ) : tipoTerminacion === 'Convenio' ? (
-                      <div className="flex justify-between py-1 border-b border-slate-50"><span className="text-slate-600">Gratificación por Convenio (45 días):</span><strong className="text-blue-700 font-bold">{fmt.format(montoIndemnizacion90Dias)}</strong></div>
-                    ) : (
-                      <div className="py-6 text-center text-slate-400 font-medium">No aplican indemnizaciones constitucionales por tratarse de Renuncia Voluntaria o Fin de Obra.</div>
-                    )}
-                    {prestamos > 0 && (
-                      <div className="flex justify-between py-1 border-b border-slate-50 text-red-600 font-bold"><span>(−) Deducciones / Préstamos:</span><span>−{fmt.format(prestamos)}</span></div>
-                    )}
-                    <div className="flex justify-between pt-1 font-black text-slate-800"><span>Subtotal Indemnización:</span><span className="text-red-700">{fmt.format(subtotalIndemnizaciones)}</span></div>
-                  </div>
+              ) : (
+                <div className="sm:max-w-md">
+                  <Select
+                    label="Trabajador"
+                    aria-label="Trabajador a dar de baja"
+                    placeholder={cargandoActivos ? 'Cargando trabajadores…' : 'Elige un trabajador'}
+                    disabled={cargandoActivos}
+                    value={seleccionId}
+                    onChange={(e) => setSeleccionId(e.target.value)}
+                    options={activos.map((t) => ({ value: t.id, label: `${t.nombre} · ${t.puesto}` }))}
+                  />
+                  {totalActivos > activos.length && (
+                    <p className="mt-1.5 text-xs text-ui-500">
+                      Se listan {activos.length} de {totalActivos} activos. Si no aparece, usa “Dar de baja” desde su fila.
+                    </p>
+                  )}
                 </div>
-
-                <div className="p-4 rounded-2xl bg-secondary dark:bg-ui-200 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 shadow-lg">
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-white/50 tracking-widest">Total Neto a Pagar al Trabajador</span>
-                    <h3 className="text-3xl font-black text-emerald-400">{fmt.format(granTotalNeto)}</h3>
-                  </div>
-                  <div className="text-right text-xs font-bold text-slate-300">
-                    <p>Sueldo Fiscal (SPEI): <span className="text-white">{fmt.format(Math.min(worker.sueldoFiscal * 2, granTotalNeto))}</span></p>
-                    <p>Efectivo en Sobre: <span className="text-orange-400">{fmt.format(Math.max(0, granTotalNeto - worker.sueldoFiscal * 2))}</span></p>
-                  </div>
-                </div>
-              </Card>
-            </>
-          )}
-
-          {viewMode === 'carta_firma' && (
-            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-md text-slate-900 space-y-6 font-serif">
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
-                <div>
-                  <h2 className="text-2xl font-black tracking-tight font-sans text-slate-900">CONSTRUCTORA SVR S.A. DE C.V.</h2>
-                  <p className="text-xs font-sans text-slate-500 font-medium">R.F.C. SVR-180420-KL9 · Infraestructura &amp; Movimiento de Tierras</p>
-                  <p className="text-xs font-sans text-slate-500">Oficina Central: Av. Insurgentes Sur 1450, Piso 8, CDMX</p>
-                </div>
-                <div className="text-right font-sans">
-                  <span className="text-xs font-black uppercase bg-secondary dark:bg-ui-200 text-white px-3 py-1 rounded-md">CONVENIO DE FINIQUITO</span>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Fecha: {fechaBaja}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 text-xs leading-relaxed text-slate-800 text-justify">
-                <p>
-                  En la Ciudad de México, a <strong>{fechaBaja}</strong>, se reúnen por una parte <strong>CONSTRUCTORA SVR S.A. DE C.V.</strong> (en lo sucesivo &quot;EL PATRÓN&quot;) y por la otra el C. <strong>{worker.nombre}</strong> (en lo sucesivo &quot;EL TRABAJADOR&quot;), quien desempeñaba el puesto de <strong>{worker.puesto} ({worker.categoriaPuesto})</strong> habiendo ingresado a laborar el día <strong>{worker.fechaContratacion ?? '2023-01-15'}</strong> con una antigüedad de <strong>{aniosAntiguedad} años</strong>.
-                </p>
-                <p>
-                  Ambas partes convienen en dar por terminada la relación de trabajo de forma definitiva bajo el concepto de <strong>{tipoTerminacion === 'Despido' ? 'LIQUIDACIÓN E INDEMNIZACIÓN LABORAL' : tipoTerminacion === 'Renuncia' ? 'RENUNCIA VOLUNTARIA' : 'CONVENIO MUTUO'}</strong>.
-                </p>
-                <p>EL TRABAJADOR manifiesta recibir en este acto a su entera satisfacción la cantidad neta total de:</p>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-300 text-center font-sans">
-                  <span className="text-xs font-bold uppercase text-slate-500">Cantidad Total Recibida</span>
-                  <p className="text-2xl font-black text-slate-900">{fmt.format(granTotalNeto)} MXN</p>
-                  <p className="text-[10px] text-slate-600 italic">
-                    (Desglose: Finiquito de prestaciones: {fmt.format(subtotalFiniquito)} | Indemnizaciones: {fmt.format(subtotalIndemnizaciones)} | Deducciones: {fmt.format(prestamos)})
-                  </p>
-                </div>
-                <p>
-                  EL TRABAJADOR otorga el más amplio finiquito que en derecho proceda a favor de CONSTRUCTORA SVR S.A. DE C.V., manifestando expresamente que durante el tiempo que prestó sus servicios le fueron pagados puntualmente todos sus salarios ordinarios, horas extras, aguinaldos, vacaciones, primas vacacionales y demás prestaciones de ley, no reservándose acción ni derecho alguno de naturaleza civil, laboral, penal o mercantil en contra de la empresa.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-12 pt-8 font-sans">
-                <div className="text-center space-y-2">
-                  <div className="border-b-2 border-slate-900 h-16 flex items-end justify-center pb-1"><span className="text-xs font-mono text-slate-400">____________________________</span></div>
-                  <p className="text-xs font-black text-slate-900 uppercase">{worker.nombre}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Firma del Trabajador (Recibí de Conformidad)</p>
-                </div>
-                <div className="text-center space-y-2">
-                  <div className="border-b-2 border-slate-900 h-16 flex items-end justify-center pb-1"><span className="text-xs font-mono text-slate-400">____________________________</span></div>
-                  <p className="text-xs font-black text-slate-900 uppercase">Ing. Carlos Morales / RRHH</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Por CONSTRUCTORA SVR S.A. DE C.V.</p>
-                </div>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-2 font-sans border-t border-slate-100">
-                <Button variant="secondary" icon={<Printer size={16} />} onClick={handlePrint}>
-                  Imprimir Carta Finiquito
-                </Button>
-              </div>
+              )}
             </div>
           )}
-        </div>
-      </ModalBody>
 
-      <ModalFooter>
-        <div className="text-xs text-slate-500 mr-auto">
-          Al confirmar la liquidación, el trabajador pasará a estatus <strong>Inactivo</strong> y se liberará su equipo asignado.
-        </div>
-        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button
-          variant="danger"
-          icon={submitting ? <Loader2 size={16} className="animate-spin" /> : <UserX size={16} />}
-          disabled={submitting}
-          onClick={handleEjecutarBaja}
-        >
-          Confirmar Baja y Liquidación ({fmt.format(granTotalNeto)})
-        </Button>
-      </ModalFooter>
-    </Modal>
+          {worker && worker.estado === 'Inactivo' && (
+            <p className="text-sm text-ui-600">{worker.nombre} ya está dado de baja.</p>
+          )}
+
+          {worker && !fechaIngreso && (
+            <p role="alert" className="px-3 py-2.5 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-sm text-amber-800 dark:text-amber-300">
+              {worker.nombre} no tiene fecha de ingreso registrada y sin ella no se puede calcular su antigüedad. Regístrala
+              con “Editar” y vuelve a abrir el finiquito.
+            </p>
+          )}
+
+          {worker && d && (
+            <Tabs
+              ariaLabel="Finiquito"
+              tabs={[
+                { key: 'calculo', label: 'Cálculo' },
+                { key: 'carta', label: 'Carta para firma' },
+              ]}
+              value={vista}
+              onChange={(k) => setVista(k as 'calculo' | 'carta')}
+            >
+              <TabPanel tabKey="calculo">
+                <div className="space-y-5">
+                  <dl className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-ui-200 border border-ui-200 rounded-xl overflow-hidden">
+                    {[
+                      { t: 'Fecha de ingreso', v: formatFechaSolo(fechaIngreso) },
+                      { t: 'Antigüedad', v: `${d.aniosAntiguedad} años (${d.diasAntiguedad} días)` },
+                      { t: 'Sueldo diario', v: formatCurrency(d.sueldoDiario) },
+                    ].map((x) => (
+                      <div key={x.t} className="bg-surface px-4 py-3">
+                        <dt className="text-xs text-ui-500">{x.t}</dt>
+                        <dd className="text-sm font-semibold text-ui-900 mt-0.5">{x.v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <ModalField label="Motivo" required className="sm:col-span-3 lg:col-span-1">
+                      <select aria-label="Motivo de la baja" className={modalSelectClass} value={tipo} onChange={(e) => setTipo(e.target.value as TipoTerminacion)}>
+                        {MOTIVOS.map((m) => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </ModalField>
+                    <ModalField label="Días por pagar" error={dias === null ? `De 0 a ${DIAS_PERIODO_MAX}.` : undefined}>
+                      <input aria-label="Días laborados por pagar" type="number" min="0" max={DIAS_PERIODO_MAX} step="0.5" inputMode="decimal" className={modalInputClass} value={diasPeriodo} onChange={(e) => setDiasPeriodo(e.target.value)} />
+                    </ModalField>
+                    <ModalField label="Vacaciones pendientes" error={vac === null ? `De 0 a ${DIAS_VACACIONES_MAX} días.` : undefined}>
+                      <input aria-label="Días de vacaciones pendientes" type="number" min="0" max={DIAS_VACACIONES_MAX} step="0.5" inputMode="decimal" className={modalInputClass} value={diasVacaciones} onChange={(e) => setDiasVacaciones(e.target.value)} />
+                    </ModalField>
+                    <ModalField label="Préstamo a descontar" error={prestamos === null ? 'Monto con hasta 2 decimales (0 si no hay).' : undefined}>
+                      <input aria-label="Préstamo o deducción a descontar" type="number" min="0" step="0.01" inputMode="decimal" className={modalInputClass} value={deduccion} onChange={(e) => setDeduccion(e.target.value)} />
+                    </ModalField>
+                  </div>
+                  {motivo && <p className="-mt-2 text-xs text-ui-500">{motivo.descripcion}</p>}
+                  {deduccionExcede && (
+                    <p role="alert" className="text-xs text-amber-700 dark:text-amber-400">
+                      El préstamo es mayor que el finiquito: el total queda en $0 y la diferencia no se cobra aquí.
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+                    <section>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-ui-500 mb-1">Finiquito</h4>
+                      <Fila concepto={`Días laborados (${dias ?? 0})`} monto={d.montoDiasTrabajados} />
+                      <Fila concepto={`Aguinaldo proporcional (${d.diasAguinaldo} días)`} monto={d.montoAguinaldo} />
+                      <Fila concepto={`Vacaciones no gozadas (${vac ?? 0} días)`} monto={d.montoVacaciones} />
+                      <Fila concepto="Prima vacacional (25 %)" monto={d.montoPrimaVacacional} />
+                    </section>
+                    <section>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-ui-500 mb-1">Indemnización</h4>
+                      {tipo === 'Despido' && (
+                        <>
+                          <Fila concepto="Indemnización constitucional (90 días)" monto={d.indemnizacion90} />
+                          <Fila concepto={`20 días por año (${d.aniosAntiguedad} años)`} monto={d.indemnizacion20PorAnio} />
+                          <Fila concepto="Prima de antigüedad (12 días por año)" monto={d.primaAntiguedad} />
+                        </>
+                      )}
+                      {tipo === 'Convenio' && <Fila concepto="Gratificación por convenio (45 días)" monto={d.indemnizacion90} />}
+                      {tipo === 'Renuncia' && <p className="py-1.5 text-sm text-ui-500">No aplica en renuncia o fin de obra.</p>}
+                      {(prestamos ?? 0) > 0 && <Fila concepto="Préstamo descontado" monto={prestamos ?? 0} negativo />}
+                    </section>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1 pt-4 border-t border-ui-200">
+                    <div>
+                      <p className="text-xs text-ui-500">Total estimado a pagar</p>
+                      <p className="text-2xl font-semibold text-ui-900 tabular-nums">{formatCurrency(d.granTotalNeto)}</p>
+                    </div>
+                    <p className="text-xs text-ui-500 sm:text-right sm:max-w-xs">
+                      El sistema recalcula al confirmar con la misma fórmula; ese es el monto que queda registrado.
+                    </p>
+                  </div>
+                </div>
+              </TabPanel>
+
+              <TabPanel tabKey="carta">
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-xs text-ui-500">Se imprime solo la carta, en blanco y negro. El lugar se llena a mano.</p>
+                    <Button variant="outline" onClick={imprimir} disabled={!valoresValidos} className="w-full sm:w-auto shrink-0">
+                      Imprimir carta
+                    </Button>
+                  </div>
+                  <div className="p-2 sm:p-4 rounded-xl bg-ui-100">
+                    <CartaFiniquito trabajador={worker} tipo={tipo} d={d} prestamos={prestamos ?? 0} />
+                  </div>
+                </div>
+              </TabPanel>
+            </Tabs>
+          )}
+        </ModalBody>
+
+        <ModalFooter>
+          <p className="text-xs text-ui-500 sm:mr-auto min-w-0 text-center sm:text-left">
+            Al dar de baja, el trabajador queda inactivo y se libera su máquina.
+          </p>
+          <Button variant="outline" onClick={cerrar} disabled={enviando} className="shrink-0">Cancelar</Button>
+          <Button variant="danger" onClick={() => setConfirmarOpen(true)} disabled={!puedeConfirmar || enviando} className="shrink-0">
+            Dar de baja
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Confirmación con botón rojo (FormModal solo tiene el primario y esto no se deshace). */}
+      {worker && d && (
+        <Modal open={confirmarOpen} onClose={() => { if (!enviando) setConfirmarOpen(false); }} size="sm">
+          <ModalHeader title="Confirmar baja" onClose={() => { if (!enviando) setConfirmarOpen(false); }} />
+          <ModalBody>
+            <p className="text-sm text-ui-700">
+              Se dará de baja a <span className="font-semibold text-ui-900">{worker.nombre}</span> por{' '}
+              {motivo?.label.toLowerCase()}, con un finiquito estimado de{' '}
+              <span className="font-semibold text-ui-900">{formatCurrency(d.granTotalNeto)}</span>. Quedará inactivo y su
+              máquina libre. No se puede deshacer desde aquí.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" onClick={() => setConfirmarOpen(false)} disabled={enviando}>Cancelar</Button>
+            <Button variant="danger" onClick={ejecutarBaja} loading={enviando} disabled={enviando}>
+              {enviando ? 'Registrando…' : 'Sí, dar de baja'}
+            </Button>
+          </ModalFooter>
+        </Modal>
+      )}
+
+      {/* Copia solo para imprimir (ver `.solo-impresion` en globals.css). */}
+      {worker && d && vista === 'carta' && (
+        <Portal>
+          <div className="solo-impresion">
+            <CartaFiniquito trabajador={worker} tipo={tipo} d={d} prestamos={prestamos ?? 0} />
+          </div>
+        </Portal>
+      )}
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { AsistenciaService } from './asistencia.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -19,9 +19,13 @@ describe('AsistenciaService', () => {
     estado: 'ACTIVO',
   };
 
+  // Ubicación y radio guardados de la obra: la geocerca se valida contra esto, no contra el cliente.
   const mockObra = {
     id: 'obra-uuid-1',
     nombre: 'Fraccionamiento Valle Sur',
+    lat: 19.3421,
+    lng: -99.1843,
+    radio_permitido_metros: 2000,
   };
 
   const baseRegistro = {
@@ -65,6 +69,10 @@ describe('AsistenciaService', () => {
       },
       obras: {
         findFirst: jest.fn().mockResolvedValue(mockObra),
+        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...mockObra, ...data })),
+      },
+      nominas: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       registros_asistencia: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -73,10 +81,13 @@ describe('AsistenciaService', () => {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue(baseRegistro),
         update: jest.fn().mockResolvedValue(baseRegistro),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       horas_extra_asistencia: {
         findFirst: jest.fn(),
-        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'he-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn().mockResolvedValue({}),
       },
     };
@@ -104,8 +115,6 @@ describe('AsistenciaService', () => {
   const entradaDto = (overrides: Record<string, unknown> = {}) => ({
     trabajadorId: mockTrabajador.id,
     obraId: mockObra.id,
-    obraLat: 19.3421,
-    obraLng: -99.1843,
     lat: 19.3423,
     lng: -99.1841,
     dispositivo: 'Dispositivo Móvil · GPS Activo',
@@ -123,21 +132,45 @@ describe('AsistenciaService', () => {
       expect(data.hora_marcaje_exacta.toISOString()).toBe('1970-01-01T07:05:12.000Z');
     });
 
-    it('marks RETARDO when clocking in past the tolerance window', async () => {
+    it('marks OMISION (not RETARDO) when clocking in past the tolerance window', async () => {
       jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 7, 20, 0)); // 20 min late, tolerance is 15
       await service.marcarEntrada(entradaDto(), 'user-1');
       const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
-      expect(data.estado).toBe('RETARDO');
+      // Regla del cliente: queda en omisión hasta que la administradora la resuelva como falta o retardo.
+      expect(data.estado).toBe('OMISION');
     });
 
     it('computes real GPS distance and flags fuera de sitio beyond the allowed radius', async () => {
-      await service.marcarEntrada(
-        entradaDto({ obraLat: 19.3421, obraLng: -99.1843, lat: 19.378, lng: -99.172, radioPermitidoMetros: 2000 }),
-        'user-1',
-      );
+      await service.marcarEntrada(entradaDto({ lat: 19.378, lng: -99.172 }), 'user-1');
       const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
       expect(data.en_sitio).toBe(false);
       expect(data.distancia_metros).toBeGreaterThan(2000);
+    });
+
+    it('validates the geofence with the obra stored location and radius, not with client data', async () => {
+      // Radio guardado de 100 m: a ~120 m del centro queda fuera aunque el radio por defecto sea 2 km.
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, radio_permitido_metros: 100 });
+      await service.marcarEntrada(entradaDto({ lat: 19.3432, lng: -99.1843 }), 'user-1');
+      const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
+      expect(data.lat_obra).toBe(19.3421);
+      expect(data.lng_obra).toBe(-99.1843);
+      expect(data.radio_permitido_metros).toBe(100);
+      expect(data.en_sitio).toBe(false);
+    });
+
+    it('uses the default radius when the obra has a location but no radius', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, radio_permitido_metros: null });
+      await service.marcarEntrada(entradaDto(), 'user-1');
+      const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
+      expect(data.radio_permitido_metros).toBe(2000);
+      expect(data.en_sitio).toBe(true);
+    });
+
+    it('rejects when the obra has no stored location (OBRA_SIN_COORDENADAS) and creates nothing', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, lat: null, lng: null });
+      await expect(service.marcarEntrada(entradaDto(), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OBRA_SIN_COORDENADAS' }));
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
     });
 
     it('rejects when the trabajador does not exist', async () => {
@@ -165,7 +198,7 @@ describe('AsistenciaService', () => {
       jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 17, 5, 0)); // salida 17:05 → 10h
       await service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1');
 
-      const data = prisma.registros_asistencia.update.mock.calls[0][0].data;
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
       expect(data.horas_trabajadas_ordinarias).toBe(10);
       expect(data.hora_salida.toISOString()).toBe('1970-01-01T17:05:00.000Z');
     });
@@ -184,10 +217,21 @@ describe('AsistenciaService', () => {
         },
         'user-1',
       );
-      const data = prisma.registros_asistencia.update.mock.calls[0][0].data;
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
       expect(data.estado).toBe('SALIDA_ANTICIPADA');
       expect(data.motivo_salida_anticipada).toBe('Cita médica');
       expect(data.horas_trabajadas_ordinarias).toBe(5.5);
+    });
+
+    it('keeps an OMISION when leaving early (it used to become SALIDA_ANTICIPADA and the pending omisión vanished)', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro, estado: 'OMISION' });
+      await service.marcarSalida(
+        { trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil', salidaAnticipada: true, motivoSalidaAnticipada: 'Cita', horasTrabajadasOrdinarias: 4 },
+        'user-1',
+      );
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
+      expect(data.estado).toBe('OMISION');
+      expect(data.salida_anticipada).toBe(true);
     });
 
     it('rejects when there is no entrada registered today', async () => {
@@ -203,6 +247,16 @@ describe('AsistenciaService', () => {
         service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('only writes the salida if there is none yet, so two simultaneous salidas do not overwrite each other', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.registros_asistencia.updateMany.mockResolvedValue({ count: 0 }); // la otra petición ganó
+      await expect(
+        service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.registros_asistencia.updateMany.mock.calls[0][0].where).toEqual({ id: baseRegistro.id, hora_salida: null });
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'YA_REGISTRO_SALIDA_HOY' }));
+    });
   });
 
   describe('marcarCuadrilla', () => {
@@ -214,8 +268,6 @@ describe('AsistenciaService', () => {
       const result = await service.marcarCuadrilla(
         {
           obraId: mockObra.id,
-          obraLat: 19.3421,
-          obraLng: -99.1843,
           trabajadorIds: [mockTrabajador.id, t2.id],
           lat: 19.3423,
           lng: -99.1841,
@@ -234,8 +286,6 @@ describe('AsistenciaService', () => {
         service.marcarCuadrilla(
           {
             obraId: mockObra.id,
-            obraLat: 1,
-            obraLng: 1,
             trabajadorIds: [mockTrabajador.id, 'no-existe'],
             lat: 1,
             lng: 1,
@@ -244,6 +294,18 @@ describe('AsistenciaService', () => {
           'user-1',
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects the whole pase de lista when the obra has no stored location', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, lat: null, lng: null });
+      await expect(
+        service.marcarCuadrilla(
+          { obraId: mockObra.id, trabajadorIds: [mockTrabajador.id], lat: 19.3423, lng: -99.1841, dispositivo: 'Móvil' },
+          'user-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OBRA_SIN_COORDENADAS' }));
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
     });
   });
 
@@ -260,6 +322,15 @@ describe('AsistenciaService', () => {
     it('rejects when a registro already exists that day', async () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
       await expect(service.registrarFalta({ trabajadorId: mockTrabajador.id }, 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('409 once that week payroll was paid', async () => {
+      prisma.nominas.findFirst.mockResolvedValue({ id: 'nom-1' });
+      await expect(service.registrarFalta({ trabajadorId: mockTrabajador.id }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ASISTENCIA_FALTA_REGISTRADA', errorCode: 'NOMINA_PAGADA' }),
+      );
     });
   });
 
@@ -282,7 +353,7 @@ describe('AsistenciaService', () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
       await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', horasCalculadas: 3 }, 'user-1');
 
-      const data = prisma.horas_extra_asistencia.upsert.mock.calls[0][0].create;
+      const data = prisma.horas_extra_asistencia.create.mock.calls[0][0].data;
       expect(data.tarifa_por_hora).toBe(90);
       expect(data.monto_total).toBe(270);
       expect(data.estado).toBe('EN_CURSO'); // sin "fin" todavía
@@ -291,8 +362,54 @@ describe('AsistenciaService', () => {
     it('marks PENDIENTE once an end time is provided, awaiting approval', async () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
       await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1');
-      const data = prisma.horas_extra_asistencia.upsert.mock.calls[0][0].create;
+      const data = prisma.horas_extra_asistencia.create.mock.calls[0][0].data;
       expect(data.estado).toBe('PENDIENTE');
+    });
+
+    it('does not overwrite horas extra that were already approved (409, nothing written)', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.horas_extra_asistencia.findUnique.mockResolvedValue({ id: 'he-1', estado: 'APROBADO', monto_total: 270 });
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '21:00', horasCalculadas: 4 }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.horas_extra_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(prisma.horas_extra_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'HORAS_EXTRA_YA_APROBADAS' }));
+    });
+
+    it('updates pending horas extra only while they are not approved, and audits the previous monto', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.horas_extra_asistencia.findUnique.mockResolvedValue({ id: 'he-1', estado: 'PENDIENTE', monto_total: 180 });
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1');
+      expect(prisma.horas_extra_asistencia.updateMany.mock.calls[0][0].where).toEqual({ id: 'he-1', estado: { not: 'APROBADO' } });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: expect.objectContaining({ tarifaCapturada: false, estadoAnterior: 'PENDIENTE', montoAnterior: 180 }) }),
+      );
+    });
+
+    it('rejects if someone approved them between the check and the write', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.horas_extra_asistencia.findUnique.mockResolvedValue({ id: 'he-1', estado: 'PENDIENTE', monto_total: 180 });
+      prisma.horas_extra_asistencia.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects horas extra on a week whose nómina is already paid', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.nominas.findFirst.mockResolvedValue({ id: 'nomina-pagada' });
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 3 }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.horas_extra_asistencia.create).not.toHaveBeenCalled();
+    });
+
+    it('marks a hand-typed tarifa in the audit', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 2, tarifaPorHora: 150 }, 'user-1');
+      expect(prisma.horas_extra_asistencia.create.mock.calls[0][0].data.tarifa_por_hora).toBe(150);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ tarifaCapturada: true }) }));
     });
 
     it('404s when the registro does not exist', async () => {
@@ -373,7 +490,7 @@ describe('AsistenciaService', () => {
     });
 
     it('does not mark days before the trabajador hire date as Falta', async () => {
-      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26)); // miércoles de esa semana
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 17, 30)); // miércoles, después del plazo de las 17:00
       prisma.trabajadores.findMany.mockResolvedValue([
         { ...mockTrabajador, fecha_contratacion: new Date(Date.UTC(2026, 7, 26)) }, // contratado el mismo miércoles
       ]);
@@ -383,6 +500,260 @@ describe('AsistenciaService', () => {
       expect(mar.estado).toBe('Descanso');
       expect(mie.estado).toBe('Falta'); // día de contratación en adelante sí cuenta
       expect(result[0].totalFaltas).toBe(1);
+    });
+
+    describe('omisión (plazo de las 17:00)', () => {
+      // Miércoles 26/08/2026; el trabajador entra a las 07:00 (tolerancia de 15 min).
+      const contratadoAntes = { ...mockTrabajador, fecha_contratacion: new Date(Date.UTC(2026, 0, 5)) };
+      const hoyDe = (dias: { estado: string; fecha: string }[]) => dias.find((d) => d.fecha === '2026-08-26')!;
+
+      beforeEach(() => prisma.trabajadores.findMany.mockResolvedValue([contratadoAntes]));
+
+      it('today without check-in: Pendiente within the tolerance, Omisión after it, Falta from 17:00', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 7, 10));
+        expect(hoyDe((await service.findSemanal({}))[0].dias).estado).toBe('Pendiente');
+
+        jest.setSystemTime(new Date(2026, 7, 26, 10, 0));
+        const aMedioDia = (await service.findSemanal({}))[0];
+        expect(hoyDe(aMedioDia.dias).estado).toBe('Omisión');
+        expect(aMedioDia.totalOmisionesPendientes).toBe(1);
+
+        jest.setSystemTime(new Date(2026, 7, 26, 17, 0));
+        const alCierre = (await service.findSemanal({}))[0];
+        expect(hoyDe(alCierre.dias).estado).toBe('Falta');
+        expect(alCierre.totalOmisionesPendientes).toBe(0);
+      });
+
+      it('a late check-in (OMISION) is pending until 17:00 and then counts as falta, not as attendance', async () => {
+        prisma.registros_asistencia.findMany.mockResolvedValue([{ ...baseRegistro, estado: 'OMISION' }]);
+
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 12, 0));
+        const pendiente = (await service.findSemanal({}))[0];
+        expect(hoyDe(pendiente.dias)).toEqual(expect.objectContaining({ estado: 'Omisión', registroId: 'reg-uuid-1' }));
+        expect(pendiente.totalOmisionesPendientes).toBe(1);
+        expect(pendiente.totalDiasAsistidos).toBe(0);
+
+        jest.setSystemTime(new Date(2026, 7, 26, 18, 0));
+        const vencida = (await service.findSemanal({}))[0];
+        expect(hoyDe(vencida.dias).estado).toBe('Falta');
+        expect(vencida.totalOmisionesPendientes).toBe(0);
+      });
+
+      it('a day that counts as falta does not pay its hours, and expired omisiones are reported apart', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 18, 0));
+        prisma.registros_asistencia.findMany.mockResolvedValue([
+          { ...baseRegistro, estado: 'OMISION', horas_trabajadas_ordinarias: 8, horas_extra_asistencia: { horas_calculadas: 2, estado: 'APROBADO' } },
+        ]);
+        const r = (await service.findSemanal({}))[0];
+        expect(hoyDe(r.dias).estado).toBe('Falta');
+        expect(r.totalHorasOrdinarias).toBe(0);
+        expect(r.totalHorasExtra).toBe(0);
+        // Lunes y martes sin checar + la omisión vencida de hoy.
+        expect(r.totalOmisionesVencidas).toBe(3);
+        expect(r.totalFaltas).toBe(3);
+      });
+
+      it('counts NO_PRESENTADO as falta (it used to count as an attended day)', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 18, 0));
+        prisma.registros_asistencia.findMany.mockResolvedValue([{ ...baseRegistro, estado: 'NO_PRESENTADO' }]);
+        const r = (await service.findSemanal({}))[0];
+        expect(hoyDe(r.dias).estado).toBe('Falta');
+        expect(r.totalDiasAsistidos).toBe(0);
+      });
+
+      it('marks an OMISION record as vencida in the daily list only after the deadline', async () => {
+        prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro, estado: 'OMISION' });
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 16, 59));
+        expect((await service.findOne('reg-uuid-1')).omisionVencida).toBe(false);
+        jest.setSystemTime(new Date(2026, 7, 26, 17, 0));
+        expect((await service.findOne('reg-uuid-1')).omisionVencida).toBe(true);
+      });
+    });
+  });
+
+  describe('resolverOmision', () => {
+    const omision = { ...baseRegistro, estado: 'OMISION' };
+    const dto = { resolucion: 'Retardo' as const, motivo: '  Se le ponchó una llanta  ' };
+
+    beforeEach(() => prisma.registros_asistencia.findFirst.mockResolvedValue(omision));
+
+    it('resolves it as the administrator chose, with the reason, and audits it', async () => {
+      await service.resolverOmision('reg-uuid-1', dto, 'user-1');
+      expect(prisma.registros_asistencia.updateMany).toHaveBeenCalledWith({
+        where: { id: 'reg-uuid-1', eliminado_en: null, estado: 'OMISION' },
+        data: expect.objectContaining({
+          estado: 'RETARDO',
+          omision_motivo: 'Se le ponchó una llanta',
+          omision_resuelta_por: 'user-1',
+        }),
+      });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ASISTENCIA_OMISION_RESUELTA', result: 'SUCCESS', actorUserId: 'user-1' }),
+      );
+    });
+
+    it('can resolve it as falta', async () => {
+      await service.resolverOmision('reg-uuid-1', { ...dto, resolucion: 'Falta' }, 'user-1');
+      expect(prisma.registros_asistencia.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ estado: 'FALTA' }) }),
+      );
+    });
+
+    it('409 when the record is not an omisión (or was already resolved)', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro, estado: 'RETARDO', omision_resuelta_en: new Date() });
+      await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NO_ES_OMISION' }));
+    });
+
+    it('409 when someone else resolved it at the same time (conditional update matched nothing)', async () => {
+      prisma.registros_asistencia.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OMISION_YA_RESUELTA' }));
+    });
+
+    it('409 once that week payroll was paid', async () => {
+      prisma.nominas.findFirst.mockResolvedValue({ id: 'nom-1' });
+      await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.nominas.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            trabajador_id: mockTrabajador.id,
+            estado: 'PAGADA',
+            periodos_nomina: { fecha_inicio: { lte: omision.fecha }, fecha_fin: { gte: omision.fecha } },
+          }),
+        }),
+      );
+      expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'NOMINA_PAGADA' }));
+    });
+
+    it('404 when the record does not exist', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(null);
+      await expect(service.resolverOmision('missing', dto, 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('actualizarEstado refuses an omisión already resolved with its reason', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro, estado: 'FALTA', omision_resuelta_en: new Date() });
+      await expect(service.actualizarEstado('reg-uuid-1', { estado: 'Puntual' }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OMISION_YA_RESUELTA' }));
+    });
+
+    it('actualizarEstado refuses a day whose payroll was paid', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      prisma.nominas.findFirst.mockResolvedValue({ id: 'nom-1' });
+      await expect(service.actualizarEstado('reg-uuid-1', { estado: 'Justificado' }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.update).not.toHaveBeenCalled();
+    });
+
+    it('actualizarEstado refuses an omisión (it would skip the reason)', async () => {
+      await expect(service.actualizarEstado('reg-uuid-1', { estado: 'Retardo' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.registros_asistencia.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OMISION_SIN_RESOLVER' }));
+    });
+  });
+
+  describe('resolverOmisionSinMarcaje', () => {
+    const dto = { trabajadorId: mockTrabajador.id, fecha: '2026-08-25', resolucion: 'Falta' as const, motivo: 'Enfermedad' };
+
+    beforeEach(() => jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 10, 0)));
+
+    it('creates the day already resolved, with the reason', async () => {
+      await service.resolverOmisionSinMarcaje(dto, 'user-1');
+      expect(prisma.registros_asistencia.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            estado: 'FALTA',
+            fecha: new Date(Date.UTC(2026, 7, 25)),
+            omision_motivo: 'Enfermedad',
+            omision_resuelta_por: 'user-1',
+          }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ASISTENCIA_OMISION_RESUELTA', result: 'SUCCESS' }));
+    });
+
+    it('400 on a Sunday (rest day, the weekly summary never counts it)', async () => {
+      await expect(service.resolverOmisionSinMarcaje({ ...dto, fecha: '2026-08-23' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'DIA_DE_DESCANSO' }));
+    });
+
+    it('400 for today while the trabajador is still within the entry tolerance', async () => {
+      jest.setSystemTime(new Date(2026, 7, 26, 7, 10)); // entra 07:00, tolerancia 15 min
+      await expect(service.resolverOmisionSinMarcaje({ ...dto, fecha: '2026-08-26' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'AUN_EN_TOLERANCIA' }));
+    });
+
+    it('400 for a future day', async () => {
+      await expect(service.resolverOmisionSinMarcaje({ ...dto, fecha: '2026-08-27' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+    });
+
+    it('400 for a day before the hire date', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, fecha_contratacion: new Date(Date.UTC(2026, 7, 26)) });
+      await expect(service.resolverOmisionSinMarcaje(dto, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'ANTES_DE_SU_INGRESO' }));
+    });
+
+    it('409 when that day already has a record (resolve it from the record)', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({ id: 'reg-uuid-1' });
+      await expect(service.resolverOmisionSinMarcaje(dto, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+    });
+
+    it('404 when the trabajador does not exist', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue(null);
+      await expect(service.resolverOmisionSinMarcaje(dto, 'user-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('registrarUbicacionObra', () => {
+    const dto = { lat: 19.4326, lng: -99.1332, radioPermitidoMetros: 150, precisionGpsMetros: 12 };
+
+    it('stores the obra center and radius and audits before/after', async () => {
+      prisma.obras.findFirst.mockResolvedValue({ ...mockObra, lat: null, lng: null, radio_permitido_metros: null });
+      const result = await service.registrarUbicacionObra(mockObra.id, dto, 'user-1');
+      expect(prisma.obras.update).toHaveBeenCalledWith({
+        where: { id: mockObra.id },
+        data: expect.objectContaining({ lat: 19.4326, lng: -99.1332, radio_permitido_metros: 150, actualizado_por: 'user-1' }),
+      });
+      expect(result).toEqual(expect.objectContaining({ id: mockObra.id, lat: 19.4326, lng: -99.1332, radioPermitidoMetros: 150 }));
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'OBRA_UBICACION_REGISTRADA',
+          entityType: 'obras',
+          result: 'SUCCESS',
+          previousValue: expect.objectContaining({ lat: undefined, lng: undefined }),
+          newValue: expect.objectContaining({ precisionGpsMetros: 12, capturaManual: false }),
+        }),
+      );
+    });
+
+    it('400 for 0, 0 (GPS without fix)', async () => {
+      await expect(service.registrarUbicacionObra(mockObra.id, { ...dto, lat: 0, lng: 0 }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.obras.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'UBICACION_INVALIDA' }));
+    });
+
+    it('400 for coordinates outside Mexico (e.g. lat and lng swapped)', async () => {
+      await expect(
+        service.registrarUbicacionObra(mockObra.id, { ...dto, lat: 45, lng: 19.4326 }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.obras.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'UBICACION_FUERA_DE_MEXICO' }));
+    });
+
+    it('400 when the GPS accuracy is worse than 100 m', async () => {
+      await expect(
+        service.registrarUbicacionObra(mockObra.id, { ...dto, precisionGpsMetros: 250 }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'GPS_IMPRECISO' }));
+    });
+
+    it('404 when the obra does not exist', async () => {
+      prisma.obras.findFirst.mockResolvedValue(null);
+      await expect(service.registrarUbicacionObra('missing', dto, 'user-1')).rejects.toThrow(NotFoundException);
     });
   });
 });

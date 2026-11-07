@@ -8,7 +8,7 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, ConflictException, INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,9 +23,11 @@ describe('Asistencia Audit (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let service: AsistenciaService;
+  // Obras de prueba propias (no se tocan las obras reales de la BD): una con ubicación y otra sin ella.
   let obraId: string;
-  let obraLat: number;
-  let obraLng: number;
+  let obraSinUbicacionId: string;
+  const obraLat = 19.3421;
+  const obraLng = -99.1843;
 
   const createdTrabajadorIds: string[] = [];
   let categoriaId: string;
@@ -41,11 +43,21 @@ describe('Asistencia Audit (Real DB)', () => {
     prisma = module.get(PrismaService);
     service = module.get(AsistenciaService);
 
-    const obra = await prisma.obras.findFirst({ where: { eliminado_en: null } });
-    if (!obra) throw new Error('Se requiere al menos una obra existente para correr este test');
+    const obra = await prisma.obras.create({
+      data: {
+        id: randomUUID(),
+        nombre: `Obra Asistencia Test ${TEST_ID}`,
+        lat: obraLat,
+        lng: obraLng,
+        radio_permitido_metros: 2000,
+        actualizado_en: new Date(),
+      },
+    });
     obraId = obra.id;
-    obraLat = 19.3421;
-    obraLng = -99.1843;
+    const obraSinUbicacion = await prisma.obras.create({
+      data: { id: randomUUID(), nombre: `Obra Sin Ubicacion Test ${TEST_ID}`, actualizado_en: new Date() },
+    });
+    obraSinUbicacionId = obraSinUbicacion.id;
 
     const categoria = await prisma.categorias_puesto.create({
       data: { id: randomUUID(), nombre: `TestCategoriaAsistencia-${TEST_ID}`, actualizado_en: new Date() },
@@ -61,9 +73,14 @@ describe('Asistencia Audit (Real DB)', () => {
         where: { registros_asistencia: { trabajador_id: { in: createdTrabajadorIds } } },
       });
       await prisma.registros_asistencia.deleteMany({ where: { trabajador_id: { in: createdTrabajadorIds } } });
+      // Si la suite de Nómina corre a la vez, genera nómina también para estos trabajadores (son activos) y el
+      // borrado truena con nominas_trabajador_id_fkey. Percepciones y deducciones se van en cascada.
+      await prisma.nominas.deleteMany({ where: { trabajador_id: { in: createdTrabajadorIds } } });
       await prisma.trabajadores.deleteMany({ where: { id: { in: createdTrabajadorIds } } });
     }
     await prisma.categorias_puesto.deleteMany({ where: { id: categoriaId } });
+    // Los registros que apuntaban a estas obras ya se borraron arriba.
+    await prisma.obras.deleteMany({ where: { id: { in: [obraId, obraSinUbicacionId].filter(Boolean) } } });
 
     await prisma.$disconnect();
     await app.close();
@@ -100,8 +117,6 @@ describe('Asistencia Audit (Real DB)', () => {
         {
           trabajadorId: trabajador.id,
           obraId,
-          obraLat,
-          obraLng,
           lat: obraLat + 0.0002,
           lng: obraLng,
           dispositivo: 'Integration Test Device',
@@ -124,8 +139,6 @@ describe('Asistencia Audit (Real DB)', () => {
       const dto = {
         trabajadorId: trabajador.id,
         obraId,
-        obraLat,
-        obraLng,
         lat: obraLat,
         lng: obraLng,
         dispositivo: 'Integration Test Device',
@@ -133,13 +146,47 @@ describe('Asistencia Audit (Real DB)', () => {
       await service.marcarEntrada(dto, ACTOR_USER_ID);
       await expect(service.marcarEntrada(dto, ACTOR_USER_ID)).rejects.toThrow();
     });
+
+    it('debe rechazar el marcaje en una obra sin ubicación registrada y auditar FAIL OBRA_SIN_COORDENADAS', async () => {
+      const trabajador = await crearTrabajador(`Obra Sin Ubicacion Test ${TEST_ID}`);
+      const antes = new Date();
+      await expect(
+        service.marcarEntrada(
+          { trabajadorId: trabajador.id, obraId: obraSinUbicacionId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+          ACTOR_USER_ID,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      const registros = await prisma.registros_asistencia.count({ where: { trabajador_id: trabajador.id } });
+      expect(registros).toBe(0);
+      const fails = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.ASISTENCIA_ENTRADA_REGISTRADA,
+          result: 'FAIL',
+          error_code: 'OBRA_SIN_COORDENADAS',
+          timestamp: { gte: antes },
+        },
+      });
+      expect(fails.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('debe guardar la ubicación y el radio de la obra registrada (no los del cliente)', async () => {
+      const trabajador = await crearTrabajador(`Geocerca Obra Test ${TEST_ID}`);
+      const registro = await service.marcarEntrada(
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        ACTOR_USER_ID,
+      );
+      expect(registro.obraCoordenadas).toEqual({ lat: obraLat, lng: obraLng });
+      expect(registro.radioPermitidoMetros).toBe(2000);
+      expect(registro.enSitio).toBe(true);
+    });
   });
 
   describe('ASISTENCIA_SALIDA_REGISTRADA', () => {
     it('debe registrar la salida y calcular horas trabajadas', async () => {
       const trabajador = await crearTrabajador(`Salida Test ${TEST_ID}`);
       await service.marcarEntrada(
-        { trabajadorId: trabajador.id, obraId, obraLat, obraLng, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
         ACTOR_USER_ID,
       );
 
@@ -161,7 +208,7 @@ describe('Asistencia Audit (Real DB)', () => {
     it('debe registrar horas extra y aprobarlas, dejando ambos eventos auditados', async () => {
       const trabajador = await crearTrabajador(`Horas Extra Test ${TEST_ID}`);
       const registro = await service.marcarEntrada(
-        { trabajadorId: trabajador.id, obraId, obraLat, obraLng, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
         ACTOR_USER_ID,
       );
 
@@ -184,6 +231,40 @@ describe('Asistencia Audit (Real DB)', () => {
       expect(auditsRegistro.length).toBeGreaterThanOrEqual(1);
       const auditsAprobado = await findAudits(AuditAction.ASISTENCIA_HORAS_EXTRA_APROBADAS, horasExtraDb.id);
       expect(auditsAprobado.length).toBeGreaterThanOrEqual(1);
+
+      // Ya aprobadas no se vuelven a registrar: antes el upsert las regresaba a pendientes con otro monto.
+      await expect(
+        service.registrarHorasExtra(registro.id, { inicio: '17:00', fin: '23:00', horasCalculadas: 6 }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+      const siguen = await prisma.horas_extra_asistencia.findUniqueOrThrow({ where: { id: horasExtraDb.id } });
+      expect(siguen.estado).toBe('APROBADO');
+      expect(Number(siguen.horas_calculadas)).toBe(3);
+      const fallos = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS, entity_id: registro.id, error_code: 'HORAS_EXTRA_YA_APROBADAS' },
+      });
+      expect(fallos).toHaveLength(1);
+    });
+  });
+
+  describe('Salidas simultáneas', () => {
+    it('dos salidas del mismo trabajador al mismo tiempo dejan una sola (la otra recibe 400)', async () => {
+      const trabajador = await crearTrabajador(`Salida Doble Test ${TEST_ID}`);
+      const registro = await service.marcarEntrada(
+        { trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' },
+        ACTOR_USER_ID,
+      );
+      const salida = (lat: number) =>
+        service.marcarSalida({ trabajadorId: trabajador.id, lat, lng: obraLng, dispositivo: 'Test' }, ACTOR_USER_ID);
+
+      const resultados = await Promise.allSettled([salida(obraLat), salida(obraLat + 0.001)]);
+      expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect((resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+
+      // La salida que quedó es la de la petición que ganó, no una mezcla de las dos.
+      const ganadora = (resultados.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<{ id: string }>).value;
+      expect(ganadora.id).toBe(registro.id);
+      const fila = await prisma.registros_asistencia.findUniqueOrThrow({ where: { id: registro.id } });
+      expect(fila.hora_salida).not.toBeNull();
     });
   });
 
@@ -196,6 +277,105 @@ describe('Asistencia Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.ASISTENCIA_FALTA_REGISTRADA, registro.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].severity).toBe('WARNING');
+    });
+  });
+
+  describe('OMISIÓN (regla del cliente)', () => {
+    const hoy = () => {
+      const ahora = new Date();
+      return new Date(Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()));
+    };
+    // Día laboral ya pasado ("YYYY-MM-DD"). Con "hoy" la prueba dependía del reloj: antes de la entrada más la
+    // tolerancia todavía no hay omisión (AUN_EN_TOLERANCIA), y el domingo no hay omisión (DIA_DE_DESCANSO).
+    const diaLaboralPasado = () => {
+      const d = hoy();
+      do d.setUTCDate(d.getUTCDate() - 1); while (d.getUTCDay() === 0);
+      return d.toISOString().slice(0, 10);
+    };
+
+    it('la omisión de quien checó tarde se resuelve como retardo, con motivo y auditada (una sola vez)', async () => {
+      const trabajador = await crearTrabajador(`Omision Tarde Test ${TEST_ID}`);
+      // Registro en OMISION como lo dejaría un checado tarde (se inserta directo para no depender de la hora).
+      const registro = await prisma.registros_asistencia.create({
+        data: {
+          id: randomUUID(),
+          trabajador_id: trabajador.id,
+          fecha: hoy(),
+          estado: 'OMISION',
+          ubicacion: 'Acceso',
+          lat_entrada: obraLat,
+          lng_entrada: obraLng,
+          obra_asignada: 'Obra de prueba',
+          obra_id: obraId,
+          lat_obra: obraLat,
+          lng_obra: obraLng,
+          distancia_metros: 0,
+          radio_permitido_metros: 2000,
+          en_sitio: true,
+          precision_gps_metros: 10,
+          dispositivo: 'Test',
+          hora_entrada: new Date(Date.UTC(1970, 0, 1, 9, 30, 0)),
+          actualizado_en: new Date(),
+        },
+      });
+
+      const resuelto = await service.resolverOmision(
+        registro.id,
+        { resolucion: 'Retardo', motivo: 'Se le ponchó una llanta' },
+        ACTOR_USER_ID,
+      );
+      expect(resuelto.estado).toBe('Retardo');
+      expect(resuelto.omisionMotivo).toBe('Se le ponchó una llanta');
+
+      const enDb = await prisma.registros_asistencia.findUnique({ where: { id: registro.id } });
+      expect(enDb?.estado).toBe('RETARDO');
+      expect(enDb?.omision_resuelta_por).toBe(ACTOR_USER_ID);
+      expect(enDb?.omision_resuelta_en).not.toBeNull();
+
+      await expect(
+        service.resolverOmision(registro.id, { resolucion: 'Falta', motivo: 'Cambio de opinión' }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+
+      const audits = await findAudits(AuditAction.ASISTENCIA_OMISION_RESUELTA, registro.id);
+      expect(audits.map((a) => a.result)).toEqual(['FAIL', 'SUCCESS']);
+      expect(audits[0].error_code).toBe('NO_ES_OMISION');
+    });
+
+    it('a quien no checó nada se le crea el día ya resuelto como falta (y no se duplica)', async () => {
+      const trabajador = await crearTrabajador(`Omision Sin Marcaje Test ${TEST_ID}`);
+      const dto = { trabajadorId: trabajador.id, resolucion: 'Falta' as const, motivo: 'No avisó', fecha: diaLaboralPasado() };
+
+      const registro = await service.resolverOmisionSinMarcaje(dto, ACTOR_USER_ID);
+      expect(registro.estado).toBe('Falta');
+      expect(registro.omisionMotivo).toBe('No avisó');
+
+      await expect(service.resolverOmisionSinMarcaje(dto, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+      const registros = await prisma.registros_asistencia.count({ where: { trabajador_id: trabajador.id } });
+      expect(registros).toBe(1);
+    });
+  });
+
+  describe('UBICACIÓN DE LA OBRA', () => {
+    it('registrar la ubicación habilita el marcaje en una obra que no la tenía, y queda auditado', async () => {
+      const trabajador = await crearTrabajador(`Ubicacion Obra Test ${TEST_ID}`);
+      const marcaje = { trabajadorId: trabajador.id, obraId: obraSinUbicacionId, lat: 19.40001, lng: -99.10001, dispositivo: 'Test' };
+
+      await expect(service.marcarEntrada(marcaje, ACTOR_USER_ID)).rejects.toThrow(BadRequestException);
+
+      const ubicada = await service.registrarUbicacionObra(
+        obraSinUbicacionId,
+        { lat: 19.4, lng: -99.1, radioPermitidoMetros: 150, precisionGpsMetros: 9 },
+        ACTOR_USER_ID,
+      );
+      expect(ubicada).toEqual(expect.objectContaining({ lat: 19.4, lng: -99.1, radioPermitidoMetros: 150 }));
+
+      const registro = await service.marcarEntrada(marcaje, ACTOR_USER_ID);
+      expect(registro.enSitio).toBe(true);
+      expect(registro.radioPermitidoMetros).toBe(150);
+
+      const audits = await findAudits(AuditAction.OBRA_UBICACION_REGISTRADA, obraSinUbicacionId);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect(audits[0].entity_type).toBe('obras');
     });
   });
 });

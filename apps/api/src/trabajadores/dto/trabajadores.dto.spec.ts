@@ -16,6 +16,7 @@ describe('CreateTrabajadorDto', () => {
     sueldoFiscal: 2500,
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto',
+    fechaContratacion: '2024-03-01',
   };
 
   it('should pass with valid data', async () => {
@@ -51,6 +52,35 @@ describe('CreateTrabajadorDto', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it.each(['7am', '7:00', '24:00', '07:60', ''])('should fail with entrada "%s" (not HH:mm)', async (entrada) => {
+    const dto = plainToInstance(CreateTrabajadorDto, { ...base, entrada });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('entrada');
+  });
+
+  it('should require fechaContratacion (the finiquito seniority comes from it)', async () => {
+    const { fechaContratacion: _omitida, ...sinFecha } = base;
+    void _omitida;
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, sinFecha));
+    expect(errors.map((e) => e.property)).toContain('fechaContratacion');
+  });
+
+  it.each(['       ', '55-abc-1234', '12345'])('should fail with telefono "%s" (needs 7 digits)', async (telefono) => {
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, { ...base, telefono }));
+    expect(errors.map((e) => e.property)).toContain('telefono');
+  });
+
+  it('should trim nombre before validating its length ("  a  " is not a name)', async () => {
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, { ...base, nombre: '  a  ' }));
+    expect(errors.map((e) => e.property)).toContain('nombre');
+  });
+
+  it('should fail with a telefono longer than 20 characters', async () => {
+    const dto = plainToInstance(CreateTrabajadorDto, { ...base, telefono: '5'.repeat(21) });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('telefono');
+  });
+
   it('should fail with invalid nested licencia categoria', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, {
       ...base,
@@ -66,6 +96,12 @@ describe('UpdateTrabajadorDto', () => {
     const dto = plainToInstance(UpdateTrabajadorDto, {});
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
+  });
+
+  it('should fail with entrada not in HH:mm', async () => {
+    const dto = plainToInstance(UpdateTrabajadorDto, { entrada: '25:00' });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('entrada');
   });
 
   it('should fail with invalid estado', async () => {
@@ -98,6 +134,16 @@ describe('LiquidarTrabajadorDto', () => {
     });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
+  });
+
+  it('should fail with more than 31 dias trabajados or 365 dias de vacaciones', async () => {
+    const dto = plainToInstance(LiquidarTrabajadorDto, {
+      tipoTerminacion: 'Renuncia',
+      diasTrabajadosPeriodo: 32,
+      diasVacacionesPendientes: 366,
+    });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property).sort()).toEqual(['diasTrabajadosPeriodo', 'diasVacacionesPendientes']);
   });
 
   it('should fail with invalid tipoTerminacion', async () => {

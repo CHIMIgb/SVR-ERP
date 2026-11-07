@@ -50,6 +50,18 @@ describe('CreateBitacoraRentaDto', () => {
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('should fail with horaInicio / horaFin not in HH:mm', async () => {
+    const dto = plainToInstance(CreateBitacoraRentaDto, { ...base, horaInicio: '7am', horaFin: '17:75' });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property).sort()).toEqual(['horaFin', 'horaInicio']);
+  });
+
+  it('should fail with more than 24 horas efectivas or extras', async () => {
+    const dto = plainToInstance(CreateBitacoraRentaDto, { ...base, horasEfectivas: 25, horasExtras: 30 });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property).sort()).toEqual(['horasEfectivas', 'horasExtras']);
+  });
 });
 
 describe('UpdateBitacoraRentaDto', () => {
@@ -63,6 +75,30 @@ describe('UpdateBitacoraRentaDto', () => {
     const dto = plainToInstance(UpdateBitacoraRentaDto, { estadoCobro: 'Cancelado' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('should require nombre and cargo del residente when firmado is true (same rule as create)', async () => {
+    const dto = plainToInstance(UpdateBitacoraRentaDto, { firmado: true });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property).sort()).toEqual(['cargoResidente', 'nombreResidente']);
+  });
+
+  it('should pass when firmado is true with nombre and cargo del residente', async () => {
+    const dto = plainToInstance(UpdateBitacoraRentaDto, { firmado: true, nombreResidente: 'Ing. Ruiz', cargoResidente: 'Residente' });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should pass when only firmado: false is sent (removing the signature)', async () => {
+    const dto = plainToInstance(UpdateBitacoraRentaDto, { firmado: false });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should fail with horaFin not in HH:mm', async () => {
+    const dto = plainToInstance(UpdateBitacoraRentaDto, { horaFin: '5pm' });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('horaFin');
   });
 });
 

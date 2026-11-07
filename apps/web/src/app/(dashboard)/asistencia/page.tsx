@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import {
   asistenciaApi,
@@ -10,6 +9,7 @@ import {
   type AsistenciaSemanalDTO,
   type TrabajadorDTO,
   type ObraLite,
+  type ResolucionOmision,
 } from '@/lib/api';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
@@ -27,10 +27,34 @@ import { Tabs } from '@/components/ui/Tabs';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 
-/** Punto de referencia usado solo cuando una obra aún no tiene coordenadas configuradas. */
-const FALLBACK_COORD = { lat: 19.3421, lng: -99.1843 };
+/** Decisión del cliente: en una obra sin ubicación registrada no se marca asistencia hasta que se registre. */
+const MENSAJE_OBRA_SIN_UBICACION =
+  'Esta obra aún no tiene su ubicación registrada. No se puede marcar asistencia hasta que se registre.';
+
+/**
+ * Omisión (decisión del cliente): checar tarde o no checar. La administradora la resuelve como falta o retardo
+ * con el motivo; sin resolver a las 17:00 cuenta como falta. Igual que HORA_LIMITE_JUSTIFICACION de la API.
+ */
+const HORA_LIMITE_OMISION_MINUTOS = 17 * 60;
+const TOLERANCIA_ENTRADA_MINUTOS = 15;
+const MOTIVO_OMISION_MIN = 3;
+const MOTIVO_OMISION_MAX = 500;
+/** Morado solo para la omisión, para que no se confunda con el retardo (ámbar). */
+const CLASE_OMISION = 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300';
+
+// Igual que RegistrarUbicacionObraDto: radio de 20 m a 2 km; con señal peor que 100 m no se registra.
+const RADIO_OBRA_MIN = 20;
+const RADIO_OBRA_MAX = 2000;
+const RADIO_OBRA_SUGERIDO = '150';
+const PRECISION_MAXIMA_OBRA = 100;
+
+const minutosDelDia = (d: Date) => d.getHours() * 60 + d.getMinutes();
+const minutosDeHora = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
 
 const CATEGORIAS = [
   { id: 'Todos', label: 'Todos los puestos' },
@@ -77,6 +101,10 @@ const ESTILO_DIA: Record<EstadoDia, { etiqueta: string; clase: string }> = {
   Retardo: { etiqueta: 'Retardo', clase: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' },
   'Salida Anticipada': { etiqueta: 'Anticipada', clase: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300' },
   Justificado: { etiqueta: 'Justif.', clase: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' },
+  // Hoy, todavía puede justificarse; vencida y sin resolver, la API ya la manda como Falta.
+  'Omisión': { etiqueta: 'Omisión', clase: CLASE_OMISION },
+  // Hoy, dentro de su tolerancia de entrada: aún puede llegar.
+  Pendiente: { etiqueta: 'Por llegar', clase: 'bg-ui-50 text-ui-400' },
   // La API usa 'Descanso' para días anteriores a la contratación (y futuros, que aquí se muestran como '—').
   Descanso: { etiqueta: 'No aplica', clase: 'bg-ui-100 text-ui-500' },
   Falta: { etiqueta: 'Falta', clase: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' },
@@ -87,6 +115,7 @@ const LEYENDA_SEMANA = [
   { etiqueta: 'Retardo', punto: 'bg-amber-500' },
   { etiqueta: 'Anticipada', punto: 'bg-orange-500' },
   { etiqueta: 'Justificado', punto: 'bg-blue-500' },
+  { etiqueta: 'Omisión', punto: 'bg-violet-500' },
   { etiqueta: 'Falta', punto: 'bg-red-500' },
   { etiqueta: 'No aplica', punto: 'bg-ui-300' },
 ];
@@ -94,6 +123,17 @@ const LEYENDA_SEMANA = [
 const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 type FuenteCarga = 'trabajadores' | 'obras' | 'registros' | 'semanal';
+
+/** Fila de la pestaña Omisiones: un registro que checó tarde, o un trabajador que no ha checado hoy. */
+interface FilaOmision {
+  id: string;
+  trabajadorId: string;
+  registro?: RegistroAsistenciaDTO;
+  /** Pasó el plazo de las 17:00 sin resolverse: ya cuenta como falta. */
+  vencida: boolean;
+  /** Sin checar, pero todavía dentro de su tolerancia de entrada. */
+  porLlegar: boolean;
+}
 
 const LIMITE_TRABAJADORES = 100;
 const LIMITE_REGISTROS = 200;
@@ -184,16 +224,32 @@ function UbicacionDispositivo({
   );
 }
 
+/** Aviso de obra sin ubicación; quien puede editar la registra ahí mismo (decisión del cliente). */
+function AvisoObraSinUbicacion({ puedeRegistrar, onRegistrar, className }: { puedeRegistrar: boolean; onRegistrar: () => void; className?: string }) {
+  return (
+    <div className={cn('flex flex-col sm:flex-row sm:items-center justify-between gap-2', className)}>
+      <p className="text-xs text-red-600 dark:text-red-400">
+        {puedeRegistrar
+          ? 'Esta obra aún no tiene su ubicación registrada. Regístrala estando en la obra para poder marcar asistencia.'
+          : `${MENSAJE_OBRA_SIN_UBICACION} Pide a la administradora que la registre.`}
+      </p>
+      {puedeRegistrar && (
+        <Button type="button" variant="outline" size="sm" onClick={onRegistrar} className="shrink-0">
+          Registrar ubicación
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export default function AsistenciaPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
-  const router = useRouter();
 
   const vista = user?.vistas?.find((v) => v.ruta === '/asistencia');
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
-  const puedeVerNomina = user?.vistas?.some((v) => v.ruta === '/nomina' && v.puedeVer) ?? false;
 
   const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
   const [obras, setObras] = useState<ObraLite[]>([]);
@@ -253,9 +309,33 @@ export default function AsistenciaPage() {
   const solicitudGpsRef = useRef(0);
 
   const [submitting, setSubmitting] = useState(false);
-  // Acciones por fila en curso (evitan doble clic: una falta duplicada se descuenta dos veces en nómina).
-  const [registrandoFaltaId, setRegistrandoFaltaId] = useState<string | null>(null);
+  // Reloj de la vista: "Por llegar" y "vencida" dependen de la hora; sin esto se quedaban congelados al dejar
+  // la pantalla abierta (a las 17:00 nada cambiaba hasta recargar).
+  const [ahora, setAhora] = useState(() => new Date());
+  useEffect(() => {
+    const intervalo = setInterval(() => setAhora(new Date()), 60_000);
+    return () => clearInterval(intervalo);
+  }, []);
+
+  // Acciones por fila en curso (evitan doble clic).
   const [aprobandoHorasExtraId, setAprobandoHorasExtraId] = useState<string | null>(null);
+
+  // Resolver una omisión: de un registro (checó tarde) o de quien no checó nada.
+  const [omisionAResolver, setOmisionAResolver] = useState<
+    { registro: RegistroAsistenciaDTO; trabajadorId: string } | { registro?: undefined; trabajadorId: string } | null
+  >(null);
+  const [resolucionOmision, setResolucionOmision] = useState<ResolucionOmision | ''>('');
+  const [motivoOmision, setMotivoOmision] = useState('');
+  const [erroresOmision, setErroresOmision] = useState<{ resolucion?: string; motivo?: string }>({});
+  const [resolviendoOmision, setResolviendoOmision] = useState(false);
+  const resolviendoOmisionRef = useRef(false);
+
+  // Registrar la ubicación de una obra (centro y radio de su geocerca).
+  const [obraAUbicar, setObraAUbicar] = useState<ObraLite | null>(null);
+  const [radioObra, setRadioObra] = useState(RADIO_OBRA_SUGERIDO);
+  const [errorRadioObra, setErrorRadioObra] = useState<string | null>(null);
+  const [guardandoUbicacionObra, setGuardandoUbicacionObra] = useState(false);
+  const guardandoUbicacionObraRef = useRef(false);
 
   /**
    * Corre una carga y deja su resultado en `erroresCarga`. Nunca lanza: la API puede devolver
@@ -385,6 +465,8 @@ export default function AsistenciaPage() {
     setClockInModalOpen(true);
   };
   const cerrarMarcaje = () => {
+    // Con el modal de ubicación de obra encima, este no se cierra (compartirían el GPS a medio usar).
+    if (obraAUbicar) return;
     setClockInModalOpen(false);
     limpiarUbicacion();
   };
@@ -394,6 +476,7 @@ export default function AsistenciaPage() {
     setCuadrillaModalOpen(true);
   };
   const cerrarCuadrilla = () => {
+    if (obraAUbicar) return;
     setCuadrillaModalOpen(false);
     limpiarUbicacion();
   };
@@ -426,8 +509,29 @@ export default function AsistenciaPage() {
   const registeredWorkerIds = new Set(registros.map((r) => r.trabajadorId));
   const missingWorkers = trabajadores.filter((t) => t.estado === 'Activo' && !registeredWorkerIds.has(t.id));
 
-  const enSitioCount = registros.filter((r) => r.enSitio).length;
-  const fueraSitioCount = registros.filter((r) => !r.enSitio).length;
+  // Omisiones de hoy: quien checó tarde (registro en omisión) y quien no ha checado. Mismo cálculo que la API.
+  const minutosAhora = minutosDelDia(ahora);
+  const yaVencioHoy = minutosAhora >= HORA_LIMITE_OMISION_MINUTOS;
+  // El domingo es descanso (la semana laboral es de lunes a sábado): nadie queda en omisión.
+  const esDomingo = ahora.getDay() === 0;
+  const hoyLocalISO = ahora.toLocaleDateString('en-CA');
+  const filasOmision: FilaOmision[] = esDomingo ? [] : [
+    ...registros
+      .filter((r) => r.estado === 'Omisión')
+      .map((r) => ({ id: r.id, trabajadorId: r.trabajadorId, registro: r, vencida: !!r.omisionVencida || yaVencioHoy, porLlegar: false })),
+    ...missingWorkers
+      .filter((t) => !t.fechaContratacion || t.fechaContratacion <= hoyLocalISO)
+      .map((t) => {
+      const porLlegar = !!t.entrada && minutosAhora <= minutosDeHora(t.entrada) + TOLERANCIA_ENTRADA_MINUTOS;
+        return { id: `sin-${t.id}`, trabajadorId: t.id, vencida: !porLlegar && yaVencioHoy, porLlegar };
+      }),
+  ];
+  const omisionesPorResolver = filasOmision.filter((f) => !f.porLlegar).length;
+
+  // Solo cuenta quien sí checó: una falta o un retardo registrados sin marcaje no tienen GPS (no están "fuera de obra").
+  const conMarcaje = (r: RegistroAsistenciaDTO) => !r.sinMarcaje;
+  const enSitioCount = registros.filter((r) => conMarcaje(r) && r.enSitio).length;
+  const fueraSitioCount = registros.filter((r) => conMarcaje(r) && !r.enSitio).length;
   const totalHorasExtras = registros.reduce((sum, r) => sum + (r.horasExtra?.horasCalculadas ?? 0), 0);
   const totalMontoHorasExtras = registros.reduce((sum, r) => sum + (r.horasExtra?.montoTotal ?? 0), 0);
 
@@ -442,8 +546,8 @@ export default function AsistenciaPage() {
 
     if (!matchSearch) return false;
     if (selectedRole !== 'Todos' && trabajador?.categoriaPuesto !== selectedRole) return false;
-    if (filterGeocerca === 'EnSitio') return reg.enSitio;
-    if (filterGeocerca === 'FueraSitio') return !reg.enSitio;
+    if (filterGeocerca === 'EnSitio') return conMarcaje(reg) && reg.enSitio;
+    if (filterGeocerca === 'FueraSitio') return conMarcaje(reg) && !reg.enSitio;
     if (filterGeocerca === 'SalidaAnticipada') return reg.salidaAnticipada || reg.estado === 'Salida Anticipada';
     return true;
   });
@@ -502,22 +606,118 @@ export default function AsistenciaPage() {
     }
   };
 
-  const handleRegistrarFalta = async (workerId: string) => {
-    if (registrandoFaltaId) return;
-    const nombre = trabajadores.find((t) => t.id === workerId)?.nombre ?? 'el trabajador';
-    setRegistrandoFaltaId(workerId);
+  const abrirResolverOmision = (destino: { registro?: RegistroAsistenciaDTO; trabajadorId: string }) => {
+    setOmisionAResolver(destino.registro ? { registro: destino.registro, trabajadorId: destino.trabajadorId } : { trabajadorId: destino.trabajadorId });
+    setResolucionOmision('');
+    setMotivoOmision('');
+    setErroresOmision({});
+  };
+
+  const cerrarResolverOmision = () => {
+    if (!resolviendoOmision) setOmisionAResolver(null);
+  };
+
+  const guardarResolucionOmision = async () => {
+    if (!omisionAResolver || resolviendoOmisionRef.current) return;
+    const motivo = motivoOmision.trim();
+    const errores: { resolucion?: string; motivo?: string } = {};
+    if (!resolucionOmision) errores.resolucion = 'Elige si queda como falta o como retardo.';
+    if (motivo.length < MOTIVO_OMISION_MIN) errores.motivo = 'Escribe el motivo que dio el trabajador.';
+    if (Object.keys(errores).length > 0) {
+      setErroresOmision(errores);
+      return;
+    }
+    const resolucion = resolucionOmision as ResolucionOmision;
+    const nombre = trabajadores.find((t) => t.id === omisionAResolver.trabajadorId)?.nombre ?? 'el trabajador';
+    resolviendoOmisionRef.current = true;
+    setResolviendoOmision(true);
     try {
-      const res = await asistenciaApi.registrarFalta({ trabajadorId: workerId });
+      const res = omisionAResolver.registro
+        ? await asistenciaApi.resolverOmision(omisionAResolver.registro.id, { resolucion, motivo })
+        : await asistenciaApi.resolverOmisionSinMarcaje({ trabajadorId: omisionAResolver.trabajadorId, resolucion, motivo });
       if (!res.success) {
         showToast(res.error.message, 'error');
         return;
       }
-      showToast(`Falta registrada para ${nombre}. Se descontará en nómina.`, 'warning');
-      await refetchAll();
+      setOmisionAResolver(null);
+      setSelectedRegistro((prev) => (prev && prev.id === res.data.id ? res.data : prev));
+      showToast(
+        resolucion === 'Falta'
+          ? `Omisión de ${nombre} resuelta como falta: se descontará al sincronizar la nómina.`
+          : `Omisión de ${nombre} resuelta como retardo.`,
+        resolucion === 'Falta' ? 'warning' : 'success',
+      );
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'No se pudo registrar la falta.', 'error');
+      showToast(e instanceof Error ? e.message : 'No se pudo resolver la omisión.', 'error');
     } finally {
-      setRegistrandoFaltaId(null);
+      resolviendoOmisionRef.current = false;
+      setResolviendoOmision(false);
+    }
+    // Fuera del try: si refrescar fallara no debe leerse como que la omisión no se resolvió. Se refresca también
+    // tras un error (p. ej. 409: otra persona ya la resolvió), para que la tabla muestre lo vigente.
+    await refetchAll();
+  };
+
+  const abrirUbicacionObra = (obra: ObraLite) => {
+    setObraAUbicar(obra);
+    setRadioObra(obra.radioPermitidoMetros ? String(obra.radioPermitidoMetros) : RADIO_OBRA_SUGERIDO);
+    setErrorRadioObra(null);
+    // Lectura nueva del GPS: la que hay pudo tomarse en otro lugar.
+    prepararUbicacion();
+  };
+
+  /**
+   * El modal de ubicación usa el mismo GPS que el marcaje de abajo. Al cerrarlo se vuelve a pedir una lectura
+   * limpia: si no, unas coordenadas manuales del centro de la obra se quedarían puestas y el siguiente
+   * marcaje saldría "en sitio" sin estar ahí.
+   */
+  const cerrarUbicacionObra = () => {
+    setObraAUbicar(null);
+    prepararUbicacion();
+  };
+
+  const guardarUbicacionObra = async () => {
+    if (!obraAUbicar || guardandoUbicacionObraRef.current) return;
+    const radio = Number(radioObra);
+    if (radioObra.trim() === '' || !Number.isFinite(radio) || radio < RADIO_OBRA_MIN || radio > RADIO_OBRA_MAX) {
+      setErrorRadioObra(`El radio va de ${RADIO_OBRA_MIN} m a ${RADIO_OBRA_MAX} m.`);
+      return;
+    }
+    const ubicacion = resolverCoordenadasDispositivo();
+    if (!ubicacion.ok) {
+      showToast(ubicacion.mensaje, 'error');
+      return;
+    }
+    const { coords, manual } = ubicacion;
+    if (!manual && coords.precisionGpsMetros > PRECISION_MAXIMA_OBRA) {
+      showToast(
+        `La señal GPS tiene un margen de ${coords.precisionGpsMetros} m (máximo ${PRECISION_MAXIMA_OBRA} m). Sal a un lugar abierto y toca Reintentar.`,
+        'error',
+      );
+      return;
+    }
+    guardandoUbicacionObraRef.current = true;
+    setGuardandoUbicacionObra(true);
+    try {
+      const res = await asistenciaApi.registrarUbicacionObra(obraAUbicar.id, {
+        lat: coords.lat,
+        lng: coords.lng,
+        radioPermitidoMetros: radio,
+        // Sin precisión, la API la registra como captura manual.
+        precisionGpsMetros: manual ? undefined : coords.precisionGpsMetros,
+      });
+      if (!res.success) {
+        showToast(res.error.message, 'error');
+        return;
+      }
+      setObras((prev) => prev.map((o) => (o.id === res.data.id ? { ...o, ...res.data } : o)));
+      cerrarUbicacionObra();
+      showToast(`Ubicación de ${res.data.nombre} registrada (radio de ${radio} m). Ya se puede marcar asistencia ahí.`, 'success');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo registrar la ubicación de la obra.', 'error');
+    } finally {
+      guardandoUbicacionObraRef.current = false;
+      setGuardandoUbicacionObra(false);
     }
   };
 
@@ -525,6 +725,10 @@ export default function AsistenciaPage() {
     if (submitting) return;
     if (!obraSeleccionadaCuadrilla) {
       showToast('Selecciona la obra o frente de trabajo.', 'error');
+      return;
+    }
+    if (obraSeleccionadaCuadrilla.lat == null || obraSeleccionadaCuadrilla.lng == null) {
+      showToast(MENSAJE_OBRA_SIN_UBICACION, 'error');
       return;
     }
     if (selectedCuadrillaWorkers.length === 0) {
@@ -542,9 +746,6 @@ export default function AsistenciaPage() {
     try {
       const res = await asistenciaApi.marcarCuadrilla({
         obraId: obra.id,
-        obraLat: obra.lat ?? FALLBACK_COORD.lat,
-        obraLng: obra.lng ?? FALLBACK_COORD.lng,
-        radioPermitidoMetros: obra.radioPermitidoMetros ?? 2000,
         trabajadorIds: selectedCuadrillaWorkers,
         lat: coords.lat,
         lng: coords.lng,
@@ -578,20 +779,32 @@ export default function AsistenciaPage() {
       showToast('Selecciona la obra.', 'error');
       return;
     }
+    if (clockInType === 'entrada' && (obraSeleccionadaEntrada?.lat == null || obraSeleccionadaEntrada?.lng == null)) {
+      showToast(MENSAJE_OBRA_SIN_UBICACION, 'error');
+      return;
+    }
     const horasSalida = Number(earlyDepartureHours);
     if (clockInType === 'salida' && isEarlyDeparture) {
       if (!earlyDepartureReason.trim()) {
         showToast('Indica el motivo de la salida anticipada.', 'error');
         return;
       }
-      if (earlyDepartureHours.trim() === '' || !Number.isFinite(horasSalida) || horasSalida < 0 || horasSalida > 24) {
-        showToast('Indica las horas laboradas (entre 0 y 24).', 'error');
+      // Mismas reglas que MarcarSalidaDto: de 0 a 24, con hasta 2 decimales.
+      if (
+        earlyDepartureHours.trim() === '' || !Number.isFinite(horasSalida) || horasSalida < 0 || horasSalida > 24 ||
+        Number(horasSalida.toFixed(2)) !== horasSalida
+      ) {
+        showToast('Indica las horas laboradas (entre 0 y 24, hasta 2 decimales).', 'error');
         return;
       }
     }
     const horasExtra = Number(extraHoursInput);
-    if (clockInType === 'horas_extra' && !(Number.isFinite(horasExtra) && horasExtra > 0 && horasExtra <= 24)) {
-      showToast('Indica las horas extra trabajadas (mayor a 0 y hasta 24).', 'error');
+    // Mismas reglas que RegistrarHorasExtraDto: de 0.5 a 24, con hasta 2 decimales.
+    if (
+      clockInType === 'horas_extra' &&
+      !(Number.isFinite(horasExtra) && horasExtra >= 0.5 && horasExtra <= 24 && Number(horasExtra.toFixed(2)) === horasExtra)
+    ) {
+      showToast('Indica las horas extra trabajadas (de 0.5 a 24, hasta 2 decimales).', 'error');
       return;
     }
     const existente = registros.find((r) => r.trabajadorId === worker.id);
@@ -614,21 +827,22 @@ export default function AsistenciaPage() {
         const res = await asistenciaApi.marcarEntrada({
           trabajadorId: worker.id,
           obraId: obra.id,
-          obraLat: obra.lat ?? FALLBACK_COORD.lat,
-          obraLng: obra.lng ?? FALLBACK_COORD.lng,
-          radioPermitidoMetros: obra.radioPermitidoMetros ?? 2000,
           lat: coords.lat,
           lng: coords.lng,
           precisionGpsMetros: coords.precisionGpsMetros,
           dispositivo,
         });
         if (!res.success) throw new Error(res.error.message);
-        showToast(
-          res.data.enSitio
-            ? `Entrada de ${worker.nombre} registrada (en sitio).`
-            : `Alerta: ${worker.nombre} marcó fuera del radio permitido de la obra.`,
-          res.data.enSitio ? 'success' : 'error',
-        );
+        if (!res.data.enSitio) {
+          showToast(`Alerta: ${worker.nombre} marcó fuera del radio permitido de la obra.`, 'error');
+        } else if (res.data.estado === 'Omisión') {
+          showToast(
+            `Entrada de ${worker.nombre} registrada tarde: queda como omisión hasta que se resuelva (falta o retardo).`,
+            'warning',
+          );
+        } else {
+          showToast(`Entrada de ${worker.nombre} registrada (en sitio).`, 'success');
+        }
       } else if (clockInType === 'salida') {
         const res = await asistenciaApi.marcarSalida({
           trabajadorId: worker.id,
@@ -679,6 +893,7 @@ export default function AsistenciaPage() {
   };
 
   const trabajadorSeleccionado = trabajadores.find((t) => t.id === selectedRegistro?.trabajadorId);
+  const trabajadorOmision = omisionAResolver ? trabajadores.find((t) => t.id === omisionAResolver.trabajadorId) : undefined;
   // Fecha local en formato YYYY-MM-DD para comparar con las fechas del resumen semanal.
   const hoyISO = new Date().toLocaleDateString('en-CA');
   const registrosConHorasExtra = registros.filter((r) => r.horasExtra);
@@ -712,10 +927,13 @@ export default function AsistenciaPage() {
     {
       key: 'horario',
       header: 'Entrada – salida',
-      render: (reg) => (
+      render: (reg) => !conMarcaje(reg) ? (
+        // Falta o retardo registrados sin checar: no hay jornada que mostrar.
+        <span className="text-sm text-ui-500 whitespace-nowrap">Sin marcaje</span>
+      ) : (
         <div className="flex items-center gap-2 text-sm whitespace-nowrap">
           <span className="font-semibold text-ui-900 tabular-nums">{reg.horaEntrada ?? '—'}</span>
-          <span className="text-ui-300">–</span>
+          <span className="text-ui-500">–</span>
           {reg.horaSalida ? (
             <span className="text-ui-700 tabular-nums">{reg.horaSalida}</span>
           ) : (
@@ -743,7 +961,9 @@ export default function AsistenciaPage() {
     {
       key: 'geocerca',
       header: 'Geocerca',
-      render: (reg) => (
+      render: (reg) => !conMarcaje(reg) ? (
+        <span className="text-xs text-ui-500 whitespace-nowrap">Sin marcaje</span>
+      ) : (
         <div className="flex items-center gap-2 whitespace-nowrap">
           <Badge variant={reg.enSitio ? 'success' : 'error'} size="sm">{reg.enSitio ? 'En sitio' : 'Fuera'}</Badge>
           <span className="text-xs text-ui-500 tabular-nums">{formatoDistancia(reg.distanciaMetros)}</span>
@@ -760,13 +980,22 @@ export default function AsistenciaPage() {
             +{reg.horasExtra.horasCalculadas} h <span className="text-ui-500">· {formatCurrency(reg.horasExtra.montoTotal)}</span>
           </span>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-ui-500">—</span>
         ),
     },
     {
       key: 'estado',
       header: 'Estado',
-      render: (reg) => <Badge variant={getStatusBadge(reg.estado)} size="sm">{reg.estado}</Badge>,
+      render: (reg) =>
+        reg.estado === 'Omisión' ? (
+          reg.omisionVencida ? (
+            <Badge variant="error" size="sm">Omisión vencida</Badge>
+          ) : (
+            <Badge variant="neutral" size="sm" className={CLASE_OMISION}>Omisión</Badge>
+          )
+        ) : (
+          <Badge variant={getStatusBadge(reg.estado)} size="sm">{reg.estado}</Badge>
+        ),
     },
   ];
 
@@ -824,44 +1053,87 @@ export default function AsistenciaPage() {
           );
         }
         if (he.estado === 'Aprobado') return <span className="text-xs text-ui-500 whitespace-nowrap">En nómina</span>;
-        return <span className="text-ui-300">—</span>;
+        return <span className="text-ui-500">—</span>;
       },
     },
   ];
 
-  const faltasColumns: Column<TrabajadorDTO>[] = [
-    { key: 'trabajador', header: 'Trabajador', render: (t) => celdaTrabajador(t, t.puesto) },
-    { key: 'telefono', header: 'Teléfono', className: 'hidden md:table-cell', render: (t) => <span className="text-sm text-ui-600 whitespace-nowrap tabular-nums">{t.telefono || '—'}</span> },
+  const textoSituacion = (f: FilaOmision) =>
+    f.registro ? `Checó a las ${f.registro.horaEntrada ?? '—'}` : f.porLlegar ? 'Por llegar' : 'Sin checar';
+
+  const omisionesColumns: Column<FilaOmision>[] = [
     {
-      key: 'proyectos',
-      header: 'Proyectos',
-      className: 'hidden md:table-cell',
-      render: (t) =>
-        t.proyectos.length > 0 ? (
-          <div className="flex gap-1 flex-wrap">
-            {t.proyectos.map((p) => <Badge key={p} variant="neutral" size="sm">{p}</Badge>)}
+      key: 'trabajador',
+      header: 'Trabajador',
+      render: (f) => {
+        const t = trabajadores.find((x) => x.id === f.trabajadorId);
+        return (
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-ui-100 text-ui-700 flex items-center justify-center text-[11px] font-bold shrink-0">
+              {t?.avatar ?? '?'}
+            </div>
+            {/* En celular el nombre se corta para que el botón Resolver no se salga de la pantalla. */}
+            <div className="min-w-0 max-w-[52vw] md:max-w-none">
+              <p className="text-sm font-semibold text-ui-900 truncate">{t?.nombre ?? 'Trabajador'}</p>
+              <p className="hidden md:block text-xs text-ui-500 truncate">{t?.puesto}</p>
+              {/* En celular, la situación y el plazo van aquí (sus columnas se ocultan). */}
+              <p className="md:hidden text-xs text-ui-500 truncate">
+                {textoSituacion(f)}
+                {f.vencida ? ' · cuenta como falta' : f.porLlegar ? '' : ' · hasta las 17:00'}
+              </p>
+            </div>
           </div>
+        );
+      },
+    },
+    {
+      key: 'situacion',
+      header: 'Situación',
+      className: 'hidden md:table-cell',
+      render: (f) => {
+        const t = trabajadores.find((x) => x.id === f.trabajadorId);
+        if (f.registro) {
+          return (
+            <div className="text-sm whitespace-nowrap">
+              <p className="text-ui-900">Checó a las <span className="tabular-nums">{f.registro.horaEntrada ?? '—'}</span></p>
+              {t?.entrada && <p className="text-xs text-ui-500">Entra a las <span className="tabular-nums">{t.entrada}</span></p>}
+            </div>
+          );
+        }
+        return (
+          <div className="text-sm whitespace-nowrap">
+            <p className="text-ui-900">{f.porLlegar ? 'Por llegar' : 'Sin checar'}</p>
+            {t?.entrada && <p className="text-xs text-ui-500">Entra a las <span className="tabular-nums">{t.entrada}</span></p>}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'plazo',
+      header: 'Plazo',
+      className: 'hidden md:table-cell',
+      render: (f) =>
+        f.vencida ? (
+          <Badge variant="error" size="sm">Cuenta como falta</Badge>
+        ) : f.porLlegar ? (
+          <span className="text-xs text-ui-500 whitespace-nowrap">Aún en tolerancia</span>
         ) : (
-          <span className="text-ui-300">—</span>
+          <span className="text-xs text-ui-600 whitespace-nowrap">Hasta las 17:00</span>
         ),
     },
     {
       key: 'accion',
       header: 'Acción',
       align: 'right',
-      render: (t) =>
-        puedeCrear ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-500/10"
-            loading={registrandoFaltaId === t.id}
-            disabled={registrandoFaltaId !== null}
-            onClick={() => handleRegistrarFalta(t.id)}
-          >
-            Registrar falta
+      render: (f) =>
+        // Dentro de su tolerancia todavía no es omisión (la API lo rechaza): no hay nada que resolver.
+        puedeEditar && !f.porLlegar ? (
+          <Button variant="outline" size="sm" disabled={resolviendoOmision} onClick={() => abrirResolverOmision(f)}>
+            Resolver
           </Button>
-        ) : null,
+        ) : (
+          <span className="text-ui-500">—</span>
+        ),
     },
   ];
 
@@ -884,23 +1156,15 @@ export default function AsistenciaPage() {
         title="Asistencia"
         subtitle="Entradas, salidas y horas extra validadas por GPS en cada obra."
         action={
-          puedeCrear || puedeVerNomina ? (
+          // "Ir a nómina" se quitó: ya está en el menú lateral y el cliente pidió menos botones.
+          puedeCrear ? (
             <div className="flex flex-wrap items-center gap-2">
-              {puedeCrear && (
-                <Button onClick={abrirMarcaje} className="w-full sm:w-auto">
-                  Marcar entrada / salida
-                </Button>
-              )}
-              {puedeCrear && (
-                <Button variant="outline" onClick={abrirCuadrilla}>
-                  Pase de lista
-                </Button>
-              )}
-              {puedeVerNomina && (
-                <Button variant="ghost" onClick={() => router.push('/nomina')}>
-                  Ir a nómina
-                </Button>
-              )}
+              <Button onClick={abrirMarcaje} className="w-full sm:w-auto">
+                Marcar entrada / salida
+              </Button>
+              <Button variant="outline" onClick={abrirCuadrilla}>
+                Pase de lista
+              </Button>
             </div>
           ) : undefined
         }
@@ -943,8 +1207,11 @@ export default function AsistenciaPage() {
             />
             <StatsCard
               className="rounded-none border-0 hover:shadow-none hover:bg-ui-50"
-              label="Sin marcaje hoy"
-              value={datosHoyConfiables ? missingWorkers.length : '—'}
+              label="Omisiones hoy"
+              value={datosHoyConfiables ? omisionesPorResolver : '—'}
+              hint={datosHoyConfiables && filasOmision.length > omisionesPorResolver
+                ? `${filasOmision.length - omisionesPorResolver} por llegar`
+                : undefined}
               onClick={() => setMainView('faltas')}
             />
             <StatsCard
@@ -964,7 +1231,7 @@ export default function AsistenciaPage() {
               { key: 'asistencia', label: 'Hoy', count: registrosCargados ? registros.length : undefined },
               { key: 'calendario_semanal', label: 'Semana' },
               { key: 'horas_extra', label: 'Horas extra', count: registrosCargados ? registrosConHorasExtra.length : undefined },
-              { key: 'faltas', label: 'Sin marcaje', count: datosHoyConfiables ? missingWorkers.length : undefined },
+              { key: 'faltas', label: 'Omisiones', count: datosHoyConfiables ? omisionesPorResolver : undefined },
             ]}
           >
             {/* ── HOY ── */}
@@ -1053,7 +1320,7 @@ export default function AsistenciaPage() {
                                 {item.dias.map((d) => {
                                   if (d.fecha > hoyISO) {
                                     return (
-                                      <td key={d.dia} className="px-2 py-3 text-center text-ui-300" aria-label="Día por venir">—</td>
+                                      <td key={d.dia} className="px-2 py-3 text-center text-ui-500" aria-label="Día por venir">—</td>
                                     );
                                   }
                                   // Estado no previsto por la API: se muestra tal cual y en neutro (nunca como falta).
@@ -1073,6 +1340,11 @@ export default function AsistenciaPage() {
                                     {item.totalDiasAsistidos}/6 días <span className="font-normal text-ui-500">· {item.totalHorasOrdinarias} h</span>
                                   </p>
                                   {item.totalHorasExtra > 0 && <p className="text-xs text-primary">+{item.totalHorasExtra} h extra</p>}
+                                  {item.totalOmisionesPendientes > 0 && (
+                                    <p className="text-xs text-violet-700 dark:text-violet-300">
+                                      {item.totalOmisionesPendientes} omisión por resolver
+                                    </p>
+                                  )}
                                   {item.totalFaltas > 0 && (
                                     <p className="text-xs text-red-600 dark:text-red-400">
                                       {item.totalFaltas} falta{item.totalFaltas > 1 ? 's' : ''}
@@ -1110,24 +1382,26 @@ export default function AsistenciaPage() {
               </div>
             )}
 
-            {/* ── SIN MARCAJE ── */}
+            {/* ── OMISIONES ── */}
             {mainView === 'faltas' && !datosHoyConfiables && (
               <p className="text-sm text-ui-600">
                 No se puede saber quién falta: no cargó completa la lista de trabajadores o los registros de hoy. Usa
-                &quot;Reintentar&quot; en el aviso de arriba.
+                “Reintentar” en el aviso de arriba.
               </p>
             )}
             {mainView === 'faltas' && datosHoyConfiables && (
               <div className="space-y-3">
                 <p className="text-sm text-ui-600">
-                  {missingWorkers.length === 1 ? '1 trabajador activo' : `${missingWorkers.length} trabajadores activos`} sin marcaje de entrada hoy.
+                  {esDomingo && 'Hoy es domingo, día de descanso: no hay omisiones. '}
+                  Checar tarde o no checar queda como omisión. Se resuelve como falta o retardo con el motivo que dio el
+                  trabajador; sin resolver a las 17:00, cuenta como falta.
                 </p>
                 <DataTable
                   headerVariant="neutral"
-                  columns={faltasColumns}
-                  data={missingWorkers}
-                  keyExtractor={(t) => t.id}
-                  emptyText="Todo el personal activo registró asistencia hoy."
+                  columns={omisionesColumns}
+                  data={filasOmision}
+                  keyExtractor={(f) => f.id}
+                  emptyText="Sin omisiones: todo el personal activo checó a tiempo hoy."
                 />
               </div>
             )}
@@ -1144,6 +1418,8 @@ export default function AsistenciaPage() {
           trabajador={trabajadorSeleccionado ? { nombre: trabajadorSeleccionado.nombre, puesto: trabajadorSeleccionado.puesto, avatar: trabajadorSeleccionado.avatar } : undefined}
           onActualizarEstado={puedeEditar ? handleActualizarEstado : undefined}
           onAprobarHorasExtra={puedeEditar ? handleAprobarHorasExtra : undefined}
+          onResolverOmision={puedeEditar ? () => abrirResolverOmision({ registro: selectedRegistro, trabajadorId: selectedRegistro.trabajadorId }) : undefined}
+          persistent={!!omisionAResolver}
         />
       )}
 
@@ -1154,7 +1430,9 @@ export default function AsistenciaPage() {
         onSubmit={handleClockInSubmit}
         title={clockInType === 'entrada' ? 'Marcar entrada' : clockInType === 'salida' ? 'Marcar salida' : 'Registrar horas extra'}
         submitLabel={submitting ? 'Enviando…' : 'Registrar'}
+        submitDisabled={clockInType === 'entrada' && obraSeleccionadaEntrada?.lat == null}
         isSubmitting={submitting}
+        persistent={!!obraAUbicar}
       >
         <div className="space-y-4">
           <ModalField label="Tipo de registro">
@@ -1188,13 +1466,15 @@ export default function AsistenciaPage() {
             <ModalField label="Obra">
               <select value={clockInObraId} onChange={(e) => setClockInObraId(e.target.value)} className={modalSelectClass}>
                 {obras.map((o) => (
-                  <option key={o.id} value={o.id}>{o.nombre}</option>
+                  <option key={o.id} value={o.id}>{o.nombre}{o.lat == null ? ' (sin ubicación)' : ''}</option>
                 ))}
               </select>
               {obraSeleccionadaEntrada && obraSeleccionadaEntrada.lat == null && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                  Esta obra aún no tiene coordenadas configuradas; se usará una ubicación de referencia.
-                </p>
+                <AvisoObraSinUbicacion
+                  className="mt-1.5"
+                  puedeRegistrar={puedeEditar}
+                  onRegistrar={() => abrirUbicacionObra(obraSeleccionadaEntrada)}
+                />
               )}
             </ModalField>
           )}
@@ -1266,21 +1546,25 @@ export default function AsistenciaPage() {
         onSubmit={handleCuadrillaSubmit}
         title="Pase de lista por cuadrilla"
         submitLabel={submitting ? 'Enviando…' : 'Registrar cuadrilla'}
+        submitDisabled={obraSeleccionadaCuadrilla?.lat == null}
         isSubmitting={submitting}
+        persistent={!!obraAUbicar}
       >
         <div className="space-y-4">
           <ModalField label="Obra o frente de trabajo">
             <select value={cuadrillaObraId} onChange={(e) => setCuadrillaObraId(e.target.value)} className={modalSelectClass}>
               {obras.map((o) => (
-                <option key={o.id} value={o.id}>{o.nombre}</option>
+                <option key={o.id} value={o.id}>{o.nombre}{o.lat == null ? ' (sin ubicación)' : ''}</option>
               ))}
             </select>
           </ModalField>
 
           {obraSeleccionadaCuadrilla && obraSeleccionadaCuadrilla.lat == null && (
-            <p className="-mt-2 text-xs text-amber-600 dark:text-amber-400">
-              Esta obra aún no tiene coordenadas configuradas; se usará una ubicación de referencia.
-            </p>
+            <AvisoObraSinUbicacion
+              className="-mt-2"
+              puedeRegistrar={puedeEditar}
+              onRegistrar={() => abrirUbicacionObra(obraSeleccionadaCuadrilla)}
+            />
           )}
 
           <ModalField label="Ubicación del dispositivo (residente o cabo)">
@@ -1318,6 +1602,115 @@ export default function AsistenciaPage() {
           </ModalField>
         </div>
       </FormModal>
+
+      {/* Resolver una omisión: falta o retardo, con el motivo que dio el trabajador */}
+      {omisionAResolver && (
+        <FormModal
+          open
+          onClose={cerrarResolverOmision}
+          onSubmit={guardarResolucionOmision}
+          title="Resolver omisión"
+          subtitle={trabajadorOmision?.nombre}
+          submitLabel={resolviendoOmision ? 'Guardando…' : 'Guardar'}
+          isSubmitting={resolviendoOmision}
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-ui-600">
+              {omisionAResolver.registro
+                ? `Checó a las ${omisionAResolver.registro.horaEntrada ?? '—'}${trabajadorOmision?.entrada ? ` y su entrada es a las ${trabajadorOmision.entrada}` : ''}.`
+                : 'No checó entrada hoy.'}
+              {omisionAResolver.registro?.omisionVencida && ' Ya pasó el plazo de las 17:00: mientras no se resuelva, cuenta como falta.'}
+            </p>
+            <ModalField label="Queda como" required error={erroresOmision.resolucion}>
+              <div role="group" aria-label="Resolución de la omisión" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-ui-100">
+                {(['Retardo', 'Falta'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    aria-pressed={resolucionOmision === r}
+                    onClick={() => {
+                      setResolucionOmision(r);
+                      setErroresOmision((e) => ({ ...e, resolucion: undefined }));
+                    }}
+                    className={cn(
+                      'py-2 px-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer',
+                      resolucionOmision === r ? 'bg-surface dark:bg-ui-200 text-ui-900 shadow-sm' : 'text-ui-500 hover:text-ui-900',
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </ModalField>
+            <ModalField
+              label="Motivo que dio el trabajador"
+              required
+              error={erroresOmision.motivo}
+              hint="Queda registrado en la auditoría con tu usuario."
+            >
+              <textarea
+                aria-label="Motivo de la omisión"
+                rows={3}
+                maxLength={MOTIVO_OMISION_MAX}
+                className={modalTextareaClass}
+                placeholder="Ej: Se le ponchó una llanta en el camino"
+                value={motivoOmision}
+                onChange={(e) => {
+                  setMotivoOmision(e.target.value);
+                  setErroresOmision((er) => ({ ...er, motivo: undefined }));
+                }}
+              />
+            </ModalField>
+            <p className="text-xs text-ui-500">La falta se descuenta en nómina y el retardo no. Una vez resuelta, ya no cambia aquí.</p>
+          </div>
+        </FormModal>
+      )}
+
+      {/* Registrar la ubicación de una obra (centro y radio de su geocerca) */}
+      {obraAUbicar && (
+        <FormModal
+          open
+          onClose={() => { if (!guardandoUbicacionObra) cerrarUbicacionObra(); }}
+          onSubmit={guardarUbicacionObra}
+          title="Registrar ubicación de la obra"
+          subtitle={obraAUbicar.nombre}
+          submitLabel={guardandoUbicacionObra ? 'Guardando…' : 'Registrar ubicación'}
+          isSubmitting={guardandoUbicacionObra}
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-ui-600">
+              Párate en el centro de la obra (o en su acceso principal) y toma la ubicación con el GPS del teléfono. Desde ese
+              punto se mide la distancia de cada checado.
+            </p>
+            <ModalField label="Ubicación">
+              <UbicacionDispositivo {...ubicacionProps} etiquetaManual="Escribir las coordenadas (por ejemplo, copiadas de Google Maps)" />
+            </ModalField>
+            <ModalField
+              label="Radio permitido (metros)"
+              required
+              error={errorRadioObra ?? undefined}
+              hint={`De ${RADIO_OBRA_MIN} m a ${RADIO_OBRA_MAX} m. Quien cheque más lejos queda como fuera de obra.`}
+            >
+              <input
+                aria-label="Radio permitido en metros"
+                type="number"
+                min={RADIO_OBRA_MIN}
+                max={RADIO_OBRA_MAX}
+                step="10"
+                inputMode="numeric"
+                className={modalInputClass}
+                value={radioObra}
+                onChange={(e) => {
+                  setRadioObra(e.target.value);
+                  setErrorRadioObra(null);
+                }}
+              />
+            </ModalField>
+          </div>
+        </FormModal>
+      )}
     </div>
   );
 }

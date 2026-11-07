@@ -138,6 +138,100 @@ describe('BitacorasRentaService', () => {
       await service.create(createDto({ cliente: 'Cliente Nuevo SA' }), 'user-1');
       expect(prisma.clientes.create).toHaveBeenCalled();
     });
+
+    it('should reject a hoja from a future date', async () => {
+      await expect(service.create(createDto({ fecha: '2999-01-01' }), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.bitacoras_renta_diaria.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'FECHA_FUTURA' }));
+    });
+
+    it('should reject more than 24 horas (efectivas + extras) in one day', async () => {
+      await expect(service.create(createDto({ horasEfectivas: 20, horasExtras: 5 }), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.bitacoras_renta_diaria.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'HORAS_INVALIDAS' }));
+    });
+  });
+
+  describe('update', () => {
+    const pendiente = { ...mockBitacora, estado_cobro: 'PENDIENTE_FIRMA', firmas_cliente: null };
+
+    it('should update and audit', async () => {
+      await service.update('bit-uuid-1', { actividadRealizada: 'Relleno compactado' }, 'user-1');
+      // Escritura condicional: nunca sobre una ya facturada.
+      expect(prisma.bitacoras_renta_diaria.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'bit-uuid-1', eliminado_en: null, estado_cobro: { not: 'FACTURADO' } } }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'BITACORA_RENTA_ACTUALIZADA', result: 'SUCCESS' }),
+      );
+    });
+
+    it('should refuse to modify a bitácora that was already facturada (its CxC has that importe)', async () => {
+      prisma.bitacoras_renta_diaria.findFirst.mockResolvedValue({ ...mockBitacora, estado_cobro: 'FACTURADO' });
+      await expect(service.update('bit-uuid-1', { horasEfectivas: 10 }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.bitacoras_renta_diaria.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'BITACORA_YA_FACTURADA' }));
+    });
+
+    it('should refuse estadoCobro "Facturado" by PATCH (only /facturar creates the CxC)', async () => {
+      await expect(service.update('bit-uuid-1', { estadoCobro: 'Facturado' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.bitacoras_renta_diaria.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'FACTURAR_CON_ACCION' }));
+    });
+
+    it('should refuse "Listo para Facturar" without the client signature', async () => {
+      prisma.bitacoras_renta_diaria.findFirst.mockResolvedValue(pendiente);
+      await expect(service.update('bit-uuid-1', { estadoCobro: 'Listo para Facturar' }, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'FALTA_FIRMA_CLIENTE' }));
+    });
+
+    it('registering the signature moves a pending bitácora to LISTO_FACTURAR', async () => {
+      prisma.bitacoras_renta_diaria.findFirst.mockResolvedValue(pendiente);
+      await service.update('bit-uuid-1', { firmado: true, nombreResidente: 'Ing. Ruiz', cargoResidente: 'Residente' }, 'user-1');
+      expect(prisma.firmas_cliente.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ firmado: true, nombre_residente: 'Ing. Ruiz', cargo_residente: 'Residente' }),
+        }),
+      );
+      expect(prisma.bitacoras_renta_diaria.update).toHaveBeenCalledWith({
+        where: { id: 'bit-uuid-1' },
+        data: { estado_cobro: 'LISTO_FACTURAR' },
+      });
+    });
+
+    it('removing the signature moves a LISTO_FACTURAR bitácora back to PENDIENTE_FIRMA', async () => {
+      await service.update('bit-uuid-1', { firmado: false }, 'user-1');
+      expect(prisma.bitacoras_renta_diaria.update).toHaveBeenCalledWith({
+        where: { id: 'bit-uuid-1' },
+        data: { estado_cobro: 'PENDIENTE_FIRMA' },
+      });
+    });
+
+    it('should 409 when it was facturada between the read and the write (conditional update matched nothing)', async () => {
+      prisma.bitacoras_renta_diaria.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.update('bit-uuid-1', { horasEfectivas: 9 }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.firmas_cliente.upsert).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'BITACORA_YA_FACTURADA' }));
+    });
+
+    it('should refuse "Pendiente Firma" on a signed bitácora', async () => {
+      await expect(service.update('bit-uuid-1', { estadoCobro: 'Pendiente Firma' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'ESTADO_INCOHERENTE' }));
+    });
+
+    it('should refuse a future fecha', async () => {
+      await expect(service.update('bit-uuid-1', { fecha: '2999-01-01' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'FECHA_FUTURA' }));
+    });
+
+    it('should reject more than 24 horas counting the values already stored', async () => {
+      // La guardada tiene horas_extras; solo se cambian las efectivas.
+      prisma.bitacoras_renta_diaria.findFirst.mockResolvedValue({ ...mockBitacora, horas_efectivas: 8, horas_extras: 4 });
+      await expect(service.update('bit-uuid-1', { horasEfectivas: 21 }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'HORAS_INVALIDAS' }));
+    });
   });
 
   describe('remove', () => {
@@ -150,6 +244,13 @@ describe('BitacorasRentaService', () => {
     it('should 404 when the bitacora does not exist', async () => {
       prisma.bitacoras_renta_diaria.findFirst.mockResolvedValue(null);
       await expect(service.remove('missing', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should refuse to delete a facturada (it backs a cuenta por cobrar)', async () => {
+      prisma.bitacoras_renta_diaria.findFirst.mockResolvedValue({ ...mockBitacora, estado_cobro: 'FACTURADO' });
+      await expect(service.remove('bit-uuid-1', 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.bitacoras_renta_diaria.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'BITACORA_YA_FACTURADA' }));
     });
   });
 
@@ -166,7 +267,7 @@ describe('BitacorasRentaService', () => {
 
       expect(prisma.bitacoras_renta_diaria.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'bit-uuid-1', estado_cobro: 'LISTO_FACTURAR' },
+          where: { id: 'bit-uuid-1', estado_cobro: 'LISTO_FACTURAR', importe_total_renta: 14500 },
           data: expect.objectContaining({ estado_cobro: 'FACTURADO' }),
         }),
       );
