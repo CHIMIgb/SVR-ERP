@@ -1,7 +1,6 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { statsCardClasses } from './StatsCard.styles';
-import { Skeleton } from '@/components/ui/Skeleton';
 
 export type StatsColor = keyof typeof statsCardClasses.iconVariants;
 export type StatsTrend = 'up' | 'down' | 'neutral';
@@ -45,20 +44,9 @@ export function StatsCard({
   if (loading) {
     return (
       <div className={cn(statsCardClasses.base, className)} aria-busy="true">
-        {icon ? (
-          <>
-            <div className="flex items-start justify-between">
-              <Skeleton variant="avatar" width="w-9" height="h-9" className="rounded-lg" />
-            </div>
-            <Skeleton variant="title" lines={1} width="w-24" />
-            <Skeleton variant="text" lines={1} width="w-28" />
-          </>
-        ) : (
-          <>
-            <Skeleton variant="text" lines={1} width="w-28" />
-            <Skeleton variant="title" lines={1} width="w-20" />
-          </>
-        )}
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="w-5 h-5 text-primary animate-spin" />
+        </div>
       </div>
     );
   }

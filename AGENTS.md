@@ -72,13 +72,14 @@ src/
 
 ### Loaders/Skeletons — regla dura (todas las vistas: Operaciones, Comercial y TODOS los módulos)
 
-**La primera impresión de una vista cargando SIEMPRE es un esqueleto (skeleton), nunca un spinner.**
+**La primera impresión de una vista cargando nunca es un bloque vacío ni un "0" falso: tablas con skeleton, KPIs con spinner.**
 
 1. **Tablas:** `<DataTable loading={cargando} ...>` — pinta skeleton de filas internamente + `emptyText` cuando no hay datos. NUNCA renderizar un spinner encima del DataTable para la carga inicial.
-2. **Bloques no tabulares** (tab de detalle, paneles, cards de contenido): `<Skeleton variant="card" />` / `row` / `text` (con `SkeletonText` cuando el contenido simula párrafos).
-3. **Refetches con datos ya en pantalla** (filtros, paginación, búsqueda): `<RefreshOverlay show={refetch} />` dentro de un padre `relative` — nunca un skeleton completo ni un spinner suelto.
-4. **`LoadingState` (spinner centrado)** queda reservado para: estados de autenticación/layout (RouteGuard, login) y acciones que no tienen esqueleto asociado. No es la primera impresión de una vista de datos.
-5. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
+2. **KPIs (`StatsCard`):** con `loading={...}` muestran **spinner centrado** (conservan la tarjeta y su tamaño; nunca "0" falso — las KPIs siempre cargan números, no skeleton).
+3. **Bloques no tabulares** (tab de detalle, paneles, cards de contenido): `<Skeleton variant="card" />` / `row` / `text` (con `SkeletonText` cuando el contenido simula párrafos).
+4. **Refetches con datos ya en pantalla** (filtros, paginación, búsqueda): `<RefreshOverlay show={refetch} />` dentro de un padre `relative` — nunca un skeleton completo ni un spinner suelto.
+5. **`Button skeleton`** placeholder en las acciones principales durante la carga inicial; **`LoadingState`** queda reservado para estados de autenticación/layout.
+6. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading/skeleton`, `StatsCard.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
 
 ## Data Layer
 

@@ -1,3 +1,4 @@
+import { sleepDemo } from '@/lib/demo-delay';
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -35,7 +36,7 @@ export default function ConfiguracionPage() {
   });
 
   // Cargar config
-  const loadConfig = useCallback(async () => {
+  const loadConfig = useCallback(async () => { await sleepDemo();
     setLoading(true);
     try {
       const res = await ventasApi.config();

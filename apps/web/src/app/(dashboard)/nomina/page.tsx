@@ -20,6 +20,7 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
+import { sleepDemo } from '@/lib/demo-delay';
 
 const CATEGORIA_PILLS = [
   { id: 'Todos', label: 'Todos los Puestos' },
@@ -61,7 +62,7 @@ export default function NominaPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchNomina = useCallback(async () => {
+  const fetchNomina = useCallback(async () => { await sleepDemo();
     const res = await nominaApi.actual();
     if (res.success) {
       setPeriodo(res.data.periodo);

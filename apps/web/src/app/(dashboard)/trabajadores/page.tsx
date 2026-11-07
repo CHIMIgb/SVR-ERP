@@ -26,6 +26,7 @@ import LiquidacionModal from '@/components/workers/LiquidacionModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { formatCurrency } from '@/lib/formatters';
+import { sleepDemo } from '@/lib/demo-delay';
 
 const PAGE_SIZE = 12;
 
@@ -86,7 +87,7 @@ export default function TrabajadoresPage() {
 
   const [form, setForm] = useState(emptyForm);
 
-  const fetchTrabajadores = useCallback(async (page = 1, searchVal = search, role = selectedRole) => {
+  const fetchTrabajadores = useCallback(async (page = 1, searchVal = search, role = selectedRole) => { await sleepDemo();
     const res = await trabajadoresApi.listar({
       search: searchVal || undefined,
       categoriaPuesto: role !== 'Todos' ? role : undefined,

@@ -16,6 +16,7 @@ import MachineCard from '@/components/machinery/MachineCard';
 import Modal, { ModalField, inputClass, selectClass } from '@/components/layout/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
+import { sleepDemo } from '@/lib/demo-delay';
 
 interface ProyectoLite {
   id: string;
@@ -48,7 +49,7 @@ export default function MaquinariaPage() {
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'Todos' | 'Excavación' | 'Grúa' | 'Transporte'>('Todos');
   const [search, setSearch] = useState('');
 
-  const cargarDatos = useCallback(async () => {
+  const cargarDatos = useCallback(async () => { await sleepDemo();
     setCargando(true);
     setErrorCarga(null);
     const [resMaquinas, resDespachos, resChecklists, resProyectos] = await Promise.all([

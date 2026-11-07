@@ -2443,7 +2443,7 @@ import { StatsCard } from '@/components/ui/StatsCard';
 | `trend` | `'up' \| 'down' \| 'neutral'` | `undefined` | Direccion del trend (flecha) |
 | `trendValue` | `string` | `undefined` | Texto del trend (ej: "+12%", "-5%") |
 | `onClick` | `() => void` | `undefined` | Hace la tarjeta clickeable |
-| `loading` | `boolean` | `false` | **Skeleton de carga**: conserva la tarjeta pero muestra barras pulsantes en lugar de valores (pásale `loading={initialLoading}` — primera impresión, nunca 0 falso; regla dura de Loaders/Skeletons de AGENTS.md) |
+| `loading` | `boolean` | `false` | **Spinner de carga centrado** (conserva la tarjeta y su tamaño): pásale `loading={initialLoading}` — nunca "0" falso mientras el dato está en camino. Regla dura de Loaders/Skeletons de AGENTS.md |
 
 #### Colores del icono
 

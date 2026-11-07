@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
 import { formatCurrency, formatFechaSolo } from '@/lib/formatters';
+import { sleepDemo } from '@/lib/demo-delay';
 
 const PAGE_SIZE = 10;
 
@@ -70,7 +71,7 @@ export default function MantenimientoPage() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchData = useCallback(async (page = 1, searchVal?: string, tipo?: string) => {
+  const fetchData = useCallback(async (page = 1, searchVal?: string, tipo?: string) => { await sleepDemo();
     if (!hasLoaded.current) setInitialLoading(true);
     else setRefreshing(true);
 
