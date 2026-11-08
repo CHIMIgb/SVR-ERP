@@ -116,6 +116,37 @@ export class TrabajadoresService {
     throw new Excepcion(message);
   }
 
+  /**
+   * Regla del cliente: "Solo efectivo" no lleva sueldo por transferencia y "Solo transferencia" no lleva efectivo.
+   * Antes se aceptaba cualquier combinación, y Nómina mandaba a la dispersión SPEI a quien cobraba solo en efectivo.
+   */
+  private async exigirMetodoPagoCoherente(
+    action: AuditAction,
+    entityId: string | null,
+    metodo: TrabajadorResponse['metodoPago'],
+    sueldoFiscal: number,
+    sueldoEfectivo: number,
+  ): Promise<void> {
+    if (metodo === 'Efectivo' && sueldoFiscal > 0) {
+      return this.fallir(
+        action,
+        entityId,
+        'METODO_PAGO_INCOHERENTE',
+        BadRequestException,
+        'Con pago solo en efectivo, el sueldo por transferencia debe ser 0',
+      );
+    }
+    if (metodo === 'Tarjeta' && sueldoEfectivo > 0) {
+      return this.fallir(
+        action,
+        entityId,
+        'METODO_PAGO_INCOHERENTE',
+        BadRequestException,
+        'Con pago solo por transferencia, el sueldo en efectivo debe ser 0',
+      );
+    }
+  }
+
   async findAll(query: QueryTrabajadoresDto) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 12, 100);
@@ -227,6 +258,7 @@ export class TrabajadoresService {
         'La fecha de ingreso no puede ser futura',
       );
     }
+    await this.exigirMetodoPagoCoherente(AuditAction.TRABAJADOR_CREADO, null, dto.metodoPago, dto.sueldoFiscal, dto.sueldoEfectivo);
 
     const categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
 
@@ -381,6 +413,14 @@ export class TrabajadoresService {
         `Trabajador con id "${id}" no encontrado`,
       );
     }
+    // Se revisa la combinación que quedaría (lo que se manda más lo que ya estaba guardado).
+    await this.exigirMetodoPagoCoherente(
+      AuditAction.TRABAJADOR_ACTUALIZADO,
+      id,
+      dto.metodoPago ?? METODO_DB_A_UI[existente.metodo_pago] ?? 'Mixto',
+      dto.sueldoFiscal ?? Number(existente.sueldo_fiscal),
+      dto.sueldoEfectivo ?? Number(existente.sueldo_efectivo),
+    );
 
     // La baja solo la registra liquidar(): calcula el finiquito, libera la máquina y pide el permiso de
     // eliminar. Por PATCH (permiso de editar) se podía dar de baja sin finiquito o reactivar a alguien liquidado.

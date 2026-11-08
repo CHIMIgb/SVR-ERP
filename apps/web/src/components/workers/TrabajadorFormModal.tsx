@@ -8,6 +8,7 @@ import {
   type TrabajadorDTO,
 } from '@/lib/api';
 import { APP_TIMEZONE } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/components/layout/Toast';
 import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
@@ -132,6 +133,13 @@ function validar(f: FormState): Errores {
   if (fiscal !== null && efectivo !== null && fiscal + efectivo <= 0) {
     e.sueldoEfectivo = 'El sueldo semanal total debe ser mayor a cero.';
   }
+  // Misma regla que la API (METODO_PAGO_INCOHERENTE).
+  if (f.metodoPago === 'Efectivo' && fiscal !== null && fiscal > 0) {
+    e.sueldoFiscal = 'Con pago solo en efectivo debe ser 0 (o cambia el esquema a Mixto).';
+  }
+  if (f.metodoPago === 'Tarjeta' && efectivo !== null && efectivo > 0) {
+    e.sueldoEfectivo = 'Con pago solo por transferencia debe ser 0 (o cambia el esquema a Mixto).';
+  }
   return e;
 }
 
@@ -172,6 +180,21 @@ export default function TrabajadorFormModal({
     setForm((f) => ({ ...f, [campo]: valor }));
     setErrores((e) => (e[campo] ? { ...e, [campo]: undefined } : e));
   };
+
+  // Regla del cliente (igual que la API): "Solo efectivo" no lleva transferencia y "Solo transferencia" no lleva
+  // efectivo. Al elegir el esquema, el sueldo que no aplica queda en 0 y no se puede editar.
+  const cambiarMetodoPago = (metodo: TrabajadorCreateInput['metodoPago']) => {
+    setForm((f) => ({
+      ...f,
+      metodoPago: metodo,
+      ...(metodo === 'Efectivo' ? { sueldoFiscal: '0' } : {}),
+      ...(metodo === 'Tarjeta' ? { sueldoEfectivo: '0' } : {}),
+    }));
+    setErrores((e) => ({ ...e, sueldoFiscal: undefined, sueldoEfectivo: undefined }));
+  };
+  // Se bloquea solo si ya está en 0: un trabajador guardado antes con otra combinación debe poder corregirse aquí.
+  const sinTransferencia = form.metodoPago === 'Efectivo' && leerMonto(form.sueldoFiscal) === 0;
+  const sinEfectivo = form.metodoPago === 'Tarjeta' && leerMonto(form.sueldoEfectivo) === 0;
 
   // Opciones de máquina: se marca la que ya tiene otro operador, porque al guardar pasa a este trabajador.
   const maquinas = catalogos?.maquinas ?? [];
@@ -430,7 +453,7 @@ export default function TrabajadorFormModal({
               aria-label="Esquema de pago"
               className={modalSelectClass}
               value={form.metodoPago}
-              onChange={(e) => cambiar('metodoPago', e.target.value as TrabajadorCreateInput['metodoPago'])}
+              onChange={(e) => cambiarMetodoPago(e.target.value as TrabajadorCreateInput['metodoPago'])}
             >
               {METODOS_PAGO.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -438,29 +461,41 @@ export default function TrabajadorFormModal({
             </select>
           </ModalField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ModalField label="Sueldo semanal por transferencia" required error={errores.sueldoFiscal}>
+            <ModalField
+              label="Sueldo semanal por transferencia"
+              required={!sinTransferencia}
+              error={errores.sueldoFiscal}
+              hint={sinTransferencia ? 'No aplica: cobra solo en efectivo.' : undefined}
+            >
               <input
                 aria-label="Sueldo semanal por transferencia"
                 type="number"
                 min="0"
                 step="0.01"
                 inputMode="decimal"
-                className={modalInputClass}
+                className={cn(modalInputClass, sinTransferencia && 'opacity-60 cursor-not-allowed')}
                 placeholder="0.00"
                 value={form.sueldoFiscal}
+                disabled={sinTransferencia}
                 onChange={(e) => cambiar('sueldoFiscal', e.target.value)}
               />
             </ModalField>
-            <ModalField label="Sueldo semanal en efectivo" required error={errores.sueldoEfectivo}>
+            <ModalField
+              label="Sueldo semanal en efectivo"
+              required={!sinEfectivo}
+              error={errores.sueldoEfectivo}
+              hint={sinEfectivo ? 'No aplica: cobra solo por transferencia.' : undefined}
+            >
               <input
                 aria-label="Sueldo semanal en efectivo"
                 type="number"
                 min="0"
                 step="0.01"
                 inputMode="decimal"
-                className={modalInputClass}
+                className={cn(modalInputClass, sinEfectivo && 'opacity-60 cursor-not-allowed')}
                 placeholder="0.00"
                 value={form.sueldoEfectivo}
+                disabled={sinEfectivo}
                 onChange={(e) => cambiar('sueldoEfectivo', e.target.value)}
               />
             </ModalField>

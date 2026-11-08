@@ -115,6 +115,39 @@ describe('TrabajadoresService', () => {
     });
   });
 
+  describe('método de pago coherente con los sueldos (decisión de Oscar)', () => {
+    it('create: "Solo efectivo" with a transfer salary is 400 (audited) and nothing is saved', async () => {
+      await expect(service.create(createDto({ metodoPago: 'Efectivo', sueldoFiscal: 2500 }), 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.trabajadores.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'METODO_PAGO_INCOHERENTE' }));
+    });
+
+    it('create: "Solo transferencia" with a cash salary is 400', async () => {
+      await expect(service.create(createDto({ metodoPago: 'Tarjeta', sueldoEfectivo: 3500 }), 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.trabajadores.create).not.toHaveBeenCalled();
+    });
+
+    it('create: "Solo efectivo" with transfer salary 0 is valid', async () => {
+      await service.create(createDto({ metodoPago: 'Efectivo', sueldoFiscal: 0, sueldoEfectivo: 6000 }), 'user-1');
+      expect(prisma.trabajadores.create).toHaveBeenCalled();
+    });
+
+    it('update: checks the resulting combination (changing only the method of a Mixto worker with both salaries is 400)', async () => {
+      await expect(service.update('trab-uuid-1', { metodoPago: 'Efectivo' }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.trabajadores.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'METODO_PAGO_INCOHERENTE' }));
+    });
+
+    it('update: switching to "Solo efectivo" together with transfer salary 0 is valid', async () => {
+      await service.update('trab-uuid-1', { metodoPago: 'Efectivo', sueldoFiscal: 0 }, 'user-1');
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'TRABAJADOR_ACTUALIZADO', result: 'SUCCESS' }));
+    });
+  });
+
   describe('create', () => {
     it('should store entrada as the exact clock time regardless of server timezone', async () => {
       await service.create(createDto({ entrada: '07:00' }), 'user-1');
