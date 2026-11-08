@@ -1097,14 +1097,6 @@ export default function ReportesOperacionesPage() {
                       Cerrar incidente
                     </Button>
                   )}
-                  {detalle.reporte.estado !== 'Cerrado' && (
-                    <Button variant="warning" size="sm" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => {
-                      setDetalleOpen(false);
-                      openEdit(detalle.reporte);
-                    }}>
-                      Editar
-                    </Button>
-                  )}
                 </div>
               )}
             </div>
