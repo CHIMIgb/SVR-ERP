@@ -207,32 +207,23 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       );
     });
 
-    it('audita FAIL + errorCode si máquina no existe', async () => {
-      prisma.maquinas.findFirst.mockResolvedValue(null);
-      await expect(service.create(createDto, 'user-1')).rejects.toThrow(BadRequestException);
+    it('server "misma área" resuelve la torre con el área del que reporta (oficina → ADMINISTRATIVO)', async () => {
+      const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
+      await service.create({ ...dtoSimple, mismaArea: true }, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.categoria).toBe(CategoriaReporte.ADMINISTRATIVO);
+    });
+
+    it('sin categoria ni mismaArea → CATEGORIA_REQUERIDA (audita FAIL)', async () => {
+      const { categoria: _c, ...sinCategoria } = createDto;
+      await expect(service.create(sinCategoria, 'user-1')).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.REPORTE_CREADO,
           result: AuditResult.FAIL,
-          errorCode: 'MAQUINA_NO_ENCONTRADA',
+          errorCode: 'CATEGORIA_REQUERIDA',
         }),
       );
-    });
-
-    it('rechaza GPS incompleto (solo latitud o solo longitud) con GPS_INCOMPLETO', async () => {
-      await expect(
-        service.create({ ...createDto, latitud: 19.43 }, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'GPS_INCOMPLETO' }),
-      );
-    });
-
-    it('GPS completo persiste latitud/longitud', async () => {
-      await service.create({ ...createDto, latitud: 19.4326, longitud: -99.1332 }, 'user-1');
-      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
-      expect(data.latitud).toBe(19.4326);
-      expect(data.longitud).toBe(-99.1332);
     });
   });
 

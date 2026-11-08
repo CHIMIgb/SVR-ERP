@@ -557,21 +557,19 @@ describe('ReportesCampo Audit (Real DB)', () => {
     });
   });
 
-  describe('ubicación — obra o GPS (BD real)', () => {
-    it('crea con lng/lat GPS (ambos) y los persiste', async () => {
-      const reporte = await service.create(
-        createDto({ latitud: 19.4326, longitud: -99.1332, obraTexto: 'Mi ubicación actual' }),
-        ACTOR_USER_ID,
-      );
+  describe('misma área — torre destino resuelta (BD real)', () => {
+    it('create con mismaArea guarda la torre del que reporta (web = oficina → ADMINISTRATIVO)', async () => {
+      const { categoria: _c, ...dtoSinCategoria } = createDto();
+      const reporte = await service.create({ ...dtoSinCategoria, mismaArea: true }, ACTOR_USER_ID);
       createdIds.push(reporte.id);
 
+      // BD real: la categoria resuelta persiste y el detalle la muestra
       const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
-      expect(Number(row!.latitud)).toBeCloseTo(19.4326, 5);
-      expect(Number(row!.longitud)).toBeCloseTo(-99.1332, 5);
+      expect(row!.categoria).toBe('ADMINISTRATIVO');
 
       const detalle = await service.findOne(reporte.id);
-      expect(detalle.reporte.latitud).toBeCloseTo(19.4326, 5);
-      expect(detalle.reporte.longitud).toBeCloseTo(-99.1332, 5);
+      expect(detalle.reporte.categoria).toBe('Administrativo');
+      expect(detalle.reporte.subcategoria).toBeNull();
     });
   });
 

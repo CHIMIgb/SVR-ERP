@@ -31,11 +31,17 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('falla sin categoria (torre responsable es requerida)', async () => {
+  it('categoria es opcional: la torre puede resolverse con "mismaArea" en el service', async () => {
     const { categoria: _c, ...sinCategoria } = base;
     const dto = plainToInstance(CreateReporteCampoDto, sinCategoria);
     const errors = await validate(dto);
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('acepta mismaArea como bandera booleana', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, { ...base, mismaArea: true });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
   });
 
   it('falla sin usuario', async () => {
@@ -63,29 +69,13 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('pasa con subcategoría y GPS (latitud/longitud ambos)', async () => {
+  it('pasa con subcategoría opcional (torre explícita)', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, {
       ...base,
-      maquinaId: undefined,
       subcategoriaId: '550e8400-e29b-41d4-a716-446655440030',
-      obraTexto: undefined,
-      latitud: 19.4326,
-      longitud: -99.1332,
     });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
-  });
-
-  it('latitud fuera de rango → rechaza', async () => {
-    const dto = plainToInstance(CreateReporteCampoDto, { ...base, latitud: 91, longitud: 0 });
-    const errors = await validate(dto);
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it('longitud fuera de rango → rechaza', async () => {
-    const dto = plainToInstance(CreateReporteCampoDto, { ...base, latitud: 0, longitud: -181 });
-    const errors = await validate(dto);
-    expect(errors.length).toBeGreaterThan(0);
   });
 
   it('el DTO ya no contiene validación de facturación (fuera del flujo anterior)', async () => {

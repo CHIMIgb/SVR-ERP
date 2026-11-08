@@ -749,13 +749,6 @@ export interface ReporteCampoDTO {
   subcategoria: string | null;
   usuario: string;
   usuarioId: string | null;
-  maquinaId: string | null;
-  maquinaCodigo: string | null;
-  maquinaNombre: string | null;
-  obraId: string | null;
-  obra: string;
-  latitud: number | null;
-  longitud: number | null;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -810,15 +803,12 @@ export interface ReportesCampoStats {
 }
 
 export interface ReporteCampoCreateInput {
+  /** Torre destino — o `mismaArea: true` para resolverla con el puesto del que reporta. */
   tipo: TipoReporteApi;
-  categoria: CategoriaReporteApi;
+  categoria?: CategoriaReporteApi;
+  mismaArea?: boolean;
   subcategoriaId?: string;
   usuario: string;
-  maquinaId?: string;
-  obraId?: string;
-  obraTexto: string;
-  latitud?: number;
-  longitud?: number;
   fecha: string;
   hora: string;
   descripcion: string;

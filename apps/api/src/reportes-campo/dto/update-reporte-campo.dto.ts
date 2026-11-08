@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, IsUUID, IsEnum, IsDateString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
 import { Prioridad, TipoReporteCampo, CategoriaReporte } from '@prisma/client';
 
 export class UpdateReporteCampoDto {
@@ -11,6 +11,10 @@ export class UpdateReporteCampoDto {
   categoria?: CategoriaReporte;
 
   @IsOptional()
+  @IsBoolean()
+  mismaArea?: boolean;
+
+  @IsOptional()
   @IsUUID()
   subcategoriaId?: string;
 
@@ -19,32 +23,6 @@ export class UpdateReporteCampoDto {
   @MinLength(3)
   @MaxLength(100)
   usuario?: string;
-
-  @IsOptional()
-  @IsUUID()
-  maquinaId?: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(200)
-  obraTexto?: string;
-
-  @IsOptional()
-  @IsUUID()
-  obraId?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  latitud?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  longitud?: number;
 
   @IsOptional()
   @IsDateString()

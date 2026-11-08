@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -17,9 +18,18 @@ export class CreateReporteCampoDto {
   @IsEnum(TipoReporteCampo)
   tipo!: TipoReporteCampo;
 
-  /** Torre responsable que atenderá el incidente (ruta "le cae a todos de X torre"). */
+  /**
+   * Torre responsable a la que se ENVÍA el incidente. Si viene `mismaArea`,
+   * este campo se ignora y el backend resuelve la torre con el puesto del
+   * trabajador que reporta (fallback: ADMINISTRATIVO).
+   */
+  @IsOptional()
   @IsEnum(CategoriaReporte)
-  categoria!: CategoriaReporte;
+  categoria?: CategoriaReporte;
+
+  @IsOptional()
+  @IsBoolean()
+  mismaArea?: boolean;
 
   /** Subcategoría del catálogo por torre (opcional; debe pertenecer a la categoría). */
   @IsOptional()
@@ -31,34 +41,6 @@ export class CreateReporteCampoDto {
   @MinLength(3)
   @MaxLength(100)
   usuario!: string;
-
-  @IsOptional()
-  @IsUUID()
-  maquinaId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  obraId?: string;
-
-  /** Texto de la obra — la ubicación también puede ser GPS (latitud/longitud). */
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(200)
-  obraTexto?: string;
-
-  /** Ubicación GPS ("Mi ubicación actual"): ambos o ninguno. */
-  @IsOptional()
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  latitud?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  longitud?: number;
 
   @IsDateString()
   fecha!: string;

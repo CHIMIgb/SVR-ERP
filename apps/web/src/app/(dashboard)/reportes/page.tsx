@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ClipboardCheck, Clock, MapPin, ShieldAlert, AlertTriangle, CheckCircle2,
+  ClipboardCheck, Clock, ShieldAlert, AlertTriangle, CheckCircle2,
   Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal,
-  UserCheck, UserX, ImagePlus, MessageSquarePlus, Navigation, ImageOff,
+  UserCheck, UserX, ImagePlus, MessageSquarePlus, ImageOff,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -19,10 +19,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
-  bitacoraApi,
   reportesCampoApi,
   trabajadoresApi,
-  type CatalogoItem,
   type ReporteCampoDTO,
   type ReportesIncidenteDetalle,
   type ReportesCampoStats,
@@ -68,7 +66,7 @@ const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
   { value: 'CRITICA', label: 'Crítica' },
 ];
 
-/** Categoría responsable — la torre a la que le cae el incidente (elige el creador). */
+/** Categoría responsable — el área a la que se ENVÍA el incidente. */
 const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
   { value: 'MECANICO', label: 'Mecanico' },
   { value: 'SOLDADOR', label: 'Soldador' },
@@ -77,6 +75,9 @@ const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
   { value: 'ADMINISTRATIVO', label: 'Administrativo' },
   { value: 'RESIDENTE', label: 'Residente' },
 ];
+
+/** Opción especial: el incidente queda dentro del área del que lo levanta. */
+const MISMA_AREA = 'MISMA_AREA';
 
 const categoriaVariant: Record<string, string> = {
   Mecanico: 'text-blue-700 bg-blue-50 dark:bg-blue-500/15 dark:text-blue-400',
@@ -100,26 +101,6 @@ const prioridadVariant: Record<PrioridadReporte, 'error' | 'warning' | 'neutral'
   Baja: 'info',
 };
 
-/** Siguiente etapa del flujo simplificado del incidente. */
-function siguienteEstado(estado: EstadoIncidenteUI): EstadoIncidenteUI | null {
-  if (estado === 'Nuevo') return 'En curso';
-  if (estado === 'En curso') return 'Cerrado';
-  return null;
-}
-
-const ESTADO_API: Record<EstadoIncidenteUI, EstadoIncidenteApi> = {
-  Nuevo: 'NUEVO',
-  'En curso': 'EN_CURSO',
-  Cerrado: 'CERRADO',
-};
-
-/** Formatea valores de `detalles` según la clave conocida. */
-function formatDetalle(key: string, value: unknown): string {
-  const k = key.toLowerCase();
-  if (k === 'litros') return `${value} L`;
-  return String(value);
-}
-
 /** Descripción breve con recorte para la tabla. */
 function descripcionBreve(texto: string, max = 90): string {
   return texto.length > max ? `${texto.slice(0, max)}…` : texto;
@@ -133,14 +114,11 @@ const STATS_CERO: ReportesCampoStats = {
   porArea: {},
 };
 
-/** Formulario del modal Crear/Editar (ubicación obra | gps). */
+/** Formulario del modal Crear/Editar. */
 const emptyForm = {
   tipo: '' as '' | TipoReporteApi,
-  categoria: '' as '' | CategoriaReporteApi,
+  categoria: '' as '' | CategoriaReporteApi | typeof MISMA_AREA,
   subcategoriaId: '',
-  maquinaId: '',
-  ubicacionModo: 'obra' as 'obra' | 'gps',
-  obraId: '',
   fecha: new Date().toISOString().split('T')[0],
   hora: new Date().toTimeString().slice(0, 5),
   prioridad: '' as '' | PrioridadReporteApi,
@@ -160,10 +138,6 @@ export default function ReportesOperacionesPage() {
   // ── Estado de datos ──
   const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
   const [stats, setStats] = useState<ReportesCampoStats>(STATS_CERO);
-  const [catalogos, setCatalogos] = useState<{ maquinas: CatalogoItem[]; obras: CatalogoItem[] }>({
-    maquinas: [],
-    obras: [],
-  });
   const [subcategorias, setSubcategorias] = useState<SubcategoriaDTO[]>([]);
   const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -194,15 +168,9 @@ export default function ReportesOperacionesPage() {
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
-  const falloGpsRef = useRef(false);
 
-  // ── Cargar catálogos, subcategorías y trabajadores (una sola vez) ──
+  // ── Cargar subcategorías y trabajadores (una sola vez) ──
   useEffect(() => {
-    bitacoraApi.catalogos().then((res) => {
-      if (res.success && res.data) {
-        setCatalogos(res.data);
-      }
-    });
     reportesCampoApi.subcategorias().then((res) => {
       if (res.success && res.data) {
         setSubcategorias(res.data);
@@ -394,9 +362,6 @@ export default function ReportesOperacionesPage() {
         tipo: (TIPOS.find((t) => t.label === item.tipo)?.value ?? 'OPERADOR') as TipoReporteApi,
         categoria: (CATEGORIAS.find((c) => c.label === item.categoria)?.value ?? '') as '' | CategoriaReporteApi,
         subcategoriaId: item.subcategoriaId ?? '',
-        maquinaId: item.maquinaId || '',
-        ubicacionModo: 'obra',
-        obraId: item.obraId || '',
         fecha: item.fecha,
         hora: item.hora,
         prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
@@ -453,47 +418,23 @@ export default function ReportesOperacionesPage() {
     return nombre || user?.email?.split('@')[0] || 'Usuario';
   }, [user]);
 
-  /** Ubicación: obra del catálogo o GPS ("mi ubicación actual"). */
+  /** Torre destino: "misma área" (resuelta en el backend por el puesto) o la torre elegida. */
   const buildPayload = useCallback(
     async (): Promise<ReporteCampoCreateInput> => {
-      const base: ReporteCampoCreateInput = {
+      const mismaArea = form.categoria === MISMA_AREA;
+      return {
         tipo: form.tipo as TipoReporteApi,
-        categoria: form.categoria as CategoriaReporteApi,
-        subcategoriaId: form.subcategoriaId || undefined,
+        mismaArea,
+        ...(mismaArea ? {} : { categoria: form.categoria as CategoriaReporteApi }),
+        subcategoriaId: mismaArea ? undefined : form.subcategoriaId || undefined,
         usuario: nombreReporta(),
-        maquinaId: form.maquinaId || undefined,
-        obraTexto: 'Sin obra asociada',
         fecha: form.fecha,
         hora: form.hora,
         descripcion: form.descripcion.trim(),
         prioridad: form.prioridad || undefined,
       };
-
-      if (form.ubicacionModo === 'gps') {
-        const coords = await new Promise<GeolocationPosition | null>((resolve) =>
-          navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
-            enableHighAccuracy: true,
-            timeout: 10000,
-          }),
-        );
-        if (!coords) {
-          throw Object.assign(new Error('No se pudo obtener tu ubicación.'), { gpsFallo: true });
-        }
-        return {
-          ...base,
-          latitud: coords.coords.latitude,
-          longitud: coords.coords.longitude,
-          obraTexto: 'Mi ubicación actual',
-        };
-      }
-
-      return {
-        ...base,
-        obraId: form.obraId || undefined,
-        obraTexto: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? 'Sin obra asociada',
-      };
     },
-    [form, catalogos.obras, nombreReporta],
+    [form, nombreReporta],
   );
 
   const handleCreate = useCallback(async () => {
@@ -511,12 +452,8 @@ export default function ReportesOperacionesPage() {
       } else {
         showToast(mensajeErrorApi(res.error, 'Error al registrar el incidente.'), 'error');
       }
-    } catch (e) {
-      if (e && (e as { gpsFallo?: boolean }).gpsFallo) {
-        showToast('No se pudo obtener tu ubicación: usa la opción de obra o activa el GPS.', 'error');
-      } else {
-        showToast('Error de conexión al registrar el incidente.', 'error');
-      }
+    } catch {
+      showToast('Error de conexión al registrar el incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -538,12 +475,8 @@ export default function ReportesOperacionesPage() {
       } else {
         showToast(mensajeErrorApi(res.error, 'Error al actualizar el incidente.'), 'error');
       }
-    } catch (e) {
-      if (e && (e as { gpsFallo?: boolean }).gpsFallo) {
-        showToast('No se pudo obtener tu ubicación.', 'error');
-      } else {
-        showToast('Error de conexión al actualizar el incidente.', 'error');
-      }
+    } catch {
+      showToast('Error de conexión al actualizar el incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -735,22 +668,17 @@ export default function ReportesOperacionesPage() {
     {
       key: 'ubicacion',
       header: 'Ubicación',
-      minWidth: '150px',
-      render: (report) => (
-        <div>
-          <span className="flex items-center gap-1.5 font-bold text-ui-700">
-            {report.latitud != null ? (
-              <Navigation className="w-3 h-3 text-primary" />
-            ) : (
-              <MapPin className="w-3 h-3 text-ui-400" />
-            )}
-            {report.latitud != null ? 'Mi ubicación' : report.obra}
+      minWidth: '140px',
+      render: (report) =>
+        report.categoria ? (
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black ${categoriaVariant[report.categoria] ?? 'bg-ui-100 text-ui-600'}`}
+          >
+            {report.categoria}
           </span>
-          {report.maquinaCodigo && (
-            <span className="block text-[10px] font-black text-primary uppercase">Máq: {report.maquinaCodigo}</span>
-          )}
-        </div>
-      ),
+        ) : (
+          <span className="text-ui-300">Sin área</span>
+        ),
     },
     {
       key: 'prioridad',
@@ -777,29 +705,25 @@ export default function ReportesOperacionesPage() {
     {
       key: 'responsable',
       header: 'Responsable',
-      minWidth: '165px',
+      minWidth: '150px',
       render: (report) => {
-        const categoria = report.categoria && (
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black ${categoriaVariant[report.categoria] ?? 'bg-ui-100 text-ui-600'}`}
-          >
-            {report.categoria}
-          </span>
-        );
-        const persona = report.asignadoANombre ? (
-          <span className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-ui-700">
-            <UserCheck className="w-3.5 h-3.5 text-primary" />
-            {report.asignadoANombre}
-          </span>
-        ) : (
-          <span className="mt-1 block text-[11px] font-medium text-ui-300">Sin asignar</span>
-        );
-        return (
-          <div>
-            {categoria ?? <span className="text-ui-300">Sin categoría</span>}
-            {persona}
-          </div>
-        );
+        if (report.cerradoEn) {
+          return (
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {report.asignadoANombre ?? 'Cerrado'}
+            </span>
+          );
+        }
+        if (report.asignadoANombre) {
+          return (
+            <span className="flex items-center gap-1.5 font-bold text-ui-700">
+              <UserCheck className="w-3.5 h-3.5 text-primary" />
+              {report.asignadoANombre}
+            </span>
+          );
+        }
+        return <span className="text-ui-300">Sin asignar</span>;
       },
     },
     {
@@ -1089,13 +1013,14 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Categoría (encargado de resolver)" required hint="El incidente sale para toda esa torre.">
+          <ModalField label="Ubicación (área a la que se envía)" required hint="Misma área deja el incidente con tu propia área; otra torre lo envía allá.">
             <select
               className={modalSelectClass}
               value={form.categoria}
-              onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi, subcategoriaId: '' })}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
-              <option value="">Seleccionar categoría...</option>
+              <option value="">Seleccionar área destino...</option>
+              <option value={MISMA_AREA}>Misma área (la del reportante)</option>
               {CATEGORIAS.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
@@ -1107,7 +1032,7 @@ export default function ReportesOperacionesPage() {
               className={modalSelectClass}
               value={form.subcategoriaId}
               onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
-              disabled={!form.categoria}
+              disabled={!form.categoria || form.categoria === MISMA_AREA}
             >
               <option value="">Sin subcategoría</option>
               {subcategoriasFiltradas.map((s) => (
@@ -1125,64 +1050,6 @@ export default function ReportesOperacionesPage() {
               <option value="">Sin prioridad</option>
               {PRIORIDADES.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Ubicación" required className="sm:col-span-2">
-            <div className="flex gap-2 mb-2">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, ubicacionModo: 'obra' })}
-                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors ${
-                  form.ubicacionModo === 'obra'
-                    ? 'bg-primary text-white'
-                    : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
-                }`}
-              >
-                Elegir obra
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, ubicacionModo: 'gps' })}
-                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                  form.ubicacionModo === 'gps'
-                    ? 'bg-primary text-white'
-                    : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
-                }`}
-              >
-                <Navigation className="w-3.5 h-3.5" />
-                Mi ubicación actual
-              </button>
-            </div>
-            {form.ubicacionModo === 'obra' ? (
-              <select
-                className={modalSelectClass}
-                value={form.obraId}
-                onChange={(e) => setForm({ ...form, obraId: e.target.value })}
-              >
-                <option value="">Sin obra asociada</option>
-                {catalogos.obras.map((o) => (
-                  <option key={o.id} value={o.id}>{o.nombre}</option>
-                ))}
-              </select>
-            ) : (
-              <div className="flex items-center gap-2 h-10 px-3 border border-ui-200 rounded-lg bg-ui-50 text-xs font-medium text-ui-500">
-                <Navigation className="w-4 h-4 text-primary" />
-                Se capturará tu ubicación GPS al guardar
-              </div>
-            )}
-          </ModalField>
-
-          <ModalField label="Máquina (opcional)" hint="Código legible de la flota.">
-            <select
-              className={modalSelectClass}
-              value={form.maquinaId}
-              onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-            >
-              <option value="">Sin máquina asociada</option>
-              {catalogos.maquinas.map((m) => (
-                <option key={m.id} value={m.id}>{m.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -1256,12 +1123,8 @@ export default function ReportesOperacionesPage() {
                   <p className="font-bold text-ui-800">{detalle.reporte.hora} · {detalle.reporte.fecha}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Ubicación</p>
-                  <p className="font-bold text-ui-800">
-                    {detalle.reporte.latitud != null
-                      ? `GPS ${detalle.reporte.latitud.toFixed(4)}, ${detalle.reporte.longitud?.toFixed(4)}`
-                      : detalle.reporte.obra}
-                  </p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Envía a</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.categoria ?? 'Sin área'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Prioridad</p>
@@ -1270,10 +1133,6 @@ export default function ReportesOperacionesPage() {
                 <div>
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Estado</p>
                   <p className="font-bold text-ui-800">{detalle.reporte.estado}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Categoría</p>
-                  <p className="font-bold text-ui-800">{detalle.reporte.categoria ?? 'Sin categoría'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Responsable</p>
@@ -1571,32 +1430,6 @@ export default function ReportesOperacionesPage() {
               <option value="">Sin prioridad</option>
               {PRIORIDADES.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Obra">
-            <select
-              className={modalSelectClass}
-              value={form.obraId}
-              onChange={(e) => setForm({ ...form, obraId: e.target.value })}
-            >
-              <option value="">Sin obra asociada</option>
-              {catalogos.obras.map((o) => (
-                <option key={o.id} value={o.id}>{o.nombre}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Máquina (opcional)" hint="Código legible de la flota.">
-            <select
-              className={modalSelectClass}
-              value={form.maquinaId}
-              onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
-            >
-              <option value="">Sin máquina asociada</option>
-              {catalogos.maquinas.map((m) => (
-                <option key={m.id} value={m.id}>{m.nombre}</option>
               ))}
             </select>
           </ModalField>

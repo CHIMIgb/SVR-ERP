@@ -25,8 +25,6 @@ import { ActividadDto } from './dto/actividad.dto';
 import { AdjuntoDto } from './dto/adjunto.dto';
 
 const REPORTE_INCLUDE = {
-  maquinas: { select: { id: true, codigo: true, nombre: true } },
-  obras: { select: { id: true, nombre: true } },
   subcategoria: { select: { id: true, nombre: true } },
   asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
@@ -77,10 +75,27 @@ const TRANSICIONES: Record<EstadoIncidente, EstadoIncidente[]> = {
   [EstadoIncidente.CERRADO]: [],
 };
 
-/** Adjuntos (imágenes): límites conservadores sin almacenamiento externo. */
+/**
+ * Adjuntos (imágenes): límites conservadores sin almacenamiento externo.
+ */
 const MAX_ADJUNTOS = 4;
 const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
 const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/**
+ * Mapeo puesto del trabajador → torre responsable, para "envío a misma área"
+ * (Según nueva-info: técnicos = mecánico/soldador/diésel/mantenimiento,
+ * residentes = ingenieros encargados de obra; resto cae en oficina).
+ */
+function torrePrefijoPorPuesto(categoriaPuesto: string | null | undefined): CategoriaReporte {
+  const puesto = (categoriaPuesto ?? '').toLowerCase();
+  if (puesto.includes('mecanic')) return CategoriaReporte.MECANICO;
+  if (puesto.includes('soldad')) return CategoriaReporte.SOLDADOR;
+  if (puesto.includes('diésel') || puesto.includes('diesel')) return CategoriaReporte.DIESEL;
+  if (puesto.includes('manten')) return CategoriaReporte.MANTENIMIENTO;
+  if (puesto.includes('ingenier')) return CategoriaReporte.RESIDENTE;
+  return CategoriaReporte.ADMINISTRATIVO;
+}
 
 @Injectable()
 export class ReportesCampoService {
@@ -196,22 +211,22 @@ export class ReportesCampoService {
   //  CREAR
   // ────────────────────────────────────────────
   async create(dto: CreateReporteCampoDto, userId: string) {
-    if (dto.maquinaId) {
-      await this.resolverMaquina(dto.maquinaId, AuditAction.REPORTE_CREADO, null);
+    // Torre destino del incidente: explícita (otra torre) o resuelta con el
+    // puesto del que reporta ("misma área").
+    let torre = dto.categoria ?? null;
+    if (dto.mismaArea) {
+      torre = this.resolverTorreDelUsuario();
     }
-    if (dto.obraId) {
-      await this.resolverObra(dto.obraId, AuditAction.REPORTE_CREADO, null);
-    }
-    await this.validarSubcategoria(dto.categoria, dto.subcategoriaId, AuditAction.REPORTE_CREADO, null);
-    if ((dto.latitud == null) !== (dto.longitud == null)) {
+    if (!torre) {
       return this.fallir(
         AuditAction.REPORTE_CREADO,
         null,
-        'GPS_INCOMPLETO',
+        'CATEGORIA_REQUERIDA',
         BadRequestException,
-        'Envía latitud y longitud juntos (ubicación GPS)',
+        'Declara a qué área se envía el incidente (torre o misma área)',
       );
     }
+    await this.validarSubcategoria(torre, dto.subcategoriaId, AuditAction.REPORTE_CREADO, null);
 
     // Folio secuencial INC%04d con reintento anti-colisión (patrón facturas):
     // dos creates concurrentes pueden derivar el mismo codigo (count+1); al
@@ -232,21 +247,17 @@ export class ReportesCampoService {
           data: {
             id: randomUUID(),
             codigo,
-            categoria: dto.categoria,
+            categoria: torre,
             subcategoria_id: dto.subcategoriaId ?? null,
             tipo: dto.tipo,
             usuario: dto.usuario.trim(),
             usuario_id: userId,
-            maquina_id: dto.maquinaId ?? null,
-            obra_id: dto.obraId ?? null,
-            obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada',
+            obra_texto: 'Sin obra asociada',
             fecha: new Date(dto.fecha),
             hora: new Date(`1970-01-01T${dto.hora}:00`),
             descripcion: dto.descripcion.trim(),
             estado: EstadoIncidente.NUEVO,
             prioridad: dto.prioridad ?? null,
-            latitud: dto.latitud ?? null,
-            longitud: dto.longitud ?? null,
             creado_por: userId,
             actualizado_por: userId,
             actualizado_en: new Date(),
@@ -316,33 +327,26 @@ export class ReportesCampoService {
       );
     }
 
-    if (dto.maquinaId) {
-      await this.resolverMaquina(dto.maquinaId, AuditAction.REPORTE_ACTUALIZADO, id);
+    // Torne destino al editar: explícita o re-resuelta con "misma área".
+    let torreFinal = dto.categoria ?? (existente.categoria as CategoriaReporte | null);
+    if (dto.mismaArea) {
+      torreFinal = this.resolverTorreDelUsuario();
     }
-    if (dto.obraId) {
-      await this.resolverObra(dto.obraId, AuditAction.REPORTE_ACTUALIZADO, id);
-    }
-    const categoriaFinal = dto.categoria ?? (existente.categoria as CategoriaReporte | null);
     if (dto.subcategoriaId) {
-      await this.validarSubcategoria(categoriaFinal, dto.subcategoriaId, AuditAction.REPORTE_ACTUALIZADO, id);
+      await this.validarSubcategoria(torreFinal, dto.subcategoriaId, AuditAction.REPORTE_ACTUALIZADO, id);
     }
 
     const reporte = await this.prisma.reportes_campo.update({
       where: { id },
       data: {
         ...(dto.tipo !== undefined && { tipo: dto.tipo }),
-        ...(dto.categoria !== undefined && { categoria: dto.categoria }),
+        ...(torreFinal !== undefined && { categoria: torreFinal }),
         ...(dto.subcategoriaId !== undefined && { subcategoria_id: dto.subcategoriaId }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
-        ...(dto.maquinaId !== undefined && { maquina_id: dto.maquinaId ?? null }),
-        ...(dto.obraId !== undefined && { obra_id: dto.obraId ?? null }),
-        ...(dto.obraTexto !== undefined && { obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada' }),
         ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
         ...(dto.hora !== undefined && { hora: new Date(`1970-01-01T${dto.hora}:00`) }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
         ...(dto.prioridad !== undefined && { prioridad: dto.prioridad }),
-        ...(dto.latitud !== undefined && { latitud: dto.latitud }),
-        ...(dto.longitud !== undefined && { longitud: dto.longitud }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -888,6 +892,20 @@ export class ReportesCampoService {
     return obra.id;
   }
 
+  // (resolverMaquina/resolverObra eliminados — la ubicación es solo el área destino;
+  //  obra_texto queda 'Sin obra asociada' en BD por el default del schema.)
+
+  /**
+   * Resuelve la torre ("misma área") del usuario que reporta.
+   * shortcut: no existe link user↔trabajador en BD hoy (pendiente PWA, nueva-info
+   * §3: técnicos/admin/residentes) — quien levanta desde el web es oficina/jefes,
+   * así que "misma área" = ADMINISTRATIVO. Al haber link, mapear con
+   * torrePrefijoPorPuesto(categoria_puesto.nombre).
+   */
+  private resolverTorreDelUsuario(): CategoriaReporte {
+    return CategoriaReporte.ADMINISTRATIVO;
+  }
+
   /** Autor visible de la actividad: persona asignada, quien reporta o usuario autenticado. */
   private nombreActor(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -962,13 +980,6 @@ export class ReportesCampoService {
       subcategoria: reporte.subcategoria?.nombre ?? null,
       usuario: reporte.usuario,
       usuarioId: reporte.usuario_id,
-      maquinaId: reporte.maquina_id,
-      maquinaCodigo: reporte.maquinas?.codigo ?? null,
-      maquinaNombre: reporte.maquinas?.nombre ?? null,
-      obraId: reporte.obra_id,
-      obra: reporte.obra_texto,
-      latitud: reporte.latitud != null ? Number(reporte.latitud) : null,
-      longitud: reporte.longitud != null ? Number(reporte.longitud) : null,
       fecha:
         reporte.fecha instanceof Date
           ? reporte.fecha.toISOString().split('T')[0]
