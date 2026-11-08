@@ -180,6 +180,28 @@ export class AsistenciaService {
     throw new Excepcion(message);
   }
 
+  /**
+   * Solo a un trabajador activo se le registra asistencia (entrada, pase de lista, falta u omisión). Antes bastaba
+   * con que no estuviera borrado: a uno dado de baja (o de vacaciones) se le podía checar y acumulaba días.
+   */
+  private async exigirActivo(
+    trabajador: { nombre: string; estado: string },
+    action: AuditAction,
+  ): Promise<void> {
+    if (trabajador.estado === 'ACTIVO') return;
+    const deVacaciones = trabajador.estado === 'VACACIONES';
+    return this.fallir(
+      action,
+      ENTITY_TYPE,
+      null,
+      deVacaciones ? 'TRABAJADOR_DE_VACACIONES' : 'TRABAJADOR_DADO_DE_BAJA',
+      ConflictException,
+      deVacaciones
+        ? `${trabajador.nombre} está de vacaciones: no se le registra asistencia`
+        : `${trabajador.nombre} está dado de baja: ya no se le registra asistencia`,
+    );
+  }
+
   // ────────────────────────────────────────────
   //  MARCAJE GPS
   // ────────────────────────────────────────────
@@ -198,6 +220,7 @@ export class AsistenciaService {
         `Trabajador con id "${dto.trabajadorId}" no encontrado`,
       );
     }
+    await this.exigirActivo(trabajador, AuditAction.ASISTENCIA_ENTRADA_REGISTRADA);
 
     const obra = await this.prisma.obras.findFirst({ where: { id: dto.obraId, eliminado_en: null } });
     if (!obra) {
@@ -432,6 +455,17 @@ export class AsistenciaService {
         `No existen los trabajadores: ${faltantes.join(', ')}`,
       );
     }
+    const noActivos = trabajadores.filter((t) => t.estado !== 'ACTIVO');
+    if (noActivos.length > 0) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_CUADRILLA_REGISTRADA,
+        ENTITY_TYPE,
+        null,
+        'TRABAJADORES_NO_ACTIVOS',
+        ConflictException,
+        `Están dados de baja o de vacaciones y no se les registra asistencia: ${noActivos.map((t) => t.nombre).join(', ')}`,
+      );
+    }
 
     const hoy = this.fechaHoy();
     const existentes = await this.prisma.registros_asistencia.findMany({
@@ -516,6 +550,7 @@ export class AsistenciaService {
         `Trabajador con id "${dto.trabajadorId}" no encontrado`,
       );
     }
+    await this.exigirActivo(trabajador, AuditAction.ASISTENCIA_FALTA_REGISTRADA);
 
     const fecha = dto.fecha ? this.soloFecha(new Date(dto.fecha)) : this.fechaHoy();
     const existente = await this.prisma.registros_asistencia.findFirst({
@@ -733,6 +768,7 @@ export class AsistenciaService {
         `Trabajador con id "${dto.trabajadorId}" no encontrado`,
       );
     }
+    await this.exigirActivo(trabajador, AuditAction.ASISTENCIA_OMISION_RESUELTA);
 
     const hoy = this.fechaHoy();
     const fecha = dto.fecha ? this.soloFecha(new Date(dto.fecha)) : hoy;

@@ -121,6 +121,50 @@ describe('AsistenciaService', () => {
     ...overrides,
   });
 
+  describe('solo se registra asistencia a trabajadores activos', () => {
+    it('marcarEntrada: 409 (audited) for a trabajador dado de baja, and nothing is written', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, estado: 'INACTIVO' });
+      await expect(service.marcarEntrada(entradaDto(), 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'TRABAJADOR_DADO_DE_BAJA' }));
+    });
+
+    it('marcarEntrada: 409 for a trabajador de vacaciones', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, estado: 'VACACIONES' });
+      await expect(service.marcarEntrada(entradaDto(), 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'TRABAJADOR_DE_VACACIONES' }));
+    });
+
+    it('marcarCuadrilla: 409 naming who is not active, and nobody is registered', async () => {
+      prisma.trabajadores.findMany.mockResolvedValue([
+        mockTrabajador,
+        { ...mockTrabajador, id: 'trab-baja', nombre: 'Pedro Baja', estado: 'INACTIVO' },
+      ]);
+      await expect(
+        service.marcarCuadrilla(
+          { obraId: mockObra.id, trabajadorIds: [mockTrabajador.id, 'trab-baja'], lat: 19.3423, lng: -99.1841, dispositivo: 'Test' },
+          'user-1',
+        ),
+      ).rejects.toThrow('Pedro Baja');
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'TRABAJADORES_NO_ACTIVOS' }));
+    });
+
+    it('registrarFalta: 409 for a trabajador dado de baja', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, estado: 'INACTIVO' });
+      await expect(service.registrarFalta({ trabajadorId: mockTrabajador.id }, 'user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+    });
+
+    it('resolverOmisionSinMarcaje: 409 for a trabajador dado de baja', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, estado: 'INACTIVO' });
+      await expect(
+        service.resolverOmisionSinMarcaje({ trabajadorId: mockTrabajador.id, resolucion: 'Falta', motivo: 'No avisó' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('marcarEntrada', () => {
     it('marks PUNTUAL and stores the wall-clock hour anchored in UTC regardless of server timezone', async () => {
       jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 7, 5, 12)); // 07:05:12 local, on time

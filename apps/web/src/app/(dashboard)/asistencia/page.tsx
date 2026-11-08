@@ -358,7 +358,7 @@ export default function AsistenciaPage() {
     const res = await trabajadoresApi.listar({ limit: LIMITE_TRABAJADORES });
     if (!res.success) return res.error.message;
     setTrabajadores(res.data.items);
-    setClockInWorkerId((prev) => prev || res.data.items[0]?.id || '');
+    setClockInWorkerId((prev) => prev || res.data.items.find((t) => t.estado === 'Activo')?.id || '');
     return avisoListaIncompleta(res.data.items.length, res.data.pagination?.total);
   }), [cargarFuente]);
 
@@ -507,7 +507,10 @@ export default function AsistenciaPage() {
   // Sin registros de hoy, los indicadores muestran '—' en lugar de un 0 que parecería real.
   const registrosCargados = !erroresCarga.registros;
   const registeredWorkerIds = new Set(registros.map((r) => r.trabajadorId));
-  const missingWorkers = trabajadores.filter((t) => t.estado === 'Activo' && !registeredWorkerIds.has(t.id));
+  // Marcaje y pase de lista solo ofrecen activos: a un dado de baja o de vacaciones ya no se le registra asistencia
+  // (la API lo rechaza). La lista completa se sigue usando para mostrar el nombre en registros anteriores.
+  const trabajadoresActivos = trabajadores.filter((t) => t.estado === 'Activo');
+  const missingWorkers = trabajadoresActivos.filter((t) => !registeredWorkerIds.has(t.id));
 
   // Omisiones de hoy: quien checó tarde (registro en omisión) y quien no ha checado. Mismo cálculo que la API.
   const minutosAhora = minutosDelDia(ahora);
@@ -1459,7 +1462,7 @@ export default function AsistenciaPage() {
 
           <ModalField label="Trabajador">
             <select value={clockInWorkerId} onChange={(e) => setClockInWorkerId(e.target.value)} className={modalSelectClass}>
-              {trabajadores.map((t) => (
+              {trabajadoresActivos.map((t) => (
                 <option key={t.id} value={t.id}>{t.nombre} — {t.puesto}</option>
               ))}
             </select>
@@ -1576,10 +1579,10 @@ export default function AsistenciaPage() {
 
           <ModalField label={`Trabajadores en el frente · ${selectedCuadrillaWorkers.length} seleccionados`}>
             <div className="max-h-60 overflow-y-auto rounded-xl border border-ui-200 divide-y divide-ui-100">
-              {trabajadores.length === 0 ? (
-                <p className="px-3 py-6 text-center text-sm text-ui-500">No hay trabajadores registrados.</p>
+              {trabajadoresActivos.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-ui-500">No hay trabajadores activos.</p>
               ) : (
-                trabajadores.map((t) => {
+                trabajadoresActivos.map((t) => {
                   const isChecked = selectedCuadrillaWorkers.includes(t.id);
                   return (
                     <label key={t.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-ui-50 transition-colors">

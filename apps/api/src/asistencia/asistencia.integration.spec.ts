@@ -355,6 +355,24 @@ describe('Asistencia Audit (Real DB)', () => {
     });
   });
 
+  describe('TRABAJADOR DADO DE BAJA (BD real)', () => {
+    it('no se le checa entrada: 409 auditado con TRABAJADOR_DADO_DE_BAJA y sin registro en la BD', async () => {
+      const trabajador = await crearTrabajador(`Baja No Checa Test ${TEST_ID}`);
+      await prisma.trabajadores.update({ where: { id: trabajador.id }, data: { estado: 'INACTIVO' } });
+
+      await expect(
+        service.marcarEntrada({ trabajadorId: trabajador.id, obraId, lat: obraLat, lng: obraLng, dispositivo: 'Test' }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+
+      expect(await prisma.registros_asistencia.count({ where: { trabajador_id: trabajador.id } })).toBe(0);
+      const fallo = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.ASISTENCIA_ENTRADA_REGISTRADA, result: 'FAIL', error_code: 'TRABAJADOR_DADO_DE_BAJA' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fallo).not.toBeNull();
+    });
+  });
+
   describe('UBICACIÓN DE LA OBRA', () => {
     it('registrar la ubicación habilita el marcaje en una obra que no la tenía, y queda auditado', async () => {
       const trabajador = await crearTrabajador(`Ubicacion Obra Test ${TEST_ID}`);
