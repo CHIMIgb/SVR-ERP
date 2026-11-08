@@ -1046,6 +1046,27 @@ export class AsistenciaService {
       );
     }
 
+    // Lo que se paga sale de horasCalculadas: con hora de fin, tienen que corresponder al horario (si el fin es
+    // menor que el inicio, cruzó la medianoche). Antes se podía mandar "17:00 a 18:00" con 10 h.
+    if (dto.fin) {
+      const [hi, mi] = dto.inicio.split(':').map(Number);
+      const [hf, mf] = dto.fin.split(':').map(Number);
+      let minutos = hf * 60 + mf - (hi * 60 + mi);
+      if (minutos < 0) minutos += 24 * 60;
+      const horasDelHorario = minutos / 60;
+      // Margen de 0.01 h: el cliente redondea a 2 decimales (17:00–20:20 son 3.33 h).
+      if (Math.abs(horasDelHorario - dto.horasCalculadas) > 0.01) {
+        return this.fallir(
+          AuditAction.ASISTENCIA_HORAS_EXTRA_REGISTRADAS,
+          ENTITY_TYPE_HORAS_EXTRA,
+          registroId,
+          'HORAS_NO_CORRESPONDEN',
+          BadRequestException,
+          `De ${dto.inicio} a ${dto.fin} son ${Math.round(horasDelHorario * 100) / 100} h, no ${dto.horasCalculadas} h`,
+        );
+      }
+    }
+
     // Unas horas extra ya aprobadas no se vuelven a registrar: antes el upsert las pisaba y regresaban a
     // pendientes (o cambiaban de monto) sin que nadie lo notara.
     const yaAprobadas = () =>

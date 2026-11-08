@@ -451,7 +451,7 @@ describe('AsistenciaService', () => {
 
     it('marks a hand-typed tarifa in the audit', async () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
-      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:00', horasCalculadas: 2, tarifaPorHora: 150 }, 'user-1');
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '19:00', horasCalculadas: 2, tarifaPorHora: 150 }, 'user-1');
       expect(prisma.horas_extra_asistencia.create.mock.calls[0][0].data.tarifa_por_hora).toBe(150);
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ tarifaCapturada: true }) }));
     });
@@ -461,6 +461,23 @@ describe('AsistenciaService', () => {
       await expect(
         service.registrarHorasExtra('missing', { inicio: '17:00', horasCalculadas: 2 }, 'user-1'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    // Lo que se paga sale de horasCalculadas: tienen que corresponder al horario capturado.
+    it('400s (audited) when the hours do not match the schedule: 17:00–18:00 is 1 h, not 10 h', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      await expect(
+        service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '18:00', horasCalculadas: 10 }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.horas_extra_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'HORAS_NO_CORRESPONDEN' }));
+    });
+
+    it('accepts a schedule that crosses midnight (22:00–01:00 is 3 h) and rounding to 2 decimals (17:00–20:20 is 3.33 h)', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '22:00', fin: '01:00', horasCalculadas: 3 }, 'user-1');
+      await service.registrarHorasExtra(baseRegistro.id, { inicio: '17:00', fin: '20:20', horasCalculadas: 3.33 }, 'user-1');
+      expect(prisma.horas_extra_asistencia.create).toHaveBeenCalledTimes(2);
     });
   });
 
