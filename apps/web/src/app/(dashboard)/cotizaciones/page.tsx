@@ -415,26 +415,26 @@ export default function CotizacionesPage() {
                 >
                   Editar
                 </Button>
-                <Button
-                  variant="success"
-                  size="sm"
-                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                  disabled={!esPendiente}
-                  title={!esPendiente ? 'Solo cotizaciones pendientes' : undefined}
-                  onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
-                >
-                  Aceptar
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={<XCircle className="w-3.5 h-3.5" />}
-                  disabled={!esPendiente}
-                  title={!esPendiente ? 'Solo cotizaciones pendientes' : undefined}
-                  onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
-                >
-                  Rechazar
-                </Button>
+                {esPendiente && (
+                  <>
+                    <Button
+                      variant="success"
+                      size="sm"
+                      icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                      onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
+                    >
+                      Aceptar
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      icon={<XCircle className="w-3.5 h-3.5" />}
+                      onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
+                    >
+                      Rechazar
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>

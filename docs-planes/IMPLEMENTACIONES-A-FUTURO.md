@@ -37,7 +37,7 @@
 
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
-| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · ✅ **2. Contraste dark en modal Ver Detalle** (2026-11-07: migración a tokens `ui-*`/`dark:` según regla del repo en ProjectDetailsModal.tsx) · ✅ **3. F2 loaders/skeletons — REALIZADO 2026-11-07** (ver detalle en §11 F2 y §7; el delay `sleepDemo` de demo se retiró el mismo día) · · 4. **F3 validación con `details` en toasts — REALIZADO 2026-11-07** (helper `mensajeErrorApi` en `lib/api.ts` aplicado SOLO en Comercial/Operaciones — ver §11 F3) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix físico espera "go") · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
@@ -793,7 +793,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
 | F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ✅ **Realizado 2026-11-07** (ver §11 F2): `RefreshOverlay` nuevo + 11 overlays consolidados, cargas a pulmón → `LoadingState`/`Skeleton`, paginación siempre visible, KPIs con spinner en el valor, botones con `skeleton`, banners post-carga animados, regla dura en `AGENTS.md` |
 | F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ✅ **Realizado 2026-11-07** SOLO en Comercial + Operaciones (ver §11 F3): helper `mensajeErrorApi` en `lib/api.ts` aplicado en 50 toasts de 13 vistas; las demás vistas son de otro dev — el helper ya existe para cuando los toque (regla documentada en `AGENTS.md`) |
-| F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ⏳ Pendiente (ciclo de dinero y OC→stock ya al 100% — ver §11 F4; la matriz detectará qué vista aún come mock) |
+| F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ✅ **Análisis realizado 2026-11-07** (matriz completa en §11 F4: 6 cadenas al 100%, 14 gaps mapeados con su habilitador y tarea) |
 | F5 | Config POS: horario de caja que gatee + categorías visibles | `/configuracion` → `/ventas` | ⏳ Pendiente (verificado: `aperturas_caja`/`cierres_caja` NO tienen campos de horario; el gate no existe hoy) |
 | F6 | Seeds demo funcionales de todos los workflows | transversal | ⏳ Pendiente (solo existen `seed-proveedores.ts` y seeds de RBAC) |
 
@@ -1090,6 +1090,61 @@ global con `whitelist + forbidNonWhitelisted` responde 422 con `details[]`
 4. **Tests:** del helper compartido (unit front simple si aplica).
 
 ### F4 — Comprobación de flujos de datos: qué vista de Operaciones/Comercial necesita a cuál
+
+**Estado (2026-11-07): ✅ ANÁLISIS REALIZADO** — la matriz siguiente es la salida
+del audit (estática, verificada contra `schema.prisma`, la BD local y los
+workflows). **Regla de uso: una vista del ERP se considera "al 100%" solo cuando
+TODOS sus insumos tienen fila con ✅ en esta matriz.** Los gaps remiten a la
+tarea del índice que los habilita.
+
+#### Lo que YA está al 100% (cadena cierra end-to-end)
+
+| Flujo | Cadena completa | Ref |
+|---|---|---|
+| Ciclo comercial del dinero | cotización → factura → CxC → cobro → transacción INGRESO (`$transaction` + folio anti-colisión) | workflows 01–03 |
+| Renta facturable | bitácora-renta cerrada → factura → CxC (firma residente gatea) | workflow 02 |
+| Reportes facturables | reporte-campo (máquina de estados) → factura → CxC | PR #15 |
+| Compras → bodega | OC con líneas → recepción → **stock + movimientos en inventario** → CxP → abono → egreso | Fase 7 |
+| Cobranza → tesorería | cobro atómico + reversión compensatoria | workflow 03 |
+| Consolidado de cliente | `/clientes` tabs cotizaciones/facturas/CxC/cobros | restan tab trabajadores×proyecto (6.7) |
+
+#### Matriz de gaps (vista → insumo → estado → habilitador)
+
+**OPERACIONES**
+
+| Vista | Insumo → Fuente | Estado | Habilitador |
+|---|---|---|---|
+| `/operaciones` | obras activas ← tabla `obras` | 🔴 BD con 3 obras; 4 proyectos EN_PROCESO sin obra | seed 4 obras (pendiente "go") + flujo proyecto→obra (Tier 2 #11) |
+| `/operaciones` | catálogo de máquinas sin fallas ← `maquinas` | ✅ 100% | — |
+| `/inventario` | salidas ← venta POS | ⏳ P4b (ventas_items ya cruza) | Tier 1 #7 |
+| `/inventario` | entradas ← producción criba | ⏳ 6.5 | Tier 3 |
+| `/criba` | FK `maquina_id`/`proyecto_id` | ⏳ 6.4 (solo FK trabajadores) | Tier 2 #13 |
+| `/proyectos` | gastos desglosados | ⏳ Fase 3 FLUJO-PROGRESO | Tier 3 (6.8) |
+| `/proyectos` | modal Ver Detalle | 🔴 mock | Tier 2 (6.6, tras flujo obra) |
+| `/reportes` | incidente resuelto → deriva mantenimiento/reporte | ⏳ 6.2 | Tier 2 #12 |
+| `/reportes` | progreso ← metas P8 / transacciones por costo | ⏳ 6.3 | Tier 1 #8 |
+
+**COMERCIAL**
+
+| Vista | Insumo → Fuente | Estado | Habilitador |
+|---|---|---|---|
+| `/cotizaciones` | partidas `cotizacion_items` | ⏳ P2 | Tier 3 |
+| `/cotizaciones` | acción crear proyecto | ⏳ P3 | Tier 3 |
+| `/cotizaciones` | UI: sin botones fantasma | ✅ 2026-11-07 — Aceptar/Rechazar solo en PENDIENTE (antes deshabilitados flotando) | — |
+| `/ventas` | catálogo ← inventario + `articulos_precio` | ✅ (editor de medida = P7) | Tier 3 |
+| `/ventas` | descuento → stock | ⏳ P4b | Tier 1 #7 |
+| `/ventas` | venta a crédito → CxC | 🔴 C3 (service de ventas no crea entidad) | Tier 3 |
+| `/ventas` | config: horario gate + categorías | 🔴 sin schema | F5 §11 |
+| `/cobranza` | CxC de los 3 orígenes reales | ✅ (POS-crédito falta = C3) | = C3 |
+| `/facturas` | fuentes facturadas | ✅ | — |
+| `/finanzas` | CxP con `fecha_vencimiento` (flujo proyectado) | ⏳ §10 (columna sin uso) | Tier 2 #10 |
+| `/finanzas` | egresos por puntero polimórfico | ⏳ diseño (FK vs puntero, 6.3) | Tier 3 |
+| `/proveedores` | vencimiento OC → `cuentas_por_pagar` | ⏳ §10 | Tier 2 #10 |
+| `/clientes` | tab trabajadores×proyecto | ⏳ 6.7 | Tier 2 #14 |
+
+> **Deuda transversal conocida (fuera del par de módulos, referida por §6):**
+> `dashboard`, `gps`, `documentos`, `MachineCard`, `ProjectCard`,
+> `ProjectDetailsModal` siguen consumiendo mock de `@/lib/data`.
 
 **Estado:** ⏳ Pendiente de auditoría formal. Objetivo: matriz **vista → insumos que
 necesita para funcionar al 100%**, detectando vistas que aún comen mock o que le
