@@ -9,7 +9,7 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { ConflictException, INestApplication, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -153,26 +153,52 @@ describe('Nomina Audit (Real DB)', () => {
         },
         ACTOR_USER_ID,
       );
-      await asistenciaService.registrarHorasExtra(
+      // Tarifa capturada a mano ($150/h), distinta de la del trabajador ($120/h): se paga el monto aprobado.
+      const conHorasExtra = await asistenciaService.registrarHorasExtra(
         registro.id,
-        { inicio: '17:00', fin: '20:00', horasCalculadas: 3, motivo: 'Prueba' },
+        { inicio: '17:00', fin: '20:00', horasCalculadas: 3, tarifaPorHora: 150, motivo: 'Prueba' },
         ACTOR_USER_ID,
       );
+      const horasExtraId = conHorasExtra.horasExtra!.id;
 
+      // Sin autorizar no se pagan (antes la nómina pagaba también las pendientes y las rechazadas).
+      const sinAutorizar = await service.sincronizarAsistencia(periodo.id, ACTOR_USER_ID);
+      const filaSinAutorizar = sinAutorizar.items.find((i) => i.trabajadorId === trabajador.id);
+      expect(filaSinAutorizar?.diasTrabajados).toBe(1);
+      expect(filaSinAutorizar?.horasExtra).toBe(0);
+      expect(filaSinAutorizar?.percepciones.some((p) => p.tipo === 'HORAS_EXTRA_AUTO')).toBe(false);
+      expect(filaSinAutorizar?.totalNeto).toBe(6000);
+      expect(sinAutorizar.totalHorasExtraSinAutorizar).toBeGreaterThanOrEqual(3);
+
+      // Autorizadas: se pagan al monto aprobado (3 h × $150), no a la tarifa del trabajador.
+      await asistenciaService.aprobarHorasExtra(horasExtraId, ACTOR_USER_ID);
       const resultado = await service.sincronizarAsistencia(periodo.id, ACTOR_USER_ID);
       const fila = resultado.items.find((i) => i.trabajadorId === trabajador.id);
 
       expect(fila?.horasExtra).toBe(3);
-      expect(fila?.diasTrabajados).toBe(1);
-      expect(fila?.percepciones.some((p) => p.tipo === 'HORAS_EXTRA_AUTO' && p.monto === 360)).toBe(true);
-      expect(fila?.totalNeto).toBe(6360);
+      expect(fila?.percepciones.some((p) => p.tipo === 'HORAS_EXTRA_AUTO' && p.monto === 450)).toBe(true);
+      expect(fila?.totalNeto).toBe(6450);
 
       const audits = await findAudits(AuditAction.NOMINA_PROCESADA, periodo.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
 
+      // Una resolución no se sobrescribe: rechazarlas después de aprobadas da 409 y queda auditado.
+      await expect(asistenciaService.rechazarHorasExtra(horasExtraId, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+      const rechazo = await findAudits(AuditAction.ASISTENCIA_HORAS_EXTRA_RECHAZADAS, horasExtraId);
+      expect(rechazo[0].result).toBe('FAIL');
+      expect(rechazo[0].error_code).toBe('HORAS_EXTRA_YA_RESUELTAS');
+
       await prisma.horas_extra_asistencia.deleteMany({ where: { registro_asistencia_id: registro.id } });
       await prisma.registros_asistencia.delete({ where: { id: registro.id } });
+    });
+
+    it('audita FAIL con error_code cuando el periodo no existe (y no toca ninguna nómina)', async () => {
+      const inexistente = randomUUID();
+      await expect(service.sincronizarAsistencia(inexistente, ACTOR_USER_ID)).rejects.toThrow(NotFoundException);
+      const audits = await findAudits(AuditAction.NOMINA_PROCESADA, inexistente);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('PERIODO_NO_ENCONTRADO');
     });
   });
 

@@ -1250,7 +1250,13 @@ export interface AsistenciaSemanalDTO {
   /** Omisiones sin resolver que ya vencieron; están incluidas en totalFaltas. */
   totalOmisionesVencidas: number;
   totalHorasOrdinarias: number;
+  /** Horas extra registradas que siguen vigentes (sin rechazadas ni borradas), aprobadas o no. */
   totalHorasExtra: number;
+  /** Lo único que paga la nómina: horas extra aprobadas, al monto con que se aprobaron. */
+  totalHorasExtraAprobadas: number;
+  montoHorasExtraAprobadas: number;
+  /** Pendientes o en curso: todavía no se pagan. */
+  totalHorasExtraSinAutorizar: number;
 }
 
 export type ResolucionOmision = 'Falta' | 'Retardo';
@@ -1459,6 +1465,8 @@ export const nominaApi = {
       totalOmisionesVencidas: number;
       /** Nóminas ya pagadas que la sincronización no tocó. */
       nominasPagadasSinCambio: number;
+      /** Horas extra pendientes o en curso: no se pagaron porque todavía no se autorizan. */
+      totalHorasExtraSinAutorizar: number;
     }>(
       `/nomina/${periodoId}/sincronizar`,
       {},

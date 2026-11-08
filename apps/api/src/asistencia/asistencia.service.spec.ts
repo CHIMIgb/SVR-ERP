@@ -421,18 +421,30 @@ describe('AsistenciaService', () => {
   });
 
   describe('aprobarHorasExtra / rechazarHorasExtra', () => {
-    it('aprobarHorasExtra sets APROBADO and the aprobador', async () => {
-      prisma.horas_extra_asistencia.findFirst.mockResolvedValue({ id: 'he-1', registro_asistencia_id: baseRegistro.id });
+    const pendientes = (overrides: Record<string, unknown> = {}) => ({
+      id: 'he-1',
+      registro_asistencia_id: baseRegistro.id,
+      estado: 'PENDIENTE',
+      registros_asistencia: { trabajador_id: mockTrabajador.id, fecha: baseRegistro.fecha },
+      ...overrides,
+    });
+
+    it('aprobarHorasExtra sets APROBADO only while they are still PENDIENTE (conditional write)', async () => {
+      prisma.horas_extra_asistencia.findFirst.mockResolvedValue(pendientes());
       await service.aprobarHorasExtra('he-1', 'supervisor-1');
-      expect(prisma.horas_extra_asistencia.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ estado: 'APROBADO', aprobador_id: 'supervisor-1' }) }),
+      expect(prisma.horas_extra_asistencia.updateMany).toHaveBeenCalledWith({
+        where: { id: 'he-1', eliminado_en: null, estado: 'PENDIENTE' },
+        data: expect.objectContaining({ estado: 'APROBADO', aprobador_id: 'supervisor-1' }),
+      });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'SUCCESS', previousValue: { estado: 'PENDIENTE' } }),
       );
     });
 
     it('rechazarHorasExtra sets RECHAZADO', async () => {
-      prisma.horas_extra_asistencia.findFirst.mockResolvedValue({ id: 'he-1', registro_asistencia_id: baseRegistro.id });
+      prisma.horas_extra_asistencia.findFirst.mockResolvedValue(pendientes());
       await service.rechazarHorasExtra('he-1', 'supervisor-1');
-      expect(prisma.horas_extra_asistencia.update).toHaveBeenCalledWith(
+      expect(prisma.horas_extra_asistencia.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ estado: 'RECHAZADO' }) }),
       );
     });
@@ -440,6 +452,39 @@ describe('AsistenciaService', () => {
     it('404s when the horas extra record does not exist', async () => {
       prisma.horas_extra_asistencia.findFirst.mockResolvedValue(null);
       await expect(service.aprobarHorasExtra('missing', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('409s (audited) when they were already approved or rejected: a resolution is not overwritten', async () => {
+      prisma.horas_extra_asistencia.findFirst.mockResolvedValue(pendientes({ estado: 'APROBADO' }));
+      await expect(service.rechazarHorasExtra('he-1', 'supervisor-1')).rejects.toThrow(ConflictException);
+      expect(prisma.horas_extra_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'FAIL', errorCode: 'HORAS_EXTRA_YA_RESUELTAS' }),
+      );
+    });
+
+    it('400s while they are still EN_CURSO (no end time yet: the hours are not final)', async () => {
+      prisma.horas_extra_asistencia.findFirst.mockResolvedValue(pendientes({ estado: 'EN_CURSO' }));
+      await expect(service.aprobarHorasExtra('he-1', 'supervisor-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.horas_extra_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'HORAS_EXTRA_EN_CURSO' }));
+    });
+
+    it('409s when that week payroll was already paid', async () => {
+      prisma.horas_extra_asistencia.findFirst.mockResolvedValue(pendientes());
+      prisma.nominas.findFirst.mockResolvedValue({ id: 'nomina-pagada' });
+      await expect(service.aprobarHorasExtra('he-1', 'supervisor-1')).rejects.toThrow(ConflictException);
+      expect(prisma.horas_extra_asistencia.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NOMINA_PAGADA' }));
+    });
+
+    it('409s when someone else resolved them at the same time (conditional write touched nothing)', async () => {
+      prisma.horas_extra_asistencia.findFirst.mockResolvedValue(pendientes());
+      prisma.horas_extra_asistencia.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.aprobarHorasExtra('he-1', 'supervisor-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'FAIL', errorCode: 'HORAS_EXTRA_YA_RESUELTAS' }),
+      );
     });
   });
 
@@ -487,6 +532,40 @@ describe('AsistenciaService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].dias).toHaveLength(6);
       expect(result[0].dias.map((d) => d.dia)).toEqual(['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']);
+    });
+
+    it('only approved, non-deleted overtime is payable, at its approved amount; pending is reported apart', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 29, 12, 0)); // sábado 29/08/2026: la semana ya pasó
+      prisma.trabajadores.findMany.mockResolvedValue([{ ...mockTrabajador, fecha_contratacion: new Date(Date.UTC(2026, 0, 5)) }]);
+      const dia = (d: number, horasExtra: Record<string, unknown> | null) => ({
+        ...baseRegistro,
+        id: `reg-${d}`,
+        fecha: new Date(Date.UTC(2026, 7, d)),
+        horas_extra_asistencia: horasExtra,
+      });
+      const he = (estado: string, horas: number, monto: number, eliminado = false) => ({
+        horas_calculadas: horas,
+        monto_total: monto,
+        estado,
+        eliminado_en: eliminado ? new Date() : null,
+        motivo: null,
+      });
+      prisma.registros_asistencia.findMany.mockResolvedValue([
+        dia(24, he('APROBADO', 2, 300)), // tarifa capturada de 150: se paga el monto aprobado, no 2 × 90
+        dia(25, he('PENDIENTE', 3, 270)),
+        dia(26, he('EN_CURSO', 1, 90)),
+        dia(27, he('RECHAZADO', 4, 360)),
+        dia(28, he('APROBADO', 5, 450, true)), // borradas
+      ]);
+
+      const [semana] = await service.findSemanal({ fecha: '2026-08-24' });
+
+      expect(semana.totalHorasExtraAprobadas).toBe(2);
+      expect(semana.montoHorasExtraAprobadas).toBe(300);
+      expect(semana.totalHorasExtraSinAutorizar).toBe(4); // pendientes + en curso
+      expect(semana.totalHorasExtra).toBe(6); // registradas que siguen vigentes (sin rechazadas ni borradas)
+      expect(semana.dias.find((d) => d.fecha === '2026-08-27')?.horasExtra).toBeUndefined();
+      expect(semana.dias.find((d) => d.fecha === '2026-08-28')?.horasExtra).toBeUndefined();
     });
 
     it('does not mark days before the trabajador hire date as Falta', async () => {

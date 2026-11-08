@@ -53,7 +53,6 @@ const METODO_DB_A_UI: Record<string, NominaRowResponse['metodoPago']> = {
 };
 
 const MESES_ABREV = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const TARIFA_HORA_EXTRA_DEFECTO = 80;
 
 const NOMINA_INCLUDE = {
   trabajadores: { include: { categorias_puesto: true } },
@@ -190,6 +189,7 @@ export class NominaService {
     totalOmisionesPendientes: number;
     totalOmisionesVencidas: number;
     nominasPagadasSinCambio: number;
+    totalHorasExtraSinAutorizar: number;
   }> {
     const periodo = await this.prisma.periodos_nomina.findFirst({ where: { id: periodoId, eliminado_en: null } });
     if (!periodo) {
@@ -220,6 +220,8 @@ export class NominaService {
     let totalOmisionesVencidas = 0;
     // Una nómina ya pagada no se reescribe: el recibo que se entregó cambiaría después del pago.
     let nominasPagadasSinCambio = 0;
+    // Horas extra pendientes o en curso: no se pagan hasta que se autoricen; se avisan para revisarlas.
+    let totalHorasExtraSinAutorizar = 0;
 
     for (const nomina of nominas) {
       if (nomina.estado === 'PAGADA') {
@@ -230,9 +232,13 @@ export class NominaService {
       const diasTrabajados = datos?.totalDiasAsistidos ?? 0;
       const diasFaltas = datos?.totalFaltas ?? 0;
       const horasOrdinarias = datos?.totalHorasOrdinarias ?? 0;
-      const horasExtra = datos?.totalHorasExtra ?? 0;
+      // Solo lo aprobado, al monto con que se aprobó. Antes se sumaban también las pendientes, las rechazadas
+      // y las borradas, y se pagaban a la tarifa del trabajador aunque se hubiera capturado otra.
+      const horasExtra = datos?.totalHorasExtraAprobadas ?? 0;
+      const montoHorasExtra = datos?.montoHorasExtraAprobadas ?? 0;
 
       totalHorasExtraSincronizadas += horasExtra;
+      totalHorasExtraSinAutorizar += datos?.totalHorasExtraSinAutorizar ?? 0;
       totalFaltasAplicadas += diasFaltas;
       totalOmisionesPendientes += datos?.totalOmisionesPendientes ?? 0;
       totalOmisionesVencidas += datos?.totalOmisionesVencidas ?? 0;
@@ -240,15 +246,14 @@ export class NominaService {
       await this.prisma.percepciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
       await this.prisma.deducciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'FALTA_AUTO' } });
 
-      if (horasExtra > 0) {
-        const tarifa = Number(nomina.trabajadores.tarifa_hora_extra ?? TARIFA_HORA_EXTRA_DEFECTO);
+      if (montoHorasExtra > 0) {
         await this.prisma.percepciones_nomina.create({
           data: {
             id: randomUUID(),
             nomina_id: nomina.id,
-            concepto: 'Horas extra (GPS)',
+            concepto: 'Horas extra autorizadas',
             tipo: 'HORAS_EXTRA_AUTO',
-            monto: Number((horasExtra * tarifa).toFixed(2)),
+            monto: Number(montoHorasExtra.toFixed(2)),
             actualizado_en: new Date(),
           },
         });
@@ -297,6 +302,7 @@ export class NominaService {
         totalOmisionesPendientes,
         totalOmisionesVencidas,
         nominasPagadasSinCambio,
+        totalHorasExtraSinAutorizar,
       },
     });
 
@@ -307,6 +313,7 @@ export class NominaService {
       totalOmisionesPendientes,
       totalOmisionesVencidas,
       nominasPagadasSinCambio,
+      totalHorasExtraSinAutorizar: Number(totalHorasExtraSinAutorizar.toFixed(2)),
     };
   }
 

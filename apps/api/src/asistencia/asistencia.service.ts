@@ -89,7 +89,13 @@ export interface AsistenciaSemanalResponse {
   /** Omisiones sin resolver que ya vencieron: están dentro de totalFaltas. */
   totalOmisionesVencidas: number;
   totalHorasOrdinarias: number;
+  /** Horas extra registradas que siguen vigentes (sin rechazadas ni borradas), aprobadas o no. */
   totalHorasExtra: number;
+  /** Lo único que paga la nómina: horas extra aprobadas, al monto con que se aprobaron. */
+  totalHorasExtraAprobadas: number;
+  montoHorasExtraAprobadas: number;
+  /** Pendientes o en curso: todavía no se pagan; la nómina las avisa al sincronizar. */
+  totalHorasExtraSinAutorizar: number;
 }
 
 const ESTADO_DB_A_UI: Record<EstadoAsistencia, RegistroAsistenciaResponse['estado']> = {
@@ -1092,6 +1098,7 @@ export class AsistenciaService {
   ): Promise<RegistroAsistenciaResponse> {
     const horasExtra = await this.prisma.horas_extra_asistencia.findFirst({
       where: { id: horasExtraId, eliminado_en: null },
+      include: { registros_asistencia: { select: { trabajador_id: true, fecha: true } } },
     });
     if (!horasExtra) {
       return this.fallir(
@@ -1103,11 +1110,43 @@ export class AsistenciaService {
         `Registro de horas extra con id "${horasExtraId}" no encontrado`,
       );
     }
+    // Solo se resuelven unas horas pendientes. En curso todavía no tienen hora de fin (las horas no son
+    // definitivas), y una aprobación o un rechazo ya dados no se sobrescriben: antes se podía rechazar después
+    // de pagar, o aprobar unas horas a medias.
+    if (horasExtra.estado === 'EN_CURSO') {
+      return this.fallir(
+        action,
+        ENTITY_TYPE_HORAS_EXTRA,
+        horasExtraId,
+        'HORAS_EXTRA_EN_CURSO',
+        BadRequestException,
+        'Esas horas extra todavía no terminan: registra la hora de fin antes de autorizarlas',
+      );
+    }
+    const yaResueltas = () =>
+      this.fallir(
+        action,
+        ENTITY_TYPE_HORAS_EXTRA,
+        horasExtraId,
+        'HORAS_EXTRA_YA_RESUELTAS',
+        ConflictException,
+        'Esas horas extra ya se aprobaron o se rechazaron: vuelve a cargar la vista',
+      );
+    if (horasExtra.estado !== 'PENDIENTE') return yaResueltas();
+    // Con la nómina de esa semana pagada, lo que se pagó ya no cambia.
+    await this.exigirNominaSinPagar(
+      horasExtra.registros_asistencia.trabajador_id,
+      horasExtra.registros_asistencia.fecha,
+      horasExtra.registro_asistencia_id,
+      action,
+    );
 
-    await this.prisma.horas_extra_asistencia.update({
-      where: { id: horasExtraId },
+    // Condicional: si alguien más las resolvió entre la revisión y aquí, no se pisa su decisión.
+    const resueltas = await this.prisma.horas_extra_asistencia.updateMany({
+      where: { id: horasExtraId, eliminado_en: null, estado: 'PENDIENTE' },
       data: { estado, aprobador_id: userId, actualizado_por: userId, actualizado_en: new Date() },
     });
+    if (resueltas.count === 0) return yaResueltas();
 
     const actualizado = await this.prisma.registros_asistencia.findUniqueOrThrow({
       where: { id: horasExtra.registro_asistencia_id },
@@ -1123,6 +1162,7 @@ export class AsistenciaService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
+      previousValue: { estado: horasExtra.estado },
       newValue: serializado.horasExtra,
     });
 
@@ -1224,15 +1264,19 @@ export class AsistenciaService {
       let totalOmisionesVencidas = 0;
       let totalHorasOrdinarias = 0;
       let totalHorasExtra = 0;
+      let totalHorasExtraAprobadas = 0;
+      let montoHorasExtraAprobadas = 0;
+      let totalHorasExtraSinAutorizar = 0;
 
       for (let i = 0; i < 6; i++) {
         const fechaDia = new Date(Date.UTC(lunes.getUTCFullYear(), lunes.getUTCMonth(), lunes.getUTCDate() + i));
         const registro = registrosPorTrabajadorYDia.get(`${trabajador.id}:${i}`);
 
         if (registro) {
-          const horasExtra = registro.horas_extra_asistencia
-            ? Number(registro.horas_extra_asistencia.horas_calculadas)
-            : undefined;
+          // Las horas extra rechazadas o borradas ya no cuentan para nada (antes se sumaban y la nómina las pagaba).
+          const he = registro.horas_extra_asistencia;
+          const heVigentes = he && he.eliminado_en == null && he.estado !== 'RECHAZADO' ? he : null;
+          const horasExtra = heVigentes ? Number(heVigentes.horas_calculadas) : undefined;
           // Omisión: mientras se puede justificar se muestra como tal; vencida y sin resolver, cuenta como falta.
           const omisionVencida = registro.estado === 'OMISION' && this.omisionVencida(registro.fecha, ahora);
           const esFalta = registro.estado === 'FALTA' || registro.estado === 'NO_PRESENTADO' || omisionVencida;
@@ -1252,7 +1296,7 @@ export class AsistenciaService {
             horasTrabajadas: registro.horas_trabajadas_ordinarias != null ? Number(registro.horas_trabajadas_ordinarias) : 0,
             horasExtra,
             enSitioGps: registro.en_sitio,
-            motivo: registro.motivo_salida_anticipada ?? registro.horas_extra_asistencia?.motivo ?? undefined,
+            motivo: registro.motivo_salida_anticipada ?? heVigentes?.motivo ?? undefined,
           });
 
           // Antes NO_PRESENTADO se mostraba como falta pero se contaba como día asistido.
@@ -1267,6 +1311,13 @@ export class AsistenciaService {
           if (!esFalta) {
             totalHorasOrdinarias += registro.horas_trabajadas_ordinarias != null ? Number(registro.horas_trabajadas_ordinarias) : 0;
             totalHorasExtra += horasExtra ?? 0;
+            // Solo se paga lo aprobado, al monto aprobado (incluye la tarifa capturada a mano, si la hubo).
+            if (heVigentes?.estado === 'APROBADO') {
+              totalHorasExtraAprobadas += Number(heVigentes.horas_calculadas);
+              montoHorasExtraAprobadas += Number(heVigentes.monto_total);
+            } else if (heVigentes) {
+              totalHorasExtraSinAutorizar += Number(heVigentes.horas_calculadas);
+            }
           }
         } else if (fechaDia.getTime() > hoy.getTime() || (trabajador.fecha_contratacion && fechaDia.getTime() < trabajador.fecha_contratacion.getTime())) {
           // Día futuro, o anterior a la fecha de contratación: no cuenta como falta.
@@ -1321,6 +1372,9 @@ export class AsistenciaService {
         totalOmisionesVencidas,
         totalHorasOrdinarias: Number(totalHorasOrdinarias.toFixed(2)),
         totalHorasExtra: Number(totalHorasExtra.toFixed(2)),
+        totalHorasExtraAprobadas: Number(totalHorasExtraAprobadas.toFixed(2)),
+        montoHorasExtraAprobadas: Number(montoHorasExtraAprobadas.toFixed(2)),
+        totalHorasExtraSinAutorizar: Number(totalHorasExtraSinAutorizar.toFixed(2)),
       };
     });
   }

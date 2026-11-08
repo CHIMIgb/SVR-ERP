@@ -1040,7 +1040,9 @@ export default function AsistenciaPage() {
         const he = r.horasExtra;
         if (!he) return null;
         const trabajador = trabajadores.find((t) => t.id === r.trabajadorId);
-        if (he.estado !== 'Aprobado' && he.estado !== 'Rechazado' && puedeEditar) {
+        // Solo se autorizan horas terminadas: en curso todavía no tienen hora de fin (la API las rechaza).
+        if (he.estado === 'En Curso') return <span className="text-xs text-ui-500 whitespace-nowrap">En curso</span>;
+        if (he.estado === 'Pendiente' && puedeEditar) {
           return (
             <Button
               size="sm"
@@ -1053,6 +1055,7 @@ export default function AsistenciaPage() {
           );
         }
         if (he.estado === 'Aprobado') return <span className="text-xs text-ui-500 whitespace-nowrap">En nómina</span>;
+        if (he.estado === 'Rechazado') return <span className="text-xs text-ui-500 whitespace-nowrap">Rechazadas</span>;
         return <span className="text-ui-500">—</span>;
       },
     },

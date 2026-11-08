@@ -147,15 +147,22 @@ export default function NominaPage() {
       const res = await nominaApi.sincronizarAsistencia(periodo.id);
       if (!res.success) throw new Error(res.error.message);
       setItems(res.data.items);
-      const { totalOmisionesPendientes: pendientesOmision, totalOmisionesVencidas: vencidas, nominasPagadasSinCambio: pagadas } = res.data;
+      const {
+        totalOmisionesPendientes: pendientesOmision,
+        totalOmisionesVencidas: vencidas,
+        nominasPagadasSinCambio: pagadas,
+        totalHorasExtraSinAutorizar: sinAutorizar,
+      } = res.data;
       const avisos = [
         vencidas > 0 &&
           `${vencidas} de las faltas son omisiones sin resolver: si alguna se justifica, resuélvela en Asistencia y vuelve a sincronizar.`,
         pendientesOmision > 0 && `Quedan ${pendientesOmision} omisión(es) de hoy por resolver; no se descontaron.`,
+        sinAutorizar > 0 &&
+          `${sinAutorizar} h extra todavía sin autorizar no se pagaron: autorízalas en Asistencia y vuelve a sincronizar.`,
         pagadas > 0 && `${pagadas} nómina(s) ya pagada(s) no se modificaron.`,
       ].filter(Boolean);
       showToast(
-        `Asistencia sincronizada: se importaron ${res.data.totalHorasExtraSincronizadas} h extra y ${res.data.totalFaltasAplicadas} falta(s).` +
+        `Asistencia sincronizada: se pagan ${res.data.totalHorasExtraSincronizadas} h extra autorizadas y ${res.data.totalFaltasAplicadas} falta(s).` +
           (avisos.length > 0 ? ` ${avisos.join(' ')}` : ''),
         avisos.length > 0 ? 'warning' : 'success',
       );
