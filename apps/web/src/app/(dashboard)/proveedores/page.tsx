@@ -884,7 +884,7 @@ export default function ProveedoresPage() {
                 filters={filterFields}
                 values={filterValues}
                 onChange={handleFilterChange}
-                onClear={handleClearFilters}
+               
               />
             )}
 
@@ -944,7 +944,7 @@ export default function ProveedoresPage() {
                 filters={filterFields}
                 values={filterValues}
                 onChange={handleFilterChange}
-                onClear={handleClearFilters}
+               
               />
             )}
 
@@ -1004,7 +1004,7 @@ export default function ProveedoresPage() {
                 filters={filterFields}
                 values={filterValues}
                 onChange={handleFilterChange}
-                onClear={handleClearFilters}
+               
               />
             )}
 
