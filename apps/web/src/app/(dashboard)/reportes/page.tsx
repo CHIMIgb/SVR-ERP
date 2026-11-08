@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ClipboardCheck, Clock, ShieldAlert, AlertTriangle, CheckCircle2,
+  ClipboardCheck, Clock, ShieldAlert, CheckCircle2,
   Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal,
   UserCheck, UserX, ImagePlus, MessageSquarePlus, ImageOff,
 } from 'lucide-react';
@@ -149,7 +149,6 @@ export default function ReportesOperacionesPage() {
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [soloCriticos, setSoloCriticos] = useState(false);
 
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
@@ -184,7 +183,7 @@ export default function ReportesOperacionesPage() {
   }, []);
 
   // ── Cargar datos ──
-  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>, criticos?: boolean) => {
+  const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {
@@ -196,7 +195,6 @@ export default function ReportesOperacionesPage() {
         estado: (filters?.estado as EstadoIncidenteApi) || undefined,
         tipo: (filters?.tipo as TipoReporteApi) || undefined,
         prioridad: (filters?.prioridad as PrioridadReporteApi) || undefined,
-        criticos: criticos || undefined,
         page,
         limit: PAGE_SIZE,
       });
@@ -247,9 +245,6 @@ export default function ReportesOperacionesPage() {
     const label = TIPOS.find((t) => t.value === filterValues.tipo)?.label ?? filterValues.tipo;
     activeFilters.push({ key: 'tipo', label: 'Área', value: label });
   }
-  if (soloCriticos) {
-    activeFilters.push({ key: 'criticos', label: 'Vista', value: 'Solo críticos' });
-  }
 
   const filterFields: FilterField[] = [
     {
@@ -276,48 +271,42 @@ export default function ReportesOperacionesPage() {
   ];
 
   const refetch = useCallback(
-    (page?: number) => fetchData(page ?? pagination.page, search, filterValues, soloCriticos),
-    [fetchData, pagination.page, search, filterValues, soloCriticos],
+    (page?: number) => fetchData(page ?? pagination.page, search, filterValues),
+    [fetchData, pagination.page, search, filterValues],
   );
 
   const handleSearchChange = useCallback((value: string) => setSearch(value), []);
 
   const handleSearch = useCallback(() => {
-    fetchData(1, search, filterValues, soloCriticos);
-  }, [fetchData, search, filterValues, soloCriticos]);
+    fetchData(1, search, filterValues);
+  }, [fetchData, search, filterValues]);
 
   const handleFilterChange = useCallback(
     (key: string, value: string) => {
       setFilterValues((prev) => ({ ...prev, [key]: value }));
-      fetchData(1, search, { ...filterValues, [key]: value }, soloCriticos);
+      fetchData(1, search, { ...filterValues, [key]: value });
     },
-    [fetchData, search, filterValues, soloCriticos],
+    [fetchData, search, filterValues],
   );
 
   const handleRemoveFilter = useCallback(
     (key: string) => {
-      if (key === 'criticos') {
-        setSoloCriticos(false);
-        fetchData(1, search, filterValues, false);
-        return;
-      }
       const next = { ...filterValues };
       delete next[key];
       setFilterValues(next);
-      fetchData(1, search, next, soloCriticos);
+      fetchData(1, search, next);
     },
-    [fetchData, search, filterValues, soloCriticos],
+    [fetchData, search, filterValues],
   );
 
   const handleClearFilters = useCallback(() => {
     setFilterValues({});
-    setSoloCriticos(false);
-    fetchData(1, search, {}, false);
+    fetchData(1, search, {});
   }, [fetchData, search]);
 
   const handlePageChange = useCallback(
-    (page: number) => fetchData(page, search, filterValues, soloCriticos),
-    [fetchData, search, filterValues, soloCriticos],
+    (page: number) => fetchData(page, search, filterValues),
+    [fetchData, search, filterValues],
   );
 
   // ── Handlers de modales ──
@@ -823,34 +812,6 @@ export default function ReportesOperacionesPage() {
           ) : undefined
         }
       />
-
-      {/* Banner de incidentes críticos activos */}
-      {!initialLoading && stats.criticosActivos > 0 && (
-        <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-[fadeScaleIn_0.2s_ease-out]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-red-900 dark:text-red-300 font-bold text-sm">Incidentes Críticos Activos</p>
-              <p className="text-red-700 dark:text-red-400 text-xs font-medium">
-                Hay {stats.criticosActivos} incidente{stats.criticosActivos > 1 ? 's' : ''} sin cerrar.
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="danger"
-            size="sm"
-            icon={<Eye className="w-3.5 h-3.5" />}
-            onClick={() => {
-              setSoloCriticos(true);
-              fetchData(1, search, filterValues, true);
-            }}
-          >
-            Ver incidentes críticos
-          </Button>
-        </div>
-      )}
 
       {/* StatsCards — por estado del incidente */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
