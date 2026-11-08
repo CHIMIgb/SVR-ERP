@@ -660,12 +660,13 @@ export default function AsistenciaPage() {
         showToast(res.error.message, 'error');
         return;
       }
+      const fueCorreccion = !!omisionAResolver.registro?.omisionResueltaEn;
       setOmisionAResolver(null);
       setSelectedRegistro((prev) => (prev && prev.id === res.data.id ? res.data : prev));
       showToast(
         resolucion === 'Falta'
-          ? `Omisión de ${nombre} resuelta como falta: se descontará al sincronizar la nómina.`
-          : `Omisión de ${nombre} resuelta como retardo.`,
+          ? `Omisión de ${nombre} ${fueCorreccion ? 'corregida' : 'resuelta'}: queda como falta y se descontará al sincronizar la nómina.`
+          : `Omisión de ${nombre} ${fueCorreccion ? 'corregida' : 'resuelta'}: queda como retardo.`,
         resolucion === 'Falta' ? 'warning' : 'success',
       );
     } catch (e) {
@@ -908,6 +909,8 @@ export default function AsistenciaPage() {
 
   const trabajadorSeleccionado = trabajadores.find((t) => t.id === selectedRegistro?.trabajadorId);
   const trabajadorOmision = omisionAResolver ? trabajadores.find((t) => t.id === omisionAResolver.trabajadorId) : undefined;
+  // Una omisión que ya se resolvió y se abre de nuevo es una corrección (mismo día, hasta las 17:00).
+  const corrigiendoOmision = !!omisionAResolver?.registro?.omisionResueltaEn;
   // Fecha local en formato YYYY-MM-DD para comparar con las fechas del resumen semanal.
   const hoyISO = new Date().toLocaleDateString('en-CA');
   const registrosConHorasExtra = registros.filter((r) => r.horasExtra);
@@ -1437,6 +1440,12 @@ export default function AsistenciaPage() {
           onActualizarEstado={puedeEditar ? handleActualizarEstado : undefined}
           onAprobarHorasExtra={puedeEditar ? handleAprobarHorasExtra : undefined}
           onResolverOmision={puedeEditar ? () => abrirResolverOmision({ registro: selectedRegistro, trabajadorId: selectedRegistro.trabajadorId }) : undefined}
+          // Una omisión ya resuelta se corrige el mismo día hasta las 17:00 (la API lo vuelve a revisar).
+          onCorregirOmision={
+            puedeEditar && selectedRegistro.omisionResueltaEn && selectedRegistro.fecha.slice(0, 10) === hoyLocalISO && !yaVencioHoy
+              ? () => abrirResolverOmision({ registro: selectedRegistro, trabajadorId: selectedRegistro.trabajadorId })
+              : undefined
+          }
           persistent={!!omisionAResolver}
         />
       )}
@@ -1640,7 +1649,7 @@ export default function AsistenciaPage() {
           open
           onClose={cerrarResolverOmision}
           onSubmit={guardarResolucionOmision}
-          title="Resolver omisión"
+          title={corrigiendoOmision ? 'Corregir omisión' : 'Resolver omisión'}
           subtitle={trabajadorOmision?.nombre}
           submitLabel={resolviendoOmision ? 'Guardando…' : 'Guardar'}
           isSubmitting={resolviendoOmision}
@@ -1648,10 +1657,14 @@ export default function AsistenciaPage() {
         >
           <div className="space-y-4">
             <p className="text-sm text-ui-600">
-              {omisionAResolver.registro
-                ? `Checó a las ${omisionAResolver.registro.horaEntrada ?? '—'}${trabajadorOmision?.entrada ? ` y su entrada es a las ${trabajadorOmision.entrada}` : ''}.`
-                : 'No checó entrada hoy.'}
-              {omisionAResolver.registro?.omisionVencida && ' Ya pasó el plazo de las 17:00: mientras no se resuelva, cuenta como falta.'}
+              {corrigiendoOmision && omisionAResolver.registro
+                ? `Hoy se resolvió como ${omisionAResolver.registro.estado.toLowerCase()}` +
+                  `${omisionAResolver.registro.omisionMotivo ? ` («${omisionAResolver.registro.omisionMotivo}»)` : ''}. ` +
+                  'Se puede corregir hasta las 17:00.'
+                : omisionAResolver.registro?.sinMarcaje || !omisionAResolver.registro
+                  ? 'No checó entrada hoy.'
+                  : `Checó a las ${omisionAResolver.registro.horaEntrada ?? '—'}${trabajadorOmision?.entrada ? ` y su entrada es a las ${trabajadorOmision.entrada}` : ''}.`}
+              {!corrigiendoOmision && omisionAResolver.registro?.omisionVencida && ' Ya pasó el plazo de las 17:00: mientras no se resuelva, cuenta como falta.'}
             </p>
             <ModalField label="Queda como" required error={erroresOmision.resolucion}>
               <div role="group" aria-label="Resolución de la omisión" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-ui-100">

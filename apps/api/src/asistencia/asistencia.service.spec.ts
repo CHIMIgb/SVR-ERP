@@ -722,11 +722,53 @@ describe('AsistenciaService', () => {
       );
     });
 
-    it('409 when the record is not an omisión (or was already resolved)', async () => {
-      prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro, estado: 'RETARDO', omision_resuelta_en: new Date() });
+    it('409 NO_ES_OMISION when the record never was an omisión', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro, estado: 'PUNTUAL', omision_resuelta_en: null });
       await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
       expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NO_ES_OMISION' }));
+    });
+
+    describe('corrección de una omisión ya resuelta (regla de Oscar: el plazo es hasta las 17:00 de ese día)', () => {
+      // Miércoles 26/08/2026 (el día de baseRegistro). Se resolvió como falta a las 08:10.
+      const resueltaEn = new Date(2026, 7, 26, 8, 10);
+      const resuelta = { ...baseRegistro, estado: 'FALTA', omision_resuelta_en: resueltaEn, omision_motivo: 'No avisó' };
+
+      it('corrects it the same day before 17:00, conditional on the resolution it read, audited as a correction', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 10, 0));
+        prisma.registros_asistencia.findFirst.mockResolvedValue(resuelta);
+        await service.resolverOmision('reg-uuid-1', { resolucion: 'Retardo', motivo: 'Llegó tarde: se ponchó una llanta' }, 'user-1');
+        expect(prisma.registros_asistencia.updateMany).toHaveBeenCalledWith({
+          where: { id: 'reg-uuid-1', eliminado_en: null, estado: 'FALTA', omision_resuelta_en: resueltaEn },
+          data: expect.objectContaining({ estado: 'RETARDO', omision_motivo: 'Llegó tarde: se ponchó una llanta' }),
+        });
+        expect(mockAudit.log).toHaveBeenCalledWith(
+          expect.objectContaining({ result: 'SUCCESS', metadata: expect.objectContaining({ correccion: true }) }),
+        );
+      });
+
+      it('409 OMISION_YA_RESUELTA from 17:00 on: the resolution is final', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 17, 0));
+        prisma.registros_asistencia.findFirst.mockResolvedValue(resuelta);
+        await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
+        expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
+        expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'OMISION_YA_RESUELTA' }));
+      });
+
+      it('409 OMISION_YA_RESUELTA on another day', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 27, 9, 0));
+        prisma.registros_asistencia.findFirst.mockResolvedValue(resuelta);
+        await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
+        expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('409 when someone else corrected it at the same time (conditional update matched nothing)', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 10, 0));
+        prisma.registros_asistencia.findFirst.mockResolvedValue(resuelta);
+        prisma.registros_asistencia.updateMany.mockResolvedValue({ count: 0 });
+        await expect(service.resolverOmision('reg-uuid-1', dto, 'user-1')).rejects.toThrow(ConflictException);
+        expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OMISION_YA_RESUELTA' }));
+      });
     });
 
     it('409 when someone else resolved it at the same time (conditional update matched nothing)', async () => {

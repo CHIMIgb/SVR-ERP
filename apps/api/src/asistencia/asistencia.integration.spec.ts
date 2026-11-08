@@ -293,14 +293,16 @@ describe('Asistencia Audit (Real DB)', () => {
       return d.toISOString().slice(0, 10);
     };
 
-    it('la omisión de quien checó tarde se resuelve como retardo, con motivo y auditada (una sola vez)', async () => {
+    it('la omisión de quien checó tarde se resuelve como retardo, con motivo y auditada; pasado su día ya no se corrige', async () => {
       const trabajador = await crearTrabajador(`Omision Tarde Test ${TEST_ID}`);
       // Registro en OMISION como lo dejaría un checado tarde (se inserta directo para no depender de la hora).
+      // Es de un día ya pasado: su plazo de corrección (hasta las 17:00 de ese día) ya cerró, sin importar la hora
+      // a la que corra la prueba. La corrección dentro del plazo se prueba en las unitarias, con la hora fija.
       const registro = await prisma.registros_asistencia.create({
         data: {
           id: randomUUID(),
           trabajador_id: trabajador.id,
-          fecha: hoy(),
+          fecha: new Date(`${diaLaboralPasado()}T00:00:00Z`),
           estado: 'OMISION',
           ubicacion: 'Acceso',
           lat_entrada: obraLat,
@@ -338,7 +340,7 @@ describe('Asistencia Audit (Real DB)', () => {
 
       const audits = await findAudits(AuditAction.ASISTENCIA_OMISION_RESUELTA, registro.id);
       expect(audits.map((a) => a.result)).toEqual(['FAIL', 'SUCCESS']);
-      expect(audits[0].error_code).toBe('NO_ES_OMISION');
+      expect(audits[0].error_code).toBe('OMISION_YA_RESUELTA');
     });
 
     it('a quien no checó nada se le crea el día ya resuelto como falta (y no se duplica)', async () => {

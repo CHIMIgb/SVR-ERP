@@ -683,6 +683,10 @@ export class AsistenciaService {
   /**
    * Resuelve la omisión de un registro (checó tarde): la administradora valida el motivo y elige si queda como
    * falta o como retardo. Se puede hacer mientras no esté pagada la nómina de esa semana.
+   *
+   * Una omisión ya resuelta se puede **corregir** el mismo día hasta las 17:00 (regla del cliente: el trabajador
+   * tiene hasta que acaba el horario de 8 a 5 para justificar). Así, si se le puso falta en la mañana y luego
+   * llegó, se cambia a retardo. Pasado ese plazo la resolución queda firme.
    */
   async resolverOmision(id: string, dto: ResolverOmisionDto, userId: string): Promise<RegistroAsistenciaResponse> {
     const existente = await this.prisma.registros_asistencia.findFirst({
@@ -699,22 +703,35 @@ export class AsistenciaService {
         `Registro de asistencia con id "${id}" no encontrado`,
       );
     }
-    if (existente.estado !== 'OMISION') {
+    const ahora = new Date();
+    const yaResuelta = existente.estado !== 'OMISION' && !!existente.omision_resuelta_en;
+    if (existente.estado !== 'OMISION' && !yaResuelta) {
       return this.fallir(
         AuditAction.ASISTENCIA_OMISION_RESUELTA,
         ENTITY_TYPE,
         id,
         'NO_ES_OMISION',
         ConflictException,
-        existente.omision_resuelta_en ? 'Esta omisión ya se resolvió' : 'Este registro no es una omisión',
+        'Este registro no es una omisión',
+      );
+    }
+    if (yaResuelta && this.omisionVencida(existente.fecha, ahora)) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_OMISION_RESUELTA,
+        ENTITY_TYPE,
+        id,
+        'OMISION_YA_RESUELTA',
+        ConflictException,
+        'Esta omisión ya se resolvió y su plazo de corrección (hasta las 17:00 de ese día) ya pasó',
       );
     }
     await this.exigirNominaSinPagar(existente.trabajador_id, existente.fecha, id);
 
-    const ahora = new Date();
-    // Escritura condicional: si otra persona la resolvió en el mismo momento, no se pisa su decisión.
+    // Escritura condicional: si otra persona la resolvió (o corrigió) en el mismo momento, no se pisa su decisión.
     const resuelta = await this.prisma.registros_asistencia.updateMany({
-      where: { id, eliminado_en: null, estado: 'OMISION' },
+      where: yaResuelta
+        ? { id, eliminado_en: null, estado: existente.estado, omision_resuelta_en: existente.omision_resuelta_en }
+        : { id, eliminado_en: null, estado: 'OMISION' },
       data: {
         estado: dto.resolucion === 'Falta' ? 'FALTA' : 'RETARDO',
         omision_motivo: dto.motivo.trim(),
@@ -747,6 +764,7 @@ export class AsistenciaService {
       actorRole: 'autenticado',
       previousValue: this.toResponse(existente),
       newValue: serializado,
+      ...(yaResuelta ? { metadata: { correccion: true } } : {}),
     });
 
     return serializado;

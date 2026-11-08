@@ -26,6 +26,11 @@ interface AsistenciaGpsModalProps {
   onAprobarHorasExtra?: (horasExtraId: string) => Promise<void>;
   /** Abre la resolución de la omisión (falta o retardo con motivo). Sin él, la omisión solo se muestra. */
   onResolverOmision?: () => void;
+  /**
+   * Abre la corrección de una omisión ya resuelta. Quien lo pasa decide si todavía se puede (el mismo día, hasta
+   * las 17:00); sin él no se ofrece.
+   */
+  onCorregirOmision?: () => void;
   /** Mientras hay un modal encima, Escape no cierra este. */
   persistent?: boolean;
 }
@@ -52,6 +57,7 @@ export default function AsistenciaGpsModal({
   onActualizarEstado,
   onAprobarHorasExtra,
   onResolverOmision,
+  onCorregirOmision,
   persistent,
 }: AsistenciaGpsModalProps) {
   const { showToast } = useToast();
@@ -297,6 +303,9 @@ export default function AsistenciaGpsModal({
         </Button>
         {esOmision && onResolverOmision && (
           <Button onClick={onResolverOmision}>Resolver omisión</Button>
+        )}
+        {!esOmision && registro.omisionResueltaEn && onCorregirOmision && (
+          <Button variant="outline" onClick={onCorregirOmision}>Corregir resolución</Button>
         )}
         {mostrarMarcarFalta && (
           <Button
