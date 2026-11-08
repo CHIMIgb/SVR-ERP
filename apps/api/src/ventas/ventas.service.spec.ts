@@ -116,6 +116,13 @@ describe('VentasService', () => {
         findMany: jest.fn().mockResolvedValue([mockMaterial]),
         findUnique: jest.fn().mockResolvedValue({ ...mockMaterial, stock: mockMaterial.stock - 1 }),
         update: jest.fn().mockResolvedValue({ ...mockMaterial, stock: mockMaterial.stock - 1 }),
+        // P4b: guard anti-carrera — default OK; los tests de carrera lo obligan a fallar
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      movimientos_inventario: {
+        create: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({ ...data, id: 'm1' }),
+        ),
       },
       ventas: {
         findMany: jest.fn().mockResolvedValue([mockVenta]),
@@ -246,6 +253,54 @@ describe('VentasService', () => {
       expect(result.method).toBe('efectivo');
       // El mock de aggregate devolvió ticket max 3 → ticket 4
       expect(prisma.$transaction).toHaveBeenCalled();
+      // P4b: descuento con guard condicional (updateMany con stock gte)
+      expect(prisma.articulos_inventario.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: mockMaterial.id,
+            stock: { gte: 1 },
+          }),
+          data: { stock: { decrement: 1 } },
+        }),
+      );
+      // P4b: movimiento SALIDA con referencia VENTA_POS y stock_resultante
+      expect(prisma.movimientos_inventario.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          articulo_id: mockMaterial.id,
+          tipo: 'SALIDA',
+          cantidad: 1,
+          stock_resultante: mockMaterial.stock - 1,
+          motivo: 'Venta POS',
+          referencia_tipo: 'VENTA_POS',
+          referencia_id: result.id,
+          creado_por: 'user-1',
+        }),
+      });
+    });
+
+    it('carrera de stock (updateMany count 0) → STOCK_INSUFICIENTE auditado FAIL', async () => {
+      const dto = {
+        cajero: 'Cajero',
+        items: [
+          {
+            materialId: mockMaterial.id,
+            medida: 'm³',
+            cantidad: 1,
+            precioUnitario: 350,
+          },
+        ],
+        pagos: [{ metodo: 'efectivo' as const, monto: 350 }],
+        metodo: 'efectivo' as const,
+      };
+      // Otro cambio simultáneo vació el stock → el update condicional no toca nada
+      prisma.articulos_inventario.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.create(dto, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: AuditResult.FAIL,
+          errorCode: 'STOCK_INSUFICIENTE',
+        }),
+      );
     });
 
     it('should fail when medida is not available for the material', async () => {

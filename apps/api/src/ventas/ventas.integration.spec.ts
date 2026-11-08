@@ -112,6 +112,10 @@ describe('Ventas Audit (Real DB)', () => {
 
     // Limpieza en orden FK-safe (auditoría es inmutable, no se borra)
     if (createdVentaIds.length > 0) {
+      // P4b: movimientos de la venta ANTES que las ventas (FK a articulos)
+      await prisma.movimientos_inventario.deleteMany({
+        where: { referencia_tipo: 'VENTA_POS', referencia_id: { in: createdVentaIds } },
+      });
       await prisma.ventas_pagos.deleteMany({
         where: { venta_id: { in: createdVentaIds } },
       });
@@ -181,6 +185,18 @@ describe('Ventas Audit (Real DB)', () => {
       });
       expect(Number(material?.stock)).toBe(98);
 
+      // P4b: movimiento SALIDA con stock_resultante y referencia VENTA_POS
+      const movs = await prisma.movimientos_inventario.findMany({
+        where: { referencia_id: venta.id },
+      });
+      expect(movs).toHaveLength(1);
+      expect(movs[0].tipo).toBe('SALIDA');
+      expect(movs[0].motivo).toBe('Venta POS');
+      expect(movs[0].referencia_tipo).toBe('VENTA_POS');
+      expect(movs[0].articulo_id).toBe(materialId);
+      expect(Number(movs[0].cantidad)).toBe(2);
+      expect(Number(movs[0].stock_resultante)).toBe(98);
+
       const audits = await findAudits(AuditAction.VENTA_CREADA, venta.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
@@ -188,6 +204,36 @@ describe('Ventas Audit (Real DB)', () => {
 
       const newValue = audits[0].new_value as Record<string, unknown> | null;
       expect(newValue?.folio).toBe(venta.folio);
+    });
+
+    it('debe NO duplicar descuento con idempotencia_key repetida', async () => {
+      const dto = {
+        cajero: 'Cajero Test',
+        items: [{ materialId, medida: 'm³', cantidad: 1, precioUnitario: 350 }],
+        pagos: [{ metodo: 'efectivo' as const, monto: 350 }],
+        metodo: 'efectivo' as const,
+        idempotenciaKey: `DEMO-P4B-${TEST_ID}`,
+      };
+      const primera = await service.create(dto, ACTOR_USER_ID);
+      createdVentaIds.push(primera.id);
+      // stock tras la primera: 98 - 1 = 97
+      const stockPrimera = await prisma.articulos_inventario.findUnique({
+        where: { id: materialId },
+      });
+      expect(Number(stockPrimera?.stock)).toBe(97);
+
+      // Reintento con MISMA key → retorna la venta existente, sin tocar stock
+      const reintentada = await service.create(dto, ACTOR_USER_ID);
+      expect(reintentada.id).toBe(primera.id);
+
+      const stockReintento = await prisma.articulos_inventario.findUnique({
+        where: { id: materialId },
+      });
+      expect(Number(stockReintento?.stock)).toBe(97);
+      const movs = await prisma.movimientos_inventario.findMany({
+        where: { referencia_id: primera.id },
+      });
+      expect(movs).toHaveLength(1);
     });
 
     it('debe rechazar venta con medida inexistente y auditar FAIL', async () => {

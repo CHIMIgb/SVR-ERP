@@ -38,7 +38,7 @@
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
 | 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix físico espera "go") · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
-| 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
+| 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · ✅ **7. P4b** venta POS descuenta inventario — REALIZADO 2026-11-08 (guard anti-carrera + movimientos SALIDA `Venta POS`; ver §3 P4b) · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
 
@@ -225,8 +225,21 @@ venta/factura se descarga **`articulos_inventario`** y se registra un
 
 **Hallazgo verificado en schema:** `ventas_items` **ya tiene FK a
 `articulos_inventario`** (`articulo_id`). Es decir, la venta del punto de venta ya
-sabe **qué artículo** vendió — lo que NO hace hoy es descontar stock ni registrar el
-movimiento. Este sub-flujo es implementable **ya**, sin esperar P2 ni P7.
+sabe **qué artículo** vendió — lo que NO hacía era descontar stock ni registrar el
+movimiento.
+
+**Estado (2026-11-08): ✅ REALIZADO** — implementado en `ventas.service.ts`:
+el descuento corre DENTRO de la `$transaction` de la venta con **updateMany
+condicional** (`where: { id, stock: { gte: cantidad } }`) — guard anti-carrera
+contra stock negativo por ventas simultáneas — y por cada línea nace un
+**`movimientos_inventario` SALIDA** con `motivo 'Venta POS'`,
+`referencia_tipo 'VENTA_POS'` y `referencia_id = venta.id`
+(traceable en /inventario). Si el guard no descuenta (carrera), la
+transacción REVERTE la venta completa y responde `STOCK_INSUFICIENTE`
+con auditoría FAIL.
+**Test de idempotencia integración real:** reintentar la venta con la MISMA
+`idempotencia_key` NO duplica descuento (stock queda en 97 tras 98→97,
+1 movimiento únicamente). Specs unitarios 35/35, integración 10/10.
 
 **Cómo se aplicará:**
 1. **`ventas.service.ts`** — en la `$transaction` que registra la venta, por cada
@@ -777,7 +790,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | P1 | Aceptar cot. → Factura + Cuenta por Cobrar | `/cotizaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 3, workflow 01) |
 | P2 | Partidas de cotización (`cotizacion_items`) | `/cotizaciones` (editor interno) | ⏳ Pendiente (`cotizacion_items` no existe en schema — verificado) |
 | P3 | Cotización ↔ Proyecto/obra | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
-| P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | ⏳ Pendiente (**P4b no depende de P2** — `ventas_items.articulo_id` ya cruza a inventario) |
+| P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | **P4b ✅ Realizado 2026-11-08** (updateMany condicional anti-carrera + movimientos SALIDA `VentaPos` + test idempotencia real) · la parte de cotizaciones sigue ⏳ (depende de P2) |
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
 | P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
