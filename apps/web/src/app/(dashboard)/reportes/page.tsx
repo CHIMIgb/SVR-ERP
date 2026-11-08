@@ -122,6 +122,21 @@ const emptyForm = {
   descripcion: '',
 };
 
+/** Límites de imagen idénticos al detalle (backend los revalida). */
+const MAX_IMAGENES = 4;
+const MAX_TAMANO_IMAGEN = 2 * 1024 * 1024; // 2 MB
+const MIMES_IMAGEN = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/** Imagen en espera durante el alta (base64; el server aún no conoce el folio). */
+interface AdjuntoImagenAlta {
+  key: string;
+  nombre: string;
+  mime: string;
+  tamano: number;
+  /** base64 puro; llega por FileReader — se muestra cuando ya cargó. */
+  datos: string;
+}
+
 export default function ReportesOperacionesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -164,6 +179,8 @@ export default function ReportesOperacionesPage() {
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
+  /** Imágenes en espera del alta (mismos límites del detalle: máx 4, 2MB). */
+  const [imagenesAlta, setImagenesAlta] = useState<AdjuntoImagenAlta[]>([]);
 
   // ── Cargar subcategorías y trabajadores (una sola vez) ──
   useEffect(() => {
@@ -309,8 +326,58 @@ export default function ReportesOperacionesPage() {
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
     setForm(emptyForm);
+    setImagenesAlta([]);
     setCreateOpen(true);
   }, []);
+
+  /** En pantalla de alta: valida y apila la imagen (base64; límites idénticos al detalle). */
+  const handleAltaImagen = useCallback(
+    (file: File) => {
+      if (!MIMES_IMAGEN.includes(file.type)) {
+        showToast('Formato no permitido: usa JPG, PNG, WebP o GIF.', 'error');
+        return;
+      }
+      if (file.size > MAX_TAMANO_IMAGEN) {
+        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        return;
+      }
+      setImagenesAlta((prev) => {
+        if (prev.length >= MAX_IMAGENES) {
+          showToast(`Máximo ${MAX_IMAGENES} imágenes por incidente.`, 'error');
+          return prev;
+        }
+        return [...prev, {
+          key: crypto.randomUUID(),
+          nombre: file.name,
+          mime: file.type,
+          tamano: file.size,
+          datos: '',
+        }];
+      });
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setImagenesAlta((prev) => {
+          const target = prev.at(-1);
+          if (!target || target.datos) return prev;
+          return prev.map((img) =>
+            img.key === target.key ? { ...img, datos: dataUrl.substring(dataUrl.indexOf(',') + 1) } : img,
+          );
+        });
+      };
+      reader.onerror = () => {
+        showToast('No se pudo leer el archivo.', 'error');
+        setImagenesAlta((prev) => prev.filter((img) => img.datos));
+      };
+      reader.readAsDataURL(file);
+    },
+    [showToast],
+  );
+
+  const quitarImagenAlta = useCallback(
+    (key: string) => setImagenesAlta((prev) => prev.filter((img) => img.key !== key)),
+    [],
+  );
 
   const openDetalle = useCallback(
     (item: ReporteCampoDTO) => {
@@ -421,21 +488,44 @@ export default function ReportesOperacionesPage() {
     try {
       const payload = await buildPayload();
       const res = await reportesCampoApi.crear(payload);
-      if (res.success) {
-        showToast('Incidente registrado exitosamente.', 'success');
-        setCreateOpen(false);
-        setForm(emptyForm);
-        refetch(1);
-        fetchStats();
-      } else {
+      if (!res.success) {
         showToast(mensajeErrorApi(res.error, 'Error al registrar el incidente.'), 'error');
+        return;
       }
+
+      // 1) incidente nacido con su folio; 2) imágenes del alta, en secuencia.
+      // Si una falla, el incidente queda y la imagen se repite desde el detalle.
+      const nuevo = res.data;
+      const fallidas: string[] = [];
+      for (const img of imagenesAlta) {
+        if (!img.datos) continue;
+        const resAdj = await reportesCampoApi.adjuntar(nuevo.id, {
+          nombre: img.nombre,
+          mime: img.mime,
+          tamano: img.tamano,
+          datos: img.datos,
+        });
+        if (!resAdj.success) fallidas.push(img.nombre);
+      }
+      if (fallidas.length === 0) {
+        showToast('Incidente registrado exitosamente.', 'success');
+      } else {
+        showToast(
+          `Incidente creado, pero ${fallidas.length} imagen(es) no se subieron (${fallidas.join(', ')}). Súbelas desde el detalle.`,
+          'error',
+        );
+      }
+      setCreateOpen(false);
+      setForm(emptyForm);
+      setImagenesAlta([]);
+      refetch(1);
+      fetchStats();
     } catch {
       showToast('Error de conexión al registrar el incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [validateForm, buildPayload, showToast, refetch, fetchStats]);
+  }, [validateForm, buildPayload, showToast, refetch, fetchStats, imagenesAlta]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem || !validateForm()) return;
@@ -1012,6 +1102,45 @@ export default function ReportesOperacionesPage() {
               value={form.descripcion}
               onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
             />
+          </ModalField>
+
+          <ModalField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una.`} className="sm:col-span-2">
+            <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark mb-2">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) handleAltaImagen(file);
+                }}
+              />
+              <ImagePlus className="w-3.5 h-3.5" />
+              Agregar imagen
+            </label>
+            {imagenesAlta.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {imagenesAlta.map((img) => (
+                  <div key={img.key} className="relative rounded-xl overflow-hidden border border-ui-200 bg-ui-50">
+                    {img.datos ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={`data:${img.mime};base64,${img.datos}`} alt={img.nombre} className="h-20 w-full object-cover" />
+                    ) : (
+                      <div className="h-20 w-full flex items-center justify-center text-[10px] font-bold text-ui-400">Cargando…</div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => quitarImagenAlta(img.key)}
+                      aria-label={`Quitar ${img.nombre}`}
+                      className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </ModalField>
         </div>
       </FormModal>
