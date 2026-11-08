@@ -732,16 +732,19 @@ export const proyectosApi = {
 export type TipoReporte = 'Administrativo' | 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
 export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto' | 'Facturado';
 export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
+export type CategoriaReporte = 'Mecanico' | 'Soldador' | 'Diesel' | 'Mantenimiento' | 'Administrativo' | 'Residente';
 
 /** Valores de enum que acepta la API en query/body (mayúsculas). */
 export type TipoReporteApi = 'ADMINISTRATIVO' | 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
 export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO' | 'FACTURADO';
 export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+export type CategoriaReporteApi = 'MECANICO' | 'SOLDADOR' | 'DIESEL' | 'MANTENIMIENTO' | 'ADMINISTRATIVO' | 'RESIDENTE';
 
 export interface ReporteCampoDTO {
   id: string;
   codigo: string | null;
   tipo: TipoReporte;
+  categoria: CategoriaReporte | null;
   usuario: string;
   usuarioId: string | null;
   maquinaId: string | null;
@@ -781,6 +784,7 @@ export interface ReportesCampoStats {
 
 export interface ReporteCampoCreateInput {
   tipo: TipoReporteApi;
+  categoria: CategoriaReporteApi;
   usuario: string;
   maquinaId?: string;
   obraId?: string;

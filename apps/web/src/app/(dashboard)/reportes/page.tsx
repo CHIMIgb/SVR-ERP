@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Wrench, Fuel, User, ClipboardCheck, Clock, MapPin,
-  ShieldAlert, HardHat, Users, AlertTriangle, CheckCircle2,
+  ClipboardCheck, Clock, MapPin,
+  ShieldAlert, AlertTriangle, CheckCircle2,
   Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal, Receipt,
-  Briefcase, UserCheck, UserX,
+  UserCheck, UserX,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -30,6 +30,7 @@ import {
   type TipoReporteApi,
   type EstadoReporteApi,
   type PrioridadReporteApi,
+  type CategoriaReporteApi,
   type TipoReporte,
   type EstadoReporte,
   type PrioridadReporte,
@@ -69,35 +70,26 @@ const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
   { value: 'CRITICA', label: 'Crítica' },
 ];
 
+/** Categoría responsable — la torre a la que le cae el reporte (elige el creador). */
+const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
+  { value: 'MECANICO', label: 'Mecanico' },
+  { value: 'SOLDADOR', label: 'Soldador' },
+  { value: 'DIESEL', label: 'Diesel' },
+  { value: 'MANTENIMIENTO', label: 'Mantenimiento' },
+  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+  { value: 'RESIDENTE', label: 'Residente' },
+];
+
+const categoriaVariant: Record<string, string> = {
+  Mecanico: 'text-blue-700 bg-blue-50 dark:bg-blue-500/15 dark:text-blue-400',
+  Soldador: 'text-orange-700 bg-orange-50 dark:bg-orange-500/15 dark:text-orange-400',
+  Diesel: 'text-amber-700 bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400',
+  Mantenimiento: 'text-rose-700 bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400',
+  Administrativo: 'text-indigo-700 bg-indigo-50 dark:bg-indigo-500/15 dark:text-indigo-400',
+  Residente: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400',
+};
+
 // ── Helpers de presentación ──
-
-function getTipoIcon(tipo: string) {
-  switch (tipo) {
-    case 'Mecanico':      return <Wrench className="w-5 h-5 text-blue-500" />;
-    case 'Pipero':        return <Fuel className="w-5 h-5 text-orange-500" />;
-    case 'Operador':      return <User className="w-5 h-5 text-green-500" />;
-    case 'Checador':      return <ClipboardCheck className="w-5 h-5 text-purple-500" />;
-    case 'Incidente':     return <ShieldAlert className="w-5 h-5 text-red-500" />;
-    case 'Ingeniero':     return <HardHat className="w-5 h-5 text-yellow-500" />;
-    case 'Administrativo': return <Briefcase className="w-5 h-5 text-indigo-500" />;
-    case 'Trabajador':    return <Users className="w-5 h-5 text-teal-500" />;
-    default:              return <ClipboardCheck className="w-5 h-5 text-ui-400" />;
-  }
-}
-
-function getTipoColor(tipo: string) {
-  switch (tipo) {
-    case 'Mecanico':      return 'bg-blue-500';
-    case 'Pipero':        return 'bg-orange-500';
-    case 'Operador':      return 'bg-green-500';
-    case 'Checador':      return 'bg-purple-500';
-    case 'Incidente':     return 'bg-red-500';
-    case 'Ingeniero':     return 'bg-yellow-400';
-    case 'Administrativo': return 'bg-indigo-500';
-    case 'Trabajador':    return 'bg-teal-500';
-    default:              return 'bg-ui-400';
-  }
-}
 
 const estadoVariant: Record<EstadoReporte, 'warning' | 'info' | 'success' | 'primary'> = {
   Pendiente: 'warning',
@@ -164,6 +156,7 @@ const STATS_CERO: ReportesCampoStats = {
 
 const emptyForm = {
   tipo: '' as '' | TipoReporteApi,
+  categoria: '' as '' | CategoriaReporteApi,
   usuario: '',
   obraId: '',
   maquinaId: '',
@@ -384,6 +377,7 @@ export default function ReportesOperacionesPage() {
       setSelectedItem(item);
       setForm({
         tipo: (TIPOS.find((t) => t.label === item.tipo)?.value ?? 'OPERADOR') as TipoReporteApi,
+        categoria: (CATEGORIAS.find((c) => c.label === item.categoria)?.value ?? '') as '' | CategoriaReporteApi,
         usuario: item.usuario,
         obraId: item.obraId || '',
         maquinaId: item.maquinaId || '',
@@ -417,6 +411,10 @@ export default function ReportesOperacionesPage() {
       showToast('Selecciona el área del reporte.', 'error');
       return false;
     }
+    if (!form.categoria) {
+      showToast('Selecciona la categoría encargada de resolver el reporte.', 'error');
+      return false;
+    }
     if (!form.fecha || !form.hora) {
       showToast('La fecha y la hora del reporte son obligatorias.', 'error');
       return false;
@@ -443,6 +441,7 @@ export default function ReportesOperacionesPage() {
   const buildPayload = useCallback(
     (): ReporteCampoCreateInput => ({
       tipo: form.tipo as TipoReporteApi,
+      categoria: form.categoria as CategoriaReporteApi,
       usuario: nombreReporta(),
       maquinaId: form.maquinaId || undefined,
       obraId: form.obraId || undefined,
@@ -627,6 +626,17 @@ export default function ReportesOperacionesPage() {
   // ── Columnas de la tabla (patrón /inventario) ──
   const columns: Column<ReporteCampoDTO>[] = [
     {
+      key: 'codigo',
+      header: 'ID',
+      minWidth: '85px',
+      render: (report) =>
+        report.codigo ? (
+          <span className="font-black text-ui-900 tracking-tight">{report.codigo}</span>
+        ) : (
+          <span className="text-ui-300">—</span>
+        ),
+    },
+    {
       key: 'fechaHora',
       header: 'Fecha',
       minWidth: '105px',
@@ -638,18 +648,6 @@ export default function ReportesOperacionesPage() {
           </span>
           <span className="text-[10px] font-bold text-ui-400">{report.fecha}</span>
         </div>
-      ),
-    },
-    {
-      key: 'tipo',
-      header: 'Área',
-      minWidth: '120px',
-      render: (report) => (
-        <span className="flex items-center gap-2">
-          {getTipoIcon(report.tipo)}
-          <span className={`h-2 w-2 rounded-full ${getTipoColor(report.tipo)}`} />
-          <span className="font-bold text-ui-700">{report.tipo}</span>
-        </span>
       ),
     },
     {
@@ -669,7 +667,7 @@ export default function ReportesOperacionesPage() {
     },
     {
       key: 'obra',
-      header: 'Obra / Máq.',
+      header: 'Ubicación',
       minWidth: '150px',
       render: (report) => (
         <div>
@@ -710,47 +708,55 @@ export default function ReportesOperacionesPage() {
     {
       key: 'responsable',
       header: 'Responsable',
-      minWidth: '150px',
+      minWidth: '165px',
       render: (report) => {
+        const categoria = report.categoria && (
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black ${categoriaVariant[report.categoria] ?? 'bg-ui-100 text-ui-600'}`}
+          >
+            {report.categoria}
+          </span>
+        );
         if (report.resueltoEn) {
           return (
-            <Tooltip
-              placement="top"
-              content={
-                <span>
-                  Resuelto por {report.asignadoANombre ?? '—'} el{' '}
-                  {report.resueltoEn.slice(0, 10)}
-                </span>
-              }
-            >
-              <span className="flex items-center gap-1.5 font-black text-emerald-700">
+            <div>
+              {categoria ?? <span className="text-ui-300">Sin categoría</span>}
+              <span className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 {report.asignadoANombre ?? 'Resuelto'}
               </span>
-            </Tooltip>
+            </div>
           );
         }
         if (report.asignadoANombre) {
           return (
-            <span className="flex items-center gap-1.5 font-bold text-ui-700">
-              <UserCheck className="w-3.5 h-3.5 text-primary" />
-              {report.asignadoANombre}
-            </span>
+            <div>
+              {categoria ?? <span className="text-ui-300">Sin categoría</span>}
+              <span className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-ui-700">
+                <UserCheck className="w-3.5 h-3.5 text-primary" />
+                {report.asignadoANombre}
+              </span>
+            </div>
           );
         }
-        return <span className="text-ui-300">Sin asignar</span>;
+        return (
+          <div>
+            {categoria ?? <span className="text-ui-300">Sin categoría</span>}
+            <span className="mt-1 block text-[11px] font-medium text-ui-300">Sin asignar</span>
+          </div>
+        );
       },
     },
     {
       key: 'descripcion',
       header: 'Descripción',
-      minWidth: '560px',
+      minWidth: '380px',
       className: 'whitespace-normal',
       render: (report) => (
-        <div className="max-w-2xl">
+        <div className="max-w-xl">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
             <span className="font-medium text-ui-600">
-              &ldquo;{report.descripcion}&rdquo;
+              &ldquo;{report.descripcion.length > 90 ? `${report.descripcion.slice(0, 90)}…` : report.descripcion}&rdquo;
             </span>
           </Tooltip>
           {/* Detalles (litros/costo) y servicio facturable */}
@@ -1066,6 +1072,21 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
+          <ModalField label="Categoría (encargado de resolver)" required hint="El reporte sale para toda esa torre.">
+            <select
+              className={modalSelectClass}
+              value={form.categoria}
+              onChange={(e) =>
+                setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi })
+              }
+            >
+              <option value="">Seleccionar categoría...</option>
+              {CATEGORIAS.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </ModalField>
+
           <ModalField label="Prioridad" hint="Opcional — úsala para incidentes o urgencias.">
             <select
               className={modalSelectClass}
@@ -1228,6 +1249,21 @@ export default function ReportesOperacionesPage() {
               <option value="">Seleccionar área...</option>
               {TIPOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Categoría (encargado de resolver)" required hint="El reporte sale para toda esa torre.">
+            <select
+              className={modalSelectClass}
+              value={form.categoria}
+              onChange={(e) =>
+                setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi })
+              }
+            >
+              <option value="">Seleccionar categoría...</option>
+              {CATEGORIAS.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </ModalField>
