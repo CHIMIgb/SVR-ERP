@@ -71,9 +71,6 @@ describe('ReportesCampo Audit (Real DB)', () => {
     tipo: TipoReporteCampo.PIPERO,
     categoria: CategoriaReporte.DIESEL,
     usuario: `Marcos G. ${TEST_ID}`,
-    obraTexto: `Obra-${TEST_ID}`,
-    fecha: '2026-08-20',
-    hora: '14:15',
     descripcion: `Suministro de diésel test ${TEST_ID}`,
     ...overrides,
   });

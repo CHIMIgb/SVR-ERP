@@ -1,5 +1,7 @@
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MinLength, MaxLength } from 'class-validator';
 import { Prioridad, TipoReporteCampo, CategoriaReporte } from '@prisma/client';
+
+// La fecha y la hora del incidente son automáticas: ya no se editan.
 
 export class UpdateReporteCampoDto {
   @IsOptional()
@@ -23,14 +25,6 @@ export class UpdateReporteCampoDto {
   @MinLength(3)
   @MaxLength(100)
   usuario?: string;
-
-  @IsOptional()
-  @IsDateString()
-  fecha?: string;
-
-  @IsOptional()
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'hora debe tener formato HH:mm' })
-  hora?: string;
 
   @IsOptional()
   @IsString()

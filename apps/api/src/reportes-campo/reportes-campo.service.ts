@@ -253,8 +253,8 @@ export class ReportesCampoService {
             usuario: dto.usuario.trim(),
             usuario_id: userId,
             obra_texto: 'Sin obra asociada',
-            fecha: new Date(dto.fecha),
-            hora: new Date(`1970-01-01T${dto.hora}:00`),
+            fecha: this.fechaDelMomento(),
+            hora: this.horaDelMomento(),
             descripcion: dto.descripcion.trim(),
             estado: EstadoIncidente.NUEVO,
             prioridad: dto.prioridad ?? null,
@@ -343,8 +343,6 @@ export class ReportesCampoService {
         ...(torreFinal !== undefined && { categoria: torreFinal }),
         ...(dto.subcategoriaId !== undefined && { subcategoria_id: dto.subcategoriaId }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
-        ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
-        ...(dto.hora !== undefined && { hora: new Date(`1970-01-01T${dto.hora}:00`) }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
         ...(dto.prioridad !== undefined && { prioridad: dto.prioridad }),
         actualizado_por: userId,
@@ -904,6 +902,19 @@ export class ReportesCampoService {
    */
   private resolverTorreDelUsuario(): CategoriaReporte {
     return CategoriaReporte.ADMINISTRATIVO;
+  }
+
+  /** Fecha/hora automáticas al registrar (no las captura el usuario). */
+  private fechaDelMomento(): Date {
+    return new Date();
+  }
+
+  /** Hora con base 1970 local — misma convención que el serialize (hora.toTimeString). */
+  private horaDelMomento(): Date {
+    const d = new Date();
+    return new Date(
+      `1970-01-01T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`,
+    );
   }
 
   /** Autor visible de la actividad: persona asignada, quien reporta o usuario autenticado. */

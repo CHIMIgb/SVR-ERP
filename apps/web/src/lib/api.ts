@@ -809,8 +809,6 @@ export interface ReporteCampoCreateInput {
   mismaArea?: boolean;
   subcategoriaId?: string;
   usuario: string;
-  fecha: string;
-  hora: string;
   descripcion: string;
   prioridad?: PrioridadReporteApi;
 }

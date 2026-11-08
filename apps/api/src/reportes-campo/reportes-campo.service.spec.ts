@@ -163,10 +163,6 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       categoria: CategoriaReporte.DIESEL,
       subcategoriaId: 'sub-d1',
       usuario: 'Marcos G.',
-      maquinaId: mockReporte.maquina_id as string,
-      obraTexto: 'Valle Sur',
-      fecha: '2025-04-27',
-      hora: '14:15',
       descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
     };
 

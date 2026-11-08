@@ -114,13 +114,10 @@ const STATS_CERO: ReportesCampoStats = {
   porArea: {},
 };
 
-/** Formulario del modal Crear/Editar. */
 const emptyForm = {
   tipo: '' as '' | TipoReporteApi,
   categoria: '' as '' | CategoriaReporteApi | typeof MISMA_AREA,
   subcategoriaId: '',
-  fecha: new Date().toISOString().split('T')[0],
-  hora: new Date().toTimeString().slice(0, 5),
   prioridad: '' as '' | PrioridadReporteApi,
   descripcion: '',
 };
@@ -351,8 +348,6 @@ export default function ReportesOperacionesPage() {
         tipo: (TIPOS.find((t) => t.label === item.tipo)?.value ?? 'OPERADOR') as TipoReporteApi,
         categoria: (CATEGORIAS.find((c) => c.label === item.categoria)?.value ?? '') as '' | CategoriaReporteApi,
         subcategoriaId: item.subcategoriaId ?? '',
-        fecha: item.fecha,
-        hora: item.hora,
         prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
         descripcion: item.descripcion,
       });
@@ -385,10 +380,6 @@ export default function ReportesOperacionesPage() {
       showToast('Selecciona la categoría encargada de resolver el incidente.', 'error');
       return false;
     }
-    if (!form.fecha || !form.hora) {
-      showToast('La fecha y la hora del reporte son obligatorias.', 'error');
-      return false;
-    }
     if (!form.descripcion.trim()) {
       showToast('La descripción del reporte es obligatoria.', 'error');
       return false;
@@ -417,8 +408,6 @@ export default function ReportesOperacionesPage() {
         ...(mismaArea ? {} : { categoria: form.categoria as CategoriaReporteApi }),
         subcategoriaId: mismaArea ? undefined : form.subcategoriaId || undefined,
         usuario: nombreReporta(),
-        fecha: form.fecha,
-        hora: form.hora,
         descripcion: form.descripcion.trim(),
         prioridad: form.prioridad || undefined,
       };
@@ -1015,25 +1004,7 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Hora" required>
-            <input
-              type="time"
-              className={modalInputClass}
-              value={form.hora}
-              onChange={(e) => setForm({ ...form, hora: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Descripción" required className="sm:col-span-2">
+          <ModalField label="Descripción" required className="sm:col-span-2" hint="La fecha y hora se registran automáticamente al guardar.">
             <textarea
               className={modalTextareaClass}
               rows={4}
@@ -1393,24 +1364,6 @@ export default function ReportesOperacionesPage() {
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-          </ModalField>
-
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Hora" required>
-            <input
-              type="time"
-              className={modalInputClass}
-              value={form.hora}
-              onChange={(e) => setForm({ ...form, hora: e.target.value })}
-            />
           </ModalField>
 
           <ModalField label="Descripción" required className="sm:col-span-2">

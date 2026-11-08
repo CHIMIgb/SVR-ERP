@@ -11,10 +11,6 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     tipo: 'PIPERO',
     categoria: 'DIESEL',
     usuario: 'Marcos G.',
-    maquinaId: '550e8400-e29b-41d4-a716-446655440020',
-    obraTexto: 'Valle Sur',
-    fecha: '2025-04-27',
-    hora: '14:15',
     descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
     prioridad: 'MEDIA',
   };
@@ -50,10 +46,9 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('falla con fecha sura formato', async () => {
-    const dto = plainToInstance(CreateReporteCampoDto, { ...base, hora: '25:99' });
-    const errors = await validate(dto);
-    expect(errors.length).toBeGreaterThan(0);
+  it('fecha y hora ya no se capturan (automáticas al registrar; el whitelist las rechaza)', () => {
+    expect('fecha' in new CreateReporteCampoDto()).toBe(false);
+    expect('hora' in new CreateReporteCampoDto()).toBe(false);
   });
 
   it('falla con prioridad inválida', async () => {
@@ -62,8 +57,8 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('pasa sin opcionales (maquinaId, prioridad, subcategoriaId, GPS)', async () => {
-    const { maquinaId: _m, prioridad: _p, ...sinOpcionales } = base;
+  it('pasa sin opcionales (prioridad, subcategoriaId, mismaArea)', async () => {
+    const { prioridad: _p, ...sinOpcionales } = base;
     const dto = plainToInstance(CreateReporteCampoDto, sinOpcionales);
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
