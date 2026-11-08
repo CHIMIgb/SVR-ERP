@@ -53,6 +53,8 @@ const esPeriodo = (v: string): v is Periodo => PERIODOS.some((p) => p.value === 
 // Mismas reglas que CreateLecturaHorometroDto y HorometroService de la API.
 const HORAS_MAX_POR_LECTURA = 24;
 const LECTURA_MAX = 99_999_999.99;
+/** Igual que SALTO_SIN_CONFIRMAR_HORAS de la API: un salto mayor sobre el horómetro de la máquina se confirma. */
+const SALTO_SIN_CONFIRMAR_HORAS = 24;
 
 /** "YYYY-MM-DD" de hoy en la zona de la empresa. */
 function hoyISO(): string {
@@ -122,6 +124,8 @@ export default function HorometroPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormLectura>({ maquinaId: '', fecha: '', lecturaInicial: '', lecturaFinal: '' });
+  // Confirmación de un salto grande sobre el horómetro de la máquina (se reinicia al cambiar máquina o lectura).
+  const [confirmarSalto, setConfirmarSalto] = useState(false);
   const [erroresForm, setErroresForm] = useState<Errores>({});
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);
@@ -216,12 +220,15 @@ export default function HorometroPage() {
     // La lectura inicial sale del horómetro actual de la máquina (antes venían 1240 y 1248.5 fijos).
     setForm({ maquinaId: maquina?.id ?? '', fecha: hoy, lecturaInicial: maquina ? String(maquina.horometro) : '', lecturaFinal: '' });
     setErroresForm({});
+    setConfirmarSalto(false);
     setModalOpen(true);
   };
 
   const cambiar = <K extends keyof FormLectura>(campo: K, valor: FormLectura[K]) => {
     setForm((f) => ({ ...f, [campo]: valor }));
     setErroresForm((e) => (e[campo] ? { ...e, [campo]: undefined } : e));
+    // Lo confirmado era para esa máquina y esa lectura.
+    if (campo === 'maquinaId' || campo === 'lecturaInicial') setConfirmarSalto(false);
   };
 
   const inicial = leerLectura(form.lecturaInicial);
@@ -234,6 +241,9 @@ export default function HorometroPage() {
         ? `El horómetro de la máquina ya marca ${horas(maquinaForm.horometro)}: si esas horas ya se registraron, la lectura se va a rechazar.`
         : `El horómetro de la máquina marca ${horas(maquinaForm.horometro)}: quedan horas sin registrar entre las dos lecturas.`
       : undefined;
+  // Más de un día de trabajo arriba del horómetro suele ser un error de captura (un cero de más): se confirma.
+  const saltoHoras = maquinaForm && inicial !== null ? Math.round((inicial - maquinaForm.horometro) * 100) / 100 : null;
+  const requiereConfirmarSalto = saltoHoras !== null && saltoHoras > SALTO_SIN_CONFIRMAR_HORAS;
 
   const guardar = async () => {
     if (enviandoRef.current) return;
@@ -247,6 +257,9 @@ export default function HorometroPage() {
     else if (horasCalculadas !== null && horasCalculadas > HORAS_MAX_POR_LECTURA) {
       e.lecturaFinal = `Una lectura es de un solo día: no puede sumar más de ${HORAS_MAX_POR_LECTURA} h.`;
     }
+    if (requiereConfirmarSalto && !confirmarSalto && !e.lecturaInicial) {
+      e.lecturaInicial = `Arranca ${horas(saltoHoras ?? 0)} arriba del horómetro de la máquina: confírmalo abajo o revisa la captura.`;
+    }
     if (inicial === null || final === null || Object.values(e).some(Boolean)) {
       setErroresForm(e);
       return;
@@ -255,7 +268,13 @@ export default function HorometroPage() {
     enviandoRef.current = true;
     setEnviando(true);
     try {
-      const res = await horometroApi.crear({ maquinaId: form.maquinaId, fecha: form.fecha, lecturaInicial: inicial, lecturaFinal: final });
+      const res = await horometroApi.crear({
+        maquinaId: form.maquinaId,
+        fecha: form.fecha,
+        lecturaInicial: inicial,
+        lecturaFinal: final,
+        confirmarSalto: requiereConfirmarSalto ? true : undefined,
+      });
       if (!res.success) {
         // La API rechaza horas ya registradas (409) y explica cuál lectura las tiene.
         showToast(res.error.message, 'error');
@@ -586,6 +605,23 @@ export default function HorometroPage() {
               />
             </ModalField>
           </div>
+          {requiereConfirmarSalto && maquinaForm && (
+            <label className="flex items-start gap-2 p-3 rounded-xl border border-ui-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmarSalto}
+                onChange={(e) => {
+                  setConfirmarSalto(e.target.checked);
+                  setErroresForm((er) => (er.lecturaInicial ? { ...er, lecturaInicial: undefined } : er));
+                }}
+                className="mt-0.5 w-4 h-4 accent-primary"
+              />
+              <span className="text-sm text-ui-800">
+                Confirmo que la máquina trabajó {horas(saltoHoras ?? 0)} sin lecturas registradas (su horómetro marca{' '}
+                {horas(maquinaForm.horometro)}). El horómetro no se puede regresar después.
+              </span>
+            </label>
+          )}
           <p className={cn('text-sm', horasCalculadas !== null && (horasCalculadas < 0 || horasCalculadas > HORAS_MAX_POR_LECTURA) ? 'text-red-600 dark:text-red-400' : 'text-ui-600')}>
             Horas trabajadas: <span className="font-semibold tabular-nums">{horasCalculadas === null ? '—' : horas(horasCalculadas)}</span>
           </p>

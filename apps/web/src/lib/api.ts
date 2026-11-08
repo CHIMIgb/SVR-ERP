@@ -702,6 +702,8 @@ export interface LecturaHorometroCreateInput {
   fecha: string;
   lecturaInicial: number;
   lecturaFinal: number;
+  /** Confirma una lectura inicial más de 24 h arriba del horómetro de la máquina (si no, la API la rechaza). */
+  confirmarSalto?: boolean;
 }
 
 export const horometroApi = {

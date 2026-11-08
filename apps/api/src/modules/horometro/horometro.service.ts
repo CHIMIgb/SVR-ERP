@@ -35,6 +35,12 @@ const ENTITY_TYPE = 'lecturas_horometro';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 /** Una lectura es de un día: no puede sumar más horas que las del día. */
 const HORAS_MAX_POR_LECTURA = 24;
+/**
+ * Más de un día de trabajo entre el horómetro de la máquina y la lectura inicial pide confirmación: suele ser un
+ * error de captura (un cero de más) y el horómetro de la máquina no se regresa. No hay un tope del cliente; se
+ * confirma en lugar de bloquear, porque una máquina puede trabajar días sin lecturas registradas.
+ */
+const SALTO_SIN_CONFIRMAR_HORAS = 24;
 
 const LECTURA_INCLUDE = {
   maquinas: { select: { id: true, codigo: true, nombre: true } },
@@ -223,12 +229,25 @@ export class HorometroService {
     }
 
     const fecha = new Date(dto.fecha.slice(0, 10));
-    const { creada, horometroAnterior, horometroNuevo } = await this.prisma.$transaction(async (tx) => {
+    const { creada, horometroAnterior, horometroNuevo, saltoConfirmadoHoras } = await this.prisma.$transaction(async (tx) => {
       // Candado sobre la máquina: dos lecturas de la misma máquina al mismo tiempo se revisan una después de
       // la otra, así la segunda ve a la primera y no se cuela un rango repetido.
       const [fila] = await tx.$queryRaw<{ horometro: Prisma.Decimal }[]>`
         SELECT horometro FROM maquinas WHERE id = ${maquina.id}::uuid FOR UPDATE`;
       const anterior = Number(fila.horometro);
+
+      // Se revisa contra el horómetro leído con el candado: un salto grande sin confirmar no se registra.
+      const salto = redondear2(dto.lecturaInicial - anterior);
+      if (salto > SALTO_SIN_CONFIRMAR_HORAS && !dto.confirmarSalto) {
+        return this.fallir(
+          null,
+          'SALTO_DE_HOROMETRO',
+          BadRequestException,
+          `La lectura inicial (${dto.lecturaInicial} h) está ${salto} h arriba del horómetro de la máquina (${anterior} h). ` +
+            'Si la máquina trabajó sin lecturas registradas, confírmalo; si no, revisa la captura.',
+          { maquinaId: codigo, lecturaInicial: dto.lecturaInicial, horometroMaquina: anterior },
+        );
+      }
 
       // Rangos que se encimen (o la misma lectura repetida) ya están contados: no se registran dos veces.
       const traslape = await tx.lecturas_horometro.findFirst({
@@ -278,7 +297,12 @@ export class HorometroService {
           data: { horometro: nuevo, actualizado_por: userId, actualizado_en: new Date() },
         });
       }
-      return { creada: nueva, horometroAnterior: anterior, horometroNuevo: nuevo };
+      return {
+        creada: nueva,
+        horometroAnterior: anterior,
+        horometroNuevo: nuevo,
+        saltoConfirmadoHoras: salto > SALTO_SIN_CONFIRMAR_HORAS ? salto : undefined,
+      };
     });
 
     const serialized = this.toResponse(creada);
@@ -291,7 +315,12 @@ export class HorometroService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serialized,
-      metadata: { horometroMaquinaAnterior: horometroAnterior, horometroMaquinaNuevo: horometroNuevo },
+      metadata: {
+        horometroMaquinaAnterior: horometroAnterior,
+        horometroMaquinaNuevo: horometroNuevo,
+        // Un salto confirmado queda a la vista de quien revise: lo decidió una persona, no fue un error.
+        ...(saltoConfirmadoHoras !== undefined ? { saltoConfirmadoHoras } : {}),
+      },
     });
 
     return serialized;

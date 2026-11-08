@@ -181,4 +181,23 @@ describe('Horómetro (Real DB)', () => {
     const sigue = await prisma.registro_auditoria.findUnique({ where: { event_id: audit.event_id } });
     expect(sigue?.error_code).toBeNull();
   });
+
+  // Al final: estas pruebas mueven el horómetro de la máquina, del que dependen las anteriores.
+  it('un salto de más de 24 h sobre el horómetro de la máquina no se acepta sin confirmar (un dedazo era para siempre)', async () => {
+    // La máquina va en 116 h; capturan 1,160 → 1,168 (un cero de más). Antes pasaba y el horómetro quedaba en 1,168.
+    await expect(service.create(dto(1160, 1168), ACTOR_USER_ID)).rejects.toThrow(BadRequestException);
+    expect(await horometroDe()).toBe(116);
+    expect(await prisma.lecturas_horometro.count({ where: { maquina_id: maquinaId, lectura_inicial: 1160 } })).toBe(0);
+    expect(await fallosCon('SALTO_DE_HOROMETRO')).toHaveLength(1);
+  });
+
+  it('el mismo salto, confirmado (la máquina trabajó sin lecturas registradas), sí se registra y queda auditado', async () => {
+    const res = await service.create({ ...dto(150, 158), confirmarSalto: true }, ACTOR_USER_ID);
+    expect(res.horasTrabajadas).toBe(8);
+    expect(await horometroDe()).toBe(158);
+    const [audit] = await prisma.registro_auditoria.findMany({
+      where: { action: AuditAction.HOROMETRO_REGISTRADO, entity_id: res.id, result: AuditResult.SUCCESS },
+    });
+    expect(audit.metadata).toMatchObject({ saltoConfirmadoHoras: 34 });
+  });
 });

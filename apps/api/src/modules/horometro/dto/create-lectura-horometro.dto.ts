@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsDateString, Min, Max, MaxLength, IsNotEmpty } from 'class-validator';
+import { IsString, IsNumber, IsDateString, Min, Max, MaxLength, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { recortar } from '../../../common/validacion';
 
@@ -25,4 +25,12 @@ export class CreateLecturaHorometroDto {
   @Min(0)
   @Max(LECTURA_HOROMETRO_MAX)
   lecturaFinal!: number;
+
+  /**
+   * Confirma una lectura inicial que arranca muy arriba del horómetro de la máquina (la máquina trabajó sin lecturas
+   * registradas). Sin esto, un salto así se rechaza: suele ser un error de captura y el horómetro no se regresa.
+   */
+  @IsOptional()
+  @IsBoolean()
+  confirmarSalto?: boolean;
 }
