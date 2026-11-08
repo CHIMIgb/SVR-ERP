@@ -85,7 +85,8 @@ export default function NominaPage() {
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
   const [selectedWorkerForAdjust, setSelectedWorkerForAdjust] = useState<NominaRowDTO | null>(null);
   const [adjustTipo, setAdjustTipo] = useState<RegistrarAjusteInput['tipo']>('Bono');
-  const [adjustMonto, setAdjustMonto] = useState('500');
+  // Vacío: es dinero real. Antes abría con $500 ya cargados y bastaba escribir un concepto para aplicar un bono.
+  const [adjustMonto, setAdjustMonto] = useState('');
   const [adjustConcepto, setAdjustConcepto] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -241,7 +242,7 @@ export default function NominaPage() {
     if (ocupado) return;
     setSelectedWorkerForAdjust(item);
     setAdjustTipo('Bono');
-    setAdjustMonto('500');
+    setAdjustMonto('');
     setAdjustConcepto('');
     setAdjustModalOpen(true);
   };
@@ -622,7 +623,7 @@ export default function NominaPage() {
                 step="0.01"
                 aria-label="Monto del ajuste"
                 className={modalInputClass}
-                placeholder="500"
+                placeholder="0.00"
                 value={adjustMonto}
                 onChange={(e) => setAdjustMonto(e.target.value)}
               />
