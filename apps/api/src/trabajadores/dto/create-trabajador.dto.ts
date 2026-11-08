@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsDateString,
   IsBoolean,
+  IsInt,
   Matches,
   Max,
   MaxLength,
@@ -20,17 +21,27 @@ export const CATEGORIAS_LICENCIA = ['DC3', 'Licencia Federal', 'Certificado Téc
 
 /** Tope de las columnas Decimal(12,2) de sueldo: un monto mayor daba 500 al guardar. */
 export const MONTO_MAXIMO = 9_999_999_999;
+/** Tope de las columnas Decimal(10,2) (tarifa de hora extra y descuentos de la semana). */
+export const MONTO_MAXIMO_10_2 = 99_999_999;
+/** Una semana tiene 168 h: más horas extra que eso no son posibles (la columna es Decimal(6,2)). */
+export const HORAS_SEMANA_MAXIMAS = 168;
+/** La columna de vacaciones es Int: días enteros, hasta un año. */
+export const VACACIONES_DIAS_MAXIMO = 365;
 
 export class LicenciaDto {
+  @Transform(recortar)
   @IsString()
   @MinLength(2)
+  @MaxLength(100)
   tipo!: string;
 
   @IsIn(CATEGORIAS_LICENCIA)
   categoria!: (typeof CATEGORIAS_LICENCIA)[number];
 
+  @Transform(recortar)
   @IsString()
   @MinLength(2)
+  @MaxLength(60)
   folio!: string;
 
   @IsOptional()
@@ -43,16 +54,24 @@ export class LicenciaDto {
 }
 
 export class ContactoEmergenciaDto {
+  @Transform(recortar)
   @IsString()
   @MinLength(2)
+  @MaxLength(150)
   nombre!: string;
 
+  // Misma regla que el teléfono del trabajador (antes aceptaba cualquier texto de 7 caracteres).
+  @Transform(recortar)
   @IsString()
   @MinLength(7)
+  @MaxLength(20)
+  @Matches(TELEFONO_VALIDO, { message: 'telefono debe tener al menos 7 dígitos (solo números, espacios, guiones, paréntesis o +)' })
   telefono!: string;
 
+  @Transform(recortar)
   @IsString()
   @MinLength(2)
+  @MaxLength(50)
   parentesco!: string;
 }
 
@@ -116,24 +135,29 @@ export class CreateTrabajadorDto {
   @IsDateString()
   fechaContratacion!: string;
 
+  // Topes de las columnas: antes un valor fuera de rango pasaba el DTO y la BD respondía con un 500.
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(0)
+  @Max(VACACIONES_DIAS_MAXIMO)
   vacacionesDias?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(HORAS_SEMANA_MAXIMAS)
   horasExtraSemana?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(MONTO_MAXIMO_10_2)
   tarifaHoraExtra?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(MONTO_MAXIMO_10_2)
   descuentosSemana?: number;
 
   @IsOptional()

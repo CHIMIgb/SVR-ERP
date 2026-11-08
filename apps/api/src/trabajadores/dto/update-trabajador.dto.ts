@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsDateString,
+  IsInt,
   Matches,
   Max,
   MaxLength,
@@ -12,7 +13,15 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { CATEGORIAS_PUESTO, LicenciaDto, ContactoEmergenciaDto, MONTO_MAXIMO } from './create-trabajador.dto';
+import {
+  CATEGORIAS_PUESTO,
+  LicenciaDto,
+  ContactoEmergenciaDto,
+  MONTO_MAXIMO,
+  MONTO_MAXIMO_10_2,
+  HORAS_SEMANA_MAXIMAS,
+  VACACIONES_DIAS_MAXIMO,
+} from './create-trabajador.dto';
 import { HORA_HHMM, TELEFONO_VALIDO, recortar } from '../../common/validacion';
 
 export const ESTADOS_TRABAJADOR = ['Activo', 'Inactivo', 'Vacaciones'] as const;
@@ -86,24 +95,29 @@ export class UpdateTrabajadorDto {
   @IsDateString()
   fechaContratacion?: string;
 
+  // Mismos topes que el alta (CreateTrabajadorDto).
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(0)
+  @Max(VACACIONES_DIAS_MAXIMO)
   vacacionesDias?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(HORAS_SEMANA_MAXIMAS)
   horasExtraSemana?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(MONTO_MAXIMO_10_2)
   tarifaHoraExtra?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(MONTO_MAXIMO_10_2)
   descuentosSemana?: number;
 
   @IsOptional()

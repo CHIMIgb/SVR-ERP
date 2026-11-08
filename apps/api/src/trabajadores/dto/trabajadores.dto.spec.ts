@@ -89,6 +89,29 @@ describe('CreateTrabajadorDto', () => {
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  // Topes de las columnas: antes un valor fuera de rango pasaba el DTO y la BD respondía con un 500.
+  it.each([
+    ['vacacionesDias con decimales (la columna es Int)', { vacacionesDias: 2.5 }],
+    ['vacacionesDias de más de un año', { vacacionesDias: 400 }],
+    ['horasExtraSemana de más de 168 h', { horasExtraSemana: 200 }],
+    ['tarifaHoraExtra que no cabe en Decimal(10,2)', { tarifaHoraExtra: 1e9 }],
+    ['descuentosSemana con 3 decimales', { descuentosSemana: 10.555 }],
+  ])('should fail with %s', async (_caso, extra) => {
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, { ...base, ...extra }));
+    expect(errors.map((e) => e.property)).toContain(Object.keys(extra)[0]);
+  });
+
+  it('should fail with a contacto de emergencia phone that is not a phone, or oversized texts', async () => {
+    const telefonoMalo = await validate(
+      plainToInstance(CreateTrabajadorDto, { ...base, contactoEmergencia: { nombre: 'María', telefono: 'abcdefgh', parentesco: 'Esposa' } }),
+    );
+    expect(telefonoMalo.map((e) => e.property)).toContain('contactoEmergencia');
+    const folioEnorme = await validate(
+      plainToInstance(CreateTrabajadorDto, { ...base, licencia: { tipo: 'DC3', categoria: 'DC3', folio: 'F'.repeat(300) } }),
+    );
+    expect(folioEnorme.map((e) => e.property)).toContain('licencia');
+  });
 });
 
 describe('UpdateTrabajadorDto', () => {
@@ -108,6 +131,16 @@ describe('UpdateTrabajadorDto', () => {
     const dto = plainToInstance(UpdateTrabajadorDto, { estado: 'Suspendido' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['vacacionesDias con decimales', { vacacionesDias: 1.5 }],
+    ['horasExtraSemana de más de 168 h', { horasExtraSemana: 500 }],
+    ['tarifaHoraExtra que no cabe en Decimal(10,2)', { tarifaHoraExtra: 1e9 }],
+    ['descuentosSemana que no cabe en Decimal(10,2)', { descuentosSemana: 1e9 }],
+  ])('should fail with %s', async (_caso, extra) => {
+    const errors = await validate(plainToInstance(UpdateTrabajadorDto, extra));
+    expect(errors.map((e) => e.property)).toContain(Object.keys(extra)[0]);
   });
 });
 

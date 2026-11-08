@@ -28,6 +28,13 @@ export interface CargaCombustibleResponse {
 /** Más del 35% de sobreconsumo vs lo esperado se marca como posible ordeña. */
 const UMBRAL_ALERTA_PORCENTAJE = 35;
 const PRECIO_LITRO_DEFAULT = 23;
+/**
+ * Topes de las columnas derivadas: rendimiento_lts_hora es Decimal(8,2) y desviacion_porcentaje Decimal(6,2).
+ * Un consumo que no cabe ahí (por ejemplo 800 L en media hora) es un error de captura; antes llegaba a la BD
+ * y respondía con un 500 sin auditoría.
+ */
+const RENDIMIENTO_MAXIMO_LTS_HORA = 999_999.99;
+const DESVIACION_MAXIMA_PORCENTAJE = 9_999.9;
 
 const CARGA_INCLUDE = {
   maquinas: { select: { id: true, codigo: true } },
@@ -65,6 +72,26 @@ export class CombustibleService {
       errorCode,
     });
     throw new Excepcion(message);
+  }
+
+  /** Rechaza (auditado) un consumo que no cabe en sus columnas en vez de dejar que la BD responda 500. */
+  private async exigirConsumoEnRango(
+    action: AuditAction,
+    entityId: string | null,
+    litros: number,
+    horas: number,
+    rendimiento: number,
+    desviacion: number,
+  ): Promise<void> {
+    if (rendimiento <= RENDIMIENTO_MAXIMO_LTS_HORA && Math.abs(desviacion) <= DESVIACION_MAXIMA_PORCENTAJE) return;
+    return this.fallir(
+      action,
+      entityId,
+      'CONSUMO_FUERA_DE_RANGO',
+      BadRequestException,
+      `Con ${litros} L en ${horas} h el consumo sale de ${rendimiento.toFixed(1)} L/h ` +
+        `(${desviacion.toFixed(0)} % contra lo esperado): revisa los litros y las horas`,
+    );
   }
 
   async findAll(query: QueryCargaCombustibleDto) {
@@ -183,6 +210,7 @@ export class CombustibleService {
     const esperado = consumoEsperado > 0 ? consumoEsperado : 14.0;
     const rendimiento = dto.horasTrabajadasPeriodo > 0 ? dto.litros / dto.horasTrabajadasPeriodo : esperado;
     const desviacion = ((rendimiento - esperado) / esperado) * 100;
+    await this.exigirConsumoEnRango(AuditAction.COMBUSTIBLE_CARGADO, null, dto.litros, dto.horasTrabajadasPeriodo, rendimiento, desviacion);
     const alertaOrdena = desviacion > UMBRAL_ALERTA_PORCENTAJE;
 
     // OJO: fecha es @db.Date (sin timezone) — mismo cuidado que en
@@ -275,6 +303,7 @@ export class CombustibleService {
     const esperado = consumoEsperado > 0 ? consumoEsperado : 14.0;
     const rendimiento = horasEfectivo > 0 ? litrosEfectivo / horasEfectivo : esperado;
     const desviacion = ((rendimiento - esperado) / esperado) * 100;
+    await this.exigirConsumoEnRango(AuditAction.COMBUSTIBLE_ACTUALIZADO, id, litrosEfectivo, horasEfectivo, rendimiento, desviacion);
     const alertaOrdena = desviacion > UMBRAL_ALERTA_PORCENTAJE;
 
     let operadorId: string | null | undefined;
