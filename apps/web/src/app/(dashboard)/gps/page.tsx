@@ -112,7 +112,8 @@ export default function GpsPage() {
   const [paginaGeocercas, setPaginaGeocercas] = useState(1);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [historial, setHistorial] = useState<HistorialGpsDTO | null>(null);
-  const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
+  // El error guarda de qué máquina es, igual que el historial (maquinaId), para no mostrarlo bajo otra.
+  const [errorHistorial, setErrorHistorial] = useState<{ maquinaId: string; mensaje: string } | null>(null);
   const [intentoHistorial, setIntentoHistorial] = useState(0);
   const [simulando, setSimulando] = useState(false);
 
@@ -201,7 +202,7 @@ export default function GpsPage() {
       } catch (error) {
         if (cancelado) return;
         // Antes un fallo se mostraba como "sin entradas ni salidas hoy", que no era cierto.
-        setErrorHistorial(error instanceof Error ? error.message : 'error desconocido');
+        setErrorHistorial({ maquinaId: selectedId, mensaje: error instanceof Error ? error.message : 'error desconocido' });
       }
     })();
     return () => {
@@ -352,6 +353,9 @@ export default function GpsPage() {
 
   const seleccionada = maquinas.find((m) => m.id === selectedId);
   const seleccionadaMapa = machines.find((m) => m.id === selectedId);
+  // Al cambiar de máquina, lo cargado de la anterior no se muestra bajo la nueva mientras llega lo suyo.
+  const historialVigente = historial && historial.maquinaId === selectedId ? historial : null;
+  const errorHistorialVigente = errorHistorial && errorHistorial.maquinaId === selectedId ? errorHistorial.mensaje : null;
   const hayDatos = maquinas.length > 0;
   const contar = (estado: MaquinaGpsDTO['status']) => maquinas.filter((m) => m.status === estado).length;
   const simuladas = maquinas.some((m) => m.simulada);
@@ -536,25 +540,25 @@ export default function GpsPage() {
 
                     <Card padding="sm">
                       <h3 className="text-sm font-semibold text-ui-900 mb-3">Eventos de hoy</h3>
-                      {errorHistorial ? (
+                      {errorHistorialVigente ? (
                         <div className="space-y-2">
-                          <p className="text-xs text-red-600 dark:text-red-400 break-words">No se pudo cargar el recorrido de hoy: {errorHistorial}</p>
+                          <p className="text-xs text-red-600 dark:text-red-400 break-words">No se pudo cargar el recorrido de hoy: {errorHistorialVigente}</p>
                           <Button type="button" variant="outline" size="sm" onClick={() => setIntentoHistorial((n) => n + 1)}>Reintentar</Button>
                         </div>
-                      ) : !historial ? (
+                      ) : !historialVigente ? (
                         <p className="text-xs text-ui-500">Cargando…</p>
-                      ) : historial.eventos.length > 0 ? (
-                        <GpsTimeline events={historial.eventos} />
+                      ) : historialVigente.eventos.length > 0 ? (
+                        <GpsTimeline events={historialVigente.eventos} />
                       ) : (
                         <p className="text-xs text-ui-500">Sin entradas ni salidas de geocerca hoy para esta unidad.</p>
                       )}
                     </Card>
 
-                    {!errorHistorial && historial && historial.puntos.length > 0 && (
+                    {!errorHistorialVigente && historialVigente && historialVigente.puntos.length > 0 && (
                       <Card padding="sm">
                         <h3 className="text-sm font-semibold text-ui-900 mb-1">Recorrido de hoy</h3>
                         <p className="text-xs text-ui-500">
-                          {historial.puntos.length} posiciones registradas · la última a las {historial.puntos[0].time} h
+                          {historialVigente.puntos.length} posiciones registradas · la última a las {historialVigente.puntos[0].time} h
                         </p>
                       </Card>
                     )}
