@@ -396,7 +396,7 @@ export default function CotizacionesPage() {
       render: (item) => {
         const esPendiente = item.estado === 'Pendiente';
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-center gap-1">
             <Button
               variant="info"
               size="sm"
@@ -405,7 +405,9 @@ export default function CotizacionesPage() {
             >
               Ver
             </Button>
-            {puedeEditar && (
+            {/* Editar/Aceptar/Rechazar solo tienen sentido en PENDIENTE: en los
+                demás estados las acciones se ocultan (ver = la única operación). */}
+            {puedeEditar && esPendiente && (
               <>
                 <Button
                   variant="warning"
@@ -415,26 +417,22 @@ export default function CotizacionesPage() {
                 >
                   Editar
                 </Button>
-                {esPendiente && (
-                  <>
-                    <Button
-                      variant="success"
-                      size="sm"
-                      icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                      onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
-                    >
-                      Aceptar
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      icon={<XCircle className="w-3.5 h-3.5" />}
-                      onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
-                    >
-                      Rechazar
-                    </Button>
-                  </>
-                )}
+                <Button
+                  variant="success"
+                  size="sm"
+                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
+                >
+                  Aceptar
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<XCircle className="w-3.5 h-3.5" />}
+                  onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
+                >
+                  Rechazar
+                </Button>
               </>
             )}
           </div>
