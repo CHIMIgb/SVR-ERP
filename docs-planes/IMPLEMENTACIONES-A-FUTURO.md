@@ -39,33 +39,11 @@
 |------|-------------------------------------------|---------|
 | 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix físico espera "go") · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · ✅ **7. P4b** venta POS descuenta inventario — REALIZADO 2026-11-08 (guard anti-carrera + movimientos SALIDA `Venta POS`; ver §3 P4b) · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
-solucionar el bug en /inventario que al filtrar catgeoria -> material arroja el siguiente error:
 
-{success: false,…}
-error
-: 
-{code: "BAD_REQUEST", message: "Error de validación", details: ["categoriaId must be a UUID"],…}
-code
-: 
-"BAD_REQUEST"
-details
-: 
-["categoriaId must be a UUID"]
-0
-: 
-"categoriaId must be a UUID"
-message
-: 
-"Error de validación"
-path
-: 
-"/api/inventario?categoriaId=d2000000-0000-0000-0000-000000000002&page=1&limit=10"
-timestamp
-: 
-"2026-11-08T01:50:34.346Z"
-success
-: 
-false
+> Nota (2026-11-08): el bug `/inventario` al filtrar por categoría (`categoriaId must be
+> a UUID`) se resolvió — los IDs pseudo-UUID de las categorías/unidades del seed de
+> unificar_ventas_inventario violaban el RFC 4122; corregidos con la migración
+> `20261108000000_fix_uuids_categorias_unidades` (ver historial-cambios del día).
 
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
