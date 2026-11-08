@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ClipboardCheck, Clock, MapPin,
-  ShieldAlert, AlertTriangle, CheckCircle2,
-  Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal, Receipt,
-  UserCheck, UserX,
+  ClipboardCheck, Clock, MapPin, ShieldAlert, AlertTriangle, CheckCircle2,
+  Plus, Pencil, Trash2, Eye, X, AlertCircle, Check, SlidersHorizontal,
+  UserCheck, UserX, ImagePlus, MessageSquarePlus, Navigation, ImageOff,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -16,24 +15,26 @@ import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import {
   bitacoraApi,
   reportesCampoApi,
   trabajadoresApi,
   type CatalogoItem,
   type ReporteCampoDTO,
+  type ReportesIncidenteDetalle,
   type ReportesCampoStats,
   type ReporteCampoCreateInput,
+  type SubcategoriaDTO,
   type TipoReporteApi,
-  type EstadoReporteApi,
+  type EstadoIncidenteApi,
   type PrioridadReporteApi,
   type CategoriaReporteApi,
-  type TipoReporte,
-  type EstadoReporte,
+  type EstadoIncidente as EstadoIncidenteUI,
   type PrioridadReporte,
+  type AdjuntoDTO,
   type TrabajadorDTO,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
@@ -54,13 +55,10 @@ const TIPOS: { value: TipoReporteApi; label: string }[] = [
   { value: 'TRABAJADOR', label: 'Trabajador' },
 ];
 
-const ESTADOS_FILTRO: { value: EstadoReporteApi; label: string }[] = [
-  { value: 'PENDIENTE', label: 'Pendiente' },
-  { value: 'VISTO', label: 'Visto' },
-  { value: 'ATENDIDO', label: 'Atendido' },
-  { value: 'EN_REVISION', label: 'En Revisión' },
-  { value: 'RESUELTO', label: 'Resuelto' },
-  { value: 'FACTURADO', label: 'Facturado' },
+const ESTADOS_FILTRO: { value: EstadoIncidenteApi; label: string }[] = [
+  { value: 'NUEVO', label: 'Nuevo' },
+  { value: 'EN_CURSO', label: 'En curso' },
+  { value: 'CERRADO', label: 'Cerrado' },
 ];
 
 const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
@@ -70,7 +68,7 @@ const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
   { value: 'CRITICA', label: 'Crítica' },
 ];
 
-/** Categoría responsable — la torre a la que le cae el reporte (elige el creador). */
+/** Categoría responsable — la torre a la que le cae el incidente (elige el creador). */
 const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
   { value: 'MECANICO', label: 'Mecanico' },
   { value: 'SOLDADOR', label: 'Soldador' },
@@ -89,15 +87,10 @@ const categoriaVariant: Record<string, string> = {
   Residente: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400',
 };
 
-// ── Helpers de presentación ──
-
-const estadoVariant: Record<EstadoReporte, 'warning' | 'info' | 'success' | 'primary'> = {
-  Pendiente: 'warning',
-  Visto: 'info',
-  Atendido: 'success',
-  'En Revisión': 'primary',
-  Resuelto: 'success',
-  Facturado: 'primary',
+const estadoVariant: Record<EstadoIncidenteUI, 'warning' | 'info' | 'success' | 'primary'> = {
+  Nuevo: 'warning',
+  'En curso': 'primary',
+  Cerrado: 'success',
 };
 
 const prioridadVariant: Record<PrioridadReporte, 'error' | 'warning' | 'neutral' | 'info'> = {
@@ -107,59 +100,47 @@ const prioridadVariant: Record<PrioridadReporte, 'error' | 'warning' | 'neutral'
   Baja: 'info',
 };
 
-/** Siguiente etapa del flujo de seguimiento del reporte. */
-function siguienteEstado(estado: EstadoReporte): EstadoReporte | null {
-  switch (estado) {
-    case 'Pendiente':   return 'Visto';
-    case 'Visto':       return 'Atendido';
-    case 'Atendido':    return 'Resuelto';
-    case 'En Revisión': return 'Resuelto';
-    default:            return null;
-  }
+/** Siguiente etapa del flujo simplificado del incidente. */
+function siguienteEstado(estado: EstadoIncidenteUI): EstadoIncidenteUI | null {
+  if (estado === 'Nuevo') return 'En curso';
+  if (estado === 'En curso') return 'Cerrado';
+  return null;
 }
 
-const ESTADO_API: Record<EstadoReporte, EstadoReporteApi> = {
-  Pendiente: 'PENDIENTE',
-  Visto: 'VISTO',
-  Atendido: 'ATENDIDO',
-  'En Revisión': 'EN_REVISION',
-  Resuelto: 'RESUELTO',
-  Facturado: 'FACTURADO',
+const ESTADO_API: Record<EstadoIncidenteUI, EstadoIncidenteApi> = {
+  Nuevo: 'NUEVO',
+  'En curso': 'EN_CURSO',
+  Cerrado: 'CERRADO',
 };
-
-/** Etiqueta del botón principal — conserva los nombres originales de la vista. */
-function etiquetaAccion(report: ReporteCampoDTO): string | null {
-  const next = siguienteEstado(report.estado);
-  if (!next) return null;
-  if (report.estado === 'Pendiente') {
-    return report.tipo === 'Incidente' ? 'Gestionar' : 'Validar';
-  }
-  return `Marcar ${next}`;
-}
 
 /** Formatea valores de `detalles` según la clave conocida. */
 function formatDetalle(key: string, value: unknown): string {
   const k = key.toLowerCase();
   if (k === 'litros') return `${value} L`;
-  if (k === 'costo') return formatCurrency(Number(value));
   return String(value);
 }
 
+/** Descripción breve con recorte para la tabla. */
+function descripcionBreve(texto: string, max = 90): string {
+  return texto.length > max ? `${texto.slice(0, max)}…` : texto;
+}
+
 const STATS_CERO: ReportesCampoStats = {
-  pendientes: 0,
-  enRevision: 0,
-  atendidos: 0,
-  resueltos: 0,
+  nuevos: 0,
+  enCurso: 0,
+  cerrados: 0,
   criticosActivos: 0,
   porArea: {},
 };
 
+/** Formulario del modal Crear/Editar (ubicación obra | gps). */
 const emptyForm = {
   tipo: '' as '' | TipoReporteApi,
   categoria: '' as '' | CategoriaReporteApi,
-  usuario: '',
-  obraId: '',
+  subcategoriaId: '',
   maquinaId: '',
+  ubicacionModo: 'obra' as 'obra' | 'gps',
+  obraId: '',
   fecha: new Date().toISOString().split('T')[0],
   hora: new Date().toTimeString().slice(0, 5),
   prioridad: '' as '' | PrioridadReporteApi,
@@ -183,6 +164,7 @@ export default function ReportesOperacionesPage() {
     maquinas: [],
     obras: [],
   });
+  const [subcategorias, setSubcategorias] = useState<SubcategoriaDTO[]>([]);
   const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -199,23 +181,31 @@ export default function ReportesOperacionesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [facturarOpen, setFacturarOpen] = useState(false);
   const [asignarOpen, setAsignarOpen] = useState(false);
-  const [resolverOpen, setResolverOpen] = useState(false);
+  const [detalleOpen, setDetalleOpen] = useState(false);
+  const [detalleCargando, setDetalleCargando] = useState(false);
+  const [detalle, setDetalle] = useState<ReportesIncidenteDetalle | null>(null);
+  const [cerrarOpen, setCerrarOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReporteCampoDTO | null>(null);
-  const [facturarItem, setFacturarItem] = useState<ReporteCampoDTO | null>(null);
   const [asignarItem, setAsignarItem] = useState<ReporteCampoDTO | null>(null);
-  const [resolverItem, setResolverItem] = useState<ReporteCampoDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
-  const [facturando, setFacturando] = useState(false);
   const [asignarForm, setAsignarForm] = useState({ asignadoA: '', asignadoNombre: '' });
+  const [comentarioTexto, setComentarioTexto] = useState('');
+  const [comentando, setComentando] = useState(false);
+  const [adjuntando, setAdjuntando] = useState(false);
+  const falloGpsRef = useRef(false);
 
-  // ── Cargar catálogos de obra y máquina (una sola vez) ──
+  // ── Cargar catálogos, subcategorías y trabajadores (una sola vez) ──
   useEffect(() => {
     bitacoraApi.catalogos().then((res) => {
       if (res.success && res.data) {
         setCatalogos(res.data);
+      }
+    });
+    reportesCampoApi.subcategorias().then((res) => {
+      if (res.success && res.data) {
+        setSubcategorias(res.data);
       }
     });
     trabajadoresApi.listar({ limit: 100 }).then((res) => {
@@ -235,7 +225,7 @@ export default function ReportesOperacionesPage() {
     try {
       const res = await reportesCampoApi.listar({
         search: searchVal || undefined,
-        estado: (filters?.estado as EstadoReporteApi) || undefined,
+        estado: (filters?.estado as EstadoIncidenteApi) || undefined,
         tipo: (filters?.tipo as TipoReporteApi) || undefined,
         prioridad: (filters?.prioridad as PrioridadReporteApi) || undefined,
         criticos: criticos || undefined,
@@ -246,7 +236,7 @@ export default function ReportesOperacionesPage() {
         setReportes(res.data.items);
         setPagination(res.data.pagination);
       } else {
-        showToast('Error al cargar los reportes.', 'error');
+        showToast('Error al cargar los incidentes.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -368,19 +358,45 @@ export default function ReportesOperacionesPage() {
     setCreateOpen(true);
   }, []);
 
+  const openDetalle = useCallback(
+    (item: ReporteCampoDTO) => {
+      setDetalleOpen(true);
+      setDetalleCargando(true);
+      setComentarioTexto('');
+      setDetalle(null);
+      reportesCampoApi
+        .detalle(item.id)
+        .then((res) => {
+          if (!res.success) {
+            showToast(mensajeErrorApi(res.error, 'Error al cargar el incidente.'), 'error');
+            setDetalleOpen(false);
+            return;
+          }
+          setDetalle(res.data);
+        })
+        .catch(() => {
+          showToast('No se pudo conectar con el servidor.', 'error');
+          setDetalleOpen(false);
+        })
+        .finally(() => setDetalleCargando(false));
+    },
+    [showToast],
+  );
+
   const openEdit = useCallback(
     (item: ReporteCampoDTO) => {
-      if (item.estado !== 'Pendiente') {
-        showToast('Solo los reportes Pendientes pueden editarse.', 'error');
+      if (item.estado === 'Cerrado') {
+        showToast('Un incidente Cerrado no puede editarse.', 'error');
         return;
       }
       setSelectedItem(item);
       setForm({
         tipo: (TIPOS.find((t) => t.label === item.tipo)?.value ?? 'OPERADOR') as TipoReporteApi,
         categoria: (CATEGORIAS.find((c) => c.label === item.categoria)?.value ?? '') as '' | CategoriaReporteApi,
-        usuario: item.usuario,
-        obraId: item.obraId || '',
+        subcategoriaId: item.subcategoriaId ?? '',
         maquinaId: item.maquinaId || '',
+        ubicacionModo: 'obra',
+        obraId: item.obraId || '',
         fecha: item.fecha,
         hora: item.hora,
         prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
@@ -412,7 +428,7 @@ export default function ReportesOperacionesPage() {
       return false;
     }
     if (!form.categoria) {
-      showToast('Selecciona la categoría encargada de resolver el reporte.', 'error');
+      showToast('Selecciona la categoría encargada de resolver el incidente.', 'error');
       return false;
     }
     if (!form.fecha || !form.hora) {
@@ -437,21 +453,46 @@ export default function ReportesOperacionesPage() {
     return nombre || user?.email?.split('@')[0] || 'Usuario';
   }, [user]);
 
-  /** Deriva obraTexto del catálogo — el backend la persiste junto al FK. */
+  /** Ubicación: obra del catálogo o GPS ("mi ubicación actual"). */
   const buildPayload = useCallback(
-    (): ReporteCampoCreateInput => ({
-      tipo: form.tipo as TipoReporteApi,
-      categoria: form.categoria as CategoriaReporteApi,
-      usuario: nombreReporta(),
-      maquinaId: form.maquinaId || undefined,
-      obraId: form.obraId || undefined,
-      obraTexto:
-        catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? 'Sin obra asociada',
-      fecha: form.fecha,
-      hora: form.hora,
-      descripcion: form.descripcion.trim(),
-      prioridad: form.prioridad || undefined,
-    }),
+    async (): Promise<ReporteCampoCreateInput> => {
+      const base: ReporteCampoCreateInput = {
+        tipo: form.tipo as TipoReporteApi,
+        categoria: form.categoria as CategoriaReporteApi,
+        subcategoriaId: form.subcategoriaId || undefined,
+        usuario: nombreReporta(),
+        maquinaId: form.maquinaId || undefined,
+        obraTexto: 'Sin obra asociada',
+        fecha: form.fecha,
+        hora: form.hora,
+        descripcion: form.descripcion.trim(),
+        prioridad: form.prioridad || undefined,
+      };
+
+      if (form.ubicacionModo === 'gps') {
+        const coords = await new Promise<GeolocationPosition | null>((resolve) =>
+          navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
+            enableHighAccuracy: true,
+            timeout: 10000,
+          }),
+        );
+        if (!coords) {
+          throw Object.assign(new Error('No se pudo obtener tu ubicación.'), { gpsFallo: true });
+        }
+        return {
+          ...base,
+          latitud: coords.coords.latitude,
+          longitud: coords.coords.longitude,
+          obraTexto: 'Mi ubicación actual',
+        };
+      }
+
+      return {
+        ...base,
+        obraId: form.obraId || undefined,
+        obraTexto: catalogos.obras.find((o) => o.id === form.obraId)?.nombre ?? 'Sin obra asociada',
+      };
+    },
     [form, catalogos.obras, nombreReporta],
   );
 
@@ -459,18 +500,23 @@ export default function ReportesOperacionesPage() {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      const res = await reportesCampoApi.crear(buildPayload());
+      const payload = await buildPayload();
+      const res = await reportesCampoApi.crear(payload);
       if (res.success) {
-        showToast('Reporte registrado exitosamente.', 'success');
+        showToast('Incidente registrado exitosamente.', 'success');
         setCreateOpen(false);
         setForm(emptyForm);
         refetch(1);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al registrar el reporte.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar el incidente.'), 'error');
       }
-    } catch {
-      showToast('Error de conexión al registrar el reporte.', 'error');
+    } catch (e) {
+      if (e && (e as { gpsFallo?: boolean }).gpsFallo) {
+        showToast('No se pudo obtener tu ubicación: usa la opción de obra o activa el GPS.', 'error');
+      } else {
+        showToast('Error de conexión al registrar el incidente.', 'error');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -480,19 +526,24 @@ export default function ReportesOperacionesPage() {
     if (!selectedItem || !validateForm()) return;
     setSubmitting(true);
     try {
-      const res = await reportesCampoApi.actualizar(selectedItem.id, buildPayload());
+      const payload = await buildPayload();
+      const res = await reportesCampoApi.actualizar(selectedItem.id, payload);
       if (res.success) {
-        showToast('Reporte actualizado exitosamente.', 'success');
+        showToast('Incidente actualizado exitosamente.', 'success');
         setEditOpen(false);
         setSelectedItem(null);
         setForm(emptyForm);
         refetch();
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al actualizar el reporte.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el incidente.'), 'error');
       }
-    } catch {
-      showToast('Error de conexión al actualizar el reporte.', 'error');
+    } catch (e) {
+      if (e && (e as { gpsFallo?: boolean }).gpsFallo) {
+        showToast('No se pudo obtener tu ubicación.', 'error');
+      } else {
+        showToast('Error de conexión al actualizar el incidente.', 'error');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -504,22 +555,22 @@ export default function ReportesOperacionesPage() {
     try {
       const res = await reportesCampoApi.eliminar(selectedItem.id);
       if (res.success) {
-        showToast('Reporte eliminado exitosamente.', 'success');
+        showToast('Incidente eliminado exitosamente.', 'success');
         setDeleteOpen(false);
         setSelectedItem(null);
         refetch();
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al eliminar el reporte.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el incidente.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al eliminar el reporte.', 'error');
+      showToast('Error de conexión al eliminar el incidente.', 'error');
     } finally {
       setSubmitting(false);
     }
   }, [selectedItem, showToast, refetch, fetchStats]);
 
-  // ── ASIGNAR "quién le cae" (responsable) ──
+  // ── ASIGNAR "quién le cae" (persona de la torre) ──
   const handleAsignar = useCallback(async () => {
     if (!asignarItem) return;
     if (!asignarForm.asignadoA && !asignarForm.asignadoNombre.trim()) {
@@ -537,6 +588,10 @@ export default function ReportesOperacionesPage() {
         setAsignarOpen(false);
         setAsignarItem(null);
         refetch();
+        // si el detalle está abierto sobre el mismo incidente, refrescarlo
+        if (detalleOpen && detalle?.reporte.id === asignarItem.id) {
+          openDetalle(asignarItem);
+        }
       } else {
         showToast(mensajeErrorApi(res.error, 'Error al asignar.'), 'error');
       }
@@ -545,85 +600,106 @@ export default function ReportesOperacionesPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [asignarItem, asignarForm, showToast, refetch]);
+  }, [asignarItem, asignarForm, showToast, refetch, detalleOpen, detalle, openDetalle]);
 
-  // ── Flujo de estados (avanza una etapa via API) ──
-  const handleAvanzar = useCallback(
+  // ── Flujo de estados: Iniciar / Cerrar (desde el detalle) ──
+  const iniciarIncidente = useCallback(
     async (item: ReporteCampoDTO) => {
-      const next = siguienteEstado(item.estado);
-      if (!next) return;
-      // Regla del negocio: al resolver exige saber "quién le cae".
-      if (next === 'Resuelto' && !item.asignadoANombre) {
-        showToast('Primero asigna a quién le toca resolverlo.', 'error');
-        openAsignar(item);
-        return;
-      }
-      // "Marcar Resuelto" pide confirmación (es la transición terminal previa a facturar).
-      if (next === 'Resuelto') {
-        setResolverItem(item);
-        setResolverOpen(true);
-        return;
-      }
-      const res = await reportesCampoApi.cambiarEstado(item.id, ESTADO_API[next]);
+      const res = await reportesCampoApi.cambiarEstado(item.id, 'EN_CURSO');
       if (res.success) {
-        showToast(`Reporte marcado como "${next}".`, 'success');
+        showToast('Incidente en curso.', 'success');
+        openDetalle(item);
         refetch();
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al avanzar el reporte.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo iniciar el incidente.'), 'error');
       }
     },
-    [showToast, refetch, fetchStats, openAsignar],
+    [showToast, refetch, fetchStats, openDetalle],
   );
 
-  // ── Confirmación "Marcar Resuelto" ──
-  const handleResolverConfirm = useCallback(async () => {
-    if (!resolverItem) return;
+  const handleCerrarConfirm = useCallback(async () => {
+    if (!detalle) return;
     setSubmitting(true);
     try {
-      const res = await reportesCampoApi.cambiarEstado(resolverItem.id, 'RESUELTO');
+      const res = await reportesCampoApi.cambiarEstado(detalle.reporte.id, 'CERRADO');
       if (res.success) {
-        showToast('Reporte marcado como "Resuelto".', 'success');
-        setResolverOpen(false);
-        setResolverItem(null);
+        showToast('Incidente cerrado.', 'success');
+        setCerrarOpen(false);
+        const id = detalle.reporte.id;
+        openDetalle({ ...detalle.reporte, id });
         refetch();
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al marcar el reporte como resuelto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo cerrar el incidente.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [resolverItem, showToast, refetch, fetchStats]);
+  }, [detalle, showToast, refetch, fetchStats, openDetalle]);
 
-  // ── Facturar reporte Resuelto (nace la CxC) ──
-  const handleFacturar = useCallback(async () => {
-    if (!facturarItem) return;
-    setFacturando(true);
+  // ── Actividades (comentarios del detalle) ──
+  const handleComentar = useCallback(async () => {
+    if (!detalle || !comentarioTexto.trim()) {
+      showToast('Escribe el comentario antes de publicar.', 'error');
+      return;
+    }
+    setComentando(true);
     try {
-      const res = await reportesCampoApi.facturar(facturarItem.id);
+      const res = await reportesCampoApi.comentar(detalle.reporte.id, comentarioTexto.trim());
       if (res.success) {
-        showToast(
-          `Reporte facturado — CxC por ${formatCurrency(res.data.cuenta.monto)} creada.`,
-          'success',
-        );
-        setFacturarItem(null);
-        setFacturarOpen(false);
-        refetch();
-        fetchStats();
+        setComentarioTexto('');
+        openDetalle({ ...detalle.reporte });
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al facturar el reporte.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo publicar el comentario.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
     } finally {
-      setFacturando(false);
+      setComentando(false);
     }
-  }, [facturarItem, showToast, refetch, fetchStats]);
+  }, [detalle, comentarioTexto, showToast, openDetalle]);
 
-  // ── Columnas de la tabla (patrón /inventario) ──
+  const handleAdjuntar = useCallback(
+    async (file: File) => {
+      if (!detalle) return;
+      setAdjuntando(true);
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('read'));
+          reader.readAsDataURL(file);
+        });
+        const base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+        const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
+          nombre: file.name,
+          mime: file.type,
+          tamano: file.size,
+          datos: base64,
+        });
+        if (res.success) {
+          showToast('Imagen adjuntada exitosamente.', 'success');
+          openDetalle({ ...detalle.reporte });
+        } else {
+          showToast(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'), 'error');
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message === 'read') {
+          showToast('No se pudo leer el archivo.', 'error');
+        } else {
+          showToast(mensajeErrorApi((e as { error?: unknown }).error as never, 'No se pudo adjuntar la imagen.'), 'error');
+        }
+      } finally {
+        setAdjuntando(false);
+      }
+    },
+    [detalle, showToast, openDetalle],
+  );
+
+  // ── Columnas de la tabla (flujo incidentes v2) ──
   const columns: Column<ReporteCampoDTO>[] = [
     {
       key: 'codigo',
@@ -654,31 +730,24 @@ export default function ReportesOperacionesPage() {
       key: 'usuario',
       header: 'Reporta',
       minWidth: '130px',
-      render: (report) => (
-        <div>
-          <span className="font-black text-ui-900">{report.usuario}</span>
-          {report.cliente && (
-            <span className="block text-[10px] font-bold text-ui-400">
-              Cliente: {report.cliente}
-            </span>
-          )}
-        </div>
-      ),
+      render: (report) => <span className="font-black text-ui-900">{report.usuario}</span>,
     },
     {
-      key: 'obra',
+      key: 'ubicacion',
       header: 'Ubicación',
       minWidth: '150px',
       render: (report) => (
         <div>
           <span className="flex items-center gap-1.5 font-bold text-ui-700">
-            <MapPin className="w-3 h-3 text-ui-400" />
-            {report.obra}
+            {report.latitud != null ? (
+              <Navigation className="w-3 h-3 text-primary" />
+            ) : (
+              <MapPin className="w-3 h-3 text-ui-400" />
+            )}
+            {report.latitud != null ? 'Mi ubicación' : report.obra}
           </span>
-          {(report.maquinaCodigo || report.maquinaNombre) && (
-            <span className="block text-[10px] font-black text-primary uppercase">
-              Máq: {report.maquinaCodigo ?? report.maquinaNombre}
-            </span>
+          {report.maquinaCodigo && (
+            <span className="block text-[10px] font-black text-primary uppercase">Máq: {report.maquinaCodigo}</span>
           )}
         </div>
       ),
@@ -717,35 +786,32 @@ export default function ReportesOperacionesPage() {
             {report.categoria}
           </span>
         );
-        if (report.resueltoEn) {
-          return (
-            <div>
-              {categoria ?? <span className="text-ui-300">Sin categoría</span>}
-              <span className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                {report.asignadoANombre ?? 'Resuelto'}
-              </span>
-            </div>
-          );
-        }
-        if (report.asignadoANombre) {
-          return (
-            <div>
-              {categoria ?? <span className="text-ui-300">Sin categoría</span>}
-              <span className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-ui-700">
-                <UserCheck className="w-3.5 h-3.5 text-primary" />
-                {report.asignadoANombre}
-              </span>
-            </div>
-          );
-        }
+        const persona = report.asignadoANombre ? (
+          <span className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-ui-700">
+            <UserCheck className="w-3.5 h-3.5 text-primary" />
+            {report.asignadoANombre}
+          </span>
+        ) : (
+          <span className="mt-1 block text-[11px] font-medium text-ui-300">Sin asignar</span>
+        );
         return (
           <div>
             {categoria ?? <span className="text-ui-300">Sin categoría</span>}
-            <span className="mt-1 block text-[11px] font-medium text-ui-300">Sin asignar</span>
+            {persona}
           </div>
         );
       },
+    },
+    {
+      key: 'subcategoria',
+      header: 'Subcategoría',
+      minWidth: '140px',
+      render: (report) =>
+        report.subcategoria ? (
+          <span className="text-xs font-semibold text-ui-600">{report.subcategoria}</span>
+        ) : (
+          <span className="text-ui-300">—</span>
+        ),
     },
     {
       key: 'descripcion',
@@ -756,30 +822,9 @@ export default function ReportesOperacionesPage() {
         <div className="max-w-xl">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
             <span className="font-medium text-ui-600">
-              &ldquo;{report.descripcion.length > 90 ? `${report.descripcion.slice(0, 90)}…` : report.descripcion}&rdquo;
+              &ldquo;{descripcionBreve(report.descripcion)}&rdquo;
             </span>
           </Tooltip>
-          {/* Detalles (litros/costo) y servicio facturable */}
-          <span className="mt-1 flex gap-2 flex-wrap">
-            {report.detalles &&
-              Object.entries(report.detalles).map(([k, v]) => (
-                <span
-                  key={k}
-                  className={`border rounded-lg px-2 py-0.5 text-[10px] font-black ${
-                    k === 'costo'
-                      ? 'bg-green-50 border-green-100 text-green-700'
-                      : 'bg-orange-50 border-orange-100 text-orange-700'
-                  }`}
-                >
-                  {k.charAt(0).toUpperCase() + k.slice(1)}: {formatDetalle(k, v)}
-                </span>
-              ))}
-            {report.montoServicio != null && (
-              <span className="border border-emerald-100 bg-emerald-50 rounded-lg px-2 py-0.5 text-[10px] font-black text-emerald-700">
-                Servicio: {formatCurrency(report.montoServicio)}
-              </span>
-            )}
-          </span>
         </div>
       ),
     },
@@ -787,84 +832,54 @@ export default function ReportesOperacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      minWidth: '440px',
-      render: (report) => {
-        const accion = etiquetaAccion(report);
-        return (
-          <div className="flex items-center justify-end gap-1.5">
-            {puedeEditar && report.estado !== 'Resuelto' && report.estado !== 'Facturado' && (
-              <Tooltip content={report.asignadoANombre ? 'Cambiar responsable' : 'Asignar responsable'}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  aria-label="Asignar responsable"
-                  icon={<UserCheck className="w-3.5 h-3.5" />}
-                  onClick={() => openAsignar(report)}
-                >
-                  {report.asignadoANombre ? 'Reasignar' : 'Asignar'}
-                </Button>
-              </Tooltip>
-            )}
-            {accion && puedeEditar && (
-              <Tooltip content={`Avanza a "${accion.replace('Marcar ', '')}"`}>
-                <Button
-                  variant="success"
-                  size="sm"
-                  aria-label={accion}
-                  icon={<Check className="w-3.5 h-3.5" />}
-                  onClick={() => handleAvanzar(report)}
-                >
-                  {accion}
-                </Button>
-              </Tooltip>
-            )}
-            {puedeEditar && report.estado === 'Resuelto' && report.cliente && report.montoServicio != null && (
-              <Tooltip content="Facturar (nace la CxC)">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  aria-label="Facturar"
-                  icon={<Receipt className="w-3.5 h-3.5" />}
-                  onClick={() => {
-                    setFacturarItem(report);
-                    setFacturarOpen(true);
-                  }}
-                >
-                  Facturar
-                </Button>
-              </Tooltip>
-            )}
-            {puedeEditar && report.estado === 'Pendiente' && (
-              <Tooltip content="Editar el reporte">
-                <Button
-                  variant="warning"
-                  size="sm"
-                  aria-label="Editar"
-                  icon={<Pencil className="w-3.5 h-3.5" />}
-                  onClick={() => openEdit(report)}
-                >
-                  Editar
-                </Button>
-              </Tooltip>
-            )}
-            {puedeEliminar && (
-              <Tooltip content="Eliminar reporte">
-                <Button
-                  variant="danger"
-                  size="sm"
-                  aria-label="Eliminar"
-                  icon={<Trash2 className="w-3.5 h-3.5" />}
-                  onClick={() => openDelete(report)}
-                >
-                  Eliminar
-                </Button>
-              </Tooltip>
-            )}
-          </div>
-        );
-      },
+      minWidth: '240px',
+      render: (report) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <Tooltip content="Ver incidente">
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-label="Ver incidente"
+              icon={<Eye className="w-3.5 h-3.5" />}
+              onClick={() => openDetalle(report)}
+            >
+              Ver
+            </Button>
+          </Tooltip>
+          {puedeEditar && report.estado !== 'Cerrado' && (
+            <Tooltip content="Editar el incidente">
+              <Button
+                variant="warning"
+                size="sm"
+                aria-label="Editar"
+                icon={<Pencil className="w-3.5 h-3.5" />}
+                onClick={() => openEdit(report)}
+              >
+                Editar
+              </Button>
+            </Tooltip>
+          )}
+          {puedeEliminar && (
+            <Tooltip content="Eliminar incidente">
+              <Button
+                variant="danger"
+                size="sm"
+                aria-label="Eliminar"
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                onClick={() => openDelete(report)}
+              >
+                Eliminar
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      ),
     },
   ];
+
+  // ── Subcategorías dependientes de la categoría elegida ──
+  const categoriaLabel = CATEGORIAS.find((c) => c.value === form.categoria)?.label;
+  const subcategoriasFiltradas = subcategorias.filter((s) => !!categoriaLabel && s.categoria === categoriaLabel);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -874,7 +889,11 @@ export default function ReportesOperacionesPage() {
         action={
           puedeCrear ? (
             <Button
-          skeleton={initialLoading} variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
+              skeleton={initialLoading}
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={openCreate}
+            >
               Nuevo Reporte
             </Button>
           ) : undefined
@@ -891,7 +910,7 @@ export default function ReportesOperacionesPage() {
             <div>
               <p className="text-red-900 dark:text-red-300 font-bold text-sm">Incidentes Críticos Activos</p>
               <p className="text-red-700 dark:text-red-400 text-xs font-medium">
-                Hay {stats.criticosActivos} incidente{stats.criticosActivos > 1 ? 's' : ''} sin resolver.
+                Hay {stats.criticosActivos} incidente{stats.criticosActivos > 1 ? 's' : ''} sin cerrar.
               </p>
             </div>
           </div>
@@ -909,35 +928,35 @@ export default function ReportesOperacionesPage() {
         </div>
       )}
 
-      {/* StatsCards fila 1 — por estado */}
+      {/* StatsCards — por estado del incidente */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatsCard
-          icon={<ClipboardCheck size={22} />}
-          value={stats.pendientes}
-          label="Pendientes"
-          color={stats.pendientes > 0 ? 'warning' : 'neutral'}
-        loading={initialLoading}
+          icon={<Plus size={22} />}
+          value={stats.nuevos}
+          label="Nuevos"
+          color={stats.nuevos > 0 ? 'warning' : 'neutral'}
+          loading={initialLoading}
         />
         <StatsCard
-          icon={<Eye size={22} />}
-          value={stats.enRevision}
-          label="En Revisión"
-          color={stats.enRevision > 0 ? 'primary' : 'neutral'}
-        loading={initialLoading}
+          icon={<ClipboardCheck size={22} />}
+          value={stats.enCurso}
+          label="En curso"
+          color={stats.enCurso > 0 ? 'primary' : 'neutral'}
+          loading={initialLoading}
         />
         <StatsCard
           icon={<CheckCircle2 size={22} />}
-          value={stats.atendidos}
-          label="Atendidos"
-          color="info"
-        loading={initialLoading}
+          value={stats.cerrados}
+          label="Cerrados"
+          color="success"
+          loading={initialLoading}
         />
         <StatsCard
           icon={<ShieldAlert size={22} />}
-          value={stats.resueltos}
-          label="Resueltos"
-          color="success"
-        loading={initialLoading}
+          value={stats.criticosActivos}
+          label="Críticos activos"
+          color={stats.criticosActivos > 0 ? 'error' : 'neutral'}
+          loading={initialLoading}
         />
       </div>
 
@@ -1020,7 +1039,7 @@ export default function ReportesOperacionesPage() {
         </div>
       )}
 
-      {/* Tabla de reportes (patrón /inventario) */}
+      {/* Tabla de incidentes */}
       <div className="relative">
         <RefreshOverlay show={refreshing && !initialLoading} />
 
@@ -1029,7 +1048,7 @@ export default function ReportesOperacionesPage() {
           data={reportes}
           keyExtractor={(report) => report.id}
           loading={initialLoading}
-          emptyText="No hay reportes con estos filtros"
+          emptyText="No hay incidentes con estos filtros"
         />
       </div>
 
@@ -1050,7 +1069,7 @@ export default function ReportesOperacionesPage() {
         onClose={() => setCreateOpen(false)}
         onCancel={() => setCreateOpen(false)}
         title="Nuevo Reporte"
-        subtitle="Registra una observación, incidente o actividad desde campo."
+        subtitle="Registra un incidente o actividad desde campo — elegir categoría decide quién lo atiende."
         submitLabel="Registrar Reporte"
         cancelLabel="Cancelar"
         onSubmit={handleCreate}
@@ -1061,9 +1080,7 @@ export default function ReportesOperacionesPage() {
             <select
               className={modalSelectClass}
               value={form.tipo}
-              onChange={(e) =>
-                setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })
-              }
+              onChange={(e) => setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })}
             >
               <option value="">Seleccionar área...</option>
               {TIPOS.map((t) => (
@@ -1072,13 +1089,11 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Categoría (encargado de resolver)" required hint="El reporte sale para toda esa torre.">
+          <ModalField label="Categoría (encargado de resolver)" required hint="El incidente sale para toda esa torre.">
             <select
               className={modalSelectClass}
               value={form.categoria}
-              onChange={(e) =>
-                setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi })
-              }
+              onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi, subcategoriaId: '' })}
             >
               <option value="">Seleccionar categoría...</option>
               {CATEGORIAS.map((c) => (
@@ -1087,16 +1102,25 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
+          <ModalField label="Subcategoría" hint="Opcional — según la categoría elegida.">
+            <select
+              className={modalSelectClass}
+              value={form.subcategoriaId}
+              onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
+              disabled={!form.categoria}
+            >
+              <option value="">Sin subcategoría</option>
+              {subcategoriasFiltradas.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
           <ModalField label="Prioridad" hint="Opcional — úsala para incidentes o urgencias.">
             <select
               className={modalSelectClass}
               value={form.prioridad}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  prioridad: e.target.value as '' | PrioridadReporteApi,
-                })
-              }
+              onChange={(e) => setForm({ ...form, prioridad: e.target.value as '' | PrioridadReporteApi })}
             >
               <option value="">Sin prioridad</option>
               {PRIORIDADES.map((p) => (
@@ -1105,17 +1129,49 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Obra" hint="Opcional — algunos reportes no improper con obra.">
-            <select
-              className={modalSelectClass}
-              value={form.obraId}
-              onChange={(e) => setForm({ ...form, obraId: e.target.value })}
-            >
-              <option value="">Sin obra asociada</option>
-              {catalogos.obras.map((o) => (
-                <option key={o.id} value={o.id}>{o.nombre}</option>
-              ))}
-            </select>
+          <ModalField label="Ubicación" required className="sm:col-span-2">
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, ubicacionModo: 'obra' })}
+                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors ${
+                  form.ubicacionModo === 'obra'
+                    ? 'bg-primary text-white'
+                    : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
+                }`}
+              >
+                Elegir obra
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, ubicacionModo: 'gps' })}
+                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${
+                  form.ubicacionModo === 'gps'
+                    ? 'bg-primary text-white'
+                    : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
+                }`}
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                Mi ubicación actual
+              </button>
+            </div>
+            {form.ubicacionModo === 'obra' ? (
+              <select
+                className={modalSelectClass}
+                value={form.obraId}
+                onChange={(e) => setForm({ ...form, obraId: e.target.value })}
+              >
+                <option value="">Sin obra asociada</option>
+                {catalogos.obras.map((o) => (
+                  <option key={o.id} value={o.id}>{o.nombre}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="flex items-center gap-2 h-10 px-3 border border-ui-200 rounded-lg bg-ui-50 text-xs font-medium text-ui-500">
+                <Navigation className="w-4 h-4 text-primary" />
+                Se capturará tu ubicación GPS al guardar
+              </div>
+            )}
           </ModalField>
 
           <ModalField label="Máquina (opcional)" hint="Código legible de la flota.">
@@ -1161,6 +1217,239 @@ export default function ReportesOperacionesPage() {
         </div>
       </FormModal>
 
+      {/* ════════ DETALLE DEL INCIDENTE (ver / comentar / adjuntar / cerrar) ════════ */}
+      <FormModal
+        open={detalleOpen}
+        onClose={() => {
+          setDetalleOpen(false);
+          setDetalle(null);
+        }}
+        onCancel={() => {
+          setDetalleOpen(false);
+          setDetalle(null);
+        }}
+        hideFooter
+        title={
+          detalle ? `Incidente ${detalle.reporte.codigo ?? '—'}` : 'Incidente'
+        }
+        subtitle={
+          detalle
+            ? `${detalle.reporte.tipo} · ${detalle.reporte.usuario}`
+            : undefined
+        }
+        submitLabel=""
+      >
+        {detalleCargando || !detalle ? (
+          <div className="space-y-4 py-4">
+            <Skeleton variant="text" />
+            <Skeleton variant="text" />
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Datos del incidente */}
+            <div className="bg-ui-50 border border-ui-100 rounded-xl p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Fecha</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.hora} · {detalle.reporte.fecha}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Ubicación</p>
+                  <p className="font-bold text-ui-800">
+                    {detalle.reporte.latitud != null
+                      ? `GPS ${detalle.reporte.latitud.toFixed(4)}, ${detalle.reporte.longitud?.toFixed(4)}`
+                      : detalle.reporte.obra}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Prioridad</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.prioridad ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Estado</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.estado}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Categoría</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.categoria ?? 'Sin categoría'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Responsable</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.asignadoANombre ?? 'Sin asignar'}</p>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-ui-100">
+                <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide mb-1">Descripción</p>
+                <p className="text-sm text-ui-700 whitespace-pre-wrap">{detalle.reporte.descripcion}</p>
+              </div>
+
+              {/* Acciones de flujo del incidente */}
+              {puedeEditar && (
+                <div className="mt-4 pt-3 border-t border-ui-100 flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<UserCheck className="w-3.5 h-3.5" />}
+                    onClick={() => openAsignar(detalle.reporte)}
+                  >
+                    {detalle.reporte.asignadoANombre ? 'Reasignar' : 'Asignar'}
+                  </Button>
+                  {detalle.reporte.estado === 'Nuevo' && (
+                    <Button variant="primary" size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={() => iniciarIncidente(detalle.reporte)}>
+                      Iniciar
+                    </Button>
+                  )}
+                  {detalle.reporte.estado !== 'Cerrado' && (
+                    <Button variant="success" size="sm" icon={<CheckCircle2 className="w-3.5 h-3.5" />} onClick={() => setCerrarOpen(true)}>
+                      Cerrar incidente
+                    </Button>
+                  )}
+                  {detalle.reporte.estado !== 'Cerrado' && (
+                    <Button variant="warning" size="sm" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => {
+                      setDetalleOpen(false);
+                      openEdit(detalle.reporte);
+                    }}>
+                      Editar
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Imágenes adjuntas */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
+                  Imágenes ({detalle.adjuntos.length}/4)
+                </p>
+                {puedeEditar && detalle.reporte.estado !== 'Cerrado' && (
+                  <label className={adjuntando ? 'opacity-50 pointer-events-none' : ''}>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      disabled={adjuntando}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) handleAdjuntar(file);
+                      }}
+                    />
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                      {adjuntando ? 'Subiendo...' : <><ImagePlus className="w-3.5 h-3.5" /> Agregar imagen</>}
+                    </span>
+                  </label>
+                )}
+              </div>
+              {detalle.adjuntos.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {detalle.adjuntos.map((a: AdjuntoDTO) => (
+                    <a
+                      key={a.id}
+                      href={`data:${a.mime};base64,${a.datos}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative rounded-xl overflow-hidden border border-ui-200"
+                      title={a.nombre}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`data:${a.mime};base64,${a.datos}`}
+                        alt={a.nombre}
+                        className="h-24 w-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-ui-400 border border-dashed border-ui-200 rounded-xl p-3">
+                  <ImageOff className="w-4 h-4" />
+                  Sin imágenes todavía
+                </div>
+              )}
+            </div>
+
+            {/* Actividades (bitácora) */}
+            <div>
+              <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-2">
+                Actividades ({detalle.actividades.length})
+              </p>
+              {detalle.reporte.estado !== 'Cerrado' && (
+                <div className="flex gap-2 mb-3">
+                  <textarea
+                    className={modalTextareaClass}
+                    rows={2}
+                    placeholder="Describe lo que se trabajó o revisó..."
+                    value={comentarioTexto}
+                    onChange={(e) => setComentarioTexto(e.target.value)}
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={!comentarioTexto.trim() || comentando}
+                    loading={comentando}
+                    icon={<MessageSquarePlus className="w-3.5 h-3.5" />}
+                    onClick={handleComentar}
+                  >
+                    Publicar
+                  </Button>
+                </div>
+              )}
+              {detalle.actividades.length > 0 ? (
+                <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-none">
+                  {detalle.actividades.map((act) => (
+                    <div key={act.id} className="bg-surface border border-ui-100 rounded-xl p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-ui-800">{act.autorNombre}</span>
+                        <span className="text-[10px] font-bold text-ui-400">
+                          {new Date(act.creadoEn).toLocaleString('es-MX', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-ui-600 mt-1 whitespace-pre-wrap">{act.texto}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-ui-400">Sin actividades todavía</p>
+              )}
+            </div>
+          </div>
+        )}
+      </FormModal>
+
+      {/* Modal de confirmación: Cerrar incidente */}
+      <FormModal
+        open={cerrarOpen}
+        onClose={() => setCerrarOpen(false)}
+        onCancel={() => setCerrarOpen(false)}
+        title="Cerrar Incidente"
+        subtitle="Esta acción no se puede deshacer: el incidente deja de admitir actividades e imágenes."
+        submitLabel="Sí, Cerrar Incidente"
+        cancelLabel="Cancelar"
+        onSubmit={handleCerrarConfirm}
+        isSubmitting={submitting}
+      >
+        {detalle && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-7 h-7 text-green-600" />
+            </div>
+            <p className="text-sm text-ui-700 mb-1">¿Cerrar este incidente?</p>
+            <p className="font-black text-ui-900 text-lg mb-2">
+              {detalle.reporte.codigo} · {detalle.reporte.tipo}
+            </p>
+            <p className="text-xs text-ui-500 max-w-xs">
+              Lo resolvería <strong>{detalle.reporte.asignadoANombre ?? 'sin asignar'}</strong>.
+            </p>
+          </div>
+        )}
+      </FormModal>
+
       {/* Modal de ASIGNACIÓN — quién lo debe resolver */}
       <FormModal
         open={asignarOpen}
@@ -1173,7 +1462,7 @@ export default function ReportesOperacionesPage() {
           setAsignarItem(null);
         }}
         title="Asignar Responsable"
-        subtitle="Quién debe resolver este reporte. Trabajador del sistema o nombre libre."
+        subtitle="Quién debe resolver este incidente. Trabajador del sistema o nombre libre."
         submitLabel="Asignar"
         cancelLabel="Cancelar"
         onSubmit={handleAsignar}
@@ -1184,9 +1473,7 @@ export default function ReportesOperacionesPage() {
             <select
               className={modalSelectClass}
               value={asignarForm.asignadoA}
-              onChange={(e) =>
-                setAsignarForm({ ...asignarForm, asignadoA: e.target.value })
-              }
+              onChange={(e) => setAsignarForm({ ...asignarForm, asignadoA: e.target.value })}
             >
               <option value="">Sin trabajador del sistema...</option>
               {trabajadores.map((t) => (
@@ -1203,9 +1490,7 @@ export default function ReportesOperacionesPage() {
               className={modalInputClass}
               placeholder="Ej: Panchito el externo"
               value={asignarForm.asignadoNombre}
-              onChange={(e) =>
-                setAsignarForm({ ...asignarForm, asignadoNombre: e.target.value })
-              }
+              onChange={(e) => setAsignarForm({ ...asignarForm, asignadoNombre: e.target.value })}
               disabled={!!asignarForm.asignadoA}
             />
           </ModalField>
@@ -1214,23 +1499,22 @@ export default function ReportesOperacionesPage() {
             <div className="bg-ui-50 border border-ui-100 rounded-xl p-3 flex items-start gap-2">
               <UserX className="w-4 h-4 text-ui-400 shrink-0 mt-0.5" />
               <p className="text-xs text-ui-500">
-                Reporte de <strong>{asignarItem.usuario}</strong> ({asignarItem.tipo}) —
-                &ldquo;{asignarItem.descripcion.slice(0, 80)}&rdquo;
+                Incidente <strong>{asignarItem.codigo}</strong> de{' '}
+                <strong>{asignarItem.usuario}</strong> — &ldquo;{asignarItem.descripcion.slice(0, 80)}&rdquo;
               </p>
             </div>
           )}
         </div>
       </FormModal>
 
+      {/* Modal de edición (mismos campos, sin GPS) */}
       <FormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onCancel={() => setEditOpen(false)}
-        title="Editar Reporte"
+        title="Editar Incidente"
         subtitle={
-          selectedItem
-            ? `Disponible solo mientras está Pendiente · ${selectedItem.usuario}`
-            : undefined
+          selectedItem ? `Disponible hasta cerrarlo · ${selectedItem.usuario}` : undefined
         }
         submitLabel="Guardar Cambios"
         cancelLabel="Cancelar"
@@ -1242,9 +1526,7 @@ export default function ReportesOperacionesPage() {
             <select
               className={modalSelectClass}
               value={form.tipo}
-              onChange={(e) =>
-                setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })
-              }
+              onChange={(e) => setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })}
             >
               <option value="">Seleccionar área...</option>
               {TIPOS.map((t) => (
@@ -1253,13 +1535,11 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Categoría (encargado de resolver)" required hint="El reporte sale para toda esa torre.">
+          <ModalField label="Categoría (encargado de resolver)" required>
             <select
               className={modalSelectClass}
               value={form.categoria}
-              onChange={(e) =>
-                setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi })
-              }
+              onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi, subcategoriaId: '' })}
             >
               <option value="">Seleccionar categoría...</option>
               {CATEGORIAS.map((c) => (
@@ -1268,16 +1548,25 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
+          <ModalField label="Subcategoría" hint="Opcional — según la categoría elegida.">
+            <select
+              className={modalSelectClass}
+              value={form.subcategoriaId}
+              onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
+              disabled={!form.categoria}
+            >
+              <option value="">Sin subcategoría</option>
+              {subcategoriasFiltradas.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
           <ModalField label="Prioridad">
             <select
               className={modalSelectClass}
               value={form.prioridad}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  prioridad: e.target.value as '' | PrioridadReporteApi,
-                })
-              }
+              onChange={(e) => setForm({ ...form, prioridad: e.target.value as '' | PrioridadReporteApi })}
             >
               <option value="">Sin prioridad</option>
               {PRIORIDADES.map((p) => (
@@ -1286,7 +1575,7 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Obra" hint="Opcional — algunos reportes no improper con obra.">
+          <ModalField label="Obra">
             <select
               className={modalSelectClass}
               value={form.obraId}
@@ -1341,46 +1630,12 @@ export default function ReportesOperacionesPage() {
         </div>
       </FormModal>
 
-      {/* Modal de confirmación: Marcar Resuelto */}
-      <FormModal
-        open={resolverOpen}
-        onClose={() => {
-          setResolverOpen(false);
-          setResolverItem(null);
-        }}
-        onCancel={() => {
-          setResolverOpen(false);
-          setResolverItem(null);
-        }}
-        title="Marcar como Resuelto"
-        subtitle="Confirma quién resolvió el reporte. Esta acción no se puede deshacer."
-        submitLabel="Sí, Marcar Resuelto"
-        cancelLabel="Cancelar"
-        onSubmit={handleResolverConfirm}
-        isSubmitting={submitting}
-      >
-        {resolverItem && (
-          <div className="flex flex-col items-center text-center py-4">
-            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-7 h-7 text-emerald-600" />
-            </div>
-            <p className="text-sm text-ui-700 mb-1">¿Marcar este reporte como resuelto?</p>
-            <p className="font-black text-ui-900 text-lg mb-2">
-              {resolverItem.usuario} · {resolverItem.tipo}
-            </p>
-            <p className="text-xs text-ui-500 max-w-xs">
-              Quedará registrado que lo resolvió{' '}
-              <strong className="text-emerald-700">{resolverItem.asignadoANombre}</strong>.
-            </p>
-          </div>
-        )}
-      </FormModal>
-
+      {/* Modal de confirmación: Eliminar */}
       <FormModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onCancel={() => setDeleteOpen(false)}
-        title="Eliminar Reporte"
+        title="Eliminar Incidente"
         subtitle="Esta acción no se puede deshacer."
         submitLabel="Sí, Eliminar"
         cancelLabel="Cancelar"
@@ -1392,41 +1647,12 @@ export default function ReportesOperacionesPage() {
             <div className="w-14 h-14 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
-            <p className="text-sm text-ui-700 mb-1">¿Estás seguro de eliminar este reporte?</p>
+            <p className="text-sm text-ui-700 mb-1">¿Estás seguro de eliminar este incidente?</p>
             <p className="font-black text-ui-900 text-lg mb-2">
-              {selectedItem.usuario} · {selectedItem.tipo}
+              {selectedItem.codigo} · {selectedItem.usuario}
             </p>
             <p className="text-xs text-ui-500 max-w-xs truncate">
               &ldquo;{selectedItem.descripcion}&rdquo;
-            </p>
-          </div>
-        )}
-      </FormModal>
-
-      <FormModal
-        open={facturarOpen}
-        onClose={() => setFacturarOpen(false)}
-        onCancel={() => setFacturarOpen(false)}
-        title="Facturar Reporte"
-        subtitle="Se creará una cuenta por cobrar al cliente. Esta acción no se puede deshacer."
-        submitLabel="Sí, Facturar"
-        cancelLabel="Cancelar"
-        onSubmit={handleFacturar}
-        isSubmitting={facturando}
-      >
-        {facturarItem && (
-          <div className="flex flex-col items-center text-center py-4">
-            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
-              <Receipt className="w-7 h-7 text-emerald-600" />
-            </div>
-            <p className="text-sm text-ui-700 mb-1">
-              Reporte de <strong>{facturarItem.usuario}</strong> ({facturarItem.tipo})
-            </p>
-            <p className="font-black text-ui-900 text-2xl mb-1">
-              {formatCurrency(facturarItem.montoServicio ?? 0)}
-            </p>
-            <p className="text-xs text-ui-500">
-              Cliente: {facturarItem.cliente} · Vencimiento a 30 días
             </p>
           </div>
         )}
