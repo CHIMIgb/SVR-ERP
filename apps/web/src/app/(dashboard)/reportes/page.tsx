@@ -106,6 +106,49 @@ function descripcionBreve(texto: string, max = 90): string {
   return texto.length > max ? `${texto.slice(0, max)}…` : texto;
 }
 
+/**
+ * Convierte cualquier imagen (image/*) a WebP con canvas (calidad 0.85) para
+ * alistet peso. Devuelve el data URI WebP + su tamaño, o null si el navegador
+ * no pudo decodificar/convertir (formato ajeno al canvas, p.ej. HEIC viejo).
+ */
+async function convertirAWebp(
+  file: File,
+): Promise<{ dataUrl: string; tamano: number } | null> {
+  try {
+    const dataUrlSrc = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error());
+      reader.readAsDataURL(file);
+    });
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error());
+      image.src = dataUrlSrc;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/webp', 0.85),
+    );
+    if (!blob) return null;
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error());
+      reader.readAsDataURL(blob);
+    });
+    return { dataUrl, tamano: blob.size };
+  } catch {
+    return null;
+  }
+}
+
 const STATS_CERO: ReportesCampoStats = {
   nuevos: 0,
   enCurso: 0,
@@ -125,7 +168,6 @@ const emptyForm = {
 /** Límites de imagen idénticos al detalle (backend los revalida). */
 const MAX_IMAGENES = 4;
 const MAX_TAMANO_IMAGEN = 2 * 1024 * 1024; // 2 MB
-const MIMES_IMAGEN = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 /** Imagen en espera durante el alta (base64; el server aún no conoce el folio). */
 interface AdjuntoImagenAlta {
@@ -330,14 +372,19 @@ export default function ReportesOperacionesPage() {
     setCreateOpen(true);
   }, []);
 
-  /** En pantalla de alta: valida y apila la imagen (base64; límites idénticos al detalle). */
+  /** En pantalla de alta: convierte a WebP y apila la imagen (base64; límites idénticos al detalle). */
   const handleAltaImagen = useCallback(
-    (file: File) => {
-      if (!MIMES_IMAGEN.includes(file.type)) {
-        showToast('Formato no permitido: usa JPG, PNG, WebP o GIF.', 'error');
+    async (file: File) => {
+      if (!file.type.startsWith('image/')) {
+        showToast('El archivo debe ser una imagen.', 'error');
         return;
       }
-      if (file.size > MAX_TAMANO_IMAGEN) {
+      const webp = await convertirAWebp(file);
+      if (!webp) {
+        showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
+        return;
+      }
+      if (webp.tamano > MAX_TAMANO_IMAGEN) {
         showToast('La imagen excede el máximo de 2 MB.', 'error');
         return;
       }
@@ -349,28 +396,12 @@ export default function ReportesOperacionesPage() {
         return [...prev, {
           // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
           key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          nombre: file.name,
-          mime: file.type,
-          tamano: file.size,
-          datos: '',
+          nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
+          mime: 'image/webp',
+          tamano: webp.tamano,
+          datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
         }];
       });
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setImagenesAlta((prev) => {
-          const target = prev.at(-1);
-          if (!target || target.datos) return prev;
-          return prev.map((img) =>
-            img.key === target.key ? { ...img, datos: dataUrl.substring(dataUrl.indexOf(',') + 1) } : img,
-          );
-        });
-      };
-      reader.onerror = () => {
-        showToast('No se pudo leer el archivo.', 'error');
-        setImagenesAlta((prev) => prev.filter((img) => img.datos));
-      };
-      reader.readAsDataURL(file);
     },
     [showToast],
   );
@@ -667,20 +698,26 @@ export default function ReportesOperacionesPage() {
   const handleAdjuntar = useCallback(
     async (file: File) => {
       if (!detalle) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('El archivo debe ser una imagen.', 'error');
+        return;
+      }
       setAdjuntando(true);
       try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('read'));
-          reader.readAsDataURL(file);
-        });
-        const base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+        const webp = await convertirAWebp(file);
+        if (!webp) {
+          showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
+          return;
+        }
+        if (webp.tamano > MAX_TAMANO_IMAGEN) {
+          showToast('La imagen excede el máximo de 2 MB.', 'error');
+          return;
+        }
         const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
-          nombre: file.name,
-          mime: file.type,
-          tamano: file.size,
-          datos: base64,
+          nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
+          mime: 'image/webp',
+          tamano: webp.tamano,
+          datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
         });
         if (res.success) {
           showToast('Imagen adjuntada exitosamente.', 'success');
@@ -688,12 +725,8 @@ export default function ReportesOperacionesPage() {
         } else {
           showToast(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'), 'error');
         }
-      } catch (e) {
-        if (e instanceof Error && e.message === 'read') {
-          showToast('No se pudo leer el archivo.', 'error');
-        } else {
-          showToast(mensajeErrorApi((e as { error?: unknown }).error as never, 'No se pudo adjuntar la imagen.'), 'error');
-        }
+      } catch {
+        showToast('No se pudo conectar con el servidor.', 'error');
       } finally {
         setAdjuntando(false);
       }
@@ -830,7 +863,7 @@ export default function ReportesOperacionesPage() {
         <div className="flex items-center justify-end gap-1.5">
           <Tooltip content="Ver incidente">
             <Button
-              variant="secondary"
+              variant="info"
               size="sm"
               aria-label="Ver incidente"
               icon={<Eye className="w-3.5 h-3.5" />}
@@ -1109,7 +1142,7 @@ export default function ReportesOperacionesPage() {
             <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark mb-2">
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
+                accept="image/*"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -1241,7 +1274,7 @@ export default function ReportesOperacionesPage() {
                   <label className={adjuntando ? 'opacity-50 pointer-events-none' : ''}>
                     <input
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      accept="image/*"
                       className="hidden"
                       disabled={adjuntando}
                       onChange={(e) => {
