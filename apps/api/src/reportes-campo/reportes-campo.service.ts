@@ -58,6 +58,19 @@ const PRIORIDAD_LABELS: Record<Prioridad, string> = {
   [Prioridad.CRITICA]: 'Crítica',
 };
 
+/** Reintentos de folio ante carrera INC (patrón facturas). */
+const MAX_INTENTOS_FOLIO = 5;
+
+/** Categoría responsable ("torre que atiende") — sale de /nueva-info (PWA). */
+const CATEGORIA_LABELS: Record<string, string> = {
+  MECANICO: 'Mecanico',
+  SOLDADOR: 'Soldador',
+  DIESEL: 'Diesel',
+  MANTENIMIENTO: 'Mantenimiento',
+  ADMINISTRATIVO: 'Administrativo',
+  RESIDENTE: 'Residente',
+};
+
 /**
  * Flujo de seguimiento permitido — espejo exacto del frontend.
  * RESUELTO es terminal; EN_REVISION solo se alcanza desde VISTO si se
@@ -158,29 +171,64 @@ export class ReportesCampoService {
       await this.resolverObra(dto.obraId, AuditAction.REPORTE_CREADO, null);
     }
 
-    const reporte = await this.prisma.reportes_campo.create({
-      data: {
-        id: randomUUID(),
-        tipo: dto.tipo,
-        usuario: dto.usuario.trim(),
-        usuario_id: userId,
-        maquina_id: dto.maquinaId ?? null,
-        obra_id: dto.obraId ?? null,
-        obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada',
-        cliente_id: dto.clienteId ?? null,
-        proyecto_id: dto.proyectoId ?? null,
-        monto_servicio: dto.montoServicio ?? null,
-        fecha: new Date(dto.fecha),
-        hora: new Date(`1970-01-01T${dto.hora}:00`),
-        descripcion: dto.descripcion.trim(),
-        estado: EstadoReporteCampo.PENDIENTE,
-        prioridad: dto.prioridad ?? null,
-        creado_por: userId,
-        actualizado_por: userId,
-        actualizado_en: new Date(),
-      },
-      include: REPORTE_INCLUDE,
-    });
+    // Folio secuencial INC%04d con reintento anti-colisión (patrón facturas):
+    // dos creates concurrentes pueden derivar el mismo codigo (count+1); al
+    // chocar P2002 en el unique se reintenta con conteo fresco. En el último
+    // intento cae el sufijo UUID.
+    let reporte;
+    for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
+      const conteo = await this.prisma.reportes_campo.count({
+        where: { codigo: { startsWith: 'INC' } },
+      });
+      const codigo =
+        intento === MAX_INTENTOS_FOLIO - 1
+          ? `INC-${randomUUID().slice(0, 6).toUpperCase()}`
+          : `INC${String(conteo + 1).padStart(4, '0')}`;
+
+      try {
+        reporte = await this.prisma.reportes_campo.create({
+          data: {
+            id: randomUUID(),
+            codigo,
+            categoria: dto.categoria,
+            tipo: dto.tipo,
+            usuario: dto.usuario.trim(),
+            usuario_id: userId,
+            maquina_id: dto.maquinaId ?? null,
+            obra_id: dto.obraId ?? null,
+            obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada',
+            cliente_id: dto.clienteId ?? null,
+            proyecto_id: dto.proyectoId ?? null,
+            monto_servicio: dto.montoServicio ?? null,
+            fecha: new Date(dto.fecha),
+            hora: new Date(`1970-01-01T${dto.hora}:00`),
+            descripcion: dto.descripcion.trim(),
+            estado: EstadoReporteCampo.PENDIENTE,
+            prioridad: dto.prioridad ?? null,
+            creado_por: userId,
+            actualizado_por: userId,
+            actualizado_en: new Date(),
+          },
+          include: REPORTE_INCLUDE,
+        });
+        break;
+      } catch (e) {
+        // Patrón cobranza/proveedores (idioma-neutral): único unique
+        // colisionable en este create es `codigo` (ver facturas.service).
+        if (
+          intento < MAX_INTENTOS_FOLIO - 1 &&
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          continue; // colisión de folio: reintentar con conteo fresco
+        }
+        throw e;
+      }
+    }
+    if (!reporte) {
+      // Inalcanzable: el último intento siempre lanza o asigna. Guard de tipos.
+      throw new Error('No se pudo asignar folio de reporte');
+    }
 
     const serialized = this.serialize(reporte);
 
@@ -237,6 +285,7 @@ export class ReportesCampoService {
       where: { id },
       data: {
         ...(dto.tipo !== undefined && { tipo: dto.tipo }),
+        ...(dto.categoria !== undefined && { categoria: dto.categoria }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
         ...(dto.maquinaId !== undefined && { maquina_id: dto.maquinaId ?? null }),
         ...(dto.obraId !== undefined && { obra_id: dto.obraId ?? null }),
@@ -817,6 +866,10 @@ export class ReportesCampoService {
       id: reporte.id,
       codigo: reporte.codigo,
       tipo: TIPO_LABELS[reporte.tipo as TipoReporteCampo] ?? reporte.tipo,
+      categoria:
+        reporte.categoria != null
+          ? (CATEGORIA_LABELS[reporte.categoria] ?? reporte.categoria)
+          : null,
       usuario: reporte.usuario,
       usuarioId: reporte.usuario_id,
       maquinaId: reporte.maquina_id,

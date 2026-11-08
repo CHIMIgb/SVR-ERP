@@ -1438,6 +1438,7 @@ model reportes_campo {
   id                                          String             @id @db.Uuid
   codigo                                      String?            @unique
   tipo                                        TipoReporteCampo
+  categoria                                   CategoriaReporte?
   usuario                                     String
   maquina_id                                  String?            @db.Uuid
   fecha                                       DateTime           @db.Date
@@ -2430,6 +2431,15 @@ enum TipoReporteCampo {
   INCIDENTE
   INGENIERO
   TRABAJADOR
+}
+
+enum CategoriaReporte {
+  MECANICO
+  SOLDADOR
+  DIESEL
+  MANTENIMIENTO
+  ADMINISTRATIVO
+  RESIDENTE
 }
 
 enum TipoTransaccion {

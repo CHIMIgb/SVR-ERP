@@ -12,6 +12,7 @@ import { INestApplication, BadRequestException, ConflictException } from '@nestj
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
+  CategoriaReporte,
   EstadoReporteCampo,
   Prioridad,
   TipoReporteCampo,
@@ -74,6 +75,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
   const createDto = (overrides: Record<string, unknown> = {}) => ({
     tipo: TipoReporteCampo.PIPERO,
+    categoria: CategoriaReporte.DIESEL,
     usuario: `Marcos G. ${TEST_ID}`,
     obraTexto: `Obra-${TEST_ID}`,
     fecha: '2026-08-20',
@@ -159,6 +161,51 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.REPORTE_ASIGNADO, reporte.id);
       expect(audits[0].result).toBe('FAIL');
       expect(audits[0].error_code).toBe('ASIGNACION_VACIA');
+    });
+  });
+
+  describe('FOLIO INC + categoria — create (BD real)', () => {
+    it('create genera folio INC%04d secuencial, único, y persiste categoria', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      expect(reporte.codigo).toMatch(/^INC\d{4}$/);
+      expect(reporte.categoria).toBe('Diesel');
+
+      // BD real: el folio es único y la categoria guardada es el enum crudo
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.codigo).toBe(reporte.codigo);
+      expect(row!.categoria).toBe('DIESEL');
+
+      // el siguiente create NO repite folio (correlativo fresco, unicidad por BD)
+      const otro = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(otro.id);
+      expect(otro.codigo).not.toBe(reporte.codigo);
+
+      // auditoría SUCCESS del create con folio
+      const audits = await findAudits(AuditAction.REPORTE_CREADO, reporte.id);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect((audits[0].new_value as { codigo?: string })?.codigo).toBe(reporte.codigo);
+    });
+
+    it('rechaza categoria inválida a nivel BD (enum: nada entra con valor ajeno)', async () => {
+      // el ValidationPipe ya filtra en runtime; aquí probamos el enum crudo
+      await expect(
+        prisma.reportes_campo.create({
+          data: {
+            id: randomUUID(),
+            tipo: 'PIPERO',
+            // @ts-expect-error — valor fuera del enum debe ser rechazado por PG
+            categoria: 'COCINERO',
+            usuario: `Test ${TEST_ID}`,
+            obra_texto: 'Test',
+            fecha: new Date(),
+            hora: '10:00',
+            descripcion: `Categoria inválida ${TEST_ID}`,
+            estado: 'PENDIENTE',
+          },
+        }),
+      ).rejects.toThrow();
     });
   });
 

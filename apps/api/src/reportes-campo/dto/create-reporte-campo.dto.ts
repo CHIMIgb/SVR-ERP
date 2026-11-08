@@ -10,11 +10,15 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { Prioridad, TipoReporteCampo } from '@prisma/client';
+import { Prioridad, TipoReporteCampo, CategoriaReporte } from '@prisma/client';
 
 export class CreateReporteCampoDto {
   @IsEnum(TipoReporteCampo)
   tipo!: TipoReporteCampo;
+
+  /** Torre responsable que atenderá el reporte (ruta "le cae a todos de X torre"). */
+  @IsEnum(CategoriaReporte)
+  categoria!: CategoriaReporte;
 
   /** Quién reporta desde campo (texto libre, ej. "Marcos G."). */
   @IsString()

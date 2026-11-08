@@ -10,12 +10,16 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { Prioridad, TipoReporteCampo } from '@prisma/client';
+import { Prioridad, TipoReporteCampo, CategoriaReporte } from '@prisma/client';
 
 export class UpdateReporteCampoDto {
   @IsOptional()
   @IsEnum(TipoReporteCampo)
   tipo?: TipoReporteCampo;
+
+  @IsOptional()
+  @IsEnum(CategoriaReporte)
+  categoria?: CategoriaReporte;
 
   @IsOptional()
   @IsString()

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import {
+  CategoriaReporte,
   EstadoReporteCampo,
   Prioridad,
   TipoReporteCampo,
@@ -145,6 +146,7 @@ describe('ReportesCampoService', () => {
   describe('create', () => {
     const createDto = {
       tipo: TipoReporteCampo.PIPERO,
+      categoria: CategoriaReporte.DIESEL,
       usuario: 'Marcos G.',
       maquinaId: mockReporte.maquina_id as string,
       obraTexto: 'Valle Sur',
@@ -164,6 +166,20 @@ describe('ReportesCampoService', () => {
           result: AuditResult.SUCCESS,
         }),
       );
+    });
+
+    it('genera folio INC0002 (max correlativo + 1, formato %04d) y persiste categoria', async () => {
+      await service.create(createDto, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.codigo).toBe('INC0002'); // count mock = 1 → siguiente
+      expect(data.categoria).toBe(CategoriaReporte.DIESEL);
+    });
+
+    it('consulta el máximo correlativo contra códigos INC antes de crear', async () => {
+      await service.create(createDto, 'user-1');
+      expect(prisma.reportes_campo.count).toHaveBeenCalledWith({
+        where: { codigo: { startsWith: 'INC' } },
+      });
     });
 
     it('should throw BadRequest if máquina not found AND audit the failure', async () => {
