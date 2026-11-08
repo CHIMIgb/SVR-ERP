@@ -38,7 +38,7 @@
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
 | 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix físico espera "go") · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
-| 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
+| 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
 
@@ -795,7 +795,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ✅ **Realizado 2026-11-07** SOLO en Comercial + Operaciones (ver §11 F3): helper `mensajeErrorApi` en `lib/api.ts` aplicado en 50 toasts de 13 vistas; las demás vistas son de otro dev — el helper ya existe para cuando los toque (regla documentada en `AGENTS.md`) |
 | F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ✅ **Análisis realizado 2026-11-07** (matriz completa en §11 F4: 6 cadenas al 100%, 14 gaps mapeados con su habilitador y tarea) |
 | F5 | Config POS: horario de caja que gatee + categorías visibles | `/configuracion` → `/ventas` | ⏳ Pendiente (verificado: `aperturas_caja`/`cierres_caja` NO tienen campos de horario; el gate no existe hoy) |
-| F6 | Seeds demo funcionales de todos los workflows | transversal | ⏳ Pendiente (solo existen `seed-proveedores.ts` y seeds de RBAC) |
+| F6 | Seeds demo funcionales de todos los workflows | transversal | ✅ **Realizado 2026-11-08** (`seed-demo-workflows.ts` idempotente vía servicios oficiales con auditoría; + data fix `turno_cierre 23:00` que bloqueaba el POS; cobertura verificada por psql: venta/retiros/apertura reales, cotizaciones/bitácoras/nóminas con variedad ya existente) |
 
 > **Regla general:** cada flujo se construye cuando el módulo destino está completo,
 > para evitar acoplar a un destino que no existe. El orden sugerido original
@@ -1201,9 +1201,15 @@ Tampoco existe configuración de qué categorías de producto muestra el catálo
 
 ### F6 — Seeds demo funcionales de todos los workflows
 
-**Estado:** ⏳ Pendiente. Hoy solo existen `seed-proveedores.ts` y los seeds de RBAC.
-Cuando los datos son escasos (BD restaurada del dump), las vistas ven vacío o datos
-viejos que no ilustran ningún flujo completo.
+**Estado (2026-11-08): ✅ REALIZADO — `apps/api/scripts/seed-demo-workflows.ts`
+idempotente, corrido contra la BD local con auditoría real:**
+apertura (fondo 5,000) + venta POS con pagos mixtos 60/40 sobre catálogo real
+(folio S17941004220715557, total 1,540) + retiro `[DEMO]` 350; guard
+anti-producción (`NODE_ENV=production` requiere `DEMO_SEED=permiso`).
+Hallazgo de la corrida: `configuracion_sistema.turno_cierre = '00:00'` dejaba el
+POS bloqueado SIEMPRE (se interpreta nocturno) — data fix aplicado: `'23:00'`
+(pendiente post-demo: soportar cierre medianoche en el backend). Los demás
+workflows ya tenían variedad (verificada por psql).
 
 **Cómo se aplicará:**
 1. **`apps/api/scripts/seed-demo-workflows.ts`:** poblar datos demo que ejerciten
