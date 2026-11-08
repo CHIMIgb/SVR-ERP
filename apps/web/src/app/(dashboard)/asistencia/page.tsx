@@ -26,6 +26,7 @@ import { Select } from '@/components/ui/Select';
 import { Tabs } from '@/components/ui/Tabs';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 
@@ -140,6 +141,20 @@ const LIMITE_REGISTROS = 200;
 
 /** Igual que TARIFA_HORA_EXTRA_DEFECTO de la API: se usa cuando el trabajador no tiene tarifa propia. */
 const TARIFA_HORA_EXTRA_DEFECTO = 80;
+
+/**
+ * Horas entre dos horas "HH:mm" capturadas, con 2 decimales. Si el fin es menor que el inicio, cruzó la medianoche.
+ * null si falta alguna o son iguales (no hay duración que registrar).
+ */
+const horasEntre = (inicio: string, fin: string): number | null => {
+  if (!/^\d{2}:\d{2}$/.test(inicio) || !/^\d{2}:\d{2}$/.test(fin)) return null;
+  const [hi, mi] = inicio.split(':').map(Number);
+  const [hf, mf] = fin.split(':').map(Number);
+  let minutos = hf * 60 + mf - (hi * 60 + mi);
+  if (minutos === 0) return null;
+  if (minutos < 0) minutos += 24 * 60;
+  return Math.round((minutos / 60) * 100) / 100;
+};
 
 function avisoListaIncompleta(recibidos: number, total?: number): string | null {
   return total != null && total > recibidos ? `se muestran ${recibidos} de ${total}; la lista está incompleta` : null;
@@ -292,10 +307,12 @@ export default function AsistenciaPage() {
   // Salida anticipada
   const [isEarlyDeparture, setIsEarlyDeparture] = useState(false);
   const [earlyDepartureReason, setEarlyDepartureReason] = useState('');
-  const [earlyDepartureHours, setEarlyDepartureHours] = useState('5.5');
+  // Sin valores precargados: antes abría con 5.5 h laboradas y 3 h extra ya escritas.
+  const [earlyDepartureHours, setEarlyDepartureHours] = useState('');
 
-  // Horas extra
-  const [extraHoursInput, setExtraHoursInput] = useState('3.0');
+  // Horas extra: se captura el horario real (antes se inventaba con el reloj del dispositivo al registrar).
+  const [extraInicio, setExtraInicio] = useState('');
+  const [extraFin, setExtraFin] = useState('');
   const [extraMotivo, setExtraMotivo] = useState('');
 
   // Ubicación GPS real del dispositivo (con respaldo manual)
@@ -458,8 +475,9 @@ export default function AsistenciaPage() {
     setClockInType('entrada');
     setIsEarlyDeparture(false);
     setEarlyDepartureReason('');
-    setEarlyDepartureHours('5.5');
-    setExtraHoursInput('3.0');
+    setEarlyDepartureHours('');
+    setExtraInicio('');
+    setExtraFin('');
     setExtraMotivo('');
     prepararUbicacion();
     setClockInModalOpen(true);
@@ -801,13 +819,10 @@ export default function AsistenciaPage() {
         return;
       }
     }
-    const horasExtra = Number(extraHoursInput);
-    // Mismas reglas que RegistrarHorasExtraDto: de 0.5 a 24, con hasta 2 decimales.
-    if (
-      clockInType === 'horas_extra' &&
-      !(Number.isFinite(horasExtra) && horasExtra >= 0.5 && horasExtra <= 24 && Number(horasExtra.toFixed(2)) === horasExtra)
-    ) {
-      showToast('Indica las horas extra trabajadas (de 0.5 a 24, hasta 2 decimales).', 'error');
+    const horasExtra = horasEntre(extraInicio, extraFin);
+    // Mismas reglas que RegistrarHorasExtraDto: de 0.5 a 24 h, con hora de inicio y de fin reales.
+    if (clockInType === 'horas_extra' && (horasExtra === null || horasExtra < 0.5 || horasExtra > 24)) {
+      showToast('Indica la hora de inicio y de fin de las horas extra (mínimo 30 minutos).', 'error');
       return;
     }
     const existente = registros.find((r) => r.trabajadorId === worker.id);
@@ -868,14 +883,10 @@ export default function AsistenciaPage() {
         } else {
           showToast(`Salida de ${worker.nombre} registrada.`, 'info');
         }
-      } else if (existente) {
-        const ahora = new Date();
-        const fin = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
-        const inicioDate = new Date(ahora.getTime() - horasExtra * 3600000);
-        const inicio = `${String(inicioDate.getHours()).padStart(2, '0')}:${String(inicioDate.getMinutes()).padStart(2, '0')}`;
+      } else if (existente && horasExtra !== null) {
         const res = await asistenciaApi.registrarHorasExtra(existente.id, {
-          inicio,
-          fin,
+          inicio: extraInicio,
+          fin: extraFin,
           horasCalculadas: horasExtra,
           motivo: extraMotivo.trim() || undefined,
           latInicio: coords.lat,
@@ -903,6 +914,7 @@ export default function AsistenciaPage() {
   const mensajesError = Object.values(erroresCarga);
   const tarifaConfigurada = trabajadores.find((t) => t.id === clockInWorkerId)?.tarifaHoraExtra;
   const tarifaEstimada = tarifaConfigurada ?? TARIFA_HORA_EXTRA_DEFECTO;
+  const horasExtraCapturadas = horasEntre(extraInicio, extraFin);
 
   const formatoDistancia = (metros: number) => (metros >= 1000 ? `${(metros / 1000).toFixed(2)} km` : `${metros} m`);
 
@@ -1522,8 +1534,21 @@ export default function AsistenciaPage() {
           {clockInType === 'horas_extra' && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <ModalField label="Horas extra" required>
-                  <input type="number" step="0.5" min="0.5" value={extraHoursInput} onChange={(e) => setExtraHoursInput(e.target.value)} placeholder="Ej: 3.5" className={modalInputClass} />
+                <ModalField label="Hora de inicio" required>
+                  <TimePicker id="horas-extra-inicio" value={extraInicio} onChange={setExtraInicio} placeholder="Inicio" />
+                </ModalField>
+                <ModalField label="Hora de fin" required>
+                  <TimePicker id="horas-extra-fin" value={extraFin} onChange={setExtraFin} placeholder="Fin" />
+                </ModalField>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <ModalField
+                  label="Horas extra"
+                  hint={horasExtraCapturadas !== null && extraFin < extraInicio ? 'Termina al día siguiente' : undefined}
+                >
+                  <div className="h-10 sm:h-11 px-3 sm:px-4 flex items-center rounded-xl border border-ui-200 bg-ui-50 text-sm font-semibold text-ui-900 tabular-nums">
+                    {horasExtraCapturadas !== null ? `${horasExtraCapturadas} h` : '—'}
+                  </div>
                 </ModalField>
                 <ModalField
                   label="Monto estimado"
@@ -1532,7 +1557,7 @@ export default function AsistenciaPage() {
                     : `Tarifa por defecto: ${formatCurrency(tarifaEstimada)} / h (sin tarifa propia)`}
                 >
                   <div className="h-10 sm:h-11 px-3 sm:px-4 flex items-center rounded-xl border border-ui-200 bg-ui-50 text-sm font-semibold text-ui-900 tabular-nums">
-                    {formatCurrency((parseFloat(extraHoursInput) || 0) * tarifaEstimada)}
+                    {horasExtraCapturadas !== null ? formatCurrency(horasExtraCapturadas * tarifaEstimada) : '—'}
                   </div>
                 </ModalField>
               </div>
