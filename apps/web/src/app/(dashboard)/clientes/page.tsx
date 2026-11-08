@@ -30,6 +30,7 @@ import {
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 8;
@@ -275,7 +276,7 @@ export default function ClientesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear cliente.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear cliente.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear cliente.', 'error');
@@ -303,7 +304,7 @@ export default function ClientesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar cliente.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar cliente.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar cliente.', 'error');
@@ -324,7 +325,7 @@ export default function ClientesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar cliente.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar cliente.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar cliente.', 'error');
@@ -346,7 +347,7 @@ export default function ClientesPage() {
         setConsolidadoData(res.data);
       } else {
         setConsolidadoData(null);
-        showToast(res.error?.message || 'Error al obtener el estado de cuenta.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al obtener el estado de cuenta.'), 'error');
       }
     } catch {
       setConsolidadoData(null);
@@ -390,7 +391,7 @@ export default function ClientesPage() {
           fetchCotizaciones(cotizacionCliente.id, historialPagination.page, historialPagination.limit, { paging: false });
         }
       } else {
-        showToast(res.error?.message || 'Error al crear la cotización.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la cotización.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear la cotización.', 'error');

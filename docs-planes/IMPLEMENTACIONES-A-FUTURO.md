@@ -37,7 +37,7 @@
 
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
-| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · ✅ **2. Contraste dark en modal Ver Detalle** (2026-11-07: migración a tokens `ui-*`/`dark:` según regla del repo en ProjectDetailsModal.tsx) · ✅ **3. F2 loaders/skeletons — REALIZADO 2026-11-07** (ver detalle en §11 F2 y §7; el delay `sleepDemo` de demo se retiró el mismo día) · 4. **F3** validación con `details` en toasts (helper) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico: /operaciones mostraba 3 de 6 proyectos EN_PROCESO** — causa confirmada 2026-11-07: **4 proyectos sin obra registrada en la tabla `obras`** (no es bug de filtro ni de código; el flujo proyecto→obra no existe — ver 6.6). *Resta el fix físico: sembrar las 4 obras (SQL idempotente ya propuesto, espera "go")* · ✅ **2. Contraste dark en modal Ver Detalle** (2026-11-07: migración a tokens `ui-*`/`dark:` según regla del repo en ProjectDetailsModal.tsx) · ✅ **3. F2 loaders/skeletons — REALIZADO 2026-11-07** (ver detalle en §11 F2 y §7; el delay `sleepDemo` de demo se retiró el mismo día) · · 4. **F3 validación con `details` en toasts — REALIZADO 2026-11-07** (helper `mensajeErrorApi` en `lib/api.ts` aplicado SOLO en Comercial/Operaciones — ver §11 F3) · 5. **F4** matriz de flujos (solo análisis/documento) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | 6. **F6** seeds demo de todos los workflows (el más importante para la demo) · 7. **P4b** venta POS descuenta inventario · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 | 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
@@ -792,7 +792,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
 | F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
 | F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ✅ **Realizado 2026-11-07** (ver §11 F2): `RefreshOverlay` nuevo + 11 overlays consolidados, cargas a pulmón → `LoadingState`/`Skeleton`, paginación siempre visible, KPIs con spinner en el valor, botones con `skeleton`, banners post-carga animados, regla dura en `AGENTS.md` |
-| F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ⏳ Pendiente (el API ya responde 422 con `details`; falta validación UI y toasts con `details` universalizados) |
+| F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ✅ **Realizado 2026-11-07** SOLO en Comercial + Operaciones (ver §11 F3): helper `mensajeErrorApi` en `lib/api.ts` aplicado en 50 toasts de 13 vistas; las demás vistas son de otro dev — el helper ya existe para cuando los toque (regla documentada en `AGENTS.md`) |
 | F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ⏳ Pendiente (ciclo de dinero y OC→stock ya al 100% — ver §11 F4; la matriz detectará qué vista aún come mock) |
 | F5 | Config POS: horario de caja que gatee + categorías visibles | `/configuracion` → `/ventas` | ⏳ Pendiente (verificado: `aperturas_caja`/`cierres_caja` NO tienen campos de horario; el gate no existe hoy) |
 | F6 | Seeds demo funcionales de todos los workflows | transversal | ⏳ Pendiente (solo existen `seed-proveedores.ts` y seeds de RBAC) |
@@ -1057,11 +1057,25 @@ día** (helper `lib/demo-delay.ts` eliminado).
 
 ### F3 — Validación consistente en todos los formularios existentes
 
-**Estado:** ⏳ Pendiente de unificación. El backend ya cumple su parte: ValidationPipe
+**Estado (actualizado 2026-11-07): ✅ REALIZADO en Comercial + Operaciones** quedarías las
+demás vistas partea otro dev (el hever yá enta disponible en `lib/api.ts` para
+cuando las toque; regla dura documentada en `AGENTS.md` — "Toasts de error").
+
+**Qué se hizo:**
+1. **Helper único `mensajeErrorApi(res.error, fallback)`** en `lib/api.ts`:
+   prioridad `details[].map(String).join(' · ')` → `error.message` → fallback de
+   la vista (seguro con `details: unknown[]`).
+2. **50 toasts reescritos en 13 vistas** (operaciones 3, inventario 4, proyectos
+   4, criba 3, reportes 7, clientes 5, cotizaciones 3 — incluido el fallback con
+   template literal —, facturas 6, cobranza 1, finanzas 3, proveedores 7 — los 2
+   manuales details-join migrados —, ventas 2, cierres 2); `/ventas/corte` no
+   tiene ramas de fallo de API.
+3. Regla única en `AGENTS.md`: prohibido `res.error?.message || ...` a mano.
+
+**Original (para referencia):** el backend ya cumple su parte: ValidationPipe
 global con `whitelist + forbidNonWhitelisted` responde 422 con `details[]`
-(`message = 'Error de validación'`). El problema es el frontend: algunos módulos
-tocados recientemente muestran `details?.join(' · ')` en el toast; el resto de las
-vistas muestra un error genérico o nada.
+(`message = 'Error de validación'`). El problema era el frontend: solo
+/proveedores mostraba los `details`; el resto mostraba error genérico o nada.
 
 **Cómo se aplicará:**
 1. **Auditoría:** inventario de todos los `FormModal` presentes en

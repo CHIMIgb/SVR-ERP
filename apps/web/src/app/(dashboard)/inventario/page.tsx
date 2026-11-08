@@ -22,6 +22,7 @@ import {
   type InventarioCatalogos,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -277,7 +278,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear artículo.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear artículo.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear artículo.', 'error');
@@ -311,7 +312,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar artículo.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar artículo.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar artículo.', 'error');
@@ -340,7 +341,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar entrada.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar entrada.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar entrada.', 'error');
@@ -361,7 +362,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar artículo.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar artículo.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar artículo.', 'error');

@@ -23,6 +23,7 @@ import {
   type QueryCierresDto,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -177,7 +178,7 @@ export default function CierresCajaPage() {
         showToast('Cierre aprobado correctamente.', 'success');
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'No se pudo aprobar el cierre.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo aprobar el cierre.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -204,7 +205,7 @@ export default function CierresCajaPage() {
         setSelectedCierre(null);
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'No se pudo rechazar el cierre.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo rechazar el cierre.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');

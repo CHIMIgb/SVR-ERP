@@ -30,6 +30,7 @@ import {
   type EstadoCotizacionApi,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -256,7 +257,7 @@ export default function CotizacionesPage() {
         setCreateOpen(false);
         refresh();
       } else {
-        showToast(res.error?.message || 'Error al crear cotización.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear cotización.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear cotización.', 'error');
@@ -297,7 +298,7 @@ export default function CotizacionesPage() {
         setSelected(null);
         refresh();
       } else {
-        showToast(res.error?.message || `Error al ${esRechazo ? 'rechazar' : 'aceptar'} la cotización.`, 'error');
+        showToast(mensajeErrorApi(res.error, `Error al ${esRechazo ? 'rechazar' : 'aceptar'} la cotización.`), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el estado.', 'error');
@@ -333,7 +334,7 @@ export default function CotizacionesPage() {
         setEditId(null);
         refresh();
       } else {
-        showToast(res.error?.message || 'Error al actualizar la cotización.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la cotización.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar la cotización.', 'error');

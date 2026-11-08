@@ -24,6 +24,7 @@ import {
   type FacturasStats,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -326,7 +327,7 @@ export default function FacturasPage() {
         })),
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al crear la factura.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la factura.'), 'error');
         return;
       }
       showToast(`Factura ${res.data.codigo} creada en estado Pendiente.`, 'success');
@@ -361,7 +362,7 @@ export default function FacturasPage() {
         setSelected(null);
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'Error al cambiar estado.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al cambiar estado.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -381,7 +382,7 @@ export default function FacturasPage() {
         setSelected(null);
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'Error al eliminar.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -410,7 +411,7 @@ export default function FacturasPage() {
         objetoImpuesto: conceptoForm.objetoImpuesto,
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al agregar el concepto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al agregar el concepto.'), 'error');
         return;
       }
       showToast('Concepto agregado.', 'success');
@@ -441,7 +442,7 @@ export default function FacturasPage() {
         impuestoTasa: esExento ? null : 0.16,
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al guardar el concepto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al guardar el concepto.'), 'error');
         return;
       }
       showToast('Concepto actualizado.', 'success');
@@ -465,7 +466,7 @@ export default function FacturasPage() {
     try {
       const res = await facturasApi.eliminarConcepto(selected.id, selectedConcepto.id);
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al eliminar el concepto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el concepto.'), 'error');
         return;
       }
       showToast('Concepto eliminado.', 'success');

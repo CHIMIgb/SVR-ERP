@@ -19,6 +19,24 @@ interface FetchOptions extends RequestInit {
   raw?: boolean;
 }
 
+
+/**
+ * Mensaje de error para toasts, regla compartida del ERP:
+ * 1) si el backend mando details[] (422 de class-validator), se unen con "·" —
+ *    el usuario ve QUE campo fallo, no un generico;
+ * 2) si no, el message del contrato (p. ej. "CODIGO_DUPLICADO: ...");
+ * 3) si el error ni siquiera trae contrato, el fallback de la vista.
+ */
+export function mensajeErrorApi(
+  error?: { message?: string; details?: unknown[] } | null,
+  fallback = 'Error al procesar la solicitud.',
+): string {
+  const detalles = error?.details
+    ?.map((d) => (typeof d === 'string' ? d : JSON.stringify(d)))
+    .filter(Boolean);
+  if (detalles?.length) return detalles.join(' · ');
+  return error?.message || fallback;
+}
 // ── Access token: almacenado EN MEMORIA (no localStorage) para mitigar XSS ──
 // Solo el refresh token persiste en localStorage (necesario para Capacitor/offline)
 let inMemoryAccessToken: string | null = null;

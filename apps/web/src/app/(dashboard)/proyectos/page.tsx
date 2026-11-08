@@ -27,6 +27,7 @@ import {
   type ProyectoCreateInput,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -358,7 +359,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear el proyecto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear el proyecto.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear el proyecto.', 'error');
@@ -380,7 +381,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar el proyecto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el proyecto.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el proyecto.', 'error');
@@ -404,7 +405,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar finanzas.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar finanzas.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar finanzas.', 'error');
@@ -425,7 +426,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar el proyecto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el proyecto.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar el proyecto.', 'error');

@@ -29,6 +29,7 @@ import {
   type VentanaFlujoItem,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -278,7 +279,7 @@ export default function FinanzasPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear la transacción.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la transacción.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear la transacción.', 'error');
@@ -311,7 +312,7 @@ export default function FinanzasPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar la transacción.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la transacción.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar la transacción.', 'error');
@@ -332,7 +333,7 @@ export default function FinanzasPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar la transacción.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la transacción.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar la transacción.', 'error');

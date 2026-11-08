@@ -20,6 +20,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { bitacoraApi, type BitacoraDTO, type BitacoraCatalogos } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -254,7 +255,7 @@ export default function OperacionesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar la operación.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar la operación.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar la operación.', 'error');
@@ -283,7 +284,7 @@ export default function OperacionesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar la operación.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la operación.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar la operación.', 'error');
@@ -304,7 +305,7 @@ export default function OperacionesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar la operación.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la operación.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar la operación.', 'error');

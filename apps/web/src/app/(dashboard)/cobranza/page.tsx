@@ -24,6 +24,7 @@ import {
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 8;
@@ -445,7 +446,7 @@ export default function CobranzaPage() {
         await refetchAll();
         await openLedger(res.data.cuenta);
       } else {
-        showToast(res.error?.message || 'No se pudo revertir el cobro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo revertir el cobro.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');

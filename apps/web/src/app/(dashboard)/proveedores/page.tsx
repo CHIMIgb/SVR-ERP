@@ -22,6 +22,7 @@ import {
   type ProveedorDTO, type OrdenCompraDTO, type EstadoCuentaResumenDTO,
   type LedgerDetalleDTO, type EstadoOrdenApi, type ArticuloInventarioDTO,
 } from '@/lib/api';
+import { mensajeErrorApi } from '@/lib/api';
 // ─── Tipos UI ────────────────────────────────────────────────────────────────
 type CategoriaProveedor = 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
 type EstadoOrden = 'Pendiente' | 'Aprobada' | 'Recibida' | 'Cancelada';
@@ -344,7 +345,7 @@ export default function ProveedoresPage() {
         setProvModal(false);
         refetchAll();
       } else {
-        showToast(res.error?.details?.join(' · ') || res.error?.message || 'Error al guardar proveedor.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al guardar proveedor.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -363,7 +364,7 @@ export default function ProveedoresPage() {
         setDeleteProv(null);
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al eliminar proveedor.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar proveedor.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -411,7 +412,7 @@ export default function ProveedoresPage() {
         setOcForm(emptyOcForm);
         refetchAll();
       } else {
-        showToast(res.error?.details?.join(' · ') || res.error?.message || 'Error al crear la orden.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la orden.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -444,7 +445,7 @@ export default function ProveedoresPage() {
         setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' });
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al registrar el abono.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar el abono.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -481,7 +482,7 @@ export default function ProveedoresPage() {
           setMotivoCancelacion('');
           refetchAll();
         } else {
-          showToast(res.error?.message || 'Error al cambiar el estado.', 'error');
+          showToast(mensajeErrorApi(res.error, 'Error al cambiar el estado.'), 'error');
         }
       } catch {
         showToast('No se pudo conectar con el servidor.', 'error');
@@ -502,7 +503,7 @@ export default function ProveedoresPage() {
         setDeleteOC(null);
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al eliminar la orden.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la orden.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -518,7 +519,7 @@ export default function ProveedoresPage() {
     try {
       const res = await proveedoresApi.ledger(r.proveedorId);
       if (!res.success) {
-        showToast(res.error?.message || 'Error al cargar el estado de cuenta.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al cargar el estado de cuenta.'), 'error');
         return;
       }
       setLedger(res.data);

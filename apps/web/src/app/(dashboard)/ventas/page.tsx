@@ -49,6 +49,7 @@ import type { CreateVentaInput } from '@/lib/api';
 import { generateUUID } from '@/lib/utils';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { mensajeErrorApi } from '@/lib/api';
 
 function parseHM(s: string): { h: number; m: number } {
   const [h, m] = s.split(':').map(Number);
@@ -248,7 +249,7 @@ export default function VentasPage() {
     try {
       const res = await ventasApi.crear(payload);
       if (!res.success) {
-        showToast(res.error?.message ?? 'No se pudo registrar la venta.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo registrar la venta.'), 'error');
         return;
       }
       const sale = ventaDtoToSale(res.data, products);
@@ -277,7 +278,7 @@ export default function VentasPage() {
         autorizadoPor,
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'No se pudo registrar el retiro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo registrar el retiro.'), 'error');
         return;
       }
       const nuevo: Retiro = {

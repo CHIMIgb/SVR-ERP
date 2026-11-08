@@ -36,6 +36,7 @@ import {
   type TrabajadorDTO,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -467,7 +468,7 @@ export default function ReportesOperacionesPage() {
         refetch(1);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar el reporte.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar el reporte.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar el reporte.', 'error');
@@ -489,7 +490,7 @@ export default function ReportesOperacionesPage() {
         refetch();
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar el reporte.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el reporte.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el reporte.', 'error');
@@ -510,7 +511,7 @@ export default function ReportesOperacionesPage() {
         refetch();
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar el reporte.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el reporte.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar el reporte.', 'error');
@@ -538,7 +539,7 @@ export default function ReportesOperacionesPage() {
         setAsignarItem(null);
         refetch();
       } else {
-        showToast(res.error?.message || 'Error al asignar.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al asignar.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -570,7 +571,7 @@ export default function ReportesOperacionesPage() {
         refetch();
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al avanzar el reporte.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al avanzar el reporte.'), 'error');
       }
     },
     [showToast, refetch, fetchStats, openAsignar],
@@ -589,7 +590,7 @@ export default function ReportesOperacionesPage() {
         refetch();
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al marcar el reporte como resuelto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al marcar el reporte como resuelto.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -614,7 +615,7 @@ export default function ReportesOperacionesPage() {
         refetch();
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al facturar el reporte.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al facturar el reporte.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');

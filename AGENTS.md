@@ -84,6 +84,15 @@ src/
 6. Banners/alertas condicionales (stock crítico, incidentes críticos, etc.): **NO existen durante la carga** (gatear con `!initialLoading && <condición>`) y al aparecer usan `animate-[fadeScaleIn_0.2s_ease-out]`. NUNCA un skeleton rojo de banner — simularía una alerta inexistente. Effect documentado en COMPONENTS.md (keyframes).
 7. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading/skeleton`, `StatsCard.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
 
+### Toasts de error — helper único (`mensajeErrorApi`)
+
+**El mensaje de todo toast de error de API sale SIEMPRE del helper `mensajeErrorApi(res.error, '<fallback de la vista>')`** (vive en `lib/api.ts`) — nunca `res.error?.message || '...'` a mano. Razón: el backend responde los 422 con `details[]` (class-validator) y el helper los une con "·" para que el usuario vea QUÉ campo falló; el `||` directo pierde esa información y muestra solo "Error de validación".
+
+1. Prioridad del helper: `details[].map(String).join(' · ')` → `error.message` → fallback de la vista.
+2. NUNCA componer a mano `details?.join(...) || ...` ni `res.error?.message || ...` en un toast.
+3. Los `catch` de red mantienen su mensaje de conexión (p. ej. "Error de conexión...") — no pasan por el helper salvo que re-lancen un error del contrato.
+4. Aplicado 2026-11-07 en las vistas de Comercial + Operaciones (49 ramas + 3 manuales); el resto de módulos es de otro dev — aplicar el MISMO patrón cuando los toque (el helper ya está disponible en `lib/api.ts`).
+
 ## Data Layer
 
 `src/lib/data.ts` is the single source of truth for all types and mock data. **28 files import from it.** Treat it carefully — any change can cascade re-compilations. Types are organized by domain but live in this one file.

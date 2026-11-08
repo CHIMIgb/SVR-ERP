@@ -26,6 +26,7 @@ import {
   type TurnoCribaApi,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -292,7 +293,7 @@ export default function CribaPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar el turno.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar el turno.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar el turno.', 'error');
@@ -318,7 +319,7 @@ export default function CribaPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar el registro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el registro.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el registro.', 'error');
@@ -339,7 +340,7 @@ export default function CribaPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar el registro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el registro.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar el registro.', 'error');
