@@ -7,9 +7,10 @@ import {
 import { randomUUID } from 'crypto';
 import {
   Prisma,
-  EstadoReporteCampo,
+  EstadoIncidente,
   Prioridad,
   TipoReporteCampo,
+  CategoriaReporte,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
@@ -20,12 +21,13 @@ import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { AsignarReporteDto } from './dto/asignar-reporte.dto';
+import { ActividadDto } from './dto/actividad.dto';
+import { AdjuntoDto } from './dto/adjunto.dto';
 
 const REPORTE_INCLUDE = {
   maquinas: { select: { id: true, codigo: true, nombre: true } },
   obras: { select: { id: true, nombre: true } },
-  clientes: { select: { id: true, nombre: true } },
-  proyectos: { select: { id: true, nombre: true } },
+  subcategoria: { select: { id: true, nombre: true } },
   asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
 
@@ -42,13 +44,10 @@ const TIPO_LABELS: Record<TipoReporteCampo, string> = {
   [TipoReporteCampo.TRABAJADOR]: 'Trabajador',
 };
 
-const ESTADO_LABELS: Record<EstadoReporteCampo, string> = {
-  [EstadoReporteCampo.PENDIENTE]: 'Pendiente',
-  [EstadoReporteCampo.VISTO]: 'Visto',
-  [EstadoReporteCampo.ATENDIDO]: 'Atendido',
-  [EstadoReporteCampo.EN_REVISION]: 'En Revisión',
-  [EstadoReporteCampo.RESUELTO]: 'Resuelto',
-  [EstadoReporteCampo.FACTURADO]: 'Facturado',
+const ESTADO_LABELS: Record<EstadoIncidente, string> = {
+  [EstadoIncidente.NUEVO]: 'Nuevo',
+  [EstadoIncidente.EN_CURSO]: 'En curso',
+  [EstadoIncidente.CERRADO]: 'Cerrado',
 };
 
 const PRIORIDAD_LABELS: Record<Prioridad, string> = {
@@ -71,19 +70,17 @@ const CATEGORIA_LABELS: Record<string, string> = {
   RESIDENTE: 'Residente',
 };
 
-/**
- * Flujo de seguimiento permitido — espejo exacto del frontend.
- * RESUELTO es terminal; EN_REVISION solo se alcanza desde VISTO si se
- * habilita en el futuro (hoy ninguna transición lleva a él salvo seed).
- */
-const TRANSICIONES: Record<EstadoReporteCampo, EstadoReporteCampo[]> = {
-  [EstadoReporteCampo.PENDIENTE]: [EstadoReporteCampo.VISTO],
-  [EstadoReporteCampo.VISTO]: [EstadoReporteCampo.ATENDIDO],
-  [EstadoReporteCampo.ATENDIDO]: [EstadoReporteCampo.RESUELTO],
-  [EstadoReporteCampo.EN_REVISION]: [EstadoReporteCampo.RESUELTO],
-  [EstadoReporteCampo.RESUELTO]: [],
-  [EstadoReporteCampo.FACTURADO]: [],
+/** Flujo simplificado del incidente (mini-ServiceNow). */
+const TRANSICIONES: Record<EstadoIncidente, EstadoIncidente[]> = {
+  [EstadoIncidente.NUEVO]: [EstadoIncidente.EN_CURSO, EstadoIncidente.CERRADO],
+  [EstadoIncidente.EN_CURSO]: [EstadoIncidente.CERRADO],
+  [EstadoIncidente.CERRADO]: [],
 };
+
+/** Adjuntos (imágenes): límites conservadores sin almacenamiento externo. */
+const MAX_ADJUNTOS = 4;
+const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
+const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 @Injectable()
 export class ReportesCampoService {
@@ -115,11 +112,11 @@ export class ReportesCampoService {
     if (query.tipo) where.tipo = query.tipo;
     if (query.prioridad) where.prioridad = query.prioridad;
 
-    // Banner de críticos: INCIDENTE con prioridad Alta/Crítica sin resolver
+    // Banner de críticos: INCIDENTE con prioridad Alta/Crítica sin cerrar
     if (query.criticos === 'true') {
       where.tipo = TipoReporteCampo.INCIDENTE;
       where.prioridad = { in: [Prioridad.ALTA, Prioridad.CRITICA] };
-      where.estado = { not: EstadoReporteCampo.RESUELTO };
+      where.estado = { not: EstadoIncidente.CERRADO };
     }
 
     const [items, total] = await Promise.all([
@@ -145,7 +142,7 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  OBTENER UNO
+  //  DETALLE (reporte + actividades + adjuntos)
   // ────────────────────────────────────────────
   async findOne(id: string) {
     const reporte = await this.prisma.reportes_campo.findFirst({
@@ -157,7 +154,42 @@ export class ReportesCampoService {
       throw new NotFoundException(`Reporte de campo con id "${id}" no encontrado`);
     }
 
-    return this.serialize(reporte);
+    const [actividades, adjuntos] = await Promise.all([
+      this.prisma.reportes_actividades.findMany({
+        where: { reporte_id: id },
+        orderBy: { creado_en: 'asc' },
+      }),
+      this.prisma.reportes_adjuntos.findMany({
+        where: { reporte_id: id },
+        orderBy: { creado_en: 'asc' },
+      }),
+    ]);
+
+    return {
+      reporte: this.serialize(reporte),
+      actividades: actividades.map((a) => ({
+        id: a.id,
+        texto: a.texto,
+        autorNombre: a.autor_nombre,
+        creadoEn: a.creado_en.toISOString(),
+      })),
+      adjuntos: adjuntos.map((a) => this.serializeAdjunto(a)),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  CATÁLOGO de subcategorías (datos maestros — sin paginar)
+  // ────────────────────────────────────────────
+  async subcategorias() {
+    const rows = await this.prisma.subcategorias_reporte.findMany({
+      where: { activo: true },
+      orderBy: [{ categoria: 'asc' }, { nombre: 'asc' }],
+    });
+    return rows.map((s) => ({
+      id: s.id,
+      categoria: CATEGORIA_LABELS[s.categoria] ?? s.categoria,
+      nombre: s.nombre,
+    }));
   }
 
   // ────────────────────────────────────────────
@@ -169,6 +201,16 @@ export class ReportesCampoService {
     }
     if (dto.obraId) {
       await this.resolverObra(dto.obraId, AuditAction.REPORTE_CREADO, null);
+    }
+    await this.validarSubcategoria(dto.categoria, dto.subcategoriaId, AuditAction.REPORTE_CREADO, null);
+    if ((dto.latitud == null) !== (dto.longitud == null)) {
+      return this.fallir(
+        AuditAction.REPORTE_CREADO,
+        null,
+        'GPS_INCOMPLETO',
+        BadRequestException,
+        'Envía latitud y longitud juntos (ubicación GPS)',
+      );
     }
 
     // Folio secuencial INC%04d con reintento anti-colisión (patrón facturas):
@@ -191,20 +233,20 @@ export class ReportesCampoService {
             id: randomUUID(),
             codigo,
             categoria: dto.categoria,
+            subcategoria_id: dto.subcategoriaId ?? null,
             tipo: dto.tipo,
             usuario: dto.usuario.trim(),
             usuario_id: userId,
             maquina_id: dto.maquinaId ?? null,
             obra_id: dto.obraId ?? null,
             obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada',
-            cliente_id: dto.clienteId ?? null,
-            proyecto_id: dto.proyectoId ?? null,
-            monto_servicio: dto.montoServicio ?? null,
             fecha: new Date(dto.fecha),
             hora: new Date(`1970-01-01T${dto.hora}:00`),
             descripcion: dto.descripcion.trim(),
-            estado: EstadoReporteCampo.PENDIENTE,
+            estado: EstadoIncidente.NUEVO,
             prioridad: dto.prioridad ?? null,
+            latitud: dto.latitud ?? null,
+            longitud: dto.longitud ?? null,
             creado_por: userId,
             actualizado_por: userId,
             actualizado_en: new Date(),
@@ -247,7 +289,7 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  ACTUALIZAR — solo permitido mientras PENDIENTE
+  //  ACTUALIZAR —permitido mientras NO esté Cerrado
   // ────────────────────────────────────────────
   async update(id: string, dto: UpdateReporteCampoDto, userId: string) {
     const existente = await this.prisma.reportes_campo.findFirst({
@@ -264,13 +306,13 @@ export class ReportesCampoService {
       );
     }
 
-    if (existente.estado !== EstadoReporteCampo.PENDIENTE) {
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
       return this.fallir(
         AuditAction.REPORTE_ACTUALIZADO,
         id,
-        'EDITAR_SOLO_PENDIENTES',
+        'CERRADO_NO_EDITABLE',
         BadRequestException,
-        `Solo los reportes Pendientes pueden editarse (estado actual: ${ESTADO_LABELS[existente.estado as EstadoReporteCampo]})`,
+        `Un incidente Cerrado no puede editarse`,
       );
     }
 
@@ -280,23 +322,27 @@ export class ReportesCampoService {
     if (dto.obraId) {
       await this.resolverObra(dto.obraId, AuditAction.REPORTE_ACTUALIZADO, id);
     }
+    const categoriaFinal = dto.categoria ?? (existente.categoria as CategoriaReporte | null);
+    if (dto.subcategoriaId) {
+      await this.validarSubcategoria(categoriaFinal, dto.subcategoriaId, AuditAction.REPORTE_ACTUALIZADO, id);
+    }
 
     const reporte = await this.prisma.reportes_campo.update({
       where: { id },
       data: {
         ...(dto.tipo !== undefined && { tipo: dto.tipo }),
         ...(dto.categoria !== undefined && { categoria: dto.categoria }),
+        ...(dto.subcategoriaId !== undefined && { subcategoria_id: dto.subcategoriaId }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
         ...(dto.maquinaId !== undefined && { maquina_id: dto.maquinaId ?? null }),
         ...(dto.obraId !== undefined && { obra_id: dto.obraId ?? null }),
         ...(dto.obraTexto !== undefined && { obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada' }),
-        ...(dto.clienteId !== undefined && { cliente_id: dto.clienteId ?? null }),
-        ...(dto.proyectoId !== undefined && { proyecto_id: dto.proyectoId ?? null }),
-        ...(dto.montoServicio !== undefined && { monto_servicio: dto.montoServicio ?? null }),
         ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
         ...(dto.hora !== undefined && { hora: new Date(`1970-01-01T${dto.hora}:00`) }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
         ...(dto.prioridad !== undefined && { prioridad: dto.prioridad }),
+        ...(dto.latitud !== undefined && { latitud: dto.latitud }),
+        ...(dto.longitud !== undefined && { longitud: dto.longitud }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -324,7 +370,7 @@ export class ReportesCampoService {
   //  ASIGNAR RESPONSABLE (quién lo debe resolver)
   // ────────────────────────────────────────────
   /**
-   * Define "quién le cae" al reporte: un trabajador activo (FK) y/o un nombre
+   * Define "quién le cae" al incidente: un trabajador activo (FK) y/o un nombre
    * libre. Con ambos vacíos se limpia la asignación. Audita REPORTE_ASIGNADO
    * como FALLIDO con error_code antes de lanzar en cada fallo.
    */
@@ -376,25 +422,22 @@ export class ReportesCampoService {
       }
     }
 
-    const saliendoEstadoTerminal =
-      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.RESUELTO ||
-      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.FACTURADO;
-    if (saliendoEstadoTerminal) {
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
       return this.fallir(
         AuditAction.REPORTE_ASIGNADO,
         id,
-        'REPORTE_TERMINAL',
+        'REPORTE_CERRADO',
         BadRequestException,
-        `No se puede reasignar un reporte ${ESTADO_LABELS[(existente.estado as EstadoReporteCampo)]}`,
+        'No se puede reasignar un incidente Cerrado',
       );
     }
 
-    // Guard anti-carrera: solo reasigna el reporte que sigue en el estado Y la
+    // Guard anti-carrera: solo reasigna el incidente que sigue en el estado Y la
     // asignación leída (reasignaciones simultáneas → conflicto, no last-write)
     const actualizada = await this.prisma.reportes_campo.updateMany({
       where: {
         id,
-        estado: (existente.estado as EstadoReporteCampo),
+        estado: (existente.estado as EstadoIncidente),
         asignado_a_id: existente.asignado_a_id,
         asignado_nombre: existente.asignado_nombre,
         eliminado_en: null,
@@ -413,7 +456,7 @@ export class ReportesCampoService {
         id,
         'CONFLICTO_CONCURRENCIA',
         ConflictException,
-        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+        'El incidente cambió simultáneamente: recarga e intenta de nuevo',
       );
     }
 
@@ -448,7 +491,7 @@ export class ReportesCampoService {
       newValue: {
         asignadoAId: asignadoA,
         asignadoNombre,
-        estado: ESTADO_LABELS[existente.estado as EstadoReporteCampo],
+        estado: ESTADO_LABELS[existente.estado as EstadoIncidente],
       },
     });
 
@@ -456,7 +499,7 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  CAMBIAR ESTADO (flujo de seguimiento)
+  //  CAMBIAR ESTADO (Nuevo → En curso → Cerrado)
   // ────────────────────────────────────────────
   async cambiarEstado(id: string, dto: CambiarEstadoDto, userId: string) {
     const existente = await this.prisma.reportes_campo.findFirst({
@@ -473,7 +516,7 @@ export class ReportesCampoService {
       );
     }
 
-    const estadoActual = existente.estado as EstadoReporteCampo;
+    const estadoActual = existente.estado as EstadoIncidente;
     const permitidos = TRANSICIONES[estadoActual] ?? [];
 
     if (!permitidos.includes(dto.estado)) {
@@ -483,38 +526,21 @@ export class ReportesCampoService {
         id,
         'TRANSICION_NO_VALIDA',
         BadRequestException,
-        `Transición no válida: de ${ESTADO_LABELS[estadoActual]} solo puede avanzar a ${permitidosLabel}`,
+        `Transición no válida: de ${ESTADO_LABELS[estadoActual]} solo puede pasar a ${permitidosLabel}`,
       );
     }
 
-    // El cliente no es confiable: RESUELTO exige responsable previo en la BD,
-    // no solo en la UI (review PR #15, sugerencia "Sin asignar").
-    if (dto.estado === EstadoReporteCampo.RESUELTO && !existente.asignado_a_id && !existente.asignado_nombre) {
-      return this.fallir(
-        AuditAction.ESTATUS_CAMBIADO,
-        id,
-        'RESPONSABLE_REQUERIDO',
-        BadRequestException,
-        'No se puede marcar Resuelto sin responsable: asígnale uno primero',
-      );
-    }
-
-    // Guard anti-carrera (review PR #15): solo cambia el reporte que SIGUE en
-    // el estado y con la MISMA asignación que se leyó — si otro cambio
-    // simultáneo movió el estado o la asignación, el updateMany no toca nada
-    // (impide pisar resuelto_en y el caso "quitan asignación mientras otro
-    // marca Resuelto").
+    // Guard anti-carrera: solo cambia el incidente que SIGUE en el estado leído
+    // (si otro cambio simultáneo lo movió, el updateMany no toca nada).
     const actualizada = await this.prisma.reportes_campo.updateMany({
       where: {
         id,
         estado: estadoActual,
-        asignado_a_id: existente.asignado_a_id,
-        asignado_nombre: existente.asignado_nombre,
         eliminado_en: null,
       },
       data: {
         estado: dto.estado,
-        ...(dto.estado === EstadoReporteCampo.RESUELTO && { resuelto_en: new Date() }),
+        ...(dto.estado === EstadoIncidente.CERRADO && { cerrado_en: new Date() }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -525,7 +551,7 @@ export class ReportesCampoService {
         id,
         'CONFLICTO_CONCURRENCIA',
         ConflictException,
-        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+        'El incidente cambió simultáneamente: recarga e intenta de nuevo',
       );
     }
 
@@ -554,15 +580,164 @@ export class ReportesCampoService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: { estado: ESTADO_LABELS[estadoActual] },
-      newValue: {
-        estado: ESTADO_LABELS[dto.estado],
-        ...(dto.estado === EstadoReporteCampo.RESUELTO && {
-          resueltoPor: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? 'Sin asignar',
-        }),
-      },
+      newValue: { estado: ESTADO_LABELS[dto.estado] },
     });
 
     return serialized;
+  }
+
+  // ────────────────────────────────────────────
+  //  COMENTAR (actividad del incidente)
+  // ────────────────────────────────────────────
+  async comentar(id: string, dto: ActividadDto, userId: string) {
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_COMENTADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
+      return this.fallir(
+        AuditAction.REPORTE_COMENTADO,
+        id,
+        'INCIDENTE_CERRADO',
+        BadRequestException,
+        'Un incidente Cerrado no admite más actividades',
+      );
+    }
+
+    const nombreAutor = this.nombreActor(existente, userId);
+
+    const actividad = await this.prisma.reportes_actividades.create({
+      data: {
+        id: randomUUID(),
+        reporte_id: id,
+        texto: dto.texto.trim(),
+        autor_nombre: nombreAutor,
+      },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_COMENTADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        actividadId: actividad.id,
+        codigo: existente.codigo,
+        texto: dto.texto.trim().slice(0, 120),
+      },
+    });
+
+    return {
+      id: actividad.id,
+      texto: actividad.texto,
+      autorNombre: actividad.autor_nombre,
+      creadoEn: actividad.creado_en.toISOString(),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  ADJUNTAR IMAGEN (base64 en BD)
+  // ────────────────────────────────────────────
+  async adjuntar(id: string, dto: AdjuntoDto, userId: string) {
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'INCIDENTE_CERRADO',
+        BadRequestException,
+        'Un incidente Cerrado no admite más adjuntos',
+      );
+    }
+
+    if (!MIMES_ADJUNTO.includes(dto.mime)) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'MIME_NO_PERMITIDO',
+        BadRequestException,
+        `Formato no permitido (${dto.mime}). Usa JPG, PNG, WebP o GIF`,
+      );
+    }
+
+    // tamaño declarado y tamaño real del base64 (≈ 3/4 de la longitud) deben
+    // caber en el límite — evita que un payload inflado pase con tamano falso.
+    const bytesDecodificados = Math.floor((dto.datos.length * 3) / 4);
+    if (dto.tamano > MAX_TAMANO_ADJUNTO || bytesDecodificados > MAX_TAMANO_ADJUNTO) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'ADJUNTO_MUY_GRANDE',
+        BadRequestException,
+        'La imagen excede el máximo de 2 MB',
+      );
+    }
+
+    const total = await this.prisma.reportes_adjuntos.count({ where: { reporte_id: id } });
+    if (total >= MAX_ADJUNTOS) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'LIMITE_ADJUNTOS',
+        BadRequestException,
+        `El incidente ya tiene ${MAX_ADJUNTOS} imágenes`,
+      );
+    }
+
+    const adjunto = await this.prisma.reportes_adjuntos.create({
+      data: {
+        id: randomUUID(),
+        reporte_id: id,
+        nombre: dto.nombre.trim() || 'imagen',
+        mime: dto.mime,
+        tamano: dto.tamano,
+        datos: dto.datos,
+      },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_ADJUNTO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        adjuntoId: adjunto.id,
+        codigo: existente.codigo,
+        nombre: adjunto.nombre,
+        tamano: adjunto.tamano,
+      },
+    });
+
+    return this.serializeAdjunto(adjunto);
   }
 
   // ────────────────────────────────────────────
@@ -603,187 +778,36 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  FACTURAR (reporte RESUELTO → CxC, O5)
-  // ────────────────────────────────────────────
-  /**
-   * Cierra el reporte de campo facturado y hace nacer la CxC en una sola
-   * transacción: estado FACTURADO (guard anti doble clic) + cuenta por cobrar
-   * PENDIENTE a 30 días. Emite los audits REPORTE_CAMPO_FACTURADO +
-   * CXC_CREADA (SUCCESS). Permiso: operaciones.reportes_campo.editar
-   */
-  async facturar(id: string, userId: string) {
-    const reporte = await this.prisma.reportes_campo.findFirst({
-      where: { id, eliminado_en: null },
-    });
-
-    if (!reporte) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'REPORTE_NO_ENCONTRADO',
-        NotFoundException,
-        `Reporte de campo con id "${id}" no encontrado`,
-      );
-    }
-
-    if (reporte.estado !== EstadoReporteCampo.RESUELTO) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'REPORTE_NO_RESUELTO',
-        ConflictException,
-        `Solo los reportes Resueltos pueden facturarse (estado actual: ${ESTADO_LABELS[reporte.estado as EstadoReporteCampo]})`,
-      );
-    }
-
-    if (!reporte.cliente_id || !reporte.monto_servicio) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'DATOS_FACTURACION_INCOMPLETOS',
-        ConflictException,
-        'El reporte necesita cliente y monto de servicio para facturarse',
-      );
-    }
-    const clienteId = reporte.cliente_id;
-    const monto = Number(reporte.monto_servicio);
-
-    const cliente = await this.prisma.clientes.findFirst({
-      where: { id: clienteId, activo: true, eliminado_en: null },
-      select: { id: true },
-    });
-    if (!cliente) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'CLIENTE_INACTIVO',
-        ConflictException,
-        'El cliente del reporte está inactivo',
-      );
-    }
-
-    const proyectoId = reporte.proyecto_id ?? null;
-    const now = new Date();
-    const vencimiento = new Date();
-    vencimiento.setDate(vencimiento.getDate() + 30);
-    const idCxc = randomUUID();
-
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        // Guard anti doble clic: solo marca FACTURADO la fila que sigue RESUELTO.
-        const actualizada = await tx.reportes_campo.updateMany({
-          where: { id, estado: EstadoReporteCampo.RESUELTO },
-          data: { estado: EstadoReporteCampo.FACTURADO, actualizado_por: userId, actualizado_en: now },
-        });
-        if (actualizada.count === 0) {
-          throw new ConflictException('El reporte ya fue facturado');
-        }
-
-        await tx.cuentas_por_cobrar.create({
-          data: {
-            id: idCxc,
-            cliente_id: clienteId,
-            proyecto_id: proyectoId,
-            monto,
-            fecha_vencimiento: vencimiento,
-            estado: 'PENDIENTE',
-            activo: true,
-            actualizado_en: now,
-          },
-        });
-      });
-    } catch (e) {
-      // Carrera de doble clic: el updateMany no marcó nada → conflicto con audit FAIL.
-      if (e instanceof ConflictException) {
-        return this.fallir(
-          AuditAction.REPORTE_CAMPO_FACTURADO,
-          id,
-          'REPORTE_YA_FACTURADO',
-          ConflictException,
-          'El reporte ya fue facturado',
-        );
-      }
-      throw e;
-    }
-
-    await this.auditService.log({
-      action: AuditAction.REPORTE_CAMPO_FACTURADO,
-      entityType: 'reportes_campo',
-      entityId: id,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      newValue: { codigo: reporte.codigo, monto, proyectoId, cuentaId: idCxc },
-    });
-
-    await this.auditService.log({
-      action: AuditAction.CXC_CREADA,
-      entityType: 'cuentas_por_cobrar',
-      entityId: idCxc,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      newValue: {
-        reporteId: id,
-        codigo: reporte.codigo,
-        monto,
-        proyectoId,
-        vencimiento: vencimiento.toISOString().slice(0, 10),
-      },
-    });
-
-    return {
-      cuenta: {
-        id: idCxc,
-        reporteId: id,
-        codigo: reporte.codigo,
-        clienteId: reporte.cliente_id,
-        proyectoId,
-        monto,
-        fechaVencimiento: vencimiento.toISOString().slice(0, 10),
-        estado: 'PENDIENTE',
-      },
-      reporte: { id, codigo: reporte.codigo, estado: 'Facturado' },
-    };
-  }
-
-  // ────────────────────────────────────────────
   //  ESTADÍSTICAS (alimentan las tarjetas y el banner)
   // ────────────────────────────────────────────
   async findStats() {
     const baseWhere = { eliminado_en: null };
 
-    const [pendientes, enRevision, atendidos, resueltos, criticosActivos, porAreaRaw] =
-      await Promise.all([
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.PENDIENTE },
-        }),
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.EN_REVISION },
-        }),
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.ATENDIDO },
-        }),
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.RESUELTO },
-        }),
-        this.prisma.reportes_campo.count({
-          where: {
-            ...baseWhere,
-            tipo: TipoReporteCampo.INCIDENTE,
-            prioridad: { in: [Prioridad.ALTA, Prioridad.CRITICA] },
-            estado: { not: EstadoReporteCampo.RESUELTO },
-          },
-        }),
-        // Desglose por área (tipo de reporte): alimenta los chips de filtro.
-        this.prisma.reportes_campo.groupBy({
-          by: ['tipo'],
-          where: baseWhere,
-          _count: true,
-        }),
-      ]);
+    const [nuevos, enCurso, cerrados, criticosActivos, porAreaRaw] = await Promise.all([
+      this.prisma.reportes_campo.count({
+        where: { ...baseWhere, estado: EstadoIncidente.NUEVO },
+      }),
+      this.prisma.reportes_campo.count({
+        where: { ...baseWhere, estado: EstadoIncidente.EN_CURSO },
+      }),
+      this.prisma.reportes_campo.count({
+        where: { ...baseWhere, estado: EstadoIncidente.CERRADO },
+      }),
+      this.prisma.reportes_campo.count({
+        where: {
+          ...baseWhere,
+          tipo: TipoReporteCampo.INCIDENTE,
+          prioridad: { in: [Prioridad.ALTA, Prioridad.CRITICA] },
+          estado: { not: EstadoIncidente.CERRADO },
+        },
+      }),
+      // Desglose por área (tipo de reporte): alimenta los chips de filtro.
+      this.prisma.reportes_campo.groupBy({
+        by: ['tipo'],
+        where: baseWhere,
+        _count: true,
+      }),
+    ]);
 
     const porArea: Record<string, number> = {};
     for (const agregado of porAreaRaw) {
@@ -791,15 +815,19 @@ export class ReportesCampoService {
       porArea[label] = agregado._count;
     }
 
-    return { pendientes, enRevision, atendidos, resueltos, criticosActivos, porArea };
+    return {
+      nuevos,
+      enCurso,
+      cerrados,
+      criticosActivos,
+      porArea,
+    };
   }
 
-  // ────────────────────────────────────────────
-  //  PRIVADOS
-  // ────────────────────────────────────────────
+  // ════════════════════════════════════════════
+  //  HELPERS PRIVADOS
+  // ════════════════════════════════════════════
 
-  /** Audita un fallo de negocio y lanza la excepción correspondiente. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async fallir<A extends new (message: string) => any>(
     action: AuditAction,
     entityId: string | null,
@@ -860,6 +888,66 @@ export class ReportesCampoService {
     return obra.id;
   }
 
+  /** Autor visible de la actividad: persona asignada, quien reporta o usuario autenticado. */
+  private nombreActor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    reporte: any,
+    userId: string,
+  ): string {
+    const asignado = reporte.asignado_a?.nombre ?? reporte.asignado_nombre;
+    return asignado ?? reporte.usuario ?? userId;
+  }
+
+  /**
+   * Valida que la subcategoría exista, esté activa y pertenezca a la categoría
+   * (torre) declarada — si no, audita FAIL y lanza.
+   */
+  private async validarSubcategoria(
+    categoria: CategoriaReporte | null,
+    subcategoriaId: string | undefined,
+    action: AuditAction,
+    entityId: string | null,
+  ): Promise<void> {
+    if (!subcategoriaId) return;
+
+    const subcategoria = await this.prisma.subcategorias_reporte.findFirst({
+      where: { id: subcategoriaId, activo: true },
+      select: { categoria: true },
+    });
+
+    if (!subcategoria) {
+      await this.fallir(
+        action,
+        entityId,
+        'SUBCATEGORIA_NO_ENCONTRADA',
+        BadRequestException,
+        `Subcategoría con id "${subcategoriaId}" no encontrada`,
+      );
+    }
+
+    if (categoria && subcategoria!.categoria !== categoria) {
+      await this.fallir(
+        action,
+        entityId,
+        'SUBCATEGORIA_INVALIDA',
+        BadRequestException,
+        `La subcategoría no pertenece a la categoría ${CATEGORIA_LABELS[categoria] ?? categoria}`,
+      );
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private serializeAdjunto(adjunto: any) {
+    return {
+      id: adjunto.id,
+      nombre: adjunto.nombre,
+      mime: adjunto.mime,
+      tamano: adjunto.tamano,
+      datos: adjunto.datos,
+      creadoEn: adjunto.creado_en.toISOString(),
+    };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(reporte: any) {
     return {
@@ -870,6 +958,8 @@ export class ReportesCampoService {
         reporte.categoria != null
           ? (CATEGORIA_LABELS[reporte.categoria] ?? reporte.categoria)
           : null,
+      subcategoriaId: reporte.subcategoria_id,
+      subcategoria: reporte.subcategoria?.nombre ?? null,
       usuario: reporte.usuario,
       usuarioId: reporte.usuario_id,
       maquinaId: reporte.maquina_id,
@@ -877,11 +967,8 @@ export class ReportesCampoService {
       maquinaNombre: reporte.maquinas?.nombre ?? null,
       obraId: reporte.obra_id,
       obra: reporte.obra_texto,
-      clienteId: reporte.cliente_id,
-      cliente: reporte.clientes?.nombre ?? null,
-      proyectoId: reporte.proyecto_id,
-      proyecto: reporte.proyectos?.nombre ?? null,
-      montoServicio: reporte.monto_servicio != null ? Number(reporte.monto_servicio) : null,
+      latitud: reporte.latitud != null ? Number(reporte.latitud) : null,
+      longitud: reporte.longitud != null ? Number(reporte.longitud) : null,
       fecha:
         reporte.fecha instanceof Date
           ? reporte.fecha.toISOString().split('T')[0]
@@ -891,7 +978,7 @@ export class ReportesCampoService {
           ? reporte.hora.toTimeString().slice(0, 5)
           : String(reporte.hora).slice(0, 5),
       descripcion: reporte.descripcion,
-      estado: ESTADO_LABELS[reporte.estado as EstadoReporteCampo] ?? reporte.estado,
+      estado: ESTADO_LABELS[reporte.estado as EstadoIncidente] ?? reporte.estado,
       prioridad:
         reporte.prioridad != null
           ? PRIORIDAD_LABELS[reporte.prioridad as Prioridad]
@@ -900,7 +987,7 @@ export class ReportesCampoService {
       asignadoANombre: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? null,
       asignadoAPuesto: reporte.asignado_a?.puesto ?? null,
       asignadoEn: reporte.asignado_en?.toISOString?.() ?? reporte.asignado_en ?? null,
-      resueltoEn: reporte.resuelto_en?.toISOString?.() ?? reporte.resuelto_en ?? null,
+      cerradoEn: reporte.cerrado_en?.toISOString?.() ?? reporte.cerrado_en ?? null,
       detalles: reporte.detalles,
       activo: reporte.activo,
       creadoEn: reporte.creado_en?.toISOString?.() ?? reporte.creado_en,

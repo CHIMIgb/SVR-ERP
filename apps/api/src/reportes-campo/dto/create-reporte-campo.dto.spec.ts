@@ -2,10 +2,14 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreateReporteCampoDto } from './create-reporte-campo.dto';
 import { CambiarEstadoDto } from './cambiar-estado.dto';
+import { ActividadDto } from './actividad.dto';
+import { AdjuntoDto } from './adjunto.dto';
+import { UpdateReporteCampoDto } from './update-reporte-campo.dto';
 
-describe('CreateReporteCampoDto', () => {
+describe('CreateReporteCampoDto (flujo v2)', () => {
   const base = {
     tipo: 'PIPERO',
+    categoria: 'DIESEL',
     usuario: 'Marcos G.',
     maquinaId: '550e8400-e29b-41d4-a716-446655440020',
     obraTexto: 'Valle Sur',
@@ -15,89 +19,154 @@ describe('CreateReporteCampoDto', () => {
     prioridad: 'MEDIA',
   };
 
-  it('should pass with valid data', async () => {
+  it('pasa con datos válidos', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, base);
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
 
-  it('should fail with invalid tipo', async () => {
+  it('falla con tipo inválido', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, { ...base, tipo: 'SUPERVISOR' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('should fail without usuario', async () => {
+  it('falla sin categoria (torre responsable es requerida)', async () => {
+    const { categoria: _c, ...sinCategoria } = base;
+    const dto = plainToInstance(CreateReporteCampoDto, sinCategoria);
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('falla sin usuario', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, { ...base, usuario: '' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('should fail with bad hora format', async () => {
+  it('falla con fecha sura formato', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, { ...base, hora: '25:99' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('should fail with invalid prioridad', async () => {
+  it('falla con prioridad inválida', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, { ...base, prioridad: 'URGENTE' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('should pass without optionals (maquinaId, obraId, prioridad)', async () => {
+  it('pasa sin opcionales (maquinaId, prioridad, subcategoriaId, GPS)', async () => {
     const { maquinaId: _m, prioridad: _p, ...sinOpcionales } = base;
     const dto = plainToInstance(CreateReporteCampoDto, sinOpcionales);
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
 
-  it('should pass with facturacion fields (clienteId, proyectoId, montoServicio)', async () => {
+  it('pasa con subcategoría y GPS (latitud/longitud ambos)', async () => {
     const dto = plainToInstance(CreateReporteCampoDto, {
       ...base,
-      clienteId: '550e8400-e29b-41d4-a716-446655440030',
-      proyectoId: '550e8400-e29b-41d4-a716-446655440040',
-      montoServicio: 12000.5,
+      maquinaId: undefined,
+      subcategoriaId: '550e8400-e29b-41d4-a716-446655440030',
+      obraTexto: undefined,
+      latitud: 19.4326,
+      longitud: -99.1332,
     });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
 
-  it('should fail with montoServicio negativo o no numérico', async () => {
-    const dtoNegativo = plainToInstance(CreateReporteCampoDto, {
-      ...base,
-      montoServicio: -50,
-    });
-    const errorsNegativo = await validate(dtoNegativo);
-    expect(errorsNegativo.length).toBeGreaterThan(0);
-
-    const dtoTexto = plainToInstance(CreateReporteCampoDto, {
-      ...base,
-      montoServicio: 'caro',
-    });
-    const errorsTexto = await validate(dtoTexto);
-    expect(errorsTexto.length).toBeGreaterThan(0);
+  it('latitud fuera de rango → rechaza', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, { ...base, latitud: 91, longitud: 0 });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('should fail with clienteId que no es UUID', async () => {
-    const dto = plainToInstance(CreateReporteCampoDto, {
-      ...base,
-      clienteId: 'no-es-uuid',
+  it('longitud fuera de rango → rechaza', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, { ...base, latitud: 0, longitud: -181 });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('el DTO ya no contiene validación de facturación (fuera del flujo anterior)', async () => {
+    // clienteId/proyectoId/montoServicio dejaron de validarse: si el payload
+    // viejo llega al endpoint, el whitelist del ValidationPipe lo rechaza (400).
+    expect('clienteId' in new CreateReporteCampoDto()).toBe(false);
+    expect('montoServicio' in new CreateReporteCampoDto()).toBe(false);
+  });
+});
+
+describe('CambiarEstadoDto (flujo v2)', () => {
+  it('acepta EN_CURSO', async () => {
+    const dto = plainToInstance(CambiarEstadoDto, { estado: 'EN_CURSO' });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('acepta CERRADO', async () => {
+    const dto = plainToInstance(CambiarEstadoDto, { estado: 'CERRADO' });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rechaza estados del flujo anterior y NUEVO', async () => {
+    for (const estado of ['PENDIENTE', 'VISTO', 'ATENDIDO', 'EN_REVISION', 'RESUELTO', 'FACTURADO', 'NUEVO']) {
+      const dto = plainToInstance(CambiarEstadoDto, { estado });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('UpdateReporteCampoDto (flujo v2)', () => {
+  it('acepta cambio de categoria + GPS opcionales', async () => {
+    const dto = plainToInstance(UpdateReporteCampoDto, {
+      categoria: 'MANTENIMIENTO',
+      latitud: 19.4,
+      longitud: -99.13,
     });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rechaza categoria inválida', async () => {
+    const dto = plainToInstance(UpdateReporteCampoDto, { categoria: 'COCINERO' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 });
 
-describe('CambiarEstadoDto', () => {
-  it('should pass with a valid estado', async () => {
-    const dto = plainToInstance(CambiarEstadoDto, { estado: 'ATENDIDO' });
+describe('ActividadDto', () => {
+  it('acepta texto válido', async () => {
+    const dto = plainToInstance(ActividadDto, { texto: 'Revisada la bomba de agua' });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
 
-  it('should fail with an invalid estado', async () => {
-    const dto = plainToInstance(CambiarEstadoDto, { estado: 'CANCELADO' });
+  it('rechaza texto vacío', async () => {
+    const dto = plainToInstance(ActividadDto, { texto: '' });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('AdjuntoDto', () => {
+  const base = { nombre: 'evidencia.png', mime: 'image/png', tamano: 67, datos: 'iVBORw0KGgo=' };
+
+  it('acepta PNG válido', async () => {
+    const dto = plainToInstance(AdjuntoDto, base);
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rechaza mime no imagen', async () => {
+    const dto = plainToInstance(AdjuntoDto, { ...base, mime: 'application/pdf' });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('rechaza tamano > 2 MB', async () => {
+    const dto = plainToInstance(AdjuntoDto, { ...base, tamano: 3 * 1024 * 1024 });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });

@@ -20,6 +20,8 @@ import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { AsignarReporteDto } from './dto/asignar-reporte.dto';
+import { ActividadDto } from './dto/actividad.dto';
+import { AdjuntoDto } from './dto/adjunto.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -31,7 +33,7 @@ export class ReportesCampoController {
 
   /**
    * GET /api/reportes-campo
-   * Lista reportes con búsqueda, filtros y paginación.
+   * Lista incidentes con búsqueda, filtros y paginación.
    * Permiso: operaciones.reportes_campo.ver
    */
   @RequirePermission('operaciones', 'reportes_campo', 'ver')
@@ -52,8 +54,19 @@ export class ReportesCampoController {
   }
 
   /**
+   * GET /api/reportes-campo/subcategorias
+   * Catálogo maestro de subcategorías por torre (sin paginar — datos maestros).
+   * Permiso: operaciones.reportes_campo.ver
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'ver')
+  @Get('subcategorias')
+  async subcategorias() {
+    return this.service.subcategorias();
+  }
+
+  /**
    * GET /api/reportes-campo/:id
-   * Obtener un reporte por ID.
+   * Detalle del incidente: reporte + actividades + adjuntos.
    * Permiso: operaciones.reportes_campo.ver
    */
   @RequirePermission('operaciones', 'reportes_campo', 'ver')
@@ -64,7 +77,7 @@ export class ReportesCampoController {
 
   /**
    * POST /api/reportes-campo
-   * Registrar un nuevo reporte de campo (nace PENDIENTE).
+   * Registrar un nuevo incidente (nace NUEVO).
    * Permiso: operaciones.reportes_campo.crear
    */
   @RequirePermission('operaciones', 'reportes_campo', 'crear')
@@ -96,7 +109,7 @@ export class ReportesCampoController {
 
   /**
    * PATCH /api/reportes-campo/:id/estado
-   * Avanza el flujo del reporte (transiciones válidas estrictas).
+   * Iniciar (EN_CURSO) o Cerrar (CERRADO) el incidente.
    * Permiso: operaciones.reportes_campo.editar
    */
   @RequirePermission('operaciones', 'reportes_campo', 'editar')
@@ -111,8 +124,42 @@ export class ReportesCampoController {
   }
 
   /**
+   * POST /api/reportes-campo/:id/actividades
+   * Publica una actividad en la bitácora del incidente.
+   * Permiso: operaciones.reportes_campo.editar
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'editar')
+  @Post(':id/actividades')
+  @HttpCode(HttpStatus.CREATED)
+  async comentar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ActividadDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.service.comentar(id, dto, user.id);
+  }
+
+  /**
+   * POST /api/reportes-campo/:id/adjuntos
+   * Adjunta una imagen al incidente (base64, máx 2 MB).
+   * Permiso: operaciones.reportes_campo.editar
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'editar')
+  @Post(':id/adjuntos')
+  @HttpCode(HttpStatus.CREATED)
+  async adjuntar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdjuntoDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.service.adjuntar(id, dto, user.id);
+  }
+
+  /**
    * PATCH /api/reportes-campo/:id
-   * Actualizar contenido — solo permitido mientras PENDIENTE.
+   * Actualizar contenido — bloqueado si está Cerrado.
    * Permiso: operaciones.reportes_campo.editar
    */
   @RequirePermission('operaciones', 'reportes_campo', 'editar')
@@ -127,24 +174,8 @@ export class ReportesCampoController {
   }
 
   /**
-   * POST /api/reportes-campo/:id/facturar
-   * Factura un reporte Resuelto con cliente + monto → nace la CxC.
-   * Permiso: operaciones.reportes_campo.editar
-   */
-  @RequirePermission('operaciones', 'reportes_campo', 'editar')
-  @Post(':id/facturar')
-  @HttpCode(HttpStatus.CREATED)
-  async facturar(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: Request,
-  ) {
-    const user = req.user as { id: string };
-    return this.service.facturar(id, user.id);
-  }
-
-  /**
    * DELETE /api/reportes-campo/:id
-   * Eliminar (soft delete) un reporte.
+   * Eliminar (soft delete) un incidente.
    * Permiso: operaciones.reportes_campo.eliminar
    */
   @RequirePermission('operaciones', 'reportes_campo', 'eliminar')

@@ -1,7 +1,7 @@
 import { IsEnum, IsIn, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
-  EstadoReporteCampo,
+  EstadoIncidente,
   Prioridad,
   TipoReporteCampo,
 } from '@prisma/client';
@@ -12,8 +12,8 @@ export class QueryReportesCampoDto {
   search?: string;
 
   @IsOptional()
-  @IsEnum(EstadoReporteCampo)
-  estado?: EstadoReporteCampo;
+  @IsEnum(EstadoIncidente)
+  estado?: EstadoIncidente;
 
   @IsOptional()
   @IsEnum(TipoReporteCampo)

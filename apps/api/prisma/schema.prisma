@@ -289,7 +289,6 @@ model clientes {
   facturas                              facturas[]
   pagos                                 pagos[]
   proyectos                             proyectos[]
-  reportes_campo                        reportes_campo[]
   trabajadores                          trabajadores[]
 }
 
@@ -1257,7 +1256,6 @@ model proyectos {
   clientes                               clientes                 @relation(fields: [cliente_id], references: [id])
   trabajadores_proyectos                 trabajadores_proyectos[]
   cuentas_por_cobrar                     cuentas_por_cobrar[]
-  reportes_campo                         reportes_campo[]
 
   @@index([estado], map: "idx_proyectos_estado")
   @@index([cliente_id])
@@ -1439,11 +1437,12 @@ model reportes_campo {
   codigo                                      String?            @unique
   tipo                                        TipoReporteCampo
   categoria                                   CategoriaReporte?
+  subcategoria_id                             String?            @db.Uuid
   usuario                                     String
   maquina_id                                  String?            @db.Uuid
   fecha                                       DateTime           @db.Date
   descripcion                                 String
-  estado                                      EstadoReporteCampo @default(PENDIENTE)
+  estado                                      EstadoIncidente    @default(NUEVO)
   prioridad                                   Prioridad?
   detalles                                    Json?
   activo                                      Boolean            @default(true)
@@ -1456,29 +1455,67 @@ model reportes_campo {
   obra_texto                                  String
   usuario_id                                  String?            @db.Uuid
   hora                                        DateTime           @db.Time(0)
-  cliente_id                                  String?            @db.Uuid
-  proyecto_id                                 String?            @db.Uuid
-  monto_servicio                              Decimal?           @db.Decimal(14, 2)
+  latitud                                     Decimal?           @db.Decimal(10, 7)
+  longitud                                    Decimal?           @db.Decimal(10, 7)
   asignado_a_id                               String?            @db.Uuid
   asignado_en                                 DateTime?          @db.Timestamptz()
   asignado_nombre                             String?
-  resuelto_en                                 DateTime?          @db.Timestamptz()
+  cerrado_en                                  DateTime?          @db.Timestamptz()
   asignado_a                                  trabajadores?      @relation("reportes_campo_asignado_a", fields: [asignado_a_id], references: [id])
   users_reportes_campo_actualizado_porTousers users?             @relation("reportes_campo_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_actualizado_por")
   users_reportes_campo_creado_porTousers      users?             @relation("reportes_campo_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_creado_por")
   users_reportes_campo_usuario_idTousers      users?             @relation("reportes_campo_usuario_idTousers", fields: [usuario_id], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_usuario")
   maquinas                                    maquinas?          @relation(fields: [maquina_id], references: [id])
   obras                                       obras?             @relation(fields: [obra_id], references: [id])
-  clientes                                    clientes?          @relation(fields: [cliente_id], references: [id], onDelete: SetNull, map: "fk_reportes_campo_cliente")
-  proyectos                                   proyectos?         @relation(fields: [proyecto_id], references: [id], onDelete: SetNull, map: "fk_reportes_campo_proyecto")
+  subcategoria                                subcategorias_reporte? @relation(fields: [subcategoria_id], references: [id])
+  actividades                                 reportes_actividades[]
+  adjuntos                                    reportes_adjuntos[]
 
   @@index([detalles], map: "idx_reportes_campo_detalles", type: Gin)
   @@index([fecha])
   @@index([maquina_id])
-  @@index([cliente_id])
-  @@index([proyecto_id])
   @@index([tipo, estado])
   @@index([asignado_a_id])
+  @@index([subcategoria_id])
+}
+
+/// Catálogo de subcategorías por torre (ej. Diesel → "150 litros de diésel").
+model subcategorias_reporte {
+  id          String             @id @db.Uuid
+  categoria   CategoriaReporte
+  nombre      String
+  activo      Boolean            @default(true)
+  creado_en   DateTime           @default(now()) @db.Timestamptz()
+  actualizado_en DateTime         @default(now()) @db.Timestamptz()
+  reportes    reportes_campo[]
+
+  @@unique([categoria, nombre])
+}
+
+/// Bitácora de trabajo del incidente (comentarios/actividades publicadas).
+model reportes_actividades {
+  id           String        @id @db.Uuid
+  reporte_id   String        @db.Uuid
+  texto        String
+  autor_nombre String
+  creado_en    DateTime      @default(now()) @db.Timestamptz()
+  reporte      reportes_campo @relation(fields: [reporte_id], references: [id], onDelete: Cascade)
+
+  @@index([reporte_id])
+}
+
+/// Imágenes del incidente (base64 en BD; sin almacenamiento externo).
+model reportes_adjuntos {
+  id           String        @id @db.Uuid
+  reporte_id   String        @db.Uuid
+  nombre       String
+  mime         String
+  tamano       Int
+  datos        String
+  creado_en    DateTime      @default(now()) @db.Timestamptz()
+  reporte      reportes_campo @relation(fields: [reporte_id], references: [id], onDelete: Cascade)
+
+  @@index([reporte_id])
 }
 
 model role_permissions {
@@ -2132,7 +2169,8 @@ enum AuditAction {
   REPORTE_CREADO
   REPORTE_ACTUALIZADO
   REPORTE_ELIMINADO
-  REPORTE_CAMPO_FACTURADO
+  REPORTE_COMENTADO
+  REPORTE_ADJUNTO
   ESTATUS_CAMBIADO
   PAGO_REGISTRADO
   PAGO_ACTUALIZADO
@@ -2357,13 +2395,10 @@ enum EstadoRenta {
   DISPONIBLE_PATIO
 }
 
-enum EstadoReporteCampo {
-  PENDIENTE
-  VISTO
-  ATENDIDO
-  EN_REVISION
-  RESUELTO
-  FACTURADO
+enum EstadoIncidente {
+  NUEVO
+  EN_CURSO
+  CERRADO
 }
 
 enum EstadoSistema {

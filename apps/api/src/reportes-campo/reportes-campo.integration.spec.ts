@@ -1,19 +1,20 @@
 /**
  * Integration tests for ReportesCampoService — real DB, no mocks.
  *
- * Verifies CRUD limitado + flujo de estados + auditoría:
+ * Nuevo flujo de incidentes: NUEVO → EN_CURSO → CERRADO, actividades,
+ * adjuntos, subcategorías por torre + auditoría:
  *   REPORTE_CREADO, REPORTE_ACTUALIZADO, REPORTE_ELIMINADO,
- *   ESTATUS_CAMBIADO (éxitos y fallos)
+ *   REPORTE_COMENTADO, REPORTE_ADJUNTO, ESTATUS_CAMBIADO (éxitos y fallos)
  *
  * Run with: npm run test:integration -- --testPathPattern="reportes-campo"
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException, ConflictException } from '@nestjs/common';
+import { INestApplication, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
   CategoriaReporte,
-  EstadoReporteCampo,
+  EstadoIncidente,
   Prioridad,
   TipoReporteCampo,
 } from '@prisma/client';
@@ -25,6 +26,11 @@ import { ReportesCampoService } from './reportes-campo.service';
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
 
+/** PNG 1x1 válido (67 bytes) para pruebas reales de adjuntos. */
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const PNG_FALSO_BASE64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERAT'; // jpeg header truncado
+
 describe('ReportesCampo Audit (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -33,8 +39,6 @@ describe('ReportesCampo Audit (Real DB)', () => {
   let auditContext: any;
 
   const createdIds: string[] = [];
-  const cxcFacturadas: string[] = [];
-  const clientesFacturados: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -52,20 +56,10 @@ describe('ReportesCampo Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
-    // Orden FK-safe: CxC → reportes → clientes (registro_auditoria es inmutable).
-    if (cxcFacturadas.length > 0) {
-      await prisma.cuentas_por_cobrar.deleteMany({
-        where: { id: { in: cxcFacturadas } },
-      });
-    }
+    // Orden FK-safe: actividades/adjuntos → reportes (registro_auditoria es inmutable).
     if (createdIds.length > 0) {
       await prisma.reportes_campo.deleteMany({
         where: { id: { in: createdIds } },
-      });
-    }
-    if (clientesFacturados.length > 0) {
-      await prisma.clientes.deleteMany({
-        where: { id: { in: clientesFacturados } },
       });
     }
 
@@ -176,6 +170,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
       expect(row!.codigo).toBe(reporte.codigo);
       expect(row!.categoria).toBe('DIESEL');
+      expect(row!.estado).toBe('NUEVO');
 
       // el siguiente create NO repite folio (correlativo fresco, unicidad por BD)
       const otro = await service.create(createDto(), ACTOR_USER_ID);
@@ -195,80 +190,286 @@ describe('ReportesCampo Audit (Real DB)', () => {
           data: {
             id: randomUUID(),
             tipo: 'PIPERO',
-            // @ts-expect-error — valor fuera del enum debe ser rechazado por PG
-            categoria: 'COCINERO',
+            categoria: 'COCINERO', // valor fuera del enum — PG debe rechazarlo
             usuario: `Test ${TEST_ID}`,
             obra_texto: 'Test',
             fecha: new Date(),
             hora: '10:00',
             descripcion: `Categoria inválida ${TEST_ID}`,
-            estado: 'PENDIENTE',
-          },
+            estado: 'NUEVO',
+          } as never,
         }),
       ).rejects.toThrow();
     });
   });
 
-  describe('RESUELTO — resuelto_en y quién lo resolvió (BD real)', () => {
-    it('asigna → resuelve el flujo completo y persiste resuelto_en real', async () => {
+  describe('SUBCATEGORIAS — catálogo por torre (BD real)', () => {
+    it('valida que la subcategoría pertenezca a la categoría y la persista', async () => {
+      //Diesel del seed
+      const subDiesel = await prisma.subcategorias_reporte.findFirst({
+        where: { categoria: 'DIESEL', activo: true },
+      });
+      expect(subDiesel).not.toBeNull();
+
+      const reporte = await service.create(
+        createDto({ subcategoriaId: subDiesel!.id }),
+        ACTOR_USER_ID,
+      );
+      createdIds.push(reporte.id);
+      expect(reporte.subcategoria).toBe(subDiesel!.nombre);
+
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.subcategoria_id).toBe(subDiesel!.id);
+
+      // auditoría SUCCESS con subcategoría en el payload
+      const audits = await findAudits(AuditAction.REPORTE_CREADO, reporte.id);
+      expect(
+        (audits[0].new_value as { subcategoria?: string })?.subcategoria,
+      ).toBe(subDiesel!.nombre);
+    });
+
+    it('rechaza subcategoría ajena a la categoría (SUBCATEGORIA_INVALIDA, FAIL auditado)', async () => {
+      const subMecanico = await prisma.subcategorias_reporte.findFirst({
+        where: { categoria: 'MECANICO', activo: true },
+      });
+      expect(subMecanico).not.toBeNull();
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.create(createDto({ subcategoriaId: subMecanico!.id }), ACTOR_USER_ID),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.REPORTE_CREADO,
+          result: 'FAIL',
+          error_code: 'SUBCATEGORIA_INVALIDA',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+    });
+
+    it('exponde el catálogo agrupado por torre (≥1 por cada categoría sembrada)', async () => {
+      const catalogo = await service.subcategorias();
+      expect(catalogo.length).toBeGreaterThanOrEqual(9);
+      const diesel = catalogo.filter((s) => s.categoria === 'Diesel');
+      expect(diesel.some((s) => s.nombre === '150 litros de diésel')).toBe(true);
+      const admin = catalogo.filter((s) => s.categoria === 'Administrativo');
+      expect(admin.some((s) => s.nombre === 'Cubeta de aceite')).toBe(true);
+    });
+  });
+
+  describe('CERRAR — cerrado_en y flujo NUEVO → EN_CURSO → CERRADO (BD real)', () => {
+    it('recorre el flujo completo y persiste cerrado_en real', async () => {
       // arrange
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
-      const trabajador = await prisma.trabajadores.findFirst({
-        where: { eliminado_en: null, activo: true },
-        select: { id: true },
-      });
 
-      await service.asignar(reporte.id, { asignadoA: trabajador!.id }, ACTOR_USER_ID);
       await auditContext.run(
         { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
-        () => service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID),
+        () => service.cambiarEstado(reporte.id, { estado: EstadoIncidente.EN_CURSO }, ACTOR_USER_ID),
       );
       await auditContext.run(
         { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
-        () => service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID),
-      );
-      await auditContext.run(
-        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
-        () => service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID),
+        () => service.cambiarEstado(reporte.id, { estado: EstadoIncidente.CERRADO }, ACTOR_USER_ID),
       );
 
       // assert: BD real
       const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
-      expect(row!.estado).toBe('RESUELTO');
-      expect(row!.resuelto_en).not.toBeNull();
-      // el responsable sigue visible (quién lo resolvió)
-      expect(row!.asignado_a_id).toBe(trabajador!.id);
-    });
-  });
+      expect(row!.estado).toBe('CERRADO');
+      expect(row!.cerrado_en).not.toBeNull();
 
-  describe('RESUELTO sin responsable — RESPONSABLE_REQUERIDO (BD real)', () => {
-    it('rechaza marcar Resuelto sin asignación y audita FAIL real', async () => {
-      // arrange — reporte sin asignación alguna, hasta ATENDIDO (transición legal)
+      const audits = await findAudits(AuditAction.ESTATUS_CAMBIADO, reporte.id);
+      const cierre = audits.find(
+        (a) => (a.new_value as Record<string, unknown>)?.estado === 'Cerrado',
+      );
+      expect(cierre?.result).toBe('SUCCESS');
+      expect(cierre!.previous_value).toEqual({ estado: 'En curso' });
+    });
+
+    it('CERRADO es terminal: rechaza reabrir y audita TRANSICION_NO_VALIDA', async () => {
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
-      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
-      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID);
+      await service.cambiarEstado(reporte.id, { estado: EstadoIncidente.CERRADO }, ACTOR_USER_ID);
 
-      // act / assert
       await auditContext.run(
         { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
         async () => {
           await expect(
-            service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID),
+            service.cambiarEstado(reporte.id, { estado: EstadoIncidente.EN_CURSO }, ACTOR_USER_ID),
           ).rejects.toThrow(BadRequestException);
         },
       );
 
       const audits = await findAudits(AuditAction.ESTATUS_CAMBIADO, reporte.id);
       const fail = audits.find((a) => a.result === 'FAIL');
-      expect(fail?.error_code).toBe('RESPONSABLE_REQUERIDO');
-      expect(fail?.actor_user_id).toBe(ACTOR_USER_ID);
+      expect(fail?.error_code).toBe('TRANSICION_NO_VALIDA');
 
-      // la BD quedó intacta en ATENDIDO (no se movió el estado)
+      // la BD quedó intacta (cerrado, sin "reabrir")
       const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
-      expect(row!.estado).toBe('ATENDIDO');
-      expect(row!.resuelto_en).toBeNull();
+      expect(row!.estado).toBe('CERRADO');
+    });
+
+    it('rechaza reasignar un incidente Cerrado (REPORTE_CERRADO, FAIL auditado)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      await service.cambiarEstado(reporte.id, { estado: EstadoIncidente.CERRADO }, ACTOR_USER_ID);
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        async () => {
+          await expect(
+            service.asignar(reporte.id, { asignadoNombre: 'Tarde' }, ACTOR_USER_ID),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      const audits = await findAudits(AuditAction.REPORTE_ASIGNADO, reporte.id);
+      const fail = audits.find((a) => a.result === 'FAIL');
+      expect(fail?.error_code).toBe('REPORTE_CERRADO');
+
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.asignado_a_id).toBeNull();
+      expect(row!.asignado_nombre).toBeNull();
+    });
+  });
+
+  describe('ACTIVIDADES — bitácora del incidente (BD real)', () => {
+    it('publica actividad + audit SUCCESS, y el detalle la retorna', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      const actividad = await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        () => service.comentar(reporte.id, { texto: 'Se revisó la bomba, falta refacción' }, ACTOR_USER_ID),
+      );
+      expect(actividad.texto).toBe('Se revisó la bomba, falta refacción');
+
+      const row = await prisma.reportes_actividades.findUnique({
+        where: { id: actividad.id },
+      });
+      expect(row!.reporte_id).toBe(reporte.id);
+      expect(row!.autor_nombre).toBeTruthy();
+
+      const audits = await findAudits(AuditAction.REPORTE_COMENTADO, reporte.id);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect((audits[0].new_value as { actividadId?: string })?.actividadId).toBe(actividad.id);
+
+      // el detalle del incidente incluye la bitácora
+      const detalle = await service.findOne(reporte.id);
+      expect(detalle.actividades.map((a) => a.id)).toContain(actividad.id);
+    });
+
+    it('rechaza comentar un incidente Cerrado (INCIDENTE_CERRADO, FAIL auditado)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      await service.cambiarEstado(reporte.id, { estado: EstadoIncidente.CERRADO }, ACTOR_USER_ID);
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.comentar(reporte.id, { texto: 'comentario tardío' }, ACTOR_USER_ID),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      const audits = await findAudits(AuditAction.REPORTE_COMENTADO, reporte.id);
+      const fail = audits.find((a) => a.result === 'FAIL');
+      expect(fail?.error_code).toBe('INCIDENTE_CERRADO');
+      expect(await prisma.reportes_actividades.count({ where: { reporte_id: reporte.id } })).toBe(0);
+    });
+  });
+
+  describe('ADJUNTOS — imágenes del incidente (BD real)', () => {
+    it('adjunta imagen PNG + audit SUCCESS, y el detalle la retorna', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      const adjunto = await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        () =>
+          service.adjuntar(
+            reporte.id,
+            { nombre: 'evidencia.png', mime: 'image/png', tamano: 67, datos: PNG_1X1_BASE64 },
+            ACTOR_USER_ID,
+          ),
+      );
+      expect(adjunto.mime).toBe('image/png');
+
+      const row = await prisma.reportes_adjuntos.findUnique({ where: { id: adjunto.id } });
+      expect(row!.reporte_id).toBe(reporte.id);
+      expect(row!.datos).toBe(PNG_1X1_BASE64);
+
+      const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(audits[0].result).toBe('SUCCESS');
+
+      const detalle = await service.findOne(reporte.id);
+      expect(detalle.adjuntos.map((a) => a.id)).toContain(adjunto.id);
+    });
+
+    it('rechaza mime no permitido (MIME_NO_PERMITIDO, FAIL auditado)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'doc.pdf', mime: 'application/pdf', tamano: 100, datos: PNG_FALSO_BASE64 },
+              ACTOR_USER_ID,
+            ),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      const fail = audits.find((a) => a.result === 'FAIL');
+      expect(fail?.error_code).toBe('MIME_NO_PERMITIDO');
+    });
+
+    it('corta en 4 adjuntos (LIMITE_ADJUNTOS, FAIL auditado)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      for (let i = 0; i < 4; i++) {
+        await service.adjuntar(
+          reporte.id,
+          {
+            nombre: `img${i}.png`,
+            mime: 'image/png',
+            tamano: 67,
+            datos: PNG_1X1_BASE64,
+          },
+          ACTOR_USER_ID,
+        );
+      }
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'img5.png', mime: 'image/png', tamano: 67, datos: PNG_1X1_BASE64 },
+              ACTOR_USER_ID,
+            ),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      expect(await prisma.reportes_adjuntos.count({ where: { reporte_id: reporte.id } })).toBe(4);
+      const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      const fail = audits.find((a) => a.result === 'FAIL');
+      expect(fail?.error_code).toBe('LIMITE_ADJUNTOS');
     });
   });
 
@@ -341,12 +542,12 @@ describe('ReportesCampo Audit (Real DB)', () => {
   });
 
   describe('REPORTE_CREADO', () => {
-    it('debe crear reporte PENDIENTE y auditar', async () => {
+    it('debe crear incidente NUEVO y auditar', async () => {
       const dto = createDto({ prioridad: Prioridad.ALTA });
       const reporte = await service.create(dto, ACTOR_USER_ID);
       createdIds.push(reporte.id);
 
-      expect(reporte.estado).toBe('Pendiente');
+      expect(reporte.estado).toBe('Nuevo');
       expect(reporte.prioridad).toBe('Alta');
 
       const audits = await findAudits(AuditAction.REPORTE_CREADO, reporte.id);
@@ -356,71 +557,26 @@ describe('ReportesCampo Audit (Real DB)', () => {
     });
   });
 
-  describe('flujo de estados — ESTATUS_CAMBIADO', () => {
-    it('debe avanzar Pendiente → Visto → Atendido → Resuelto auditando cada paso', async () => {
-      const reporte = await service.create(createDto(), ACTOR_USER_ID);
-      createdIds.push(reporte.id);
-      // El API exige responsable antes de RESUELTO (limit RESUELTO sin asignar)
-      await service.asignar(reporte.id, { asignadoNombre: 'Residente de obra' }, ACTOR_USER_ID);
-
-      const ruta = [
-        { desde: EstadoReporteCampo.PENDIENTE, hacia: EstadoReporteCampo.VISTO, labelDesde: 'Pendiente', labelHacia: 'Visto' },
-        { desde: EstadoReporteCampo.VISTO, hacia: EstadoReporteCampo.ATENDIDO, labelDesde: 'Visto', labelHacia: 'Atendido' },
-        { desde: EstadoReporteCampo.ATENDIDO, hacia: EstadoReporteCampo.RESUELTO, labelDesde: 'Atendido', labelHacia: 'Resuelto' },
-      ];
-
-      for (const paso of ruta) {
-        await auditContext.run(
-          { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
-          async () => {
-            const updated = await service.cambiarEstado(
-              reporte.id,
-              { estado: paso.hacia },
-              ACTOR_USER_ID,
-            );
-            expect(updated.estado).toBe(paso.labelHacia);
-          },
-        );
-      }
-
-      // Verificación final del último salto en auditoría
-      const audits = await findAudits(AuditAction.ESTATUS_CAMBIADO, reporte.id);
-      const ultimo = audits.find(
-        (a) => a.new_value && (a.new_value as Record<string, unknown>).estado === 'Atendido',
+  describe('ubicación — obra o GPS (BD real)', () => {
+    it('crea con lng/lat GPS (ambos) y los persiste', async () => {
+      const reporte = await service.create(
+        createDto({ latitud: 19.4326, longitud: -99.1332, obraTexto: 'Mi ubicación actual' }),
+        ACTOR_USER_ID,
       );
-      expect(audits.length).toBeGreaterThanOrEqual(3);
-      expect(ultimo?.previous_value).toEqual({ estado: 'Visto' });
-      expect((ultimo?.new_value as Record<string, unknown>)?.estado).toBe('Atendido');
-    });
-
-    it('debe rechazar saltos no válidos Y auditar TRANSICION_NO_VALIDA', async () => {
-      const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
 
-      await auditContext.run(
-        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
-        async () => {
-          await expect(
-            service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID),
-          ).rejects.toThrow(BadRequestException);
-        },
-      );
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(Number(row!.latitud)).toBeCloseTo(19.4326, 5);
+      expect(Number(row!.longitud)).toBeCloseTo(-99.1332, 5);
 
-      const audits = await prisma.registro_auditoria.findMany({
-        where: {
-          action: AuditAction.ESTATUS_CAMBIADO,
-          result: 'FAIL',
-          error_code: 'TRANSICION_NO_VALIDA',
-        },
-        orderBy: { timestamp: 'desc' },
-      });
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-      expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
+      const detalle = await service.findOne(reporte.id);
+      expect(detalle.reporte.latitud).toBeCloseTo(19.4326, 5);
+      expect(detalle.reporte.longitud).toBeCloseTo(-99.1332, 5);
     });
   });
 
-  describe('edición limitada a PENDIENTES', () => {
-    it('debe editar mientras PENDIENTE', async () => {
+  describe('edición — bloqueada solo si está CERRADO', () => {
+    it('edita mientras está Nuevo/En curso', async () => {
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
 
@@ -432,11 +588,11 @@ describe('ReportesCampo Audit (Real DB)', () => {
       expect(updated.descripcion).toBe('Corrección de errata');
     });
 
-    it('debe RECHAZAR editar después de avanzar Y auditar EDITAR_SOLO_PENDIENTES', async () => {
+    it('RECHAZA editar después de cerrar Y audita CERRADO_NO_EDITABLE', async () => {
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
 
-      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
+      await service.cambiarEstado(reporte.id, { estado: EstadoIncidente.CERRADO }, ACTOR_USER_ID);
 
       await auditContext.run(
         { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'PATCH' },
@@ -451,7 +607,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
         where: {
           action: AuditAction.REPORTE_ACTUALIZADO,
           result: 'FAIL',
-          error_code: 'EDITAR_SOLO_PENDIENTES',
+          error_code: 'CERRADO_NO_EDITABLE',
         },
         orderBy: { timestamp: 'desc' },
       });
@@ -477,15 +633,15 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const r3 = await service.create(createDto({ usuario: marca }), ACTOR_USER_ID);
       createdIds.push(r3.id);
 
-      // Avanzar r1 (ya no cuenta como pendiente de la marca) y eliminar r2 (excluido)
-      await service.cambiarEstado(r1.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
+      // r1 pasa a En curso; r2 crítico sigue activo; r3 se elimina (excluido)
+      await service.cambiarEstado(r1.id, { estado: EstadoIncidente.EN_CURSO }, ACTOR_USER_ID);
       await service.remove(r3.id, ACTOR_USER_ID);
 
       const stats = await service.findStats();
 
-      // r1 Visto no suma pendientes; r2 crítico sigue activo; r3 eliminado invisible
-      expect(stats.pendientes).toBeGreaterThanOrEqual(0);
-      expect(stats.resueltos).toBeGreaterThanOrEqual(0);
+      expect(stats.nuevos).toBeGreaterThanOrEqual(0);
+      expect(stats.enCurso).toBeGreaterThanOrEqual(1); // r1
+      expect(stats.cerrados).toBeGreaterThanOrEqual(0);
       expect(stats.criticosActivos).toBeGreaterThanOrEqual(1); // r2
 
       // El eliminado (r3) ya no aparece en el listado: quedan r1 y r2
@@ -508,106 +664,6 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
       const audits = await findAudits(AuditAction.REPORTE_ELIMINADO, reporte.id);
       expect(audits[0].result).toBe('SUCCESS');
-    });
-  });
-
-  describe('REPORTE_CAMPO_FACTURADO', () => {
-    const crearClienteReal = async () => {
-      const cliente = await prisma.clientes.create({
-        data: {
-          id: randomUUID(),
-          nombre: `Cliente Facturar ${TEST_ID} ${randomUUID().slice(0, 4)}`,
-          empresa: 'Empresa Test',
-          correo: '',
-          telefono: '',
-          actualizado_en: new Date(),
-        },
-      });
-      clientesFacturados.push(cliente.id);
-      return cliente;
-    };
-
-    const crearReporteResuelto = async (clienteId: string) => {
-      const reporte = await service.create(
-        createDto({ clienteId, montoServicio: 8500.5 }),
-        ACTOR_USER_ID,
-      );
-      createdIds.push(reporte.id);
-      await service.asignar(reporte.id, { asignadoNombre: 'Residente de obra' }, ACTOR_USER_ID);
-      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.VISTO }, ACTOR_USER_ID);
-      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.ATENDIDO }, ACTOR_USER_ID);
-      await service.cambiarEstado(reporte.id, { estado: EstadoReporteCampo.RESUELTO }, ACTOR_USER_ID);
-      return reporte;
-    };
-
-    it('debe crear CxC real y auditar REPORTE_CAMPO_FACTURADO + CXC_CREADA', async () => {
-      const cliente = await crearClienteReal();
-      const reporte = await crearReporteResuelto(cliente.id);
-
-      const resultado = await service.facturar(reporte.id, ACTOR_USER_ID);
-      cxcFacturadas.push(resultado.cuenta.id);
-
-      expect(resultado.cuenta).toMatchObject({
-        reporteId: reporte.id,
-        clienteId: cliente.id,
-        monto: 8500.5,
-        estado: 'PENDIENTE',
-      });
-
-      const cxc = await prisma.cuentas_por_cobrar.findUnique({
-        where: { id: resultado.cuenta.id },
-      });
-      expect(cxc?.cliente_id).toBe(cliente.id);
-      expect(Number(cxc?.monto)).toBe(8500.5);
-      expect(cxc?.estado).toBe('PENDIENTE');
-      expect(cxc?.fecha_vencimiento).not.toBeNull();
-
-      // El reporte quedó FACTURADO en BD
-      const enBD = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
-      expect(enBD?.estado).toBe(EstadoReporteCampo.FACTURADO);
-
-      const audits = await findAudits(AuditAction.REPORTE_CAMPO_FACTURADO, reporte.id);
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-      expect(audits[0].result).toBe('SUCCESS');
-
-      const auditCxc = await findAudits(AuditAction.CXC_CREADA, resultado.cuenta.id);
-      expect(auditCxc.length).toBeGreaterThanOrEqual(1);
-      expect(auditCxc[0].result).toBe('SUCCESS');
-      expect((auditCxc[0].new_value as Record<string, unknown>)?.reporteId).toBe(reporte.id);
-    });
-
-    it('debe rechazar doble clic (409) dejando una sola CxC', async () => {
-      const cliente = await crearClienteReal();
-      const reporte = await crearReporteResuelto(cliente.id);
-
-      const primera = await service.facturar(reporte.id, ACTOR_USER_ID);
-      cxcFacturadas.push(primera.cuenta.id);
-
-      await auditContext.run(
-        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo/facturar', method: 'POST' },
-        async () => {
-          await expect(service.facturar(reporte.id, ACTOR_USER_ID)).rejects.toThrow(
-            ConflictException,
-          );
-        },
-      );
-
-      const cxcCount = await prisma.cuentas_por_cobrar.count({
-        where: { cliente_id: cliente.id },
-      });
-      expect(cxcCount).toBe(1);
-
-      // En la 2ª llamada secuencial el reporte ya está FACTURADO → guard de estado.
-      // (La carrera concurrente real la cubre el unit test con updateMany count 0 → REPORTE_YA_FACTURADO.)
-      const audits = await prisma.registro_auditoria.findMany({
-        where: {
-          action: AuditAction.REPORTE_CAMPO_FACTURADO,
-          result: 'FAIL',
-          error_code: 'REPORTE_NO_RESUELTO',
-        },
-        orderBy: { timestamp: 'desc' },
-      });
-      expect(audits.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

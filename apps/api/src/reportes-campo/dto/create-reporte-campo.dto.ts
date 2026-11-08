@@ -3,11 +3,12 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
-  IsPositive,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { Prioridad, TipoReporteCampo, CategoriaReporte } from '@prisma/client';
@@ -16,9 +17,14 @@ export class CreateReporteCampoDto {
   @IsEnum(TipoReporteCampo)
   tipo!: TipoReporteCampo;
 
-  /** Torre responsable que atenderá el reporte (ruta "le cae a todos de X torre"). */
+  /** Torre responsable que atenderá el incidente (ruta "le cae a todos de X torre"). */
   @IsEnum(CategoriaReporte)
   categoria!: CategoriaReporte;
+
+  /** Subcategoría del catálogo por torre (opcional; debe pertenecer a la categoría). */
+  @IsOptional()
+  @IsUUID()
+  subcategoriaId?: string;
 
   /** Quién reporta desde campo (texto libre, ej. "Marcos G."). */
   @IsString()
@@ -34,26 +40,25 @@ export class CreateReporteCampoDto {
   @IsUUID()
   obraId?: string;
 
-  @IsOptional()
-  @IsUUID()
-  clienteId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  proyectoId?: string;
-
-  /** Monto del servicio cobrable al cliente (permite facturar el reporte). */
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  montoServicio?: number;
-
-  /** Texto de la obra — opcional (hay reportes que no se relacionan con obra). */
+  /** Texto de la obra — la ubicación también puede ser GPS (latitud/longitud). */
   @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(200)
   obraTexto?: string;
+
+  /** Ubicación GPS ("Mi ubicación actual"): ambos o ninguno. */
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitud?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitud?: number;
 
   @IsDateString()
   fecha!: string;
