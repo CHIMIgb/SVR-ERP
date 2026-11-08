@@ -347,7 +347,8 @@ export default function ReportesOperacionesPage() {
           return prev;
         }
         return [...prev, {
-          key: crypto.randomUUID(),
+          // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
+          key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
           nombre: file.name,
           mime: file.type,
           tamano: file.size,
