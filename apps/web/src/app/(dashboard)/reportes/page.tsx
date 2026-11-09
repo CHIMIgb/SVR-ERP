@@ -1070,7 +1070,6 @@ export default function ReportesOperacionesPage() {
           filters={filterFields}
           values={filterValues}
           onChange={handleFilterChange}
-          onClear={handleClearFilters}
         />
       )}
 
