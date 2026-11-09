@@ -65,8 +65,8 @@ const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
 /** Opción especial: el incidente queda dentro del área del que lo levanta. */
 const MISMA_AREA = 'MISMA_AREA';
 
-/** Descripción en tabla: deja corto con puntos suspensivos (el texto completo va en el tooltip y el detalle). */
-function descripcionBreve(texto: string, max = 90): string {
+/** Descripción en tabla: deja corto con puntos suspensivos a los 40 caracteres (texto completo en tooltip y detalle). */
+function descripcionBreve(texto: string, max = 40): string {
   return texto.length > max ? `${texto.slice(0, max)}…` : texto;
 }
 
