@@ -397,6 +397,29 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 
 ---
 
+### P9 — Retiro futuro del campo "prioridad" en /reportes (idea del cliente)
+
+**Estado:** campo `prioridad` ACTIVO hoy en el alta/lista de `/reportes`, pero con
+vía de retiro planeada. **Regla acordada (2026-11-08):** cuando la empresa termine
+de poblar las **subcategorías por torre**, estas se **agruparán por un nivel de
+prioridad** y el incidente llevará su prioridad **de forma automática** derivada de
+la subcategoría — el campo manual se elimina del alta (y de la columna en la
+tabla). Relación con lo ya documentado: subcategorías por torre en
+`subcategorias_reporte` (§3 P7), y las torres vinculan con los roles
+(`roles.torre`).
+
+**Cómo se aplicará (futuro):**
+1. Agregar `nivel_prioridad` (o el nombre que se defina) al catálogo
+   `subcategorias_reporte` y poblarlo por subcategoría con la empresa.
+2. Derivar la prioridad en el alta: `create` guarda `prioridad` según la
+   subcategoría elegida (sin campo manual); en el listado mostrarla como hoy
+   (columna/celda) pero de solo lectura.
+3. Retirar el select de prioridad del alta y del detalle de /reportes.
+4. Historia conservada: los reportes antiguos mantienen su `prioridad`
+   capturada a mano.
+
+---
+
 ### P8 — Metas de progreso del proyecto con fechas límite (idea del cliente)
 
 **Objetivo:** el progreso del proyecto deja de ser un número manual capturado a mano.

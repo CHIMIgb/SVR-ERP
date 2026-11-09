@@ -635,6 +635,18 @@ export class ReportesCampoService {
       );
     }
 
+    // ASIGNAR/REASIGNAR es de Administrador — los demás roles toman el incidente
+    // con "Aceptar" (RESPONSABLE = quien acepta).
+    if (!(await this.esUsuarioAdmin(userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'ASIGNAR_SOLO_ADMIN',
+        ForbiddenException,
+        'Solo un Administrador puede asignar o reasignar responsables',
+      );
+    }
+
     if (!asignadoA && !asignadoNombre) {
       // Ambos vacíos: se considera LIMPIEZA de asignación (permitido con datos).
       if (dto.asignadoA === undefined && dto.asignadoNombre === undefined) {
@@ -770,6 +782,17 @@ export class ReportesCampoService {
         'TRANSICION_NO_VALIDA',
         BadRequestException,
         `Transición no válida: de ${ESTADO_LABELS[estadoActual]} solo puede pasar a ${permitidosLabel}`,
+      );
+    }
+
+    // CERRAR es de Administrador — los demás roles siguen el flujo hasta En curso.
+    if (dto.estado === EstadoIncidente.CERRADO && !(await this.esUsuarioAdmin(userId))) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'CERRAR_SOLO_ADMIN',
+        ForbiddenException,
+        'Solo un Administrador puede cerrar incidentes',
       );
     }
 

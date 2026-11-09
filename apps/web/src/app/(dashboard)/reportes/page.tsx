@@ -965,18 +965,18 @@ export default function ReportesOperacionesPage() {
       : CATEGORIAS.find((c) => c.value === form.categoria)?.label;
   const subcategoriasFiltradas = subcategorias.filter((s) => !!categoriaLabel && s.categoria === categoriaLabel);
 
-  /** Áreas del alta agrupadas según la guía de roles del cliente (optgroups). */
+  /** Áreas del alta agrupadas según la guía de roles del cliente (optgroups, sin paréntesis). */
   const optGroupsTexto = [
     {
-      label: 'Administración (jefes y oficina)',
+      label: 'Administración — jefes y personas en oficina',
       opciones: [{ value: 'ADMINISTRATIVO' as CategoriaReporteApi, label: 'Administrativo' }],
     },
     {
-      label: 'Residentes (ingenieros encargados de obra y de personal)',
+      label: 'Residentes — ingenieros encargados de obra y de personal',
       opciones: [{ value: 'RESIDENTE' as CategoriaReporteApi, label: 'Residente' }],
     },
     {
-      label: 'Técnicos (mantenimiento, mecánico, diésel y soldador)',
+      label: 'Técnicos — mantenimiento, mecánico, diésel y soldador',
       opciones: CATEGORIAS.filter((c) =>
         ['MECANICO', 'SOLDADOR', 'DIESEL', 'MANTENIMIENTO'].includes(c.value),
       ).map((c) => ({ value: c.value, label: c.label })),
@@ -1164,6 +1164,10 @@ export default function ReportesOperacionesPage() {
               value={form.categoria}
               onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
+              <option value="">Seleccionar área destino...</option>
+              <option value={MISMA_AREA}>Misma área</option>
+              <option value="">Seleccionar área destino...</option>
+              <option value={MISMA_AREA}>Misma área</option>
               {optGroupsTexto.map((grupo) => (
                 <optgroup key={grupo.label} label={grupo.label}>
                   {grupo.opciones.map((o) => (
@@ -1398,20 +1402,22 @@ export default function ReportesOperacionesPage() {
               {/* Acciones de flujo del incidente */}
               {puedeEditar && (
                 <div className="mt-4 pt-3 border-t border-ui-100 flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<UserCheck className="w-3.5 h-3.5" />}
-                    onClick={() => openAsignar(detalle.reporte)}
-                  >
-                    {detalle.reporte.asignadoANombre ? 'Reasignar' : 'Asignar'}
-                  </Button>
+                  {esAdminReportes && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<UserCheck className="w-3.5 h-3.5" />}
+                      onClick={() => openAsignar(detalle.reporte)}
+                    >
+                      {detalle.reporte.asignadoANombre ? 'Reasignar' : 'Asignar'}
+                    </Button>
+                  )}
                   {detalle.reporte.estado === 'Nuevo' && detalle.reporte.asignadoANombre && (
                     <Button variant="primary" size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={() => iniciarIncidente(detalle.reporte)}>
                       Iniciar
                     </Button>
                   )}
-                  {detalle.reporte.estado !== 'Cerrado' && (
+                  {esAdminReportes && detalle.reporte.estado !== 'Cerrado' && (
                     <Button variant="success" size="sm" icon={<CheckCircle2 className="w-3.5 h-3.5" />} onClick={() => setCerrarOpen(true)}>
                       Cerrar incidente
                     </Button>
@@ -1638,6 +1644,8 @@ export default function ReportesOperacionesPage() {
               value={form.categoria}
               onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
+              <option value="">Seleccionar área destino...</option>
+              <option value={MISMA_AREA}>Misma área</option>
               {optGroupsTexto.map((grupo) => (
                 <optgroup key={grupo.label} label={grupo.label}>
                   {grupo.opciones.map((o) => (

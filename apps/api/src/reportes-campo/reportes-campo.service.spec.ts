@@ -338,6 +338,12 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       [EstadoIncidente.EN_CURSO, EstadoIncidente.CERRADO],
     ])('permite %s → %s auditando SUCCESS', async (desde, hacia) => {
       prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: desde });
+      // CERRAR es exclusivo de Administrador: el resto de casos usa un no-admin
+      prisma.users.findUnique.mockResolvedValue(
+        hacia === EstadoIncidente.CERRADO
+          ? { users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }] }
+          : null,
+      );
       await service.cambiarEstado(mockReporte.id, { estado: hacia }, 'user-1');
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.ESTATUS_CAMBIADO, result: AuditResult.SUCCESS }),
@@ -363,6 +369,10 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
         ...mockReporte,
         estado: EstadoIncidente.EN_CURSO,
       });
+      // cerrar es de Administrador — mock de nivel 100
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
       await service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.CERRADO }, 'user-1');
       const args = prisma.reportes_campo.updateMany.mock.calls.at(-1)[0];
       expect(args.where.estado).toBe(EstadoIncidente.EN_CURSO);
@@ -378,6 +388,24 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       await expect(
         service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'user-1'),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('los no-admin no pueden CERRAR: CERRAR_SOLO_ADMIN (audita FAIL)', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.EN_CURSO,
+      });
+      // mock por defecto: users.findUnique null (sin rol de nivel 100)
+      await expect(
+        service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.CERRADO }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.ESTATUS_CAMBIADO,
+          result: AuditResult.FAIL,
+          errorCode: 'CERRAR_SOLO_ADMIN',
+        }),
+      );
     });
 
     it('404 con audit FAIL si el incidente no existe', async () => {
@@ -433,7 +461,10 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
   });
 
   describe('asignar', () => {
-    it('asigna por trabajador y audita SUCCESS', async () => {
+    it('asigna por trabajador y audita SUCCESS (exclusiva de Administrador)', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
       await service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1');
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.REPORTE_ASIGNADO, result: AuditResult.SUCCESS }),
@@ -441,6 +472,9 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     });
 
     it('falla con ASIGNACION_VACIA (audita FAIL+errorCode antes de lanzar)', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
       await expect(service.asignar(mockReporte.id, {}, 'user-1')).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -453,8 +487,25 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
 
     it('no reasigna un CERRADO: REPORTE_CERRADO', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: EstadoIncidente.CERRADO });
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
       await expect(service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('los no-admin no pueden asignar: ASIGNAR_SOLO_ADMIN (audita FAIL)', async () => {
+      // mock por defecto: users.findUnique null (sin roles de nivel 100)
+      await expect(service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'ASIGNAR_SOLO_ADMIN',
+        }),
       );
     });
 
