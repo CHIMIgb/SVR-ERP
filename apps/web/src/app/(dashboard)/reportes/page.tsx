@@ -911,7 +911,6 @@ export default function ReportesOperacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      minWidth: '440px',
       render: (report) => (
         <div className="flex items-center justify-end gap-1.5">
           <Tooltip content="Ver incidente">
