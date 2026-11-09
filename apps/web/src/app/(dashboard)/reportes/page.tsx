@@ -65,6 +65,11 @@ const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
 /** Opción especial: el incidente queda dentro del área del que lo levanta. */
 const MISMA_AREA = 'MISMA_AREA';
 
+/** Descripción en tabla: deja corto con puntos suspensivos (el texto completo va en el tooltip y el detalle). */
+function descripcionBreve(texto: string, max = 90): string {
+  return texto.length > max ? `${texto.slice(0, max)}…` : texto;
+}
+
 /**
  * Convierte cualquier imagen (image/*) a WebP con canvas (calidad 0.85) para
  * que pesen menos. Devuelve el data URI WebP + su tamaño, o null si el navegador
@@ -880,11 +885,10 @@ export default function ReportesOperacionesPage() {
     {
       key: 'subcategoria',
       header: 'Subcategoría',
-      minWidth: '150px',
-      truncate: true,
+      minWidth: '140px',
       render: (report) =>
         report.subcategoria ? (
-          <span className="block truncate text-xs font-semibold text-ui-600">{report.subcategoria}</span>
+          <span className="text-xs font-semibold text-ui-600">{report.subcategoria}</span>
         ) : (
           <span className="text-ui-300">—</span>
         ),
@@ -893,12 +897,11 @@ export default function ReportesOperacionesPage() {
       key: 'descripcion',
       header: 'Descripción',
       minWidth: '380px',
-      truncate: true,
       render: (report) => (
-        <div className="w-full">
+        <div className="max-w-xl">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
-            <span className="block truncate font-medium text-ui-600">
-              &ldquo;{report.descripcion}&rdquo;
+            <span className="font-medium text-ui-600">
+              &ldquo;{descripcionBreve(report.descripcion)}&rdquo;
             </span>
           </Tooltip>
         </div>
@@ -908,7 +911,7 @@ export default function ReportesOperacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      minWidth: '330px',
+      minWidth: '440px',
       render: (report) => (
         <div className="flex items-center justify-end gap-1.5">
           <Tooltip content="Ver incidente">
