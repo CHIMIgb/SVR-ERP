@@ -187,7 +187,6 @@ export default function ReportesOperacionesPage() {
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
-  const [aceptando, setAceptando] = useState(false);
   /** Imágenes en espera del alta (mismos límites del detalle: máx 4, 2MB). */
   const [imagenesAlta, setImagenesAlta] = useState<AdjuntoImagenAlta[]>([]);
   /** Adjuntos existentes en el modal Editar (null = cargando). */
@@ -647,28 +646,6 @@ export default function ReportesOperacionesPage() {
       } else {
         showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el incidente.'), 'error');
         refetch();
-      }
-    },
-    [showToast, refetch, fetchStats, openDetalle],
-  );
-
-  /** Aceptar dentro del detalle (misma ruta, refresca el detalle). */
-  const aceptarDetalle = useCallback(
-    async (item: ReporteCampoDTO) => {
-      if (!item) return;
-      setAceptando(true);
-      const res = await reportesCampoApi.aceptar(item.id);
-      setAceptando(false);
-      if (res.success) {
-        showToast(
-          `Incidente aceptado — RESPONSABLE: ${res.data.asignadoANombre ?? ''}`.trim(),
-          'success',
-        );
-        openDetalle(item);
-        refetch();
-        fetchStats();
-      } else {
-        showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el incidente.'), 'error');
       }
     },
     [showToast, refetch, fetchStats, openDetalle],
@@ -1378,17 +1355,6 @@ export default function ReportesOperacionesPage() {
                   >
                     {detalle.reporte.asignadoANombre ? 'Reasignar' : 'Asignar'}
                   </Button>
-                  {detalle.reporte.estado === 'Nuevo' && !detalle.reporte.asignadoANombre && (
-                    <Button
-                      variant="success"
-                      size="sm"
-                      icon={<Check className="w-3.5 h-3.5" />}
-                      disabled={aceptando}
-                      onClick={() => aceptarDetalle(detalle.reporte)}
-                    >
-                      Aceptar
-                    </Button>
-                  )}
                   {detalle.reporte.estado === 'Nuevo' && detalle.reporte.asignadoANombre && (
                     <Button variant="primary" size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={() => iniciarIncidente(detalle.reporte)}>
                       Iniciar
