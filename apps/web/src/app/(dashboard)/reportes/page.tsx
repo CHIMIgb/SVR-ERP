@@ -25,7 +25,6 @@ import {
   type ReportesCampoStats,
   type ReporteCampoCreateInput,
   type SubcategoriaDTO,
-  type TipoReporteApi,
   type EstadoIncidenteApi,
   type PrioridadReporteApi,
   type CategoriaReporteApi,
@@ -38,17 +37,6 @@ import { mensajeErrorApi } from '@/lib/api';
 // ── Constantes ──
 const PAGE_SIZE = 10;
 const VISTA_RUTA = '/reportes';
-
-const TIPOS: { value: TipoReporteApi; label: string }[] = [
-  { value: 'INCIDENTE', label: 'Incidente' },
-  { value: 'MECANICO', label: 'Mecanico' },
-  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
-  { value: 'PIPERO', label: 'Pipero' },
-  { value: 'OPERADOR', label: 'Operador' },
-  { value: 'CHECADOR', label: 'Checador' },
-  { value: 'INGENIERO', label: 'Ingeniero' },
-  { value: 'TRABAJADOR', label: 'Trabajador' },
-];
 
 const ESTADOS_FILTRO: { value: EstadoIncidenteApi; label: string }[] = [
   { value: 'NUEVO', label: 'Nuevo' },
@@ -133,7 +121,6 @@ const STATS_CERO: ReportesCampoStats = {
 };
 
 const emptyForm = {
-  tipo: '' as '' | TipoReporteApi,
   categoria: '' as '' | CategoriaReporteApi | typeof MISMA_AREA,
   subcategoriaId: '',
   prioridad: '' as '' | PrioridadReporteApi,
@@ -226,7 +213,6 @@ export default function ReportesOperacionesPage() {
       const res = await reportesCampoApi.listar({
         search: searchVal || undefined,
         estado: (filters?.estado as EstadoIncidenteApi) || undefined,
-        tipo: (filters?.tipo as TipoReporteApi) || undefined,
         prioridad: (filters?.prioridad as PrioridadReporteApi) || undefined,
         page,
         limit: PAGE_SIZE,
@@ -274,19 +260,8 @@ export default function ReportesOperacionesPage() {
     const label = PRIORIDADES.find((p) => p.value === filterValues.prioridad)?.label ?? filterValues.prioridad;
     activeFilters.push({ key: 'prioridad', label: 'Prioridad', value: label });
   }
-  if (filterValues.tipo) {
-    const label = TIPOS.find((t) => t.value === filterValues.tipo)?.label ?? filterValues.tipo;
-    activeFilters.push({ key: 'tipo', label: 'Área', value: label });
-  }
 
   const filterFields: FilterField[] = [
-    {
-      key: 'tipo',
-      label: 'Área',
-      type: 'select',
-      options: TIPOS.map((t) => ({ value: t.value, label: t.label })),
-      placeholder: 'Todas las áreas',
-    },
     {
       key: 'estado',
       label: 'Estado',
@@ -421,7 +396,6 @@ export default function ReportesOperacionesPage() {
       }
       setSelectedItem(item);
       setForm({
-        tipo: (TIPOS.find((t) => t.label === item.tipo)?.value ?? 'OPERADOR') as TipoReporteApi,
         categoria: (CATEGORIAS.find((c) => c.label === item.categoria)?.value ?? '') as '' | CategoriaReporteApi,
         subcategoriaId: item.subcategoriaId ?? '',
         prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
@@ -452,12 +426,8 @@ export default function ReportesOperacionesPage() {
 
   // ── Validación ──
   const validateForm = useCallback(() => {
-    if (!form.tipo) {
-      showToast('Selecciona el área del reporte.', 'error');
-      return false;
-    }
     if (!form.categoria) {
-      showToast('Selecciona la categoría encargada de resolver el incidente.', 'error');
+      showToast('Selecciona el área a la que se envía el incidente.', 'error');
       return false;
     }
     if (!form.descripcion.trim()) {
@@ -483,7 +453,6 @@ export default function ReportesOperacionesPage() {
     async (): Promise<ReporteCampoCreateInput> => {
       const mismaArea = form.categoria === MISMA_AREA;
       return {
-        tipo: form.tipo as TipoReporteApi,
         mismaArea,
         ...(mismaArea ? {} : { categoria: form.categoria as CategoriaReporteApi }),
         subcategoriaId: mismaArea ? undefined : form.subcategoriaId || undefined,
@@ -1075,19 +1044,6 @@ export default function ReportesOperacionesPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Área (tipo de reporte)" required>
-            <select
-              className={modalSelectClass}
-              value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })}
-            >
-              <option value="">Seleccionar área...</option>
-              {TIPOS.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </ModalField>
-
           <ModalField
             label="Ubicación (área a la que se envía)"
             required
@@ -1477,19 +1433,6 @@ export default function ReportesOperacionesPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Área (tipo de reporte)" required>
-            <select
-              className={modalSelectClass}
-              value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value as '' | TipoReporteApi })}
-            >
-              <option value="">Seleccionar área...</option>
-              {TIPOS.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </ModalField>
-
           <ModalField label="Categoría (encargado de resolver)" required>
             <select
               className={modalSelectClass}

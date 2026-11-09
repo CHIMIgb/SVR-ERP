@@ -8,7 +8,6 @@ import { UpdateReporteCampoDto } from './update-reporte-campo.dto';
 
 describe('CreateReporteCampoDto (flujo v2)', () => {
   const base = {
-    tipo: 'PIPERO',
     categoria: 'DIESEL',
     usuario: 'Marcos G.',
     descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
@@ -21,10 +20,8 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('falla con tipo inválido', async () => {
-    const dto = plainToInstance(CreateReporteCampoDto, { ...base, tipo: 'SUPERVISOR' });
-    const errors = await validate(dto);
-    expect(errors.length).toBeGreaterThan(0);
+  it('el tipo viejo ya no se captura: se deriva del área en el service', () => {
+    expect('tipo' in new CreateReporteCampoDto()).toBe(false);
   });
 
   it('categoria es opcional: la torre puede resolverse con "mismaArea" en el service', async () => {

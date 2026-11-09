@@ -40,6 +40,10 @@ const TIPO_LABELS: Record<TipoReporteCampo, string> = {
   [TipoReporteCampo.INCIDENTE]: 'Incidente',
   [TipoReporteCampo.INGENIERO]: 'Ingeniero',
   [TipoReporteCampo.TRABAJADOR]: 'Trabajador',
+  [TipoReporteCampo.SOLDADOR]: 'Soldador',
+  [TipoReporteCampo.DIESEL]: 'Diesel',
+  [TipoReporteCampo.MANTENIMIENTO]: 'Mantenimiento',
+  [TipoReporteCampo.RESIDENTE]: 'Residente',
 };
 
 const ESTADO_LABELS: Record<EstadoIncidente, string> = {
@@ -234,7 +238,9 @@ export class ReportesCampoService {
             codigo,
             categoria: torre,
             subcategoria_id: dto.subcategoriaId ?? null,
-            tipo: dto.tipo,
+            // El tipo (vocabulario interno) es espejo de la torre elegida.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tipo: torre as any,
             usuario: dto.usuario.trim(),
             usuario_id: userId,
             obra_texto: 'Sin obra asociada',
@@ -324,8 +330,7 @@ export class ReportesCampoService {
     const reporte = await this.prisma.reportes_campo.update({
       where: { id },
       data: {
-        ...(dto.tipo !== undefined && { tipo: dto.tipo }),
-        ...(torreFinal !== undefined && { categoria: torreFinal }),
+        ...(torreFinal !== undefined && { categoria: torreFinal, tipo: torreFinal as never }),
         ...(dto.subcategoriaId !== undefined && { subcategoria_id: dto.subcategoriaId }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),

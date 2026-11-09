@@ -68,7 +68,6 @@ describe('ReportesCampo Audit (Real DB)', () => {
   });
 
   const createDto = (overrides: Record<string, unknown> = {}) => ({
-    tipo: TipoReporteCampo.PIPERO,
     categoria: CategoriaReporte.DIESEL,
     usuario: `Marcos G. ${TEST_ID}`,
     descripcion: `Suministro de diésel test ${TEST_ID}`,

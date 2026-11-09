@@ -2469,6 +2469,10 @@ enum TipoReporteCampo {
   INCIDENTE
   INGENIERO
   TRABAJADOR
+  SOLDADOR
+  DIESEL
+  MANTENIMIENTO
+  RESIDENTE
 }
 
 enum CategoriaReporte {

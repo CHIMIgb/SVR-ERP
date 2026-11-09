@@ -162,12 +162,17 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
 
   describe('create', () => {
     const createDto = {
-      tipo: TipoReporteCampo.PIPERO,
       categoria: CategoriaReporte.DIESEL,
       subcategoriaId: 'sub-d1',
       usuario: 'Marcos G.',
       descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
     };
+
+    it('deriva el tipo del área (torre) — vocabulario viejo ya no se captura', async () => {
+      await service.create(createDto, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.tipo).toBe('DIESEL'); // espejo de la categoria
+    });
 
     it('crea incidente NUEVO con folio y audita REPORTE_CREADO SUCCESS', async () => {
       const result = await service.create(createDto, 'user-1');

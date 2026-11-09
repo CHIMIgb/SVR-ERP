@@ -803,8 +803,7 @@ export interface ReportesCampoStats {
 }
 
 export interface ReporteCampoCreateInput {
-  /** Torre destino — o `mismaArea: true` para resolverla con el puesto del que reporta. */
-  tipo: TipoReporteApi;
+  /** Torre destino — o `mismaArea: true` para resolverla con el rol del que reporta. */
   categoria?: CategoriaReporteApi;
   mismaArea?: boolean;
   subcategoriaId?: string;

@@ -1,13 +1,10 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MinLength, MaxLength } from 'class-validator';
-import { Prioridad, TipoReporteCampo, CategoriaReporte } from '@prisma/client';
+import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { Prioridad, CategoriaReporte } from '@prisma/client';
 
-// La fecha y la hora del incidente son automáticas: ya no se editan.
+// El `tipo` se deriva del área (torre) — ya no se captura ni edita.
+// La fecha y la hora también son automáticas: ya no se editan.
 
 export class UpdateReporteCampoDto {
-  @IsOptional()
-  @IsEnum(TipoReporteCampo)
-  tipo?: TipoReporteCampo;
-
   @IsOptional()
   @IsEnum(CategoriaReporte)
   categoria?: CategoriaReporte;
