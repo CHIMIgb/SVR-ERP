@@ -2,11 +2,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Bell, Mail, ShieldAlert, Check, Trash2, Clock, 
-  ExternalLink, User, Settings, CheckCheck, Search,
+import {
+  Bell, Mail, ShieldAlert, Check, Trash2, Clock,
+  ExternalLink, CheckCheck, Search,
   Truck, HardHat, Users, FileText, Layers, X, Menu,
-  LogOut, Loader2
+  Loader2
 } from 'lucide-react';
 import { useNotifications, Notification } from './NotificationContext';
 import EmailPreviewModal from './EmailPreviewModal';
@@ -51,10 +51,6 @@ export default function Topbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // User dropdown
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-
   // Close dropdowns on clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -64,18 +60,10 @@ export default function Topbar() {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchOpen(false);
       }
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleLogout = async () => {
-    await logout();
-    router.push('/');
-  };
 
   const handleNotificationClick = (notif: Notification) => {
     markAsRead(notif.id);
@@ -109,11 +97,6 @@ export default function Topbar() {
       >
         <Menu className="w-5 h-5" />
       </button>
-
-      {/* Brand Title */}
-      <div className="font-black text-ui-800 tracking-tight uppercase text-xs sm:text-sm shrink-0">
-        SVR ERP <span className="text-ui-400 text-[10px] sm:text-xs font-bold font-sans lowercase">v2.0</span>
-      </div>
 
       {/* Global Quick Search Bar */}
       <div className="relative flex-1 max-w-md hidden md:block" ref={searchRef}>
@@ -353,64 +336,31 @@ export default function Topbar() {
         </div>
 
         {/* ── USER INFO ── */}
-        <div className="relative flex items-center gap-3 pl-3 sm:pl-4 border-l border-ui-200" ref={userMenuRef}>
-          <button
-            onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-3 focus:outline-none"
-            disabled={!isInitialized}
-          >
-            <div className="text-right hidden sm:block">
-              {!isInitialized ? (
-                <>
-                  <div className="h-3.5 w-20 sm:w-24 bg-ui-200 rounded animate-pulse mb-1.5 ml-auto" />
-                  <div className="h-2.5 w-12 sm:w-16 bg-ui-200 rounded animate-pulse ml-auto" />
-                </>
-              ) : (
-                <>
-                  <div className="text-[10px] sm:text-xs font-black text-ui-900 leading-none">
-                    {user?.persona?.nombre || 'Usuario'}
-                    {user?.persona?.apellidoPaterno
-                      ? ` ${user.persona.apellidoPaterno}`
-                      : ''}
-                  </div>
-                  <div className="text-[8px] sm:text-[9px] text-ui-500 font-bold tracking-widest uppercase mt-0.5 sm:mt-1">
-                    {user?.roles?.find((r) => r.esPrincipal)?.nombre ||
-                      user?.roles?.[0]?.nombre ||
-                      'Sin rol'}
-                  </div>
-                </>
-              )}
+        <div className="flex items-center gap-3 pl-3 sm:pl-4 border-l border-ui-200">
+          {!isInitialized ? (
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white">
+              <Loader2 className="w-4 h-4 animate-spin" />
             </div>
-            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md hover:scale-105 transition-transform">
-              {!isInitialized ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  {user?.persona?.nombre?.[0] || 'U'}
-                  {user?.persona?.apellidoPaterno?.[0] || ''}
-                </>
-              )}
-            </div>
-          </button>
-
-          {userMenuOpen && isInitialized && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-surface rounded-2xl shadow-2xl border border-ui-100 z-50 overflow-hidden animate-[fadeScaleIn_0.12s_ease-out]">
-              <div className="px-4 py-3 border-b border-ui-100">
-                <p className="text-xs font-black text-ui-900 truncate">
-                  {user?.email || 'usuario@svr.com'}
-                </p>
-                <p className="text-[9px] text-ui-500 font-bold truncate">
-                  {user?.roles?.map((r) => r.nombre).join(', ') || 'Sin rol'}
-                </p>
+          ) : (
+            <>
+              <div className="text-right hidden sm:block">
+                <div className="text-[10px] sm:text-xs font-black text-ui-900 leading-none">
+                  {user?.persona?.nombre || 'Usuario'}
+                  {user?.persona?.apellidoPaterno
+                    ? ` ${user.persona.apellidoPaterno}`
+                    : ''}
+                </div>
+                <div className="text-[8px] sm:text-[9px] text-ui-500 font-bold tracking-widest uppercase mt-0.5 sm:mt-1">
+                  {user?.roles?.find((r) => r.esPrincipal)?.nombre ||
+                    user?.roles?.[0]?.nombre ||
+                    'Sin rol'}
+                </div>
               </div>
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Cerrar Sesión
-              </button>
-            </div>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md">
+                {user?.persona?.nombre?.[0] || 'U'}
+                {user?.persona?.apellidoPaterno?.[0] || ''}
+              </div>
+            </>
           )}
         </div>
 
