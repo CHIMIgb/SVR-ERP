@@ -475,15 +475,28 @@ export default function ReportesOperacionesPage() {
       if (form.ubicacionModo === 'proyecto' && form.proyectoId) {
         ubicacion.proyectoId = form.proyectoId;
       } else if (form.ubicacionModo === 'gps') {
-        // ubicación actual del dispositivo — guardado con lat/long
+        // ubicación actual del dispositivo — guardado con lat/long.
+        // La geolocalización SOLO existe en contextos seguros (HTTPS o localhost):
+        // por IP LAN en HTTP el navegador la bloquea — mensajes en claro por caso.
+        if (!window.isSecureContext || !('geolocation' in navigator)) {
+          showToast(
+            'Tu navegador bloquea el GPS fuera de HTTPS. Usa localhost, activa el HTTPS (requisito del PWA) o elige el modo "Proyecto".',
+            'error',
+          );
+          throw Object.assign(new Error('gps'), { gpsFallo: true });
+        }
         const coords = await new Promise<GeolocationPosition | null>((resolve) =>
           navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 15000,
+            maximumAge: 30000,
           }),
         );
         if (!coords) {
-          showToast('No se pudo obtener tu ubicación GPS.', 'error');
+          showToast(
+            'No se pudo capturar tu ubicación (señal débil o permiso denegado). Reintenta, activa el GPS del dispositivo o marca "Proyecto".',
+            'error',
+          );
           throw Object.assign(new Error('gps'), { gpsFallo: true });
         }
         ubicacion.latitud = coords.coords.latitude;
@@ -541,9 +554,8 @@ export default function ReportesOperacionesPage() {
       refetch(1);
       fetchStats();
     } catch (e) {
-      if ((e as { gpsFallo?: boolean })?.gpsFallo) {
-        showToast('Ubica el incidente por proyecto o activa el GPS y reintenta.', 'error');
-      } else {
+      // GPS: el mensaje específico ya lo mostró buildPayload
+      if (!(e as { gpsFallo?: boolean })?.gpsFallo) {
         showToast('Error de conexión al registrar el incidente.', 'error');
       }
     } finally {
@@ -568,9 +580,8 @@ export default function ReportesOperacionesPage() {
         showToast(mensajeErrorApi(res.error, 'Error al actualizar el incidente.'), 'error');
       }
     } catch (e) {
-      if ((e as { gpsFallo?: boolean })?.gpsFallo) {
-        showToast('No se pudo obtener tu ubicación GPS. Reintenta o usa proyecto.', 'error');
-      } else {
+      // GPS: el mensaje específico ya lo mostró buildPayload
+      if (!(e as { gpsFallo?: boolean })?.gpsFallo) {
         showToast('Error de conexión al actualizar el incidente.', 'error');
       }
     } finally {
@@ -1181,7 +1192,7 @@ export default function ReportesOperacionesPage() {
             label="Ubicación"
             className="sm:col-span-2"
             required
-            hint={form.ubicacionModo === 'gps' ? 'Se captura tu ubicación GPS al guardar.' : 'Proyecto en proceso o GPS.'}
+            hint={form.ubicacionModo === 'gps' ? 'Se captura al guardar — el GPS requiere HTTPS (en LAN usa Proyecto).' : 'Proyecto en proceso o GPS.'}
           >
             <div className="flex gap-2 mb-2">
               <button
@@ -1205,7 +1216,7 @@ export default function ReportesOperacionesPage() {
             </div>
             {form.ubicacionModo === 'gps' ? (
               <div className="flex items-center gap-2 h-10 px-3 border border-ui-200 rounded-lg bg-ui-50 text-xs font-medium text-ui-500">
-                Se captura tu ubicación GPS al guardar
+                Se captura al guardar — el GPS requiere HTTPS (en LAN usa Proyecto)
               </div>
             ) : (
               <select
@@ -1325,13 +1336,30 @@ export default function ReportesOperacionesPage() {
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Ubicación</p>
-                  <p className="font-bold text-ui-800">
-                    {detalle.reporte.proyectoId && detalle.reporte.proyecto
-                      ? detalle.reporte.proyecto
-                      : detalle.reporte.latitud != null
-                        ? `GPS ${detalle.reporte.latitud.toFixed(4)}, ${detalle.reporte.longitud?.toFixed(4)}`
-                        : 'Sin ubicación'}
-                  </p>
+                  {detalle.reporte.proyectoId && detalle.reporte.proyecto ? (
+                    <>
+                      <p className="font-bold text-ui-800">{detalle.reporte.proyecto}</p>
+                      {detalle.reporte.proyectoDireccion && (
+                        <p className="text-[11px] font-medium text-ui-500">{detalle.reporte.proyectoDireccion}</p>
+                      )}
+                    </>
+                  ) : detalle.reporte.latitud != null ? (
+                    <>
+                      <p className="font-bold text-ui-800">
+                        GPS {detalle.reporte.latitud.toFixed(4)}, {detalle.reporte.longitud?.toFixed(4)}
+                      </p>
+                      <a
+                        href={`https://maps.google.com/?q=${detalle.reporte.latitud},${detalle.reporte.longitud}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold text-primary hover:underline"
+                      >
+                        Ver en Google Maps
+                      </a>
+                    </>
+                  ) : (
+                    <p className="font-bold text-ui-300">Sin ubicación</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Área</p>
@@ -1352,12 +1380,14 @@ export default function ReportesOperacionesPage() {
                 <div>
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Levantó</p>
                   <p className="font-bold text-ui-800">{detalle.reporte.usuario}</p>
-                  {detalle.reportadoPor && (
-                    <p className="text-[11px] font-medium text-ui-500">
-                      {detalle.reportadoPor.telefono ? `${detalle.reportadoPor.telefono} · ` : ''}
-                      {detalle.reportadoPor.rol ?? '—'}
-                    </p>
-                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Teléfono</p>
+                  <p className="font-bold text-ui-800">{detalle.reportadoPor?.telefono ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Puesto / Rol</p>
+                  <p className="font-bold text-ui-800">{detalle.reportadoPor?.rol ?? '—'}</p>
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-ui-100">
@@ -1636,7 +1666,7 @@ export default function ReportesOperacionesPage() {
             label="Ubicación"
             className="sm:col-span-2"
             required
-            hint={form.ubicacionModo === 'gps' ? 'Se recaptura tu ubicación GPS al guardar.' : 'Proyecto en proceso o GPS.'}
+            hint={form.ubicacionModo === 'gps' ? 'Se recaptura al guardar — el GPS requiere HTTPS (en LAN usa Proyecto).' : 'Proyecto en proceso o GPS.'}
           >
             <div className="flex gap-2 mb-2">
               <button
@@ -1660,7 +1690,7 @@ export default function ReportesOperacionesPage() {
             </div>
             {form.ubicacionModo === 'gps' ? (
               <div className="flex items-center gap-2 h-10 px-3 border border-ui-200 rounded-lg bg-ui-50 text-xs font-medium text-ui-500">
-                Se recaptura tu ubicación GPS al guardar
+                Se recaptura al guardar — el GPS requiere HTTPS (en LAN usa Proyecto)
               </div>
             ) : (
               <select

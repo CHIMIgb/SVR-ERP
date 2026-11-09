@@ -27,7 +27,7 @@ import { AdjuntoDto } from './dto/adjunto.dto';
 
 const REPORTE_INCLUDE = {
   subcategoria: { select: { id: true, nombre: true } },
-  proyectos: { select: { id: true, nombre: true } },
+  proyectos: { select: { id: true, nombre: true, calle: true, colonia: true, ciudad: true } },
   asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
 
@@ -1295,6 +1295,13 @@ export class ReportesCampoService {
       usuarioId: reporte.usuario_id,
       proyectoId: reporte.proyecto_id,
       proyecto: reporte.proyectos?.nombre ?? null,
+      proyectoDireccion: reporte.proyectos
+        ? (
+            [reporte.proyectos.calle, reporte.proyectos.colonia, reporte.proyectos.ciudad]
+              .filter(Boolean)
+              .join(', ') || null
+          )
+        : null,
       latitud: reporte.latitud != null ? Number(reporte.latitud) : null,
       longitud: reporte.longitud != null ? Number(reporte.longitud) : null,
       fecha:

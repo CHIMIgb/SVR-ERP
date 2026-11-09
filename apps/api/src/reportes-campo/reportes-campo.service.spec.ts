@@ -154,6 +154,16 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       expect(detalle.adjuntos).toEqual([]);
     });
 
+    it('detalle con proyecto: incluye nombre y direccion armado de la BD', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        proyectos: { id: 'p1', nombre: 'Escuela Secundaria', calle: 'Av Central 123', colonia: 'Centro', ciudad: 'Tepic' },
+      });
+      const detalle = await service.findOne(mockReporte.id);
+      expect(detalle.reporte.proyecto).toBe('Escuela Secundaria');
+      expect(detalle.reporte.proyectoDireccion).toBe('Av Central 123, Centro, Tepic');
+    });
+
     it('lanza 404 sin reporte', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue(null);
       await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);

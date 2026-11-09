@@ -751,6 +751,8 @@ export interface ReporteCampoDTO {
   usuarioId: string | null;
   proyectoId: string | null;
   proyecto: string | null;
+  /** Dirección guardada del proyecto (calle, colonia, ciudad). */
+  proyectoDireccion: string | null;
   latitud: number | null;
   longitud: number | null;
   /** Quién levantó el incidente: nombre, teléfono, rol (para el detalle). */
