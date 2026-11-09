@@ -810,16 +810,14 @@ export default function ReportesOperacionesPage() {
       render: (report) => {
         if (report.cerradoEn) {
           return (
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+            <span className="text-xs font-semibold text-ui-700">
               {report.asignadoANombre ?? 'Cerrado'}
             </span>
           );
         }
         if (report.asignadoANombre) {
           return (
-            <span className="flex items-center gap-1.5 font-bold text-ui-700">
-              <UserCheck className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold text-ui-700">
               {report.asignadoANombre}
             </span>
           );
