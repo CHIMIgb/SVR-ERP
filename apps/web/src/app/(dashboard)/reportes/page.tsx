@@ -153,6 +153,8 @@ export default function ReportesOperacionesPage() {
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
+  /** Solo un Administrador edita reportes ajenos; los empleados editan los suyos. */
+  const esAdminReportes = (user?.roles ?? []).some((r) => r.nivel >= 100);
 
   // ── Estado de datos ──
   const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
@@ -901,7 +903,7 @@ export default function ReportesOperacionesPage() {
               Ver
             </Button>
           </Tooltip>
-          {puedeEditar && report.estado !== 'Cerrado' && (
+          {puedeEditar && report.estado !== 'Cerrado' && (esAdminReportes || report.usuarioId === user?.id) && (
             <Tooltip content="Editar el incidente">
               <Button
                 variant="warning"

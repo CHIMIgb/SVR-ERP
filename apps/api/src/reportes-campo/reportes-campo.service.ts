@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
@@ -62,6 +63,9 @@ const PRIORIDAD_LABELS: Record<Prioridad, string> = {
 
 /** Reintentos de folio ante carrera INC (patrón facturas). */
 const MAX_INTENTOS_FOLIO = 5;
+
+/** Días que un incidente Cerrado sigue visible antes de darse de baja del listado (no-admin). */
+const AUTO_BAJA_DIAS = 2;
 
 /** Categoría responsable ("torre que atiende") — sale de /nueva-info (PWA). */
 const CATEGORIA_LABELS: Record<string, string> = {
@@ -127,7 +131,20 @@ export class ReportesCampoService {
     }
 
     // Ámbito por usuario (no-admin solo vede su torre / sus propios reportes)
+    const [esAdmin] = await Promise.all([this.esUsuarioAdmin(userId)]);
     await this.aplicarAmbito(where, userId);
+
+    // Baja automática (sin borrar de la BD): un incidente Cerrado sale del
+    // listado a los 2 días — solo para no-admins; el Administrador sigue viéndolos.
+    if (!esAdmin) {
+      const limite = new Date(Date.now() - AUTO_BAJA_DIAS * 24 * 60 * 60 * 1000);
+      where.AND = [
+        ...((where.AND as Prisma.reportes_campoWhereInput[]) ?? []),
+        {
+          OR: [{ cerrado_en: null }, { cerrado_en: { gte: limite } }],
+        },
+      ];
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.reportes_campo.findMany({
@@ -187,6 +204,16 @@ export class ReportesCampoService {
       })),
       adjuntos: adjuntos.map((a) => this.serializeAdjunto(a)),
     };
+  }
+
+  /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados. */
+  private async esUsuarioAdmin(userId: string): Promise<boolean> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { users_roles_users_roles_user_idTousers: { select: { roles: { select: { nivel: true } } } } },
+    });
+    const anos = user?.users_roles_users_roles_user_idTousers ?? [];
+    return Math.max(0, ...anos.map((ur: { roles: { nivel: number } }) => ur.roles.nivel)) >= 100;
   }
 
   /**
@@ -507,6 +534,17 @@ export class ReportesCampoService {
         'CERRADO_NO_EDITABLE',
         BadRequestException,
         `Un incidente Cerrado no puede editarse`,
+      );
+    }
+
+    // Solo un Administrador edita reportes ajenos; los empleados solo los suyos.
+    if (existente.usuario_id !== userId && !(await this.esUsuarioAdmin(userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ACTUALIZADO,
+        id,
+        'EDITAR_SOLO_CREADOR_O_ADMIN',
+        ForbiddenException,
+        'Solo puedes editar los incidentes que tú levantaste (un Administrador edita cualquiera)',
       );
     }
 

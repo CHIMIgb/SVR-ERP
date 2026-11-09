@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import {
   CategoriaReporte,
   EstadoIncidente,
@@ -26,7 +26,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     subcategoria_id: null,
     subcategoria: null,
     usuario: 'Marcos G.',
-    usuario_id: null,
+    usuario_id: 'user-1',
     maquina_id: '550e8400-e29b-41d4-a716-446655440020',
     fecha: new Date('2025-04-27'),
     hora: new Date('1970-01-01T14:15:00'),
@@ -265,9 +265,35 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
   });
 
   describe('update', () => {
-    it('actualiza mientras no está CERRADO', async () => {
+    it('actualiza mientras no está CERRADO (creador legítimo)', async () => {
       const updated = await service.update(mockReporte.id, { descripcion: 'Errata corregida' }, 'user-1');
       expect(updated.descripcion).toBeDefined();
+    });
+
+    it('el Administrador puede editar incidentes de otros', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'otro-1' });
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
+      const updated = await service.update(
+        mockReporte.id,
+        { descripcion: 'Corrección del admin' },
+        'user-admin',
+      );
+      expect(updated.descripcion).toBeDefined();
+    });
+
+    it('rechaza editar el reporte de otro empleado (EDITAR_SOLO_CREADOR_O_ADMIN)', async () => {
+      await expect(
+        service.update(mockReporte.id, { descripcion: 'curiosidad ajena' }, 'otro-user'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ACTUALIZADO,
+          result: AuditResult.FAIL,
+          errorCode: 'EDITAR_SOLO_CREADOR_O_ADMIN',
+        }),
+      );
     });
 
     it('rechaza actualizar un CERRADO (CERRADO_NO_EDITABLE) y audita FAIL', async () => {
