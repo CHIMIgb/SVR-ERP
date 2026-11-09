@@ -892,9 +892,9 @@ export default function ReportesOperacionesPage() {
       key: 'descripcion',
       header: 'Descripción',
       minWidth: '380px',
+      truncate: true,
       render: (report) => (
-        // ancho fijo de celda → text-overflow ellipsis real en tablas auto
-        <div className="w-72 sm:w-[360px]">
+        <div className="w-full">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
             <span className="block truncate font-medium text-ui-600">
               &ldquo;{report.descripcion}&rdquo;

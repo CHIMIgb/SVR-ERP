@@ -12,6 +12,8 @@ export interface Column<T> {
   align?: 'left' | 'center' | 'right';
   minWidth?: string;
   nowrap?: boolean;
+  /** Recorta el contenido al ancho de la columna con puntos suspensivos (requiere tabla fija interna). */
+  truncate?: boolean;
 }
 
 export interface DataTableProps<T> {
@@ -94,7 +96,12 @@ export function DataTable<T>({
           className="overflow-auto scrollbar-none"
           style={{ maxHeight: maxBodyHeight }}
         >
-          <table className="w-full text-sm border-collapse" style={{ tableLayout: 'auto' }}>
+          <table
+            className="w-full text-sm border-collapse"
+            // Con columnas truncate la tabla pasa a layout fijo: el ancho lo
+            // dictan los minWidth de las cabeceras y el td corta con ellipsis.
+            style={{ tableLayout: columns.some((c) => c.truncate) ? 'fixed' : 'auto' }}
+          >
             {/* Header sticky — se queda fijo arriba al hacer scroll vertical */}
             <thead className="sticky top-0 z-20">
               <tr>
@@ -140,6 +147,7 @@ export function DataTable<T>({
                         col.align === 'right' && dataTableClasses.tdRight,
                         col.align === 'center' && dataTableClasses.tdCenter,
                         col.nowrap && 'whitespace-nowrap',
+                        col.truncate && dataTableClasses.tdTruncate,
                         col.className
                       )}
                       style={col.minWidth ? { minWidth: col.minWidth } : undefined}

@@ -19,6 +19,7 @@ export const dataTableClasses = {
   trEven: 'bg-surface',
   trOdd: 'bg-ui-50/30',
   td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-ui-700 whitespace-nowrap',
+  tdTruncate: 'overflow-hidden text-ellipsis',
   tdRight: 'text-right',
   tdCenter: 'text-center',
 

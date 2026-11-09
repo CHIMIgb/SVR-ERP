@@ -3165,10 +3165,15 @@ interface Column<T> {
   render?: (item: T) => React.ReactNode;    // Renderizado custom de celda
   className?: string;                       // Clases adicionales
   align?: 'left' | 'center' | 'right';     // Alineacion del contenido de la celda
-  minWidth?: string;                        // Ancho minimo (ej: '120px')
+  minWidth?: string;                        // Ancho minimo (ej: '120px') — dicta el ancho de la columna
   nowrap?: boolean;                         // No romper contenido
+  truncate?: boolean;                       // Corta el contenido con puntos suspensivos al ancho de la columna
 }
 ```
+
+> **`truncate: true`** pasa esa tabla a `table-layout: fixed` (los anchos los mandan
+> los `minWidth` de las cabeceras) y la celda recorta con `text-ellipsis`. Usarlo
+> en columnas de texto largo (Descripción, Direcciones).
 
 #### Headers Naranja Alternados
 
