@@ -190,9 +190,9 @@ export class ReportesCampoService {
   }
 
   /**
-   * Ámbito de visibilidad: nivel 100 (Administrador) ve todo; el resto solo los
-   * incidentes de su torre (user.torre ?? torre del rol) — y sin torre (Trabajador)
-   * solo los suyos. Auditable y rejunte con findStats/findAll.
+   * Ámbito de visibilidad: nivel 100 (Administrador) ve todo. Los Residentes ven
+   * los suyos + los de SUS trabajadores (jefe_user_id). El resto solo los de su
+   * torre (user.torre ?? torre del rol) — y sin torre (Trabajador) solo los suyos.
    */
   private async aplicarAmbito(
     where: Prisma.reportes_campoWhereInput,
@@ -203,13 +203,23 @@ export class ReportesCampoService {
       select: {
         torre: true,
         users_roles_users_roles_user_idTousers: {
-          select: { roles: { select: { nivel: true, torre: true } } },
+          select: { roles: { select: { nivel: true, torre: true, nombre: true } } },
         },
       },
     });
     const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
     const nivelMaximo = Math.max(0, ...usuarioRoles.map((ur: { roles: { nivel: number } }) => ur.roles.nivel));
     if (nivelMaximo >= 100) return; // Administrador: acceso total
+
+    if (usuarioRoles.some((ur: { roles: { nombre: string } }) => ur.roles.nombre === 'Residente')) {
+      // Residente: los reportes de SUS trabajadores (a su cargo) + los suyos
+      const subordinados = await this.prisma.users.findMany({
+        where: { jefe_user_id: userId, eliminado_en: null },
+        select: { id: true },
+      });
+      where.usuario_id = { in: [userId, ...subordinados.map((s: { id: string }) => s.id)] };
+      return;
+    }
 
     const torre = user?.torre ?? usuarioRoles.filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

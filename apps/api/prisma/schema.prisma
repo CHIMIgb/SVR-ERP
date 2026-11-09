@@ -1941,6 +1941,9 @@ model users {
   email                                                                          String                        @unique
   password_hash                                                                  String
   torre                                                                          CategoriaReporte?
+  jefe_user_id                                                                   String?                       @db.Uuid
+  jefe                                                                           users?                        @relation("users_jefe_del_trabajador", fields: [jefe_user_id], references: [id])
+  subordinados                                                                   users[]                       @relation("users_jefe_del_trabajador")
   email_verificado                                                               Boolean                       @default(false)
   telefono_verificado                                                            Boolean                       @default(false)
   factor_doble_habilitado                                                        Boolean                       @default(false)
