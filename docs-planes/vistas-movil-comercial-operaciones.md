@@ -1,84 +1,123 @@
-# Vistas móvil — módulos COMERCIAL y OPERACIONES (análisis previo al diseño de Figma)
+# Vistas móvil — módulos COMERCIAL y OPERACIONES (plan sobre capturas de Figma)
 
 **Fecha:** 2026-11-09
-**Estado:** análisis previo — pendiente de las capturas de Figma (vistas por rol, móvil)
-**Fuente de diseño:** Figma "SVR Asistencia — Vistas por rol (móvil)" — el enlace
-requiere sesión y no puede leerse sin credenciales ni token: se necesitan
-**capturas** de cada pantalla (o un embed público/token personal) para pasar del
-análisis general al plan implementable vista por vista.
+**Estado:** capturas de Figma recibidas y analizadas (20 pantallas, 5 roles). Este
+doc sustituye el análisis general previo: con el diseño en mano queda claro que
+esto **no es un responsive de las tablas del dashboard** — es el **PWA móvil
+dedicado por rol** (camino B: shell móvil propio), tal como lo describe
+`nueva-info`. El análisis por pantalla y su complejidad, abajo.
 
 ---
 
-## Cómo están construidas las vistas hoy
+## 0. Lectura clave del diseño
 
-Todas las vistas del dashboard (desktop) comparten el mismo esqueleto
-(plantilla `/inventario`): **StatsCards responsivos + SearchBar/filtros +
-`DataTable` (tabla horizontal con scroll en móvil) + `FormModal`**. El
-responsable del patrón es el grupo UI del kit (`Table`, `Modal`, `Select`,
-`Button`, chips de filtro…), así que cualquier mejora de móvil centralizada
-alcanza a todas las vistas que lo usen.
+- **Roll-based de verdad:** cada rol tiene su propio shell con navegación inferior
+  (Trabajador 5 tabs, Residente 5, Técnico 5, Cobrador 4 con 2 visibles según
+  sub-rol del prendario/diésel, Administrador 4 + grid de módulos).
+- **Acción primero:** cada pantalla encabeza con la acción del día (Registrar
+  asistencia, Aceptar, Cobra $, Presionar); las tablas del desktop **no se
+  replican** — se convierten en listas de tarjetas con 2-3 datos por tarjeta.
+- **Asistencia es el corazón del PWA** (para TODOS los roles): foto obligatoria +
+  marcard GPS "dentro de la zona" + justificación de retardo — hoy ese flujo vive
+  en el módulo RRHH (`asistencia`), no en COM/OP.
+- **Todo deja rastro:** aceptación, "Presionar", entregas de diésel, corte del día
+  → mapping directo con `registro_auditoria` como las reglas del repo exigen.
 
 ---
 
-## Complejidad por vista (COMERCIAL + OPERACIONES)
+## 1. Inventario pantalla por pantalla (mapeo rutas/modulos)
 
-| Vista | Qué usa hoy | Complejidad móvil | Qué haría falta |
+### Trabajador (operadores y choferes) — rol Trabajador (20)
+| Pantalla Figma | Modulo destino | ¿Existe base hoy? | Complejidad |
 |---|---|---|---|
-| `/reportes` | stats, modal de detalle ya apilado, tabla con truncado y columna Acciones | **Baja** | tabla → tarjetas en móvil (u ocultar columnas secundarias); el resto ya se adapta |
-| `/operaciones` (bitácoras) | stats + DataTable full | Media | tabla → tarjetas o columnas podadas |
-| `/criba` | stats + DataTable full | Media | mismo patrón |
-| `/inventario` | CRUD completo: stats + tabla + modales | Media | mismo patrón |
-| `/maquinaria` + `/horometro` + `/mantenimiento` + `/combustible` + `/gps` | 5 vistas de tabla con sus columnas propias | Media | el mismo patrón ×5; riesgo: cada una tiene columnas distintas que decidir podar |
-| `/ventas` (POS) | grid táctil de productos + carrito + caja | **Baja** | el más cercano a móvil ya;Touches sueltas |
-| `/ventas/corte` | cierre de caja (tablas + mini-modales) | Media | la misma adaptación |
-| `/cotizaciones` | CRUD + formulario convert/facturar | Media | el alta es la parte más densa |
-| `/facturas` | CRUD heavy + export CSV | Alto | mismo patrón de tabla→tarjetas + enlace a PDF si el diseño lo pide |
-| `/finanzas` | flujo neto, transacciones, export CSV | Alto | hay sub-secciones por tab: analizar con captura |
-| `/cobranza` | CRUD + mora/es de pago | Alto | ídem |
-| `/proveedores` | CRUD + OC/recepción | Alto | ídem |
-| `/clientes` | CRUD + tabs consolidados | Alto | ídem |
+| Inicio (saludo + estado de asistencia + mini-stats + reportes recientes + llamar encargado) | Dashboard móvil del rol | Parcial: stats de asistencia existen; "reportes recientes" es /reportes | **Media** — es un dashboard armado de piezas (.asistencia + reportes + contactos), sin consultas nuevas |
+| Asistencia (foto obligatoria + GPS + justificación) | **RRHH** (`asistencia`) | 🚫 Fuera COM/OP — fluye con los permisos de asistencia existentes; la foto/GPS + retardo justification es flujo nuevo | **Alta** (captura foto, GPS zona, rechazos) |
+| Reportar problema (mis reportes + nuevo + filtros + atención/status) | **OPERACIONES** (`reportes_campo`) | ✅ La vista EXISTE — es /reportes acotada al creador (scope propio ya implementado) | **Baja** — solo `crear` + lista propia; botón "+ Nuevo reporte" ya existe en el alta |
+| Contactos (encargado, mesa de ayuda, oficina — llamar) | Nuevo módulo móvil | 🚫 No existe ningún contactos | **Baja** (lista estática de teléfonos con `tel:` links, dato del encargado = `jefe_user_id` ya en BD del fin del flujo) |
+| Perfil (datos, documentación INE/CURP/SS/licencia con estatus de subida) | **Sistema/RRHH** (`documentos`) | 🚫 Fuera COM/OP — usa el módulo documentos que ya existe en desktop (estatus por documento) | **Media** — reuso de documentos del trabajador |
 
-Paginación, filtros y toasts son componentes del kit (`Pagination`,
-`ActiveFilters`/`FilterPanel`) y ya heredan el layout en cualquier reordenamiento.
+### Residente (ingenieros encargados de obra y de personal) — rol Residente (90)
+| Pantalla Figma | Modulo destino | ¿Existe base hoy? | Complejidad |
+|---|---|---|---|
+| Inicio (mi asistencia + "Mi equipo hoy": presentes/faltas/retardos + "Requieren tu atención" + reportes abiertos de su equipo) | Dashboard del rol | Parcial: `reportados` de su equipo ya es scope de /reportes; asistencia del equipo = RRHH | **Media** |
+| Asistencia del equipo (select obra, todos/presentes/faltan, lista por persona, llamar a quien no asistió) | **RRHH** (`asistencia`) | 🚫 Fuera COM/OP | **Alta** |
+| Reports (Abiertos/Atendidos/Resueltos + "¿Por qué no se resuelve?" + **Presionar** + Llamar técnico) | **OPERACIONES** (`reportes_campo`) | ✅ Scope de su equipo ya implementado; **Presionar** = nuevo | **Media** — reusa aceptar/cerrar/comentar; falta el botón "Presionar" (nudge a la torre) |
+| Obras (mapa de mis obras + cards con progreso % y trabajadores/máquinas por obra) | **OPERACIONES** (`proyectos`) | ✅ Proyectos existen con progreso; mapa = coords; a los proyectos les falta la FK **residente** (fue la variante B documentada) | **Media** |
+| Contactos (mi equipo + jefes/administración + mesa de ayuda) | Nuevo módulo móvil | 🚫 No existe | **Baja** (llamadas: datos del equipo + jefe del fono existentes) |
 
----
+### Técnico (mecánico, soldador, mantenimiento, diésel) — roles Técnico descriptivos (70)
+| Pantalla Figma | Modulo destino | ¿Existe base hoy? | Complejidad |
+|---|---|---|---|
+| Inicio (asistencia + Disponibles/Mis aceptados/Resueltos + "Mi torre": colegas con su carga) | Dashboard del rol | ✅ Todo existe: aceptar cuenta por rol-área; "mi torre" = colegas del rol `users.torre` | **Media** |
+| Asistencia | **RRHH** | 🚫 Fuera COM/OP | **Alta** |
+| Reports de la torre (Disponibles 4 / Mis aceptados 2 / Resueltos 23, cards rojas con **Aceptar** + **Ubicación**) | **OPERACIONES** (`reportes_campo`) | ✅ YA EXISTE de punta a punta en desktop: lista de su torre (`aplicarAmbito`), **Aceptar** con guard anti-carrera y responsable, feo todo `reportes_campo` | **Baja** — es /reportes capsule en su torre |
+| Flota y obras (buscar maquina/obra/encargado + estado operando/en taller + **ver ubicación exacta**) | **MAQUINARIA** (`maquinas` + `rastreo_gps`) | ✅ Maquinaria y GPS/coordenadas existen | **Media** — necesita listas por maquina/obra filtradas por texto |
+| Inventario (buscar + tabs refacciones/soldadura/herram. + bajo/sin-stock) | **OPERACIONES** (`inventario`) | ✅ Artículos + stock por bodega existen | **Media** — necesite endpoint de búsqueda móvil ya (la vista inventario la tiene) |
+| **Diésel (repartidor)** — tanque principal, entregas de hoy, registrar carga (MANTENIMIENTO/Comercial?) | **OPERACIONES** (`cargas_combustible`) | ✅ Cargas de combustible existen y ya se registran | **Media** — la mobile view del repartidor (rol Técnico-Diésel) |
 
-## Dos caminos de implementación
+### Cobrador de criba — rol Cobrador (60)
+| Pantalla Figma | Modulo | ¿Existe base hoy? | Complejidad |
+|---|---|---|---|
+| Inicio (caja del día + material en criba del inventario + última venta) | Dashboard del rol (COMERCIAL+OP) | ✅ Ventas del día existe; material = inventario donde la criba produce | **Media** |
+| Asistencia | RRHH | 🚫 Fuera COM/OP | Alta |
+| **Cobo** — punto de venta (cliente/placa, materiales ×cantidad, método de pago con IVA 16%, **Cobrar**) | **COMERCIAL** (`ventas`) | ✅ El POS /ventas existe completo con IVA e idempotencia | **Baja** |
+| **Corte del día** (ingresos/egresos, saldo en caja efectivo/transf/crédito, retiros y gastos, cerrar corte) | **COMERCIAL** (`ventas` + `/ventas/corte`) | ✅ Existe TODo en desktop: retiros/gastos y caja con cierre aprobación | **Baja** |
 
-### Opción A — Responsive del DataFrame (recomendado)
-Ajustar **el kit `DataTable`** para que las columnas marcadases como
-`mobileOrder`/`hidden` (o un modo tarjeta automático) rendericen apiladas en
-móvil. Las vistas solo declaran qué columnas priorizar. Ventajas: un solo
-componente, todas las ~12 vistas COM/OP se benefician a la ver, sin rutas
-nuevas. Desventaja: las tarjetas resultantes tienen el mismo estilo para todo
-(el diseño de Figma por pantalla tendría menos libertad).
-
-### Opción B — Rutas móviles dedicadas `/m/*`
-Vistas aparte diseñadas exactamente como Figma (por rol del usuario, como el
-PWA). Ventajas: libertad total por pantalla. Desventajas: shell móvil nuevo
-(menú, auth, navegación) y **doble mantenimiento** por vista.
-
-**Recomendación:** empezar por Opción A en las vistas de menor complejidad
-(`/reportes`, `/ventas`, `/criba`) y derivar a la Opción B solo si Figma exige
-diseños muy distintos por rol.
-
----
-
-## Relación con las vistas por rol (ya vivas en la DB)
-
-La asignación de vistas por rol vive en **`role_vistas`** (puedeVer/Crear/
-Editar/Eliminar por vista) y ya la consume tanto el menú como los botones.
-Por tanto, el móvil de estas vistas heredará el recorte por rol sin trabajo
-adicional: si un rol no tiene la vista, la ruta no aparece en el menú y el
-API la bloquea igual (لو los permisos `operaciones.*`/`comercial.*`).
+### Administrador (jefes y personas de oficina) — rol Administrador (100)
+| Pantalla Figma | Modulo | Base | Complejidad |
+|---|---|---|---|
+| Inicio dashboard (KPI juego: personal activo, flota operando, ventas del mes, cobranza pendiente + alertas: urgente/documentos vencidos/licencias 30d/diésel 62%/faltas) | Dashboard móvil | Datos: todas las queries existen (KPIs de los modules + alertas = notificaciones) | **Media** |
+| Reportes de campo (Abiertos 9/Urgentes/Resueltos + tiempo promedio de resolución + tarjetas) | **OPERACIONES** (`reportes_campo`) | ✅ /reportes completo | **Baja** |
+| Finanzas (utilidad del mes + ingresos/egresos + CxC por cliente + movimientos) | **COMERCIAL** (`finanzas`) | ✅ /finanzas completo | **Baja-media** |
+| Módulos SVR (grid de todos los modulos del sistema) | Navegador | ✅ Es el menú lateral convertido a grid | **Baja** |
 
 ---
 
-## Lo que se pide al cliente para avanzar
+## 2. Alcance pedidos hoy: SOLO módulos COMERCIAL y OPERACIONES
 
-1. **Capturas de cada pantalla de Figma** (por rol/módulo) — con eso se arma el
-   plan implementable por vista: columnas que sobreviven, orden, controles.
-2. Confirmar el **camino** (A responsive del kit vs B rutas dedicadas).
-3. Confirmar el **perfil objetivo por vista del móvil** (¿solo consulta, o
-   alta/edición completa desde el teléfono?). Con esto se decide qué modals
-   deben móviles-perfectos y cuáles quedan desktop-only al inicio.
+**En plan directo (están sus bases, implementables):**
+| Página | Módulo | Base | Orden sugerido |
+|---|---|---|---|
+| **Reportes (todas las variantes de rol: trabajador/residente/técnico)** | OPERACIONES | /reportes v2 completa con aceptar/ambito por torre/jefe | **1ª** |
+| **Cobo (POS del cobrador)** | COMERCIAL | /ventas existe | **2ª** |
+| **Corte del día** | COMERCIAL | /ventas/corte existe | **3ª** |
+| **Flota y obras del técnico** | OPERACIONES (maquinaria) | maquinas + rastreo_gps | **4ª** |
+| **Inventario del técnico** | OPERACIONES | inventario con bodega/stock | **5ª** |
+| **Diésel del repartidor** | OPERACIONES | cargas_combustible | **6ª** |
+
+**Adyacentes (fuera de COM/OP — para una fase 2):** Asistencia de todos los roles
+(y la del equipo del residente), Contactos (nuevo módulo), Perfil/documentación,
+Obras del residente (usa proyectos — COM/OP al fin, pero sufle respuesta del
+mapa), y los dashboards Inicio de cada rol (mezclan RRHH+comercial+op).
+
+---
+
+## 3. Infraestructura común que pedra el shell móvil (la de verdad)
+
+Aunque cada pantalla usa módulos que ya existen, **ninguna de las pieces existe
+como "/m/*"** — pedra instalar:
+1. **Shell móvil por rol:** navegación inferior condicionado al rol (vistas de
+   `role_vistas` ya lo proveen), header con obra/encargado:
+2. **Auth + token en memoria** ya viven (relativo: la sesión del GET funciona en
+   HTTP LAN — mismo caveat de GPS que ya conocemos: la ubicación/GPS zone de
+   asistencia exige HTTPS).
+3. **Endpoints que faltan por levantar:** fotos de asistencia (payload image),
+   **Presionar** (nudge a la torre del reporte), contactos personales.
+4. **Offline:** la guía de nueva-info exige captura sin señal — fuera del scope
+   de esta phase.
+
+---
+
+## 4. Riesgos y contradiciones marcadas por el diseño
+
+- **Asistencia** es la pantalía más repetida del PWA (5 roles) y **no es
+  COM/OP** — pedrá desacoplada al módulo RRHH como fase propia, o es el primer
+  grande si se decide incluir.
+- **El reporte del trabajador no pide prioridad ni área manual** — el diseño la
+  deriva ("Avisa a tu técnico" = su torre) — coherente con lo ya implementado
+  de P9 prioridad futura y del rol responda el "Reporta" del server.
+- **"Presionar"** y **"¿Por qué no se resuelve??"** son una conversación/nudge
+  nueva al reporte (paso de mensaje a la torre) — nueva pieza, detrás de
+  ` registros`?
+- La ubicación con **GPS "dentro de la zona"** del fin de asistencia requiere
+  HTTPS (el PWA target) + geofence — la variante ya documentada de obras.
