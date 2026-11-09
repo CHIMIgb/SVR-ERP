@@ -880,10 +880,11 @@ export default function ReportesOperacionesPage() {
     {
       key: 'subcategoria',
       header: 'Subcategoría',
-      minWidth: '140px',
+      minWidth: '150px',
+      truncate: true,
       render: (report) =>
         report.subcategoria ? (
-          <span className="text-xs font-semibold text-ui-600">{report.subcategoria}</span>
+          <span className="block truncate text-xs font-semibold text-ui-600">{report.subcategoria}</span>
         ) : (
           <span className="text-ui-300">—</span>
         ),
@@ -907,7 +908,7 @@ export default function ReportesOperacionesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      minWidth: '240px',
+      minWidth: '330px',
       render: (report) => (
         <div className="flex items-center justify-end gap-1.5">
           <Tooltip content="Ver incidente">
