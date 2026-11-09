@@ -1166,8 +1166,6 @@ export default function ReportesOperacionesPage() {
             >
               <option value="">Seleccionar área destino...</option>
               <option value={MISMA_AREA}>Misma área</option>
-              <option value="">Seleccionar área destino...</option>
-              <option value={MISMA_AREA}>Misma área</option>
               {optGroupsTexto.map((grupo) => (
                 <optgroup key={grupo.label} label={grupo.label}>
                   {grupo.opciones.map((o) => (
