@@ -18,7 +18,6 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
-  proyectosApi,
   reportesCampoApi,
   trabajadoresApi,
   type ReporteCampoDTO,
@@ -201,9 +200,9 @@ export default function ReportesOperacionesPage() {
         setSubcategorias(res.data);
       }
     });
-    proyectosApi.listar({ estado: 'EN_PROCESO', limit: 100 }).then((res) => {
+    reportesCampoApi.proyectos().then((res) => {
       if (res.success && res.data) {
-        setProyectos(res.data.items.map((p) => ({ id: p.id, nombre: p.nombre })));
+        setProyectos(res.data);
       }
     });
     trabajadoresApi.listar({ limit: 100 }).then((res) => {
@@ -955,6 +954,24 @@ export default function ReportesOperacionesPage() {
       : CATEGORIAS.find((c) => c.value === form.categoria)?.label;
   const subcategoriasFiltradas = subcategorias.filter((s) => !!categoriaLabel && s.categoria === categoriaLabel);
 
+  /** Áreas del alta agrupadas según la guía de roles del cliente (optgroups). */
+  const optGroupsTexto = [
+    {
+      label: 'Administración (jefes y oficina)',
+      opciones: [{ value: 'ADMINISTRATIVO' as CategoriaReporteApi, label: 'Administrativo' }],
+    },
+    {
+      label: 'Residentes (ingenieros encargados de obra y de personal)',
+      opciones: [{ value: 'RESIDENTE' as CategoriaReporteApi, label: 'Residente' }],
+    },
+    {
+      label: 'Técnicos (mantenimiento, mecánico, diésel y soldador)',
+      opciones: CATEGORIAS.filter((c) =>
+        ['MECANICO', 'SOLDADOR', 'DIESEL', 'MANTENIMIENTO'].includes(c.value),
+      ).map((c) => ({ value: c.value, label: c.label })),
+    },
+  ];
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
@@ -1136,10 +1153,12 @@ export default function ReportesOperacionesPage() {
               value={form.categoria}
               onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
-              <option value="">Seleccionar área destino...</option>
-              <option value={MISMA_AREA}>Misma área (tu área: {torreDelUsuario})</option>
-              {CATEGORIAS.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
+              {optGroupsTexto.map((grupo) => (
+                <optgroup key={grupo.label} label={grupo.label}>
+                  {grupo.opciones.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </ModalField>
@@ -1589,10 +1608,12 @@ export default function ReportesOperacionesPage() {
               value={form.categoria}
               onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
-              <option value="">Seleccionar área destino...</option>
-              <option value={MISMA_AREA}>Misma área (tu área: {torreDelUsuario})</option>
-              {CATEGORIAS.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
+              {optGroupsTexto.map((grupo) => (
+                <optgroup key={grupo.label} label={grupo.label}>
+                  {grupo.opciones.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </ModalField>

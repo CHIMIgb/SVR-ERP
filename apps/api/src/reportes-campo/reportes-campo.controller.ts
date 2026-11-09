@@ -67,6 +67,18 @@ export class ReportesCampoController {
   }
 
   /**
+   * GET /api/reportes-campo/proyectos-en-proceso
+   * Proyectos activos en proceso (select "Ubicación — Proyecto"), con el
+   * permiso de esta vista para que cualquier rol que use /reportes lo cargue.
+   * Permiso: operaciones.reportes_campo.ver
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'ver')
+  @Get('proyectos-en-proceso')
+  async proyectosEnProceso() {
+    return this.service.proyectosEnProceso();
+  }
+
+  /**
    * GET /api/reportes-campo/:id
    * Detalle del incidente: reporte + actividades + adjuntos.
    * Permiso: operaciones.reportes_campo.ver

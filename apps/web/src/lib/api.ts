@@ -876,6 +876,9 @@ export const reportesCampoApi = {
   aceptar: (id: string) =>
     apiClient.post<ReporteCampoDTO>(`/reportes-campo/${id}/aceptar`, {}),
 
+  /** Proyectos EN_PROCESO para el select "Ubicación — Proyecto". */
+  proyectos: () => apiClient.get<{ id: string; nombre: string }[]>('/reportes-campo/proyectos-en-proceso'),
+
   /** Asigna "quién le cae": trabajador del sistema y/o nombre libre. */
   asignar: (id: string, data: { asignadoA?: string | null; asignadoNombre?: string | null }) =>
     apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/asignar`, data),

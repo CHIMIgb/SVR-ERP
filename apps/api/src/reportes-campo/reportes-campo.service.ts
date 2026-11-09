@@ -393,6 +393,15 @@ export class ReportesCampoService {
     return serialized;
   }
 
+  /** Proyectos EN_PROCESO para el select "Ubicación — Proyecto" (datos maestros). */
+  async proyectosEnProceso() {
+    return this.prisma.proyectos.findMany({
+      where: { estado: 'EN_PROCESO', activo: true, eliminado_en: null },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
   // ────────────────────────────────────────────
   //  CATÁLOGO de subcategorías (datos maestros — sin paginar)
   // ────────────────────────────────────────────
