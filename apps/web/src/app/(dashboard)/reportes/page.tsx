@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
@@ -30,8 +29,6 @@ import {
   type EstadoIncidenteApi,
   type PrioridadReporteApi,
   type CategoriaReporteApi,
-  type EstadoIncidente as EstadoIncidenteUI,
-  type PrioridadReporte,
   type AdjuntoDTO,
   type TrabajadorDTO,
 } from '@/lib/api';
@@ -78,28 +75,6 @@ const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
 
 /** Opción especial: el incidente queda dentro del área del que lo levanta. */
 const MISMA_AREA = 'MISMA_AREA';
-
-const categoriaVariant: Record<string, string> = {
-  Mecanico: 'text-blue-700 bg-blue-50 dark:bg-blue-500/15 dark:text-blue-400',
-  Soldador: 'text-orange-700 bg-orange-50 dark:bg-orange-500/15 dark:text-orange-400',
-  Diesel: 'text-amber-700 bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400',
-  Mantenimiento: 'text-rose-700 bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400',
-  Administrativo: 'text-indigo-700 bg-indigo-50 dark:bg-indigo-500/15 dark:text-indigo-400',
-  Residente: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400',
-};
-
-const estadoVariant: Record<EstadoIncidenteUI, 'warning' | 'info' | 'success' | 'primary'> = {
-  Nuevo: 'warning',
-  'En curso': 'primary',
-  Cerrado: 'success',
-};
-
-const prioridadVariant: Record<PrioridadReporte, 'error' | 'warning' | 'neutral' | 'info'> = {
-  Crítica: 'error',
-  Alta: 'warning',
-  Media: 'neutral',
-  Baja: 'info',
-};
 
 /** Descripción breve con recorte para la tabla. */
 function descripcionBreve(texto: string, max = 90): string {
@@ -805,11 +780,7 @@ export default function ReportesOperacionesPage() {
       minWidth: '140px',
       render: (report) =>
         report.categoria ? (
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black ${categoriaVariant[report.categoria] ?? 'bg-ui-100 text-ui-600'}`}
-          >
-            {report.categoria}
-          </span>
+          <span className="text-xs font-semibold text-ui-700">{report.categoria}</span>
         ) : (
           <span className="text-ui-300">Sin área</span>
         ),
@@ -820,9 +791,7 @@ export default function ReportesOperacionesPage() {
       minWidth: '90px',
       render: (report) =>
         report.prioridad ? (
-          <Badge variant={prioridadVariant[report.prioridad]} size="sm" dot>
-            {report.prioridad}
-          </Badge>
+          <span className="text-xs font-semibold text-ui-700">{report.prioridad}</span>
         ) : (
           <span className="text-ui-300">—</span>
         ),
@@ -831,9 +800,7 @@ export default function ReportesOperacionesPage() {
       key: 'estado',
       header: 'Estado',
       render: (report) => (
-        <Badge variant={estadoVariant[report.estado]} size="sm">
-          {report.estado}
-        </Badge>
+        <span className="text-xs font-semibold text-ui-700">{report.estado}</span>
       ),
     },
     {
