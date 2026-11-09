@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { GpsService } from './gps.service';
+import { MaquinasService } from '../modules/maquinas/maquinas.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -35,7 +36,7 @@ describe('GPS Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, GpsService],
+      providers: [PrismaService, AuditContextService, AuditService, MaquinasService, GpsService],
     }).compile();
 
     app = module.createNestApplication();
@@ -242,6 +243,27 @@ describe('GPS Audit (Real DB)', () => {
 
     it('falla con NotFound si la máquina del historial no existe', async () => {
       await expect(service.findHistorialMaquina('M-INEXISTENTE', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('el día del historial se corta en la hora de México, no a medianoche UTC', async () => {
+      if (!maquinaId) return;
+      const maquina = await prisma.maquinas.findUniqueOrThrow({ where: { id: maquinaId }, select: { codigo: true } });
+      // 15 de enero (CDMX, UTC-6): 9:30 p.m. del 14 (= 03:30Z del 15), 10:00 a.m. y 7:00 p.m. del 15 (= 01:00Z del 16).
+      const ids = [randomUUID(), randomUUID(), randomUUID()];
+      const instantes = ['2026-01-15T03:30:00Z', '2026-01-15T16:00:00Z', '2026-01-16T01:00:00Z'];
+      await prisma.rastreo_gps.createMany({
+        data: ids.map((id, i) => ({ id, maquina_id: maquinaId!, fecha_hora: new Date(instantes[i]), lat: 19.4, lng: -99.1, proveedor_gps: 'TEST' })),
+      });
+      try {
+        const historial = await service.findHistorialMaquina(maquina.codigo ?? maquinaId, { fecha: '2026-01-15', limit: 50 });
+        const horas = historial.puntos.map((p) => p.time);
+        expect(historial.fecha).toBe('2026-01-15');
+        // Antes salía la de las 9:30 p.m. del día anterior y faltaba la de las 7:00 p.m. del mismo día.
+        expect(horas).toEqual(expect.arrayContaining(['10:00', '19:00']));
+        expect(horas).not.toContain('21:30');
+      } finally {
+        await prisma.rastreo_gps.deleteMany({ where: { id: { in: ids } } });
+      }
     });
   });
 

@@ -9,6 +9,8 @@ import { ActualizarEstadoDto } from './dto/actualizar-estado.dto';
 import { RegistrarHorasExtraDto } from './dto/registrar-horas-extra.dto';
 import { QueryAsistenciaDto } from './dto/query-asistencia.dto';
 import { QuerySemanalDto } from './dto/query-semanal.dto';
+import { ResolverOmisionDto, ResolverOmisionSinMarcajeDto } from './dto/resolver-omision.dto';
+import { RegistrarUbicacionObraDto } from './dto/registrar-ubicacion-obra.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -73,6 +75,35 @@ export class AsistenciaController {
   async actualizarEstado(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarEstadoDto, @Req() req: Request) {
     const user = req.user as { id: string };
     return this.asistenciaService.actualizarEstado(id, dto, user.id);
+  }
+
+  /** La administradora valida el motivo de una omisión (checó tarde) y la deja como falta o retardo. */
+  @RequirePermission('rrhh', 'asistencia', 'editar')
+  @Patch(':id/omision')
+  async resolverOmision(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ResolverOmisionDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.resolverOmision(id, dto, user.id);
+  }
+
+  /** Omisión de quien no checó nada ese día: crea el registro ya resuelto. */
+  @RequirePermission('rrhh', 'asistencia', 'editar')
+  @Post('omisiones')
+  @HttpCode(HttpStatus.CREATED)
+  async resolverOmisionSinMarcaje(@Body() dto: ResolverOmisionSinMarcajeDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.resolverOmisionSinMarcaje(dto, user.id);
+  }
+
+  /** Centro y radio de la geocerca de una obra; cambia dónde se puede checar, por eso pide editar. */
+  @RequirePermission('rrhh', 'asistencia', 'editar')
+  @Patch('obras/:obraId/ubicacion')
+  async registrarUbicacionObra(
+    @Param('obraId', ParseUUIDPipe) obraId: string,
+    @Body() dto: RegistrarUbicacionObraDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.registrarUbicacionObra(obraId, dto, user.id);
   }
 
   @RequirePermission('rrhh', 'asistencia', 'crear')

@@ -1,4 +1,4 @@
-import { IsUUID, IsOptional, IsDateString, IsString } from 'class-validator';
+import { IsUUID, IsOptional, IsDateString, IsString, MaxLength } from 'class-validator';
 
 export class RegistrarFaltaDto {
   @IsUUID()
@@ -10,5 +10,6 @@ export class RegistrarFaltaDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   notas?: string;
 }

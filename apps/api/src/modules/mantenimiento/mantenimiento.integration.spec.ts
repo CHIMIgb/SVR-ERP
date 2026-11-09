@@ -18,6 +18,7 @@ import { AuditService } from '../../audit/audit.service';
 import { AuditContextService } from '../../audit/audit-context.service';
 import { MaquinasService } from '../maquinas/maquinas.service';
 import { MantenimientoService } from './mantenimiento.service';
+import { hoyEnZona } from '../../common/validacion';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -26,6 +27,7 @@ describe('Mantenimiento Audit (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let service: MantenimientoService;
+  let maquinasService: MaquinasService;
 
   let tipoMaquinaId: string;
   let maquinaId: string;
@@ -42,6 +44,7 @@ describe('Mantenimiento Audit (Real DB)', () => {
 
     prisma = module.get(PrismaService);
     service = module.get(MantenimientoService);
+    maquinasService = module.get(MaquinasService);
 
     tipoMaquinaId = randomUUID();
     maquinaId = randomUUID();
@@ -166,6 +169,29 @@ describe('Mantenimiento Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.MANTENIMIENTO_ELIMINADO, registro.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+  });
+
+  describe('listado y próximo servicio por horas', () => {
+    it('un código de máquina que no existe da una lista vacía (antes era un 500)', async () => {
+      const res = await service.findAll({ maquinaId: `NOEX-${TEST_ID}` });
+      expect(res.items).toHaveLength(0);
+      expect(res.pagination.total).toBe(0);
+    });
+
+    it('el último servicio define a qué horómetro toca el siguiente, y Flota lo recibe en horas', async () => {
+      // Servicio de hoy: el siguiente toca a las 60 h; con la máquina en 20 h faltan 40.
+      const registro = await service.create(createDto({ fecha: hoyEnZona(), horasServicio: 10, proximoServicioHoras: 60 }), ACTOR_USER_ID);
+      createdRegistroIds.push(registro.id);
+      await prisma.maquinas.update({ where: { id: maquinaId }, data: { horometro: 20 } });
+
+      const maquina = (await maquinasService.findAll()).find((m) => m.id === maquinaCodigo);
+      expect(maquina).toMatchObject({ proximoServicioHoras: 60, horasParaServicio: 40 });
+
+      const stats = await service.findStats();
+      expect(stats.umbralServicioHoras).toBe(50);
+      expect(stats.serviciosMes).toBeGreaterThanOrEqual(1);
+      expect(stats.costoMes).toBeGreaterThanOrEqual(5500);
     });
   });
 });

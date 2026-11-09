@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CombustibleService } from './combustible.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -127,6 +127,13 @@ describe('CombustibleService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'MAQUINA_NO_ENCONTRADA' }));
     });
 
+    it('400s (audited) when the computed consumption does not fit its columns, instead of a 500 from the DB', async () => {
+      // 800 L en 0.5 h → 1,600 L/h: 11,328 % sobre lo esperado (14 L/h); la columna Decimal(6,2) no lo guarda.
+      await expect(service.create(createDto({ litros: 800, horasTrabajadasPeriodo: 0.5 }), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.cargas_combustible.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'CONSUMO_FUERA_DE_RANGO' }));
+    });
+
     it('should NOT flag alertaOrdena exactly at the 35% threshold', async () => {
       await service.create(createDto({ litros: 18.9, horasTrabajadasPeriodo: 1 }), 'user-1');
       const createData = prisma.cargas_combustible.create.mock.calls[0][0].data;
@@ -164,6 +171,14 @@ describe('CombustibleService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'COMBUSTIBLE_ACTUALIZADO', result: 'SUCCESS' }),
       );
+    });
+
+    it('400s (audited) when the edited values make the consumption overflow its columns', async () => {
+      await expect(service.update('carga-uuid-1', { litros: 900, horasTrabajadasPeriodo: 0.5 }, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.cargas_combustible.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'CONSUMO_FUERA_DE_RANGO' }));
     });
 
     it('should 404 when the carga does not exist', async () => {

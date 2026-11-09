@@ -4,6 +4,7 @@ import { AuditAction, AuditResult } from '@prisma/client';
 import { GpsService } from './gps.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MaquinasService } from '../modules/maquinas/maquinas.service';
 
 describe('GpsService', () => {
   let service: GpsService;
@@ -11,6 +12,8 @@ describe('GpsService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let audit: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let maquinasService: any;
 
   const geocercaDb = {
     id: 'g0000000-0000-0000-0000-000000000001',
@@ -74,11 +77,14 @@ describe('GpsService', () => {
 
     audit = { log: jest.fn().mockResolvedValue(undefined) };
 
+    maquinasService = { ultimaCargaPorMaquina: jest.fn().mockResolvedValue(new Map()) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GpsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        { provide: MaquinasService, useValue: maquinasService },
       ],
     }).compile();
 
@@ -282,6 +288,47 @@ describe('GpsService', () => {
       ]);
       const [m] = await service.findMaquinasEnVivo();
       expect(m.status).toBe('alert');
+    });
+
+    it('marca alerta por la última carga de combustible real, no por la columna congelada de la máquina', async () => {
+      // La columna dice que no hay alerta; la última carga sí la tiene.
+      prisma.maquinas.findMany.mockResolvedValue([{ ...maquinaDb, alerta_consumo_anormal: false }]);
+      maquinasService.ultimaCargaPorMaquina.mockResolvedValue(new Map([[maquinaDb.id, { rendimiento: 30, alerta: true }]]));
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          maquina_id: maquinaDb.id,
+          fecha_hora: new Date(),
+          lat: 19.4,
+          lng: -99.1,
+          velocidad_kmh: 0,
+          heading: 0,
+          temperatura_motor: 25,
+          horometro: 1200,
+          ignition: false,
+        },
+      ]);
+      const [m] = await service.findMaquinasEnVivo();
+      expect(maquinasService.ultimaCargaPorMaquina).toHaveBeenCalledWith([maquinaDb.id]);
+      expect(m.status).toBe('alert');
+    });
+
+    it('la columna congelada de la máquina ya no basta para marcar alerta', async () => {
+      prisma.maquinas.findMany.mockResolvedValue([{ ...maquinaDb, alerta_consumo_anormal: true }]);
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          maquina_id: maquinaDb.id,
+          fecha_hora: new Date(),
+          lat: 19.4,
+          lng: -99.1,
+          velocidad_kmh: 0,
+          heading: 0,
+          temperatura_motor: 25,
+          horometro: 1200,
+          ignition: false,
+        },
+      ]);
+      const [m] = await service.findMaquinasEnVivo();
+      expect(m.status).toBe('idle');
     });
 
     it('cae a la posición de la máquina cuando no hay ningún ping', async () => {

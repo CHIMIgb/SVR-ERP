@@ -1,8 +1,13 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { esFechaFutura } from '../common/validacion';
+import { TOPE_CATALOGO_MAQUINAS } from '../modules/maquinas/maquinas.service';
+
+/** Tope del catálogo de proyectos para los selects (datos maestros). */
+const TOPE_CATALOGO_PROYECTOS = 500;
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { UpdateTrabajadorDto } from './dto/update-trabajador.dto';
 import { QueryTrabajadoresDto } from './dto/query-trabajadores.dto';
@@ -111,6 +116,37 @@ export class TrabajadoresService {
     throw new Excepcion(message);
   }
 
+  /**
+   * Regla del cliente: "Solo efectivo" no lleva sueldo por transferencia y "Solo transferencia" no lleva efectivo.
+   * Antes se aceptaba cualquier combinación, y Nómina mandaba a la dispersión SPEI a quien cobraba solo en efectivo.
+   */
+  private async exigirMetodoPagoCoherente(
+    action: AuditAction,
+    entityId: string | null,
+    metodo: TrabajadorResponse['metodoPago'],
+    sueldoFiscal: number,
+    sueldoEfectivo: number,
+  ): Promise<void> {
+    if (metodo === 'Efectivo' && sueldoFiscal > 0) {
+      return this.fallir(
+        action,
+        entityId,
+        'METODO_PAGO_INCOHERENTE',
+        BadRequestException,
+        'Con pago solo en efectivo, el sueldo por transferencia debe ser 0',
+      );
+    }
+    if (metodo === 'Tarjeta' && sueldoEfectivo > 0) {
+      return this.fallir(
+        action,
+        entityId,
+        'METODO_PAGO_INCOHERENTE',
+        BadRequestException,
+        'Con pago solo por transferencia, el sueldo en efectivo debe ser 0',
+      );
+    }
+  }
+
   async findAll(query: QueryTrabajadoresDto) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 12, 100);
@@ -146,6 +182,7 @@ export class TrabajadoresService {
     const maquinas = await this.prisma.maquinas.findMany({
       where: { operador_id: { in: items.map((t) => t.id) }, eliminado_en: null },
       select: { id: true, codigo: true, nombre: true, operador_id: true },
+      take: TOPE_CATALOGO_MAQUINAS,
     });
     const maquinaPorOperador = new Map(maquinas.map((m) => [m.operador_id as string, m]));
 
@@ -177,10 +214,57 @@ export class TrabajadoresService {
     return this.toResponse(trabajador, maquina ?? undefined);
   }
 
+  /**
+   * Catálogos que usa la vista de Trabajadores (alta, edición y bitácoras de renta), con el permiso de
+   * RRHH. `/maquinas` y `/catalogos/proyectos` piden permisos de Maquinaria y de Operaciones que el rol
+   * de RRHH no tiene: sin esto, RRHH no podía asignar máquina ni proyecto, ni capturar una bitácora.
+   * Las máquinas traen su operador actual para avisar antes de reasignarla.
+   */
+  async catalogos() {
+    const [maquinas, proyectos] = await Promise.all([
+      this.prisma.maquinas.findMany({
+        where: { eliminado_en: null, codigo: { not: null } },
+        select: { codigo: true, nombre: true, operador_id: true, trabajadores: { select: { nombre: true } } },
+        orderBy: { codigo: 'asc' },
+        take: TOPE_CATALOGO_MAQUINAS,
+      }),
+      // Catálogos para los selects (datos maestros): con tope, igual que el de máquinas.
+      this.prisma.proyectos.findMany({
+        where: { eliminado_en: null, activo: true },
+        select: { id: true, nombre: true },
+        orderBy: { nombre: 'asc' },
+        take: TOPE_CATALOGO_PROYECTOS,
+      }),
+    ]);
+
+    return {
+      maquinas: maquinas.map((m) => ({
+        codigo: m.codigo as string,
+        nombre: m.nombre,
+        operadorId: m.operador_id ?? null,
+        operadorNombre: m.trabajadores?.nombre ?? null,
+      })),
+      proyectos,
+    };
+  }
+
   async create(dto: CreateTrabajadorDto, userId: string): Promise<TrabajadorResponse> {
+    if (esFechaFutura(dto.fechaContratacion)) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_CREADO,
+        null,
+        'FECHA_INGRESO_FUTURA',
+        BadRequestException,
+        'La fecha de ingreso no puede ser futura',
+      );
+    }
+    await this.exigirMetodoPagoCoherente(AuditAction.TRABAJADOR_CREADO, null, dto.metodoPago, dto.sueldoFiscal, dto.sueldoEfectivo);
+
     const categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
 
     let maquinaId: string | undefined;
+    // Si la máquina ya tenía operador, se le quita: queda registrado en la auditoría.
+    let operadorDesplazadoId: string | null = null;
     if (dto.maquinaId) {
       const maquina = await this.prisma.maquinas.findFirst({
         where: { codigo: dto.maquinaId, eliminado_en: null },
@@ -195,6 +279,26 @@ export class TrabajadoresService {
         );
       }
       maquinaId = maquina.id;
+      operadorDesplazadoId = maquina.operador_id ?? null;
+    }
+
+    // Antes un proyecto inexistente se ignoraba en silencio y el alta quedaba sin proyecto.
+    let proyectoId: string | undefined;
+    if (dto.proyecto?.trim()) {
+      const proyecto = await this.prisma.proyectos.findFirst({
+        where: { nombre: dto.proyecto.trim(), eliminado_en: null, activo: true },
+        select: { id: true },
+      });
+      if (!proyecto) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_CREADO,
+          null,
+          'PROYECTO_NO_ENCONTRADO',
+          NotFoundException,
+          `No existe el proyecto "${dto.proyecto.trim()}"`,
+        );
+      }
+      proyectoId = proyecto.id;
     }
 
     const trabajadorId = randomUUID();
@@ -208,14 +312,14 @@ export class TrabajadoresService {
           puesto: dto.puesto.trim(),
           categoria_puesto_id: categoriaId,
           estado: 'ACTIVO',
-          telefono: dto.telefono,
+          telefono: dto.telefono.trim(),
           entrada: this.horaAUtc(dto.entrada),
           avatar: this.iniciales(dto.nombre),
           sueldo_fiscal: dto.sueldoFiscal,
           sueldo_efectivo: dto.sueldoEfectivo,
           metodo_pago: METODO_UI_A_DB[dto.metodoPago],
           estado_renta: 'EN_OBRA_PROPIA',
-          fecha_contratacion: dto.fechaContratacion ? new Date(dto.fechaContratacion) : now,
+          fecha_contratacion: new Date(dto.fechaContratacion),
           vacaciones_dias: dto.vacacionesDias,
           horas_extra_semana: dto.horasExtraSemana,
           tarifa_hora_extra: dto.tarifaHoraExtra,
@@ -231,13 +335,10 @@ export class TrabajadoresService {
         await tx.maquinas.update({ where: { id: maquinaId }, data: { operador_id: trabajadorId } });
       }
 
-      if (dto.proyecto) {
-        const proyecto = await tx.proyectos.findFirst({ where: { nombre: dto.proyecto, eliminado_en: null } });
-        if (proyecto) {
-          await tx.trabajadores_proyectos.create({
-            data: { trabajador_id: trabajadorId, proyecto_id: proyecto.id, creado_por: userId },
-          });
-        }
+      if (proyectoId) {
+        await tx.trabajadores_proyectos.create({
+          data: { trabajador_id: trabajadorId, proyecto_id: proyectoId, creado_por: userId },
+        });
       }
 
       if (dto.licencia) {
@@ -290,6 +391,9 @@ export class TrabajadoresService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serialized,
+      ...(operadorDesplazadoId && {
+        metadata: { maquinaReasignada: dto.maquinaId, operadorDesplazadoId },
+      }),
     });
 
     return serialized;
@@ -309,6 +413,50 @@ export class TrabajadoresService {
         `Trabajador con id "${id}" no encontrado`,
       );
     }
+    // Se revisa la combinación que quedaría (lo que se manda más lo que ya estaba guardado).
+    await this.exigirMetodoPagoCoherente(
+      AuditAction.TRABAJADOR_ACTUALIZADO,
+      id,
+      dto.metodoPago ?? METODO_DB_A_UI[existente.metodo_pago] ?? 'Mixto',
+      dto.sueldoFiscal ?? Number(existente.sueldo_fiscal),
+      dto.sueldoEfectivo ?? Number(existente.sueldo_efectivo),
+    );
+
+    // La baja solo la registra liquidar(): calcula el finiquito, libera la máquina y pide el permiso de
+    // eliminar. Por PATCH (permiso de editar) se podía dar de baja sin finiquito o reactivar a alguien liquidado.
+    if (dto.estado === 'Inactivo') {
+      return this.fallir(
+        AuditAction.TRABAJADOR_ACTUALIZADO,
+        id,
+        'BAJA_SOLO_CON_LIQUIDACION',
+        BadRequestException,
+        'Para dar de baja a un trabajador usa "Baja y finiquito"',
+      );
+    }
+    if (existente.estado === 'INACTIVO') {
+      const reactiva = dto.estado !== undefined;
+      const asigna = !!dto.maquinaId?.trim() || !!dto.proyecto?.trim();
+      if (reactiva || asigna) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_ACTUALIZADO,
+          id,
+          'TRABAJADOR_DADO_DE_BAJA',
+          ConflictException,
+          reactiva
+            ? `${existente.nombre} fue dado de baja y no se reactiva desde aquí`
+            : `${existente.nombre} fue dado de baja: no se le asigna máquina ni proyecto`,
+        );
+      }
+    }
+    if (dto.fechaContratacion !== undefined && esFechaFutura(dto.fechaContratacion)) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_ACTUALIZADO,
+        id,
+        'FECHA_INGRESO_FUTURA',
+        BadRequestException,
+        'La fecha de ingreso no puede ser futura',
+      );
+    }
 
     const maquinaAnterior = await this.prisma.maquinas.findFirst({
       where: { operador_id: id, eliminado_en: null },
@@ -321,6 +469,8 @@ export class TrabajadoresService {
     }
 
     let nuevaMaquinaId: string | null | undefined;
+    // Si la máquina nueva la tenía otro operador, se le quita: queda registrado en la auditoría.
+    let operadorDesplazadoId: string | null = null;
     if (dto.maquinaId !== undefined) {
       if (dto.maquinaId === '') {
         nuevaMaquinaId = null;
@@ -338,6 +488,32 @@ export class TrabajadoresService {
           );
         }
         nuevaMaquinaId = maquina.id;
+        if (maquina.operador_id && maquina.operador_id !== id) operadorDesplazadoId = maquina.operador_id;
+      }
+    }
+
+    // Proyecto asignado (antes el PATCH lo ignoraba y el cambio no se guardaba): '' quita la asignación
+    // y un nombre la reemplaza por ese proyecto. La vista maneja un solo proyecto por trabajador.
+    let nuevoProyectoId: string | null | undefined;
+    if (dto.proyecto !== undefined) {
+      const nombreProyecto = dto.proyecto.trim();
+      if (nombreProyecto === '') {
+        nuevoProyectoId = null;
+      } else {
+        const proyecto = await this.prisma.proyectos.findFirst({
+          where: { nombre: nombreProyecto, eliminado_en: null, activo: true },
+          select: { id: true },
+        });
+        if (!proyecto) {
+          return this.fallir(
+            AuditAction.TRABAJADOR_ACTUALIZADO,
+            id,
+            'PROYECTO_NO_ENCONTRADO',
+            NotFoundException,
+            `No existe el proyecto "${nombreProyecto}"`,
+          );
+        }
+        nuevoProyectoId = proyecto.id;
       }
     }
 
@@ -351,7 +527,7 @@ export class TrabajadoresService {
           ...(dto.puesto !== undefined && { puesto: dto.puesto.trim() }),
           ...(categoriaId && { categoria_puesto_id: categoriaId }),
           ...(dto.estado !== undefined && { estado: ESTADO_UI_A_DB[dto.estado] }),
-          ...(dto.telefono !== undefined && { telefono: dto.telefono }),
+          ...(dto.telefono !== undefined && { telefono: dto.telefono.trim() }),
           ...(dto.entrada !== undefined && { entrada: this.horaAUtc(dto.entrada) }),
           ...(dto.sueldoFiscal !== undefined && { sueldo_fiscal: dto.sueldoFiscal }),
           ...(dto.sueldoEfectivo !== undefined && { sueldo_efectivo: dto.sueldoEfectivo }),
@@ -374,6 +550,34 @@ export class TrabajadoresService {
         }
         if (nuevaMaquinaId) {
           await tx.maquinas.update({ where: { id: nuevaMaquinaId }, data: { operador_id: id } });
+        }
+      }
+
+      if (nuevoProyectoId !== undefined) {
+        // Soft-delete de las demás asignaciones; la PK es (trabajador, proyecto), así que una asignación
+        // borrada antes se reactiva en vez de crearse de nuevo.
+        await tx.trabajadores_proyectos.updateMany({
+          where: {
+            trabajador_id: id,
+            eliminado_en: null,
+            ...(nuevoProyectoId && { proyecto_id: { not: nuevoProyectoId } }),
+          },
+          data: { eliminado_en: now, activo: false, actualizado_por: userId },
+        });
+        if (nuevoProyectoId) {
+          const asignacion = await tx.trabajadores_proyectos.findUnique({
+            where: { trabajador_id_proyecto_id: { trabajador_id: id, proyecto_id: nuevoProyectoId } },
+          });
+          if (!asignacion) {
+            await tx.trabajadores_proyectos.create({
+              data: { trabajador_id: id, proyecto_id: nuevoProyectoId, creado_por: userId },
+            });
+          } else if (asignacion.eliminado_en) {
+            await tx.trabajadores_proyectos.update({
+              where: { trabajador_id_proyecto_id: { trabajador_id: id, proyecto_id: nuevoProyectoId } },
+              data: { eliminado_en: null, activo: true, asignado_en: now, actualizado_por: userId },
+            });
+          }
         }
       }
 
@@ -449,6 +653,9 @@ export class TrabajadoresService {
       actorRole: 'autenticado',
       previousValue: this.toResponse(existente, maquinaAnterior ?? undefined),
       newValue: serialized,
+      ...(operadorDesplazadoId && {
+        metadata: { maquinaReasignada: dto.maquinaId, operadorDesplazadoId },
+      }),
     });
 
     return serialized;
@@ -507,9 +714,30 @@ export class TrabajadoresService {
         `Trabajador con id "${id}" no encontrado`,
       );
     }
+    // Una baja ya registrada no se vuelve a liquidar (antes se podía, y quedaban dos finiquitos auditados).
+    if (trabajador.estado === 'INACTIVO') {
+      return this.fallir(
+        AuditAction.TRABAJADOR_LIQUIDADO,
+        id,
+        'TRABAJADOR_YA_INACTIVO',
+        ConflictException,
+        `${trabajador.nombre} ya fue dado de baja`,
+      );
+    }
+    // La antigüedad sale de la fecha de ingreso; antes, sin ella, se calculaba desde una fecha inventada
+    // (15/01/2023) y el finiquito resultante no correspondía al trabajador.
+    if (!trabajador.fecha_contratacion) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_LIQUIDADO,
+        id,
+        'SIN_FECHA_CONTRATACION',
+        BadRequestException,
+        `Registra la fecha de ingreso de ${trabajador.nombre} antes de calcular su finiquito`,
+      );
+    }
 
     const sueldoDiario = Number((Number(trabajador.sueldo_fiscal) + Number(trabajador.sueldo_efectivo)) / 6);
-    const fechaIngreso = trabajador.fecha_contratacion ?? new Date('2023-01-15');
+    const fechaIngreso = trabajador.fecha_contratacion;
     const diffDays = Math.max(0, Math.ceil((Date.now() - fechaIngreso.getTime()) / 86400000));
     const aniosAntiguedad = Math.max(0.1, Number((diffDays / 365.25).toFixed(2)));
 
@@ -540,19 +768,37 @@ export class TrabajadoresService {
     const subtotalIndemnizaciones = montoIndemnizacion90Dias + montoIndemnizacion20DiasPorAno + montoPrimaAntiguedad;
     const granTotalNeto = Math.max(0, Number((subtotalFiniquito + subtotalIndemnizaciones - prestamos).toFixed(2)));
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.maquinas.updateMany({ where: { operador_id: id }, data: { operador_id: null } });
-      await tx.trabajadores.update({
-        where: { id },
-        data: {
-          estado: 'INACTIVO',
-          estado_renta: null,
-          cliente_renta_actual_id: null,
-          actualizado_por: userId,
-          actualizado_en: new Date(),
-        },
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Baja condicional: dos peticiones a la vez (doble clic, reintento de red) pasan la revisión de arriba;
+        // solo la que todavía encuentra al trabajador sin baja la registra. La otra termina en 409.
+        const baja = await tx.trabajadores.updateMany({
+          where: { id, eliminado_en: null, estado: { not: 'INACTIVO' } },
+          data: {
+            estado: 'INACTIVO',
+            estado_renta: null,
+            cliente_renta_actual_id: null,
+            actualizado_por: userId,
+            actualizado_en: new Date(),
+          },
+        });
+        if (baja.count === 0) {
+          throw new ConflictException(`${trabajador.nombre} ya fue dado de baja`);
+        }
+        await tx.maquinas.updateMany({ where: { operador_id: id }, data: { operador_id: null } });
       });
-    });
+    } catch (e) {
+      if (e instanceof ConflictException) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_LIQUIDADO,
+          id,
+          'TRABAJADOR_YA_INACTIVO',
+          ConflictException,
+          `${trabajador.nombre} ya fue dado de baja`,
+        );
+      }
+      throw e;
+    }
 
     const desglose = {
       tipoTerminacion: dto.tipoTerminacion,

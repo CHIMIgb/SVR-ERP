@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
+import { REQUIRE_PERMISSION_KEY } from '../auth/guards/require-permission.decorator';
 import { AsistenciaController } from './asistencia.controller';
 import { AsistenciaService } from './asistencia.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,6 +24,9 @@ describe('AsistenciaController', () => {
     registrarHorasExtra: jest.fn().mockResolvedValue(mockRegistro),
     aprobarHorasExtra: jest.fn().mockResolvedValue(mockRegistro),
     rechazarHorasExtra: jest.fn().mockResolvedValue(mockRegistro),
+    resolverOmision: jest.fn().mockResolvedValue(mockRegistro),
+    resolverOmisionSinMarcaje: jest.fn().mockResolvedValue(mockRegistro),
+    registrarUbicacionObra: jest.fn().mockResolvedValue({ id: 'obra-1' }),
   };
 
   beforeEach(async () => {
@@ -102,5 +107,34 @@ describe('AsistenciaController', () => {
   it('rechazarHorasExtra passes the userId from the JWT request', async () => {
     await controller.rechazarHorasExtra('he-uuid-1', mockRequest);
     expect(service.rechazarHorasExtra).toHaveBeenCalledWith('he-uuid-1', 'user-1');
+  });
+
+  it('resolverOmision passes the userId from the JWT request', async () => {
+    const dto = { resolucion: 'Falta' as const, motivo: 'Sin aviso' };
+    await controller.resolverOmision('reg-1', dto, mockRequest);
+    expect(service.resolverOmision).toHaveBeenCalledWith('reg-1', dto, 'user-1');
+  });
+
+  it('resolverOmisionSinMarcaje passes the userId from the JWT request', async () => {
+    const dto = { trabajadorId: 'trab-1', resolucion: 'Retardo' as const, motivo: 'Olvidó checar' };
+    await controller.resolverOmisionSinMarcaje(dto, mockRequest);
+    expect(service.resolverOmisionSinMarcaje).toHaveBeenCalledWith(dto, 'user-1');
+  });
+
+  it('registrarUbicacionObra passes the userId from the JWT request', async () => {
+    const dto = { lat: 19.4, lng: -99.1, radioPermitidoMetros: 150 };
+    await controller.registrarUbicacionObra('obra-1', dto, mockRequest);
+    expect(service.registrarUbicacionObra).toHaveBeenCalledWith('obra-1', dto, 'user-1');
+  });
+
+  it('resolving omisiones and registering the obra location need rrhh.asistencia.editar (not just crear)', () => {
+    const reflector = new Reflector();
+    for (const m of ['resolverOmision', 'resolverOmisionSinMarcaje', 'registrarUbicacionObra'] as const) {
+      expect(reflector.get(REQUIRE_PERMISSION_KEY, AsistenciaController.prototype[m])).toEqual({
+        modulo: 'rrhh',
+        recurso: 'asistencia',
+        accion: 'editar',
+      });
+    }
   });
 });
