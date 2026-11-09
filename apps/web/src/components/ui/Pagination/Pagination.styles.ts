@@ -1,12 +1,17 @@
 export const paginationClasses = {
   /* ── Container ── */
-  container: 'flex flex-col sm:flex-row items-center justify-between px-3 sm:px-4 py-3 border-t border-ui-100 bg-surface rounded-b-xl gap-2 sm:gap-0',
+  container:
+    'relative flex flex-col sm:flex-row items-center justify-center px-3 sm:px-4 py-3 border-t border-ui-100 bg-surface rounded-b-xl gap-2',
 
-  /* ── Info (izquierda) ── */
-  info: 'text-xs sm:text-sm text-ui-500 text-center sm:text-left',
+  /* ── Info izquierda: registros mostrados ── */
+  infoLeft: 'hidden sm:block absolute left-4 top-1/2 -translate-y-1/2 text-xs sm:text-sm text-ui-500',
+  infoLeftMobile: 'sm:hidden order-3 text-xs text-ui-500',
+
+  /* ── Grupo centrado: "Pagina X de Y" + navegación, lado a lado ── */
+  center: 'flex flex-wrap items-center justify-center gap-1.5 sm:gap-2',
   infoHighlight: 'font-semibold text-ui-700',
 
-  /* ── Controls (derecha) ── */
+  /* ── Controls ── */
   controls: 'flex items-center gap-0.5 sm:gap-1',
 
   /* ── Buttons ── */

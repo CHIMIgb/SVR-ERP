@@ -3410,9 +3410,11 @@ import { Pagination } from '@/components/ui/Pagination';
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ Pagina 3 de 10 — Mostrando 21-30 de 98 registros     «  ‹  1  2  [3]  4  5  ...  10  ›  »  │
+│ Mostrando 21-30 de 98 registros        Pagina 3 de 10  «  ‹  1  2  [3]  ...  ›  » │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+> En móvil se apila: "Pagina X de Y" + navegación centrados, "Mostrando…" debajo.
 
 | Elemento | Icono | Funcion |
 |----------|-------|---------|

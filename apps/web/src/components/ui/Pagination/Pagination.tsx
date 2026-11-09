@@ -37,17 +37,23 @@ export function Pagination({
 
   return (
     <div className={cn(paginationClasses.container, className)}>
-      {/* ── Info ── */}
-      <span className={paginationClasses.info}>
-        Pagina <span className={paginationClasses.infoHighlight}>{currentPage}</span> de{' '}
-        <span className={paginationClasses.infoHighlight}>{totalPages}</span>
-        {' '}&mdash;{' '}
+      {/* ── Izquierda: registros mostrados (texto en desktop) ── */}
+      <span className={paginationClasses.infoLeft}>
         Mostrando <span className={paginationClasses.infoHighlight}>{from}-{to}</span> de{' '}
-        <span className={paginationClasses.infoHighlight}>{totalRecords.toLocaleString('es-MX')}</span> registros
+        <span className={paginationClasses.infoHighlight}>
+          {totalRecords.toLocaleString('es-MX')}
+        </span>{' '}
+        registros
       </span>
 
-      {/* ── Controls ── */}
-      <div className={paginationClasses.controls}>
+      {/* ── Centro: "Pagina X de Y" + navegación, lado a lado ── */}
+      <div className={paginationClasses.center}>
+        <span>
+          Pagina <span className={paginationClasses.infoHighlight}>{currentPage}</span> de{' '}
+          <span className={paginationClasses.infoHighlight}>{totalPages}</span>
+        </span>
+
+        <div className={paginationClasses.controls}>
         {/* Saltar al inicio */}
         {showJumpButtons && (
           <button
@@ -129,7 +135,17 @@ export function Pagination({
             <ChevronsRight size={16} />
           </button>
         )}
+        </div>
       </div>
+
+      {/* ── Registros mostrados (visible solo en móvil, el grid lo apila) ── */}
+      <span className={paginationClasses.infoLeftMobile}>
+        Mostrando <span className={paginationClasses.infoHighlight}>{from}-{to}</span> de{' '}
+        <span className={paginationClasses.infoHighlight}>
+          {totalRecords.toLocaleString('es-MX')}
+        </span>{' '}
+        registros
+      </span>
     </div>
   );
 }
