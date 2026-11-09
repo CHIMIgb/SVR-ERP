@@ -442,6 +442,10 @@ export class ReportesCampoService {
     }
     await this.validarUbicacionGps(dto, AuditAction.REPORTE_CREADO, null);
 
+    // "Reporta" sellado por el backend con la persona del TOKEN real (no del
+    // front) — evita dueños/texto desalineados si hay sesiones mezcladas.
+    const reportador = await this.datosDelReportador(userId);
+
     // Folio secuencial INC%04d con reintento anti-colisión (patrón facturas):
     // dos creates concurrentes pueden derivar el mismo codigo (count+1); al
     // chocar P2002 en el unique se reintenta con conteo fresco. En el último
@@ -469,7 +473,8 @@ export class ReportesCampoService {
             // El tipo (vocabulario interno) es espejo de la torre elegida.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             tipo: torre as any,
-            usuario: dto.usuario.trim(),
+            // "Reporta" = persona del usuario autenticado (fuente: servidor)
+            usuario: reportador?.nombre ?? dto.usuario.trim(),
             usuario_id: userId,
             obra_texto: 'Sin obra asociada',
             fecha: this.fechaDelMomento(),

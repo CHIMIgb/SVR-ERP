@@ -650,18 +650,20 @@ describe('ReportesCampo Audit (Real DB)', () => {
   describe('stats', () => {
     it('debe contar por estado excluyendo eliminados', async () => {
       const marca = `${TEST_ID}-${randomUUID().slice(0, 4)}`;
-      const r1 = await service.create(createDto({ usuario: marca }), ACTOR_USER_ID);
+      // "Reporta" es sellado del servidor (persona del token) — la marca va en
+      // la descripcion para poder buscar por ella.
+      const r1 = await service.create(createDto({ descripcion: marca }), ACTOR_USER_ID);
       createdIds.push(r1.id);
       const r2 = await service.create(
         createDto({
-          usuario: marca,
+          descripcion: marca,
           prioridad: Prioridad.CRITICA,
           tipo: TipoReporteCampo.INCIDENTE,
         }),
         ACTOR_USER_ID,
       );
       createdIds.push(r2.id);
-      const r3 = await service.create(createDto({ usuario: marca }), ACTOR_USER_ID);
+      const r3 = await service.create(createDto({ descripcion: marca }), ACTOR_USER_ID);
       createdIds.push(r3.id);
 
       // r1 pasa a En curso; r2 crítico sigue activo; r3 se elimina (excluido)

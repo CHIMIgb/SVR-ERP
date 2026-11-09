@@ -214,6 +214,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     it('server "misma área" resuelve la torre con el área del que reporta (oficina → ADMINISTRATIVO)', async () => {
       prisma.users.findUnique.mockResolvedValue({
         torre: null,
+        personas_users_persona_idTopersonas: { telefono: '55' },
         users_roles_users_roles_user_idTousers: [],
       });
       const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
@@ -225,6 +226,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     it('server "misma área" con torre asignada al usuario usa esa torre', async () => {
       prisma.users.findUnique.mockResolvedValue({
         torre: 'MECANICO',
+        personas_users_persona_idTopersonas: { telefono: '55' },
         users_roles_users_roles_user_idTousers: [],
       });
       const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
@@ -240,6 +242,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     it('server "misma área" sin torre propia: hereda la del rol principal', async () => {
       prisma.users.findUnique.mockResolvedValue({
         torre: null,
+        personas_users_persona_idTopersonas: { telefono: '55' },
         users_roles_users_roles_user_idTousers: [
           { es_principal: false, roles: { torre: 'MECANICO' } },
           { es_principal: true, roles: { torre: 'RESIDENTE' } },
