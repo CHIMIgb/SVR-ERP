@@ -223,6 +223,8 @@ export default function ReportesOperacionesPage() {
   const [adjuntando, setAdjuntando] = useState(false);
   /** Imágenes en espera del alta (mismos límites del detalle: máx 4, 2MB). */
   const [imagenesAlta, setImagenesAlta] = useState<AdjuntoImagenAlta[]>([]);
+  /** Adjuntos existentes en el modal Editar (null = cargando). */
+  const [editAdjuntos, setEditAdjuntos] = useState<AdjuntoDTO[] | null>(null);
 
   // ── Cargar subcategorías y trabajadores (una sola vez) ──
   useEffect(() => {
@@ -450,7 +452,11 @@ export default function ReportesOperacionesPage() {
         prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
         descripcion: item.descripcion,
       });
+      setEditAdjuntos(null);
       setEditOpen(true);
+      reportesCampoApi.detalle(item.id).then((res) => {
+        if (res.success) setEditAdjuntos(res.data.adjuntos);
+      });
     },
     [showToast],
   );
@@ -695,43 +701,69 @@ export default function ReportesOperacionesPage() {
     }
   }, [detalle, comentarioTexto, showToast, openDetalle]);
 
-  const handleAdjuntar = useCallback(
-    async (file: File) => {
-      if (!detalle) return;
+  /** Sube una imagen (convertida a WebP) a un incidente; devuelve el adjunto o null. */
+  const subirAdjunto = useCallback(
+    async (reporteId: string, file: File): Promise<AdjuntoDTO | null> => {
       if (!file.type.startsWith('image/')) {
         showToast('El archivo debe ser una imagen.', 'error');
-        return;
+        return null;
       }
-      setAdjuntando(true);
+      const webp = await convertirAWebp(file);
+      if (!webp) {
+        showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
+        return null;
+      }
+      if (webp.tamano > MAX_TAMANO_IMAGEN) {
+        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        return null;
+      }
       try {
-        const webp = await convertirAWebp(file);
-        if (!webp) {
-          showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
-          return;
-        }
-        if (webp.tamano > MAX_TAMANO_IMAGEN) {
-          showToast('La imagen excede el máximo de 2 MB.', 'error');
-          return;
-        }
-        const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
+        const res = await reportesCampoApi.adjuntar(reporteId, {
           nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
           mime: 'image/webp',
           tamano: webp.tamano,
           datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
         });
-        if (res.success) {
-          showToast('Imagen adjuntada exitosamente.', 'success');
-          openDetalle({ ...detalle.reporte });
-        } else {
+        if (!res.success) {
           showToast(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'), 'error');
+          return null;
         }
+        return res.data;
       } catch {
         showToast('No se pudo conectar con el servidor.', 'error');
-      } finally {
-        setAdjuntando(false);
+        return null;
       }
     },
-    [detalle, showToast, openDetalle],
+    [showToast],
+  );
+
+  const handleAdjuntar = useCallback(
+    async (file: File) => {
+      if (!detalle) return;
+      setAdjuntando(true);
+      const adj = await subirAdjunto(detalle.reporte.id, file);
+      setAdjuntando(false);
+      if (adj) {
+        showToast('Imagen adjuntada exitosamente.', 'success');
+        openDetalle({ ...detalle.reporte });
+      }
+    },
+    [detalle, subirAdjunto, showToast, openDetalle],
+  );
+
+  /** Sube imagen desde el modal Editar y agrega la miniatura ya cargada. */
+  const handleAdjuntarEnEdicion = useCallback(
+    async (file: File) => {
+      if (!selectedItem) return;
+      setAdjuntando(true);
+      const adj = await subirAdjunto(selectedItem.id, file);
+      setAdjuntando(false);
+      if (adj) {
+        showToast('Imagen adjuntada exitosamente.', 'success');
+        setEditAdjuntos((prev) => [...(prev ?? []), adj]);
+      }
+    },
+    [selectedItem, subirAdjunto, showToast],
   );
 
   // ── Columnas de la tabla (flujo incidentes v2) ──
@@ -1540,6 +1572,47 @@ export default function ReportesOperacionesPage() {
               value={form.descripcion}
               onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
             />
+          </ModalField>
+
+          <ModalField label="Imágenes del incidente" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una. Se suben al guardar la imagen.`} className="sm:col-span-2">
+            {editAdjuntos === null ? (
+              <p className="text-xs font-medium text-ui-400">Cargando imágenes…</p>
+            ) : (
+              <div className="space-y-2">
+                {editAdjuntos.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {editAdjuntos.map((a) => (
+                      <a
+                        key={a.id}
+                        href={`data:${a.mime};base64,${a.datos}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-xl overflow-hidden border border-ui-200"
+                        title={a.nombre}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`data:${a.mime};base64,${a.datos}`} alt={a.nombre} className="h-20 w-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={adjuntando || editAdjuntos.length >= MAX_IMAGENES}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleAdjuntarEnEdicion(file);
+                    }}
+                  />
+                  {adjuntando ? 'Subiendo…' : (<> <ImagePlus className="w-3.5 h-3.5" /> Agregar imagen</>)}
+                </label>
+                {editAdjuntos.length === 0 && <p className="text-xs text-ui-400">Sin imágenes todavía</p>}
+              </div>
+            )}
           </ModalField>
         </div>
       </FormModal>
