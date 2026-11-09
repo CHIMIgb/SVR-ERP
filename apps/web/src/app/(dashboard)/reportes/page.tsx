@@ -1089,7 +1089,7 @@ export default function ReportesOperacionesPage() {
         onSubmit={handleCreate}
         isSubmitting={submitting}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <ModalField
             label="Área (a la que se envía)"
             required
@@ -1531,7 +1531,7 @@ export default function ReportesOperacionesPage() {
         onSubmit={handleEdit}
         isSubmitting={submitting}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <ModalField
             label="Área (a la que se envía)"
             required
