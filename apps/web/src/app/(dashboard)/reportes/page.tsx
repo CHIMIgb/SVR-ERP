@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
-import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
+import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -1058,59 +1058,20 @@ export default function ReportesOperacionesPage() {
         </Button>
       </div>
 
-      {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {activeFilters.map((filter) => (
-            <span
-              key={filter.key}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
-            >
-              <span className="font-normal text-primary/70">{filter.label}:</span>
-              <span>{filter.value}</span>
-              <button
-                onClick={() => handleRemoveFilter(filter.key)}
-                className="ml-0.5 hover:text-primary-dark transition-colors"
-                aria-label={`Eliminar filtro ${filter.label}`}
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))}
-          {activeFilters.length > 1 && (
-            <button
-              onClick={handleClearFilters}
-              className="text-xs font-semibold text-ui-500 hover:text-red-600 transition-colors ml-1"
-            >
-              Limpiar todo
-            </button>
-          )}
-        </div>
-      )}
+      {/* Chips de filtros activos (componente del kit) */}
+      <ActiveFilters
+        filters={activeFilters}
+        onRemove={handleRemoveFilter}
+        onClearAll={handleClearFilters}
+      />
 
       {showFilters && (
-        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
-            {filterFields.map((filter) => (
-              <div key={filter.key} className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
-                  {filter.label}
-                </label>
-                <select
-                  value={filterValues[filter.key] || ''}
-                  onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                  className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
-                >
-                  <option value="">{filter.placeholder || 'Todos'}</option>
-                  {filter.options?.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
-        </div>
+        <FilterPanel
+          filters={filterFields}
+          values={filterValues}
+          onChange={handleFilterChange}
+          onClear={handleClearFilters}
+        />
       )}
 
       {/* Tabla de incidentes */}
