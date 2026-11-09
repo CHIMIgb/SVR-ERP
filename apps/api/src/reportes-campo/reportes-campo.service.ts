@@ -206,6 +206,18 @@ export class ReportesCampoService {
     };
   }
 
+  /** ¿El usuario tiene el rol Residente (solo seguimiento en /reportes)? */
+  private async esRolResidente(userId: string): Promise<boolean> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { users_roles_users_roles_user_idTousers: { select: { roles: { select: { nombre: true } } } } },
+    });
+    return (user?.users_roles_users_roles_user_idTousers ?? []).some(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ur: any) => ur.roles.nombre === 'Residente',
+    );
+  }
+
   /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados. */
   private async esUsuarioAdmin(userId: string): Promise<boolean> {
     const user = await this.prisma.users.findUnique({
@@ -321,6 +333,18 @@ export class ReportesCampoService {
         'SOLO_NUEVOS_SE_ACEPTAN',
         BadRequestException,
         `Solo los incidentes Nuevos pueden aceptarse (estado actual: ${ESTADO_LABELS[existente.estado as EstadoIncidente]})`,
+      );
+    }
+
+    // Los Residentes solo dan seguimiento (ver los reportes de sus trabajadores):
+    // la función de aceptar es de las torres que atienden (técnicos).
+    if (await this.esRolResidente(userId)) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'RESIDENTE_SOLO_SEGUIMIENTO',
+        ForbiddenException,
+        'Los Residentes solo dan seguimiento: el incidente lo acepta la torre asignada',
       );
     }
 

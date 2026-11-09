@@ -444,8 +444,21 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       );
     });
 
-    it('estado no NUEVO → SOLO_NUEVOS_SE_ACEPTAN (audita FAIL)', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue({
+    it('el Residente no acepta (solo seguimiento): RESIDENTE_SOLO_SEGUIMIENTO (audita FAIL)', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 90, nombre: 'Residente' } }],
+      });
+      await expect(service.aceptar(mockReporte.id, 'user-1')).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'RESIDENTE_SOLO_SEGUIMIENTO',
+        }),
+      );
+    });
+
+    it('estado no NUEVO → SOLO_NUEVOS_SE_ACEPTAN (audita FAIL)', async () => {      prisma.reportes_campo.findFirst.mockResolvedValue({
         ...mockReporte,
         estado: EstadoIncidente.EN_CURSO,
       });

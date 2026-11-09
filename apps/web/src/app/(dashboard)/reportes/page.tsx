@@ -154,6 +154,8 @@ export default function ReportesOperacionesPage() {
   const puedeEliminar = vista?.puedeEliminar ?? false;
   /** Solo un Administrador edita reportes ajenos; los empleados editan los suyos. */
   const esAdminReportes = (user?.roles ?? []).some((r) => r.nivel >= 100);
+  /** Los Residentes solo dan seguimiento: no aceptan incidentes ajenos. */
+  const esResidente = (user?.roles ?? []).some((r) => r.nombre === 'Residente');
 
   // ── Estado de datos ──
   const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
@@ -926,7 +928,8 @@ export default function ReportesOperacionesPage() {
               </Button>
             </Tooltip>
           )}
-          {puedeEditar && report.estado === 'Nuevo' && !report.asignadoANombre && (
+          {/* Aceptar es de las torres que atienden: los Residentes solo siguen (esResidente) */}
+          {puedeEditar && !esResidente && report.estado === 'Nuevo' && !report.asignadoANombre && (
             <Tooltip content="Aceptar el incidente — RESPONSABLE: tú">
               <Button
                 variant="success"
