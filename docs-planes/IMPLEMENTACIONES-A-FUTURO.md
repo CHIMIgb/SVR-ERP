@@ -420,6 +420,34 @@ tabla). Relación con lo ya documentado: subcategorías por torre en
 
 ---
 
+### P10 — Equipos por residente: la relación jefe↔trabajador (parcial, 2026-11-08)
+
+**Lo que YA EXISTE en la DB (funcionando):**
+- Columna **`users.jefe_user_id`** (FK self a `users`, índice, `ON DELETE SET NULL`)
+  — dice qué usuario es **jefe/residente de cada trabajador** (usuario↔usuario;
+  **no** va por `trabajadores` ni `trabajadores_proyectos`). Asignación demo:
+  `trabajador@`, `pedro.chofer@` y `luis.operador@` a cargo de `residente@`.
+- **Scope de /reportes implementado** (`aplicarAmbito`): los Residentes ven los
+  reportes **levatados por sus trabajadores** (`jefe_user_id = yo`) + los suyos;
+  y pueden dar seguimiento (aceptar/cerrar-como-admin/comentar/adjuntar según
+  permisos).
+
+**Lo que NO existe todavía (documentado como punto de trabajo):**
+- **No hay UI ni endpoint para asignar el jefe** — hoy es solo SQL (`UPDATE users
+  SET jefe_user_id = …`). Cuando se construya el **panel de usuarios**, la misma
+  columna se expone ahí con un select de residentes para cada trabajador.
+- **El vínculo es usuario↔usuario**: no va por la tabla `trabajadores` ni por
+  `trabajadores_proyectos` (worker↔proyecto). Si el negocio prefiere asignar
+  trabajadores **por proyecto** al residente (y que el residente herede los
+  reportes de todos los de esa obra), es la variante B: `proyectos.residente_id`
+  + scope por `trabajadores_proyectos` — pendiente de confirmar con el cliente.
+- **Fallback ya implementado:** cualquier trabajador **sin jefe asignado** solo ve
+  sus propios reportes (nadie más los ve, salvo Admin).
+- El mismo mecanismo (`jefe_user_id`) sirve para cualquier rol con subordinados
+  (p. ej. administrativos que supervisan personal de oficina) sin cambios.
+
+---
+
 ### P8 — Metas de progreso del proyecto con fechas límite (idea del cliente)
 
 **Objetivo:** el progreso del proyecto deja de ser un número manual capturado a mano.
