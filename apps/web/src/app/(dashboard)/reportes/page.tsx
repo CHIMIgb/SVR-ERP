@@ -1092,7 +1092,6 @@ export default function ReportesOperacionesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField
             label="Área (a la que se envía)"
-            className="sm:col-span-2"
             required
             hint={
               form.categoria === MISMA_AREA
@@ -1109,6 +1108,20 @@ export default function ReportesOperacionesPage() {
               <option value={MISMA_AREA}>Misma área (tu área: {torreDelUsuario})</option>
               {CATEGORIAS.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Subcategoría" hint="Opcional — según el área destino.">
+            <select
+              className={modalSelectClass}
+              value={form.subcategoriaId}
+              onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
+              disabled={!form.categoria}
+            >
+              <option value="">Sin subcategoría</option>
+              {subcategoriasFiltradas.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -1157,21 +1170,7 @@ export default function ReportesOperacionesPage() {
             )}
           </ModalField>
 
-          <ModalField label="Subcategoría" hint="Opcional — según el área destino.">
-            <select
-              className={modalSelectClass}
-              value={form.subcategoriaId}
-              onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
-              disabled={!form.categoria}
-            >
-              <option value="">Sin subcategoría</option>
-              {subcategoriasFiltradas.map((s) => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Prioridad" hint="Opcional — úsala para incidentes o urgencias.">
+          <ModalField label="Prioridad" className="sm:col-span-2" hint="Opcional — úsala para incidentes o urgencias.">
             <select
               className={modalSelectClass}
               value={form.prioridad}
@@ -1536,7 +1535,6 @@ export default function ReportesOperacionesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField
             label="Área (a la que se envía)"
-            className="sm:col-span-2"
             required
             hint={
               form.categoria === MISMA_AREA
@@ -1553,6 +1551,20 @@ export default function ReportesOperacionesPage() {
               <option value={MISMA_AREA}>Misma área (tu área: {torreDelUsuario})</option>
               {CATEGORIAS.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Subcategoría" hint="Opcional — según la categoría elegida.">
+            <select
+              className={modalSelectClass}
+              value={form.subcategoriaId}
+              onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
+              disabled={!form.categoria}
+            >
+              <option value="">Sin subcategoría</option>
+              {subcategoriasFiltradas.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
               ))}
             </select>
           </ModalField>
@@ -1601,21 +1613,7 @@ export default function ReportesOperacionesPage() {
             )}
           </ModalField>
 
-          <ModalField label="Subcategoría" hint="Opcional — según la categoría elegida.">
-            <select
-              className={modalSelectClass}
-              value={form.subcategoriaId}
-              onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
-              disabled={!form.categoria}
-            >
-              <option value="">Sin subcategoría</option>
-              {subcategoriasFiltradas.map((s) => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Prioridad">
+          <ModalField label="Prioridad" className="sm:col-span-2">
             <select
               className={modalSelectClass}
               value={form.prioridad}
