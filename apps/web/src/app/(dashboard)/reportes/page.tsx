@@ -968,15 +968,15 @@ export default function ReportesOperacionesPage() {
   /** Áreas del alta agrupadas según la guía de roles del cliente (optgroups, sin paréntesis). */
   const optGroupsTexto = [
     {
-      label: 'Administración — jefes y personas en oficina',
+      label: 'Administración',
       opciones: [{ value: 'ADMINISTRATIVO' as CategoriaReporteApi, label: 'Administrativo' }],
     },
     {
-      label: 'Residentes — ingenieros encargados de obra y de personal',
+      label: 'Residentes',
       opciones: [{ value: 'RESIDENTE' as CategoriaReporteApi, label: 'Residente' }],
     },
     {
-      label: 'Técnicos — mantenimiento, mecánico, diésel y soldador',
+      label: 'Técnicos',
       opciones: CATEGORIAS.filter((c) =>
         ['MECANICO', 'SOLDADOR', 'DIESEL', 'MANTENIMIENTO'].includes(c.value),
       ).map((c) => ({ value: c.value, label: c.label })),
