@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Prioridad, CategoriaReporte } from '@prisma/client';
 
 // El `tipo` se deriva del área (torre) — ya no se captura ni edita.
@@ -16,6 +16,23 @@ export class UpdateReporteCampoDto {
   @IsOptional()
   @IsUUID()
   subcategoriaId?: string;
+
+  /** Ubicación — proyecto EN_PROCESO o GPS (lat/long ambos o ninguno). */
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitud?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitud?: number;
 
   @IsOptional()
   @IsString()

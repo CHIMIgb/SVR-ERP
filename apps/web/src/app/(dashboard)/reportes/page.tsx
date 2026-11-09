@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
+  proyectosApi,
   reportesCampoApi,
   trabajadoresApi,
   type ReporteCampoDTO,
@@ -25,6 +26,7 @@ import {
   type ReportesCampoStats,
   type ReporteCampoCreateInput,
   type SubcategoriaDTO,
+  type ProyectoDTO,
   type EstadoIncidenteApi,
   type PrioridadReporteApi,
   type CategoriaReporteApi,
@@ -123,6 +125,8 @@ const STATS_CERO: ReportesCampoStats = {
 const emptyForm = {
   categoria: '' as '' | CategoriaReporteApi | typeof MISMA_AREA,
   subcategoriaId: '',
+  ubicacionModo: '' as '' | 'proyecto' | 'gps',
+  proyectoId: '',
   prioridad: '' as '' | PrioridadReporteApi,
   descripcion: '',
 };
@@ -155,6 +159,7 @@ export default function ReportesOperacionesPage() {
   const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
   const [stats, setStats] = useState<ReportesCampoStats>(STATS_CERO);
   const [subcategorias, setSubcategorias] = useState<SubcategoriaDTO[]>([]);
+  const [proyectos, setProyectos] = useState<{ id: string; nombre: string }[]>([]);
   const [trabajadores, setTrabajadores] = useState<TrabajadorDTO[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -188,11 +193,16 @@ export default function ReportesOperacionesPage() {
   /** Adjuntos existentes en el modal Editar (null = cargando). */
   const [editAdjuntos, setEditAdjuntos] = useState<AdjuntoDTO[] | null>(null);
 
-  // ── Cargar subcategorías y trabajadores (una sola vez) ──
+  // ── Cargar subcategorías, proyectos EN_PROCESO y trabajadores (una sola vez) ──
   useEffect(() => {
     reportesCampoApi.subcategorias().then((res) => {
       if (res.success && res.data) {
         setSubcategorias(res.data);
+      }
+    });
+    proyectosApi.listar({ estado: 'EN_PROCESO', limit: 100 }).then((res) => {
+      if (res.success && res.data) {
+        setProyectos(res.data.items.map((p) => ({ id: p.id, nombre: p.nombre })));
       }
     });
     trabajadoresApi.listar({ limit: 100 }).then((res) => {
@@ -398,6 +408,11 @@ export default function ReportesOperacionesPage() {
       setForm({
         categoria: (CATEGORIAS.find((c) => c.label === item.categoria)?.value ?? '') as '' | CategoriaReporteApi,
         subcategoriaId: item.subcategoriaId ?? '',
+        // ubicación preseleccionada: proyecto (ligado) o GPS ya capturadas; sin datos → proyecto
+        ubicacionModo: (item.proyectoId ? 'proyecto' : item.latitud != null ? 'gps' : 'proyecto') as
+          'proyecto'
+          | 'gps',
+        proyectoId: item.proyectoId ?? '',
         prioridad: (PRIORIDADES.find((p) => p.label === item.prioridad)?.value ?? '') as '' | PrioridadReporteApi,
         descripcion: item.descripcion,
       });
@@ -430,6 +445,10 @@ export default function ReportesOperacionesPage() {
       showToast('Selecciona el área a la que se envía el incidente.', 'error');
       return false;
     }
+    if (form.ubicacionModo === 'proyecto' && !form.proyectoId) {
+      showToast('Selecciona el proyecto en proceso para la ubicación.', 'error');
+      return false;
+    }
     if (!form.descripcion.trim()) {
       showToast('La descripción del reporte es obligatoria.', 'error');
       return false;
@@ -448,20 +467,39 @@ export default function ReportesOperacionesPage() {
     return nombre || user?.email?.split('@')[0] || 'Usuario';
   }, [user]);
 
-  /** Torre destino: "misma área" (resuelta en el backend por el puesto) o la torre elegida. */
+  /** Torre destino ("misma área"/torre) + Ubicación: proyecto en proceso o GPS. */
   const buildPayload = useCallback(
     async (): Promise<ReporteCampoCreateInput> => {
       const mismaArea = form.categoria === MISMA_AREA;
+      const ubicacion: Partial<ReporteCampoCreateInput> = {};
+      if (form.ubicacionModo === 'proyecto' && form.proyectoId) {
+        ubicacion.proyectoId = form.proyectoId;
+      } else if (form.ubicacionModo === 'gps') {
+        // ubicación actual del dispositivo — guardado con lat/long
+        const coords = await new Promise<GeolocationPosition | null>((resolve) =>
+          navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
+            enableHighAccuracy: true,
+            timeout: 10000,
+          }),
+        );
+        if (!coords) {
+          showToast('No se pudo obtener tu ubicación GPS.', 'error');
+          throw Object.assign(new Error('gps'), { gpsFallo: true });
+        }
+        ubicacion.latitud = coords.coords.latitude;
+        ubicacion.longitud = coords.coords.longitude;
+      }
       return {
         mismaArea,
         ...(mismaArea ? {} : { categoria: form.categoria as CategoriaReporteApi }),
         subcategoriaId: mismaArea ? undefined : form.subcategoriaId || undefined,
+        ...ubicacion,
         usuario: nombreReporta(),
         descripcion: form.descripcion.trim(),
         prioridad: form.prioridad || undefined,
       };
     },
-    [form, nombreReporta],
+    [form, nombreReporta, showToast],
   );
 
   const handleCreate = useCallback(async () => {
@@ -502,8 +540,12 @@ export default function ReportesOperacionesPage() {
       setImagenesAlta([]);
       refetch(1);
       fetchStats();
-    } catch {
-      showToast('Error de conexión al registrar el incidente.', 'error');
+    } catch (e) {
+      if ((e as { gpsFallo?: boolean })?.gpsFallo) {
+        showToast('Ubica el incidente por proyecto o activa el GPS y reintenta.', 'error');
+      } else {
+        showToast('Error de conexión al registrar el incidente.', 'error');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -525,8 +567,12 @@ export default function ReportesOperacionesPage() {
       } else {
         showToast(mensajeErrorApi(res.error, 'Error al actualizar el incidente.'), 'error');
       }
-    } catch {
-      showToast('Error de conexión al actualizar el incidente.', 'error');
+    } catch (e) {
+      if ((e as { gpsFallo?: boolean })?.gpsFallo) {
+        showToast('No se pudo obtener tu ubicación GPS. Reintenta o usa proyecto.', 'error');
+      } else {
+        showToast('Error de conexión al actualizar el incidente.', 'error');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -745,7 +791,7 @@ export default function ReportesOperacionesPage() {
     },
     {
       key: 'ubicacion',
-      header: 'Ubicación',
+      header: 'Área',
       minWidth: '140px',
       render: (report) =>
         report.categoria ? (
@@ -1045,7 +1091,7 @@ export default function ReportesOperacionesPage() {
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField
-            label="Ubicación (área a la que se envía)"
+            label="Área (a la que se envía)"
             required
             hint={
               form.categoria === MISMA_AREA
@@ -1064,6 +1110,49 @@ export default function ReportesOperacionesPage() {
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+          </ModalField>
+
+          <ModalField
+            label="Ubicación"
+            required
+            hint={form.ubicacionModo === 'gps' ? 'Se captura tu ubicación GPS al guardar.' : 'Proyecto en proceso o GPS.'}
+          >
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, ubicacionModo: 'proyecto' })}
+                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors ${
+                  form.ubicacionModo === 'proyecto' ? 'bg-primary text-white' : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
+                }`}
+              >
+                Proyecto
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, ubicacionModo: 'gps' })}
+                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors ${
+                  form.ubicacionModo === 'gps' ? 'bg-primary text-white' : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
+                }`}
+              >
+                Ubicación GPS
+              </button>
+            </div>
+            {form.ubicacionModo === 'gps' ? (
+              <div className="flex items-center gap-2 h-10 px-3 border border-ui-200 rounded-lg bg-ui-50 text-xs font-medium text-ui-500">
+                Se captura tu ubicación GPS al guardar
+              </div>
+            ) : (
+              <select
+                className={modalSelectClass}
+                value={form.proyectoId}
+                onChange={(e) => setForm({ ...form, proyectoId: e.target.value })}
+              >
+                <option value="">Seleccionar proyecto...</option>
+                {proyectos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            )}
           </ModalField>
 
           <ModalField label="Subcategoría" hint="Opcional — según el área destino.">
@@ -1183,7 +1272,17 @@ export default function ReportesOperacionesPage() {
                   <p className="font-bold text-ui-800">{detalle.reporte.hora} · {detalle.reporte.fecha}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Envía a</p>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Ubicación</p>
+                  <p className="font-bold text-ui-800">
+                    {detalle.reporte.proyectoId && detalle.reporte.proyecto
+                      ? detalle.reporte.proyecto
+                      : detalle.reporte.latitud != null
+                        ? `GPS ${detalle.reporte.latitud.toFixed(4)}, ${detalle.reporte.longitud?.toFixed(4)}`
+                        : 'Sin ubicación'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Área</p>
                   <p className="font-bold text-ui-800">{detalle.reporte.categoria ?? 'Sin área'}</p>
                 </div>
                 <div>
@@ -1433,17 +1532,69 @@ export default function ReportesOperacionesPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Categoría (encargado de resolver)" required>
+          <ModalField
+            label="Área (a la que se envía)"
+            required
+            hint={
+              form.categoria === MISMA_AREA
+                ? `Tu área: ${torreDelUsuario} — el incidente queda ahí.`
+                : 'Misma área deja el incidente con tu propia área; otra torre lo envía allá.'
+            }
+          >
             <select
               className={modalSelectClass}
               value={form.categoria}
-              onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi, subcategoriaId: '' })}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
-              <option value="">Seleccionar categoría...</option>
+              <option value="">Seleccionar área destino...</option>
+              <option value={MISMA_AREA}>Misma área (tu área: {torreDelUsuario})</option>
               {CATEGORIAS.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+          </ModalField>
+
+          <ModalField
+            label="Ubicación"
+            required
+            hint={form.ubicacionModo === 'gps' ? 'Se recaptura tu ubicación GPS al guardar.' : 'Proyecto en proceso o GPS.'}
+          >
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, ubicacionModo: 'proyecto' })}
+                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors ${
+                  form.ubicacionModo === 'proyecto' ? 'bg-primary text-white' : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
+                }`}
+              >
+                Proyecto
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, ubicacionModo: 'gps' })}
+                className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors ${
+                  form.ubicacionModo === 'gps' ? 'bg-primary text-white' : 'bg-ui-100 text-ui-500 hover:bg-ui-200'
+                }`}
+              >
+                Ubicación GPS
+              </button>
+            </div>
+            {form.ubicacionModo === 'gps' ? (
+              <div className="flex items-center gap-2 h-10 px-3 border border-ui-200 rounded-lg bg-ui-50 text-xs font-medium text-ui-500">
+                Se recaptura tu ubicación GPS al guardar
+              </div>
+            ) : (
+              <select
+                className={modalSelectClass}
+                value={form.proyectoId}
+                onChange={(e) => setForm({ ...form, proyectoId: e.target.value })}
+              >
+                <option value="">Seleccionar proyecto...</option>
+                {proyectos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            )}
           </ModalField>
 
           <ModalField label="Subcategoría" hint="Opcional — según la categoría elegida.">

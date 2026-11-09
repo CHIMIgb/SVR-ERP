@@ -749,6 +749,10 @@ export interface ReporteCampoDTO {
   subcategoria: string | null;
   usuario: string;
   usuarioId: string | null;
+  proyectoId: string | null;
+  proyecto: string | null;
+  latitud: number | null;
+  longitud: number | null;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -807,6 +811,10 @@ export interface ReporteCampoCreateInput {
   categoria?: CategoriaReporteApi;
   mismaArea?: boolean;
   subcategoriaId?: string;
+  /** Ubicación — proyecto EN_PROCESO (tabla proyectos) o GPS (lat/long). */
+  proyectoId?: string;
+  latitud?: number;
+  longitud?: number;
   usuario: string;
   descripcion: string;
   prioridad?: PrioridadReporteApi;

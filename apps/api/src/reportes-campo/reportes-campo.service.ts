@@ -26,6 +26,7 @@ import { AdjuntoDto } from './dto/adjunto.dto';
 
 const REPORTE_INCLUDE = {
   subcategoria: { select: { id: true, nombre: true } },
+  proyectos: { select: { id: true, nombre: true } },
   asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
 
@@ -216,6 +217,10 @@ export class ReportesCampoService {
       );
     }
     await this.validarSubcategoria(torre, dto.subcategoriaId, AuditAction.REPORTE_CREADO, null);
+    if (dto.proyectoId) {
+      await this.resolverProyecto(dto.proyectoId, AuditAction.REPORTE_CREADO, null);
+    }
+    await this.validarUbicacionGps(dto, AuditAction.REPORTE_CREADO, null);
 
     // Folio secuencial INC%04d con reintento anti-colisión (patrón facturas):
     // dos creates concurrentes pueden derivar el mismo codigo (count+1); al
@@ -238,6 +243,9 @@ export class ReportesCampoService {
             codigo,
             categoria: torre,
             subcategoria_id: dto.subcategoriaId ?? null,
+            proyecto_id: dto.proyectoId ?? null,
+            latitud: dto.latitud ?? null,
+            longitud: dto.longitud ?? null,
             // El tipo (vocabulario interno) es espejo de la torre elegida.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             tipo: torre as any,
@@ -318,7 +326,7 @@ export class ReportesCampoService {
       );
     }
 
-    // Torne destino al editar: explícita o re-resuelta con "misma área".
+    //torne destino al editar: explícita o re-resuelta con "misma área".
     let torreFinal = dto.categoria ?? (existente.categoria as CategoriaReporte | null);
     if (dto.mismaArea) {
       torreFinal = await this.resolverTorreDelUsuario(userId);
@@ -326,12 +334,19 @@ export class ReportesCampoService {
     if (dto.subcategoriaId) {
       await this.validarSubcategoria(torreFinal, dto.subcategoriaId, AuditAction.REPORTE_ACTUALIZADO, id);
     }
+    if (dto.proyectoId) {
+      await this.resolverProyecto(dto.proyectoId, AuditAction.REPORTE_ACTUALIZADO, id);
+    }
+    await this.validarUbicacionGps(dto, AuditAction.REPORTE_ACTUALIZADO, id);
 
     const reporte = await this.prisma.reportes_campo.update({
       where: { id },
       data: {
         ...(torreFinal !== undefined && { categoria: torreFinal, tipo: torreFinal as never }),
         ...(dto.subcategoriaId !== undefined && { subcategoria_id: dto.subcategoriaId }),
+        ...(dto.proyectoId !== undefined && { proyecto_id: dto.proyectoId }),
+        ...(dto.latitud !== undefined && { latitud: dto.latitud }),
+        ...(dto.longitud !== undefined && { longitud: dto.longitud }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
         ...(dto.prioridad !== undefined && { prioridad: dto.prioridad }),
@@ -921,6 +936,52 @@ export class ReportesCampoService {
     );
   }
 
+  /**
+   * Ubicación GPS ("mi ubicación actual"): ambos o ninguno; y no se mezclan
+   * proyecto + GPS en el mismo incidente.
+   */
+  private async validarUbicacionGps(
+    dto: { latitud?: number; longitud?: number; proyectoId?: string },
+    action: AuditAction,
+    entityId: string | null,
+  ): Promise<void> {
+    const gpsParcial = (dto.latitud == null) !== (dto.longitud == null);
+    if (gpsParcial || (dto.proyectoId && dto.latitud != null)) {
+      await this.fallir(
+        action,
+        entityId,
+        'UBICACION_INVALIDA',
+        BadRequestException,
+        'Ubica el incidente con proyecto o GPS (lat/long), un solo modo y completo',
+      );
+    }
+  }
+
+  /**
+   * Valida que el proyecto exista y esté EN_PROCESO — reports solos ápuntan a
+   * proyectos en curso (tabla proyectos; la tabla obras queda fuera del flujo).
+   */
+  private async resolverProyecto(
+    proyectoId: string,
+    action: AuditAction,
+    entityId: string | null,
+  ): Promise<string> {
+    const proyecto = await this.prisma.proyectos.findFirst({
+      where: { id: proyectoId, eliminado_en: null, estado: 'EN_PROCESO' },
+      select: { id: true },
+    });
+    if (!proyecto) {
+      return this.fallir(
+        action,
+        entityId,
+        'PROYECTO_NO_EN_PROCESO',
+        BadRequestException,
+        `Proyecto con id "${proyectoId}" no encontrado o no está EN_PROCESO`,
+      );
+    }
+    return proyecto.id;
+  }
+
   /** Autor visible de la actividad: persona asignada, quien reporta o usuario autenticado. */
   private nombreActor(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -995,6 +1056,10 @@ export class ReportesCampoService {
       subcategoria: reporte.subcategoria?.nombre ?? null,
       usuario: reporte.usuario,
       usuarioId: reporte.usuario_id,
+      proyectoId: reporte.proyecto_id,
+      proyecto: reporte.proyectos?.nombre ?? null,
+      latitud: reporte.latitud != null ? Number(reporte.latitud) : null,
+      longitud: reporte.longitud != null ? Number(reporte.longitud) : null,
       fecha:
         reporte.fecha instanceof Date
           ? reporte.fecha.toISOString().split('T')[0]

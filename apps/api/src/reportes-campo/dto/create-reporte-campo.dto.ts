@@ -1,10 +1,13 @@
 import {
   IsBoolean,
   IsEnum,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { Prioridad, CategoriaReporte } from '@prisma/client';
@@ -31,6 +34,23 @@ export class CreateReporteCampoDto {
   @IsOptional()
   @IsUUID()
   subcategoriaId?: string;
+
+  /** Ubicación — proyecto EN_PROCESO (tabla proyectos) o GPS (lat/long, ambos o ninguno). */
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitud?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitud?: number;
 
   /** Quién reporta desde campo (texto libre, ej. "Marcos G."). */
   @IsString()

@@ -1256,6 +1256,7 @@ model proyectos {
   clientes                               clientes                 @relation(fields: [cliente_id], references: [id])
   trabajadores_proyectos                 trabajadores_proyectos[]
   cuentas_por_cobrar                     cuentas_por_cobrar[]
+  reportes_campo                         reportes_campo[]
 
   @@index([estado], map: "idx_proyectos_estado")
   @@index([cliente_id])
@@ -1438,6 +1439,7 @@ model reportes_campo {
   tipo                                        TipoReporteCampo
   categoria                                   CategoriaReporte?
   subcategoria_id                             String?            @db.Uuid
+  proyecto_id                                 String?            @db.Uuid
   usuario                                     String
   maquina_id                                  String?            @db.Uuid
   fecha                                       DateTime           @db.Date
@@ -1468,6 +1470,7 @@ model reportes_campo {
   maquinas                                    maquinas?          @relation(fields: [maquina_id], references: [id])
   obras                                       obras?             @relation(fields: [obra_id], references: [id])
   subcategoria                                subcategorias_reporte? @relation(fields: [subcategoria_id], references: [id])
+  proyectos                                   proyectos?         @relation(fields: [proyecto_id], references: [id])
   actividades                                 reportes_actividades[]
   adjuntos                                    reportes_adjuntos[]
 
