@@ -185,15 +185,35 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 | Email | Contraseña | Rol (nivel) | Área (torre) | En /reportes puede |
 |-------|------------|-------------|--------------|--------------------|
 | `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
-| `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver, crear, editar |
+| `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |
 | `tecnico@svr-constructora.com` | `tecnico123` | Técnico (70) | Mecanico | ver, crear, editar |
-| `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | solo ver |
+| `soldador@svr-constructora.com` | `tecnico123` | Técnico (70) | Soldador | ver, crear, editar |
+| `diesel@svr-constructora.com` | `tecnico123` | Técnico (70) | Diesel | ver, crear, editar |
+| `mantenimiento@svr-constructora.com` | `tecnico123` | Técnico (70) | Mantenimiento | ver, crear, editar |
+| `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | ver, crear (también /criba, /ventas y /ventas/corte) |
 | `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
 
-> Cada rol hereda su **área (torre)** → el alta "Misma área" de /reportes envía el
-> incidente a esa torre automáticamente (y sus subcategorías). La torre del rol
-> vive en la columna `roles.torre` de la BD; se ajusta por SQL o con el futuro
-> panel de usuarios.
+> Cada usuario hereda su **área (torre)** → el alta "Misma área" de /reportes
+> envía el incidente a esa torre automáticamente (y sus subcategorías). La torre
+> vive en `users.torre` (toma precedencia) o en `roles.torre` — se ajusta por SQL
+> o con el futuro panel de usuarios.
+
+### Áreas del sistema (torres de /reportes)
+
+Las **6 áreas** del alta "Área (a la que se envía)" y qué abarca cada una (guía del cliente):
+
+| Área (torre) | Quiénes pertenecen / qué abarca | Rol de plantilla |
+|--------------|----------------------------------|------------------|
+| **Administrativo** | **Administradores, jefes y personas en oficina** + el cobrador de criba y punto de venta (solo es 1) | Administrador · Administrativo · Cobrador |
+| **Residente** | **Ingenieros encargados de obra y de personal** — ven los reportes que levantan sus trabajadores y dan seguimiento | Residente |
+| **Mecanico** | **Técnicos** mecánicos de flota | Técnico |
+| **Soldador** | **Técnicos** soldadores | Técnico |
+| **Diesel** | **Técnicos** de diésel (suministro/reparto — los piperos históricos) | Técnico |
+| **Mantenimiento** | **Técnicos** de mantenimiento general | Técnico |
+
+**Trabajadores** (operadores, choferes y demás personal de campo) no tienen área
+propia: levantan el reporte y lo **envían a la torre que corresponde** (mecánico,
+residente, etc.); "Misma área" para ellos cae en oficina (Administrativo).
 
 **Endpoints de autenticación:**
 
