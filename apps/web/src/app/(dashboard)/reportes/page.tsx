@@ -892,10 +892,9 @@ export default function ReportesOperacionesPage() {
       key: 'descripcion',
       header: 'Descripción',
       minWidth: '380px',
-      className: 'max-w-sm',
       render: (report) => (
-        // puntos suspensivos al llegar al ancho de la columna (texto completo en el tooltip y el detalle)
-        <div className="max-w-sm min-w-0">
+        // ancho fijo de celda → text-overflow ellipsis real en tablas auto
+        <div className="w-72 sm:w-[360px]">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
             <span className="block truncate font-medium text-ui-600">
               &ldquo;{report.descripcion}&rdquo;
