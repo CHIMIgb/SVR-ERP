@@ -121,3 +121,31 @@ como "/m/*"** — pedra instalar:
   ` registros`?
 - La ubicación con **GPS "dentro de la zona"** del fin de asistencia requiere
   HTTPS (el PWA target) + geofence — la variante ya documentada de obras.
+
+---
+
+## 5. Decisión recomendada (con las capturas sobre la mesa)
+
+**La PWA móvil se construye como mini-app dedicada por rol (Opción B)**, no como
+responsive de las tablas del dashboard:
+
+- El diseño de Figma es "acción primero" (Registrar asistencia, Aceptar, Cobrar,
+  Presionar): tarjetas grandes con 2-3 datos, navegación inferior por rol.
+- Squeezear las tablas del desktop dentro del teléfono rompería la usabilidad en
+  obra (letras chiquitas, scroll horizontal, guantes y señal bailando).
+- Nada del negocio se duplica: los móviles **reusan** el login, los permisos por
+  rol, los endpoints y el registro_auditoria que ya existen — solo se construyen
+  las pantallas.
+- El desktop queda intacto para oficina/administración.
+
+**Orden de construcción sugerido:**
+1. Shell móvil (login por rol + navegación inferior) + Reportes
+   (las 3 variantes de rol — es lo que ya vive).
+2. POS del cobrador y Corte del día (existen).
+3. Flota y obras, Inventario y Diésel del repartidor (operaciones).
+4. Asistencia (foto+GPS+zona) como fase aparte de RRHH — es la pantalla más
+   repetida del diseño pero pertenece a otro módulo.
+5. Contactos, Perfil-documentación, Obras-mapa y dashboards Inicio.
+
+**Requisito no negociable:** HTTPS (la cámara y el GPS del teléfono no funcionan
+sin él). Offline (guía nueva-info) queda como fase siguiente.
