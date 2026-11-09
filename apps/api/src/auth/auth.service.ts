@@ -690,11 +690,17 @@ export class AuthService {
       return { modulo: parts[0], recurso: parts[1], accion: parts[2] };
     });
 
+    const usuarioRolesAuth = user.users_roles_users_roles_user_idTousers as any[];
+    const torreDelRol =
+      usuarioRolesAuth
+        .filter((ur: any) => ur.roles.torre != null)
+        .sort((a: any, b: any) => Number(b.es_principal) - Number(a.es_principal))[0]?.roles.torre ?? null;
+
     return {
       id: user.id,
       email: user.email,
       activo: user.activo,
-      torre: user.torre ?? null,
+      torre: (user.torre ?? torreDelRol) as import('@prisma/client').CategoriaReporte | null,
       persona: {
         nombre: user.personas_users_persona_idTopersonas.nombre,
         apellidoPaterno:

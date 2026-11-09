@@ -879,17 +879,28 @@ export class ReportesCampoService {
   //  obra_texto queda 'Sin obra asociada' en BD por el default del schema.)
 
   /**
-   * Resuelve la torre ("misma área") del usuario que reporta: usa su `torre`
-   * asignada (ya está en el enum de torres); sin asignación → ADMINISTRATIVO
-   * (oficina). La asignación de `users.torre` queda pendiente de CRUD de
-   * usuarios — hoy se fija por BD.
+   * Resuelve la torre ("misma área") del reportante:
+   *   user.torre (sobrescribe) → torre del rol principal → ADMINISTRATIVO.
    */
   private async resolverTorreDelUsuario(userId: string): Promise<CategoriaReporte> {
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { torre: true },
+      select: {
+        torre: true,
+        users_roles_users_roles_user_idTousers: {
+          select: { es_principal: true, roles: { select: { torre: true } } },
+        },
+      },
     });
-    return user?.torre ?? CategoriaReporte.ADMINISTRATIVO;
+    const propia = user?.torre ?? null;
+    if (propia) return propia;
+    const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
+    const conTorre = usuarioRoles
+      .filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => Number(b.es_principal) - Number(a.es_principal))[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (conTorre?.roles.torre as any) ?? CategoriaReporte.ADMINISTRATIVO;
   }
 
   /** Fecha/hora automáticas al registrar (no las captura el usuario). */

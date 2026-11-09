@@ -1555,6 +1555,8 @@ model roles {
   descripcion                        String?
   nivel                              Int                @default(0)
   es_sistema                         Boolean            @default(false)
+  /** Área (torre) del rol — conecta "misma área" de /reportes con los roles. */
+  torre                              CategoriaReporte?
   activo                             Boolean            @default(true)
   creado_en                          DateTime           @default(now()) @db.Timestamptz()
   actualizado_en                     DateTime           @db.Timestamptz()

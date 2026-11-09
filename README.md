@@ -180,6 +180,21 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 | **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
 | **No tiene acceso** | Maquinaria, Operaciones, Comercial, Sistema, Configuración |
 
+#### Roles de plantilla (5 — /reportes y dashboard)
+
+| Email | Contraseña | Rol (nivel) | Área (torre) | En /reportes puede |
+|-------|------------|-------------|--------------|--------------------|
+| `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
+| `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver, crear, editar |
+| `tecnico@svr-constructora.com` | `tecnico123` | Técnico (70) | Mecanico | ver, crear, editar |
+| `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | solo ver |
+| `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
+
+> Cada rol hereda su **área (torre)** → el alta "Misma área" de /reportes envía el
+> incidente a esa torre automáticamente (y sus subcategorías). La torre del rol
+> vive en la columna `roles.torre` de la BD; se ajusta por SQL o con el futuro
+> panel de usuarios.
+
 **Endpoints de autenticación:**
 
 ```bash
