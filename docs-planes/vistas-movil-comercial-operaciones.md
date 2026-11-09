@@ -119,8 +119,39 @@ como "/m/*"** — pedra instalar:
 - **"Presionar"** y **"¿Por qué no se resuelve??"** son una conversación/nudge
   nueva al reporte (paso de mensaje a la torre) — nueva pieza, detrás de
   ` registros`?
-- La ubicación con **GPS "dentro de la zona"** del fin de asistencia requiere
-  HTTPS (el PWA target) + geofence — la variante ya documentada de obras.
+**Requisito no negociable:** HTTPS (la cámara y el GPS del teléfono no funcionan
+sin él). Offline (guía nueva-info) queda como fase siguiente.
+
+---
+
+## 6. Por qué un shell nuevo para la PWA (para opinión del equipo)
+
+| # | Razón | Explicación |
+|---|---|---|
+| 1 | **El diseño es de teléfono, no es "la web chiquita"** | El Figma usa navegación inferior (con el pulgar), una acción por pantalla y tarjetas de 2-3 datos. No hay tablas, no hay menú lateral: el "marco" que requiere el diseño no existe en el escritorio. |
+| 2 | **Las tablas del escritorio no sobreviven en 5 pulgadas** | La gente en obra usa el teléfono con prisa, señal bailando y frecuentemente con guantes. Apretar una tabla de 5-10 columnas termina en letras ilegibles y scroll eterno. |
+| 3 | **Cada rol ve solo lo suyo — menos ruido** | El shell móvil muestra los 4-5 tabs del rol (perfiles del PWA). El menú del escritorio, en cambio, muestra todos los módulos de la empresa: información ajena para quien está parado en el lavabo de la criba. |
+| 4 | **Sesión pensada para campo** | Empleado + PIN (nueva-info), mantenerse registrado en el teléfono, estado dentro/fuera de la obra, offline (fase 2). El shell del escritorio no tiene ninguno de estos casos. |
+| 5 | **Nada del negocio se duplica** | Solo el "marco" es nuevo: pantallas, navegación y sesión. Login, permisos, endpoints, módulos y registro de auditoría **son los mismos** del backend. |
+| 6 | **El escritorio queda intacto** | Oficina/administración sigue trabajando en el dashboard de tablas; nadie pierde funciones ni cambios de vista. |
+
+**Costos/restricciones honestos (también para opinar):**
+- Mantenimiento doble del "marco": un cambio global (ej. un módulo nuevo) se
+  toca en el sidebar **y** en laแ navegación móvil.
+- Bibliografía: el trabajo del shell es de semanas iniciales; cada pantalla
+  posterior se escalona tras él.
+- Offline, firma y modoingerprint son fase 2 (la guía de nueva-info los exige,
+  pero no bloquean el arranque).
+
+**Preguntas abiertas para el equipo:**
+1. ¿La navegación inferior del operador lleva **4 tabs** (Inico/Asistencia/
+   Reportar/Contactos/Perfil) o añadimos "Flota" al operador también?
+2. ¿Confirmamos que **Asistencia entra como fase 2** (RRHH, foto+GPS+geofence)?
+3. ¿Los admins/técnicos de oficina también instalan la PWA, o SEA desktop?
+4. ¿El "Presionar" del residente va quita notificación a la torre (in-app) o
+   también cae WhatsApp?
+
+
 
 ---
 
