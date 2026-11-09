@@ -82,21 +82,6 @@ const MAX_ADJUNTOS = 4;
 const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
 const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
-/**
- * Mapeo puesto del trabajador → torre responsable, para "envío a misma área"
- * (Según nueva-info: técnicos = mecánico/soldador/diésel/mantenimiento,
- * residentes = ingenieros encargados de obra; resto cae en oficina).
- */
-function torrePrefijoPorPuesto(categoriaPuesto: string | null | undefined): CategoriaReporte {
-  const puesto = (categoriaPuesto ?? '').toLowerCase();
-  if (puesto.includes('mecanic')) return CategoriaReporte.MECANICO;
-  if (puesto.includes('soldad')) return CategoriaReporte.SOLDADOR;
-  if (puesto.includes('diésel') || puesto.includes('diesel')) return CategoriaReporte.DIESEL;
-  if (puesto.includes('manten')) return CategoriaReporte.MANTENIMIENTO;
-  if (puesto.includes('ingenier')) return CategoriaReporte.RESIDENTE;
-  return CategoriaReporte.ADMINISTRATIVO;
-}
-
 @Injectable()
 export class ReportesCampoService {
   constructor(
@@ -215,7 +200,7 @@ export class ReportesCampoService {
     // puesto del que reporta ("misma área").
     let torre = dto.categoria ?? null;
     if (dto.mismaArea) {
-      torre = this.resolverTorreDelUsuario();
+      torre = await this.resolverTorreDelUsuario(userId);
     }
     if (!torre) {
       return this.fallir(
@@ -330,7 +315,7 @@ export class ReportesCampoService {
     // Torne destino al editar: explícita o re-resuelta con "misma área".
     let torreFinal = dto.categoria ?? (existente.categoria as CategoriaReporte | null);
     if (dto.mismaArea) {
-      torreFinal = this.resolverTorreDelUsuario();
+      torreFinal = await this.resolverTorreDelUsuario(userId);
     }
     if (dto.subcategoriaId) {
       await this.validarSubcategoria(torreFinal, dto.subcategoriaId, AuditAction.REPORTE_ACTUALIZADO, id);
@@ -894,14 +879,17 @@ export class ReportesCampoService {
   //  obra_texto queda 'Sin obra asociada' en BD por el default del schema.)
 
   /**
-   * Resuelve la torre ("misma área") del usuario que reporta.
-   * shortcut: no existe link user↔trabajador en BD hoy (pendiente PWA, nueva-info
-   * §3: técnicos/admin/residentes) — quien levanta desde el web es oficina/jefes,
-   * así que "misma área" = ADMINISTRATIVO. Al haber link, mapear con
-   * torrePrefijoPorPuesto(categoria_puesto.nombre).
+   * Resuelve la torre ("misma área") del usuario que reporta: usa su `torre`
+   * asignada (ya está en el enum de torres); sin asignación → ADMINISTRATIVO
+   * (oficina). La asignación de `users.torre` queda pendiente de CRUD de
+   * usuarios — hoy se fija por BD.
    */
-  private resolverTorreDelUsuario(): CategoriaReporte {
-    return CategoriaReporte.ADMINISTRATIVO;
+  private async resolverTorreDelUsuario(userId: string): Promise<CategoriaReporte> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { torre: true },
+    });
+    return user?.torre ?? CategoriaReporte.ADMINISTRATIVO;
   }
 
   /** Fecha/hora automáticas al registrar (no las captura el usuario). */

@@ -903,8 +903,12 @@ export default function ReportesOperacionesPage() {
     },
   ];
 
-  // ── Subcategorías dependientes de la categoría elegida ──
-  const categoriaLabel = CATEGORIAS.find((c) => c.value === form.categoria)?.label;
+  // ── Subcategorías dependientes del área destino ("misma área" usa la torre del usuario) ──
+  const torreDelUsuario = CATEGORIAS.find((c) => c.value === user?.torre)?.label ?? 'Administrativo';
+  const categoriaLabel =
+    form.categoria === MISMA_AREA
+      ? torreDelUsuario
+      : CATEGORIAS.find((c) => c.value === form.categoria)?.label;
   const subcategoriasFiltradas = subcategorias.filter((s) => !!categoriaLabel && s.categoria === categoriaLabel);
 
   return (
@@ -1087,26 +1091,34 @@ export default function ReportesOperacionesPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Ubicación (área a la que se envía)" required hint="Misma área deja el incidente con tu propia área; otra torre lo envía allá.">
+          <ModalField
+            label="Ubicación (área a la que se envía)"
+            required
+            hint={
+              form.categoria === MISMA_AREA
+                ? `Tu área: ${torreDelUsuario} — el incidente queda ahí.`
+                : 'Misma área deja el incidente con tu propia área; otra torre lo envía allá.'
+            }
+          >
             <select
               className={modalSelectClass}
               value={form.categoria}
               onChange={(e) => setForm({ ...form, categoria: e.target.value as '' | CategoriaReporteApi | typeof MISMA_AREA, subcategoriaId: '' })}
             >
               <option value="">Seleccionar área destino...</option>
-              <option value={MISMA_AREA}>Misma área (la del reportante)</option>
+              <option value={MISMA_AREA}>Misma área (tu área: {torreDelUsuario})</option>
               {CATEGORIAS.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </ModalField>
 
-          <ModalField label="Subcategoría" hint="Opcional — según la categoría elegida.">
+          <ModalField label="Subcategoría" hint="Opcional — según el área destino.">
             <select
               className={modalSelectClass}
               value={form.subcategoriaId}
               onChange={(e) => setForm({ ...form, subcategoriaId: e.target.value })}
-              disabled={!form.categoria || form.categoria === MISMA_AREA}
+              disabled={!form.categoria}
             >
               <option value="">Sin subcategoría</option>
               {subcategoriasFiltradas.map((s) => (

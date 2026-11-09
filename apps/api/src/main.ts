@@ -2,11 +2,15 @@ import 'dotenv/config';
 process.env.TZ = process.env.TZ || process.env.TIMEZONE || 'America/Mexico_City';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { json } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const port = parseInt(process.env.PORT || '3001', 10);
+
+  // Body grande para adjuntos images en base64 (máx 2 MB por foto + base64 ≈ 2.7 MB)
+  app.use(json({ limit: '15mb' }));
 
   // Prefijo global para todos los endpoints
   app.setGlobalPrefix('api');

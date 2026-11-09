@@ -94,6 +94,9 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       trabajadores: {
         findFirst: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez' }),
       },
+      users: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       maquinas: {
         findFirst: jest.fn().mockResolvedValue({ id: mockReporte.maquina_id }),
       },
@@ -208,6 +211,19 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       await service.create({ ...dtoSimple, mismaArea: true }, 'user-1');
       const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
       expect(data.categoria).toBe(CategoriaReporte.ADMINISTRATIVO);
+    });
+
+    it('server "misma área" con torre asignada al usuario usa esa torre', async () => {
+      prisma.users.findUnique.mockResolvedValue({ torre: 'MECANICO' });
+      const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
+      await service.create({ ...dtoSimple, mismaArea: true }, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.categoria).toBe(CategoriaReporte.MECANICO);
+      // consulta por el id del usuario que reporta (no global)
+      expect(prisma.users.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { torre: true },
+      });
     });
 
     it('sin categoria ni mismaArea → CATEGORIA_REQUERIDA (audita FAIL)', async () => {

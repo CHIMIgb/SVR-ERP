@@ -1935,6 +1935,7 @@ model users {
   persona_id                                                                     String                        @unique @db.Uuid
   email                                                                          String                        @unique
   password_hash                                                                  String
+  torre                                                                          CategoriaReporte?
   email_verificado                                                               Boolean                       @default(false)
   telefono_verificado                                                            Boolean                       @default(false)
   factor_doble_habilitado                                                        Boolean                       @default(false)

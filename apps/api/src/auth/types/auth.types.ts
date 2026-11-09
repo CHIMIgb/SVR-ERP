@@ -14,6 +14,8 @@ export interface AuthResponse {
     id: string;
     email: string;
     activo: boolean;
+    /** Área (torre) asignada — para "misma área" en /reportes. */
+    torre?: import('@prisma/client').CategoriaReporte | null;
     persona: {
       nombre: string;
       apellidoPaterno: string | null;

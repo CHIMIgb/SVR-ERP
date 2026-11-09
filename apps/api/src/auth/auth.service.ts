@@ -694,6 +694,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       activo: user.activo,
+      torre: user.torre ?? null,
       persona: {
         nombre: user.personas_users_persona_idTopersonas.nombre,
         apellidoPaterno:
