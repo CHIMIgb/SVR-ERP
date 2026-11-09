@@ -874,7 +874,7 @@ export const reportesCampoApi = {
 
   /** Aceptar el incidente: RESPONSABLE = quien lo acepta. */
   aceptar: (id: string) =>
-    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/aceptar`, {}),
+    apiClient.post<ReporteCampoDTO>(`/reportes-campo/${id}/aceptar`, {}),
 
   /** Asigna "quién le cae": trabajador del sistema y/o nombre libre. */
   asignar: (id: string, data: { asignadoA?: string | null; asignadoNombre?: string | null }) =>
