@@ -63,16 +63,18 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
   });
 
   describe('findAll', () => {
-    it('delega al service', async () => {
-      const result = await controller.findAll({});
+    it('delega al service con el usuario (ámbito por torre)', async () => {
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.findAll({}, req as never);
       expect(result).toHaveProperty('items');
-      expect(service.findAll).toHaveBeenCalledWith({});
+      expect(service.findAll).toHaveBeenCalledWith({}, 'user-1');
     });
   });
 
   describe('findStats', () => {
     it('retorna stats del nuevo flujo', async () => {
-      const result = await controller.findStats();
+      const req = { user: { id: 'user-1' } };
+      const result = await controller.findStats(req as never);
       expect(result.nuevos).toBe(2);
       expect(result.enCurso).toBe(1);
       expect(result.cerrados).toBe(3);

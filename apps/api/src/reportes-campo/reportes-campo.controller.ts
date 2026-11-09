@@ -38,8 +38,9 @@ export class ReportesCampoController {
    */
   @RequirePermission('operaciones', 'reportes_campo', 'ver')
   @Get()
-  async findAll(@Query() query: QueryReportesCampoDto) {
-    return this.service.findAll(query);
+  async findAll(@Query() query: QueryReportesCampoDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.service.findAll(query, user.id);
   }
 
   /**
@@ -49,8 +50,9 @@ export class ReportesCampoController {
    */
   @RequirePermission('operaciones', 'reportes_campo', 'ver')
   @Get('stats')
-  async findStats() {
-    return this.service.findStats();
+  async findStats(@Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.service.findStats(user.id);
   }
 
   /**
@@ -155,6 +157,22 @@ export class ReportesCampoController {
   ) {
     const user = req.user as { id: string };
     return this.service.adjuntar(id, dto, user.id);
+  }
+
+  /**
+   * POST /api/reportes-campo/:id/aceptar
+   * La torre toma el incidente: RESPONSABLE = quien lo acepta.
+   * Permiso: operaciones.reportes_campo.editar
+   */
+  @RequirePermission('operaciones', 'reportes_campo', 'editar')
+  @Post(':id/aceptar')
+  @HttpCode(HttpStatus.OK)
+  async aceptar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.service.aceptar(id, user.id);
   }
 
   /**

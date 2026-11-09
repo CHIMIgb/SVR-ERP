@@ -9,7 +9,7 @@
  * Run with: npm run test:integration -- --testPathPattern="reportes-campo"
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException } from '@nestjs/common';
+import { INestApplication, BadRequestException, ConflictException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
@@ -258,6 +258,43 @@ describe('ReportesCampo Audit (Real DB)', () => {
       expect(diesel.some((s) => s.nombre === '150 litros de diésel')).toBe(true);
       const admin = catalogo.filter((s) => s.categoria === 'Administrativo');
       expect(admin.some((s) => s.nombre === 'Cubeta de aceite')).toBe(true);
+    });
+  });
+
+  describe('ACEPTAR — responsable = quien acepta (BD real)', () => {
+    it('acepta un NUEVO, llena asignado_nombre y audita SUCCESS', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const aceptado = await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        () => service.aceptar(reporte.id, ACTOR_USER_ID),
+      );
+      // RESPONSABLE = quien aceptó (nombre de la persona del usuario demo admin)
+      expect(aceptado.asignadoANombre).toBeTruthy();
+
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.asignado_nombre).toBe(aceptado.asignadoANombre);
+      expect(row!.asignado_en).not.toBeNull();
+
+      const audits = await findAudits(AuditAction.REPORTE_ASIGNADO, reporte.id);
+      const success = audits.find((a) => (a.new_value as Record<string, unknown>)?.aceptadoPor);
+      expect(success?.result).toBe('SUCCESS');
+
+      // doble acepto → YA_ACEPTADO (FAIL)
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(service.aceptar(reporte.id, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+        },
+      );
+    });
+
+    it('detalle expone reportadoPor (nombre/telefono/rol) del que levanta', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const detalle = await service.findOne(reporte.id);
+      expect(detalle.reportadoPor).not.toBeNull();
+      expect(detalle.reportadoPor!.nombre).toBeTruthy();
     });
   });
 
@@ -631,7 +668,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
       await service.cambiarEstado(r1.id, { estado: EstadoIncidente.EN_CURSO }, ACTOR_USER_ID);
       await service.remove(r3.id, ACTOR_USER_ID);
 
-      const stats = await service.findStats();
+      const stats = await service.findStats(ACTOR_USER_ID);
 
       expect(stats.nuevos).toBeGreaterThanOrEqual(0);
       expect(stats.enCurso).toBeGreaterThanOrEqual(1); // r1
@@ -639,7 +676,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
       expect(stats.criticosActivos).toBeGreaterThanOrEqual(1); // r2
 
       // El eliminado (r3) ya no aparece en el listado: quedan r1 y r2
-      const lista = await service.findAll({ search: marca });
+      const lista = await service.findAll({ search: marca }, ACTOR_USER_ID);
       expect(lista.items).toHaveLength(2);
       expect(lista.items.some((r) => r.id === r3.id)).toBe(false);
     });

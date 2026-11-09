@@ -119,7 +119,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
 
   describe('findAll', () => {
     it('pasa search y filtra estado/tipo/prioridad al where', async () => {
-      await service.findAll({ search: 'neta', estado: EstadoIncidente.EN_CURSO, tipo: TipoReporteCampo.PIPERO });
+      await service.findAll({ search: 'neta', estado: EstadoIncidente.EN_CURSO, tipo: TipoReporteCampo.PIPERO }, 'user-1');
       const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
       expect(callArgs.where.OR).toBeTruthy();
       expect(callArgs.where.estado).toBe(EstadoIncidente.EN_CURSO);
@@ -130,7 +130,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     });
 
     it('techo de limit en 100 y paginación derivada', async () => {
-      await service.findAll({ page: 2, limit: 500 });
+      await service.findAll({ page: 2, limit: 500 }, 'user-1');
       const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
       expect(callArgs.take).toBe(100);
       const callCount = prisma.reportes_campo.count.mock.calls[0][0];
@@ -138,7 +138,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     });
 
     it('banner de críticos: estado distinto de CERRADO y tipo INCIDENTE', async () => {
-      await service.findAll({ criticos: 'true' });
+      await service.findAll({ criticos: 'true' }, 'user-1');
       const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
       expect(callArgs.where.tipo).toBe(TipoReporteCampo.INCIDENTE);
       expect(callArgs.where.estado).toEqual({ not: EstadoIncidente.CERRADO });
@@ -349,6 +349,50 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     });
   });
 
+  describe('aceptar', () => {
+    it('nuevo sin responsable: acepta y llena RESPONSABLE con el nombre del aceptante', async () => {
+      const data = await service.aceptar(mockReporte.id, 'user-1');
+      const args = prisma.reportes_campo.updateMany.mock.calls.at(-1)[0];
+      expect(args.where.estado).toBe(EstadoIncidente.NUEVO);
+      expect(args.where.asignado_a_id).toBeNull();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ASIGNADO, result: AuditResult.SUCCESS }),
+      );
+      expect(data).toBeDefined();
+    });
+
+    it('con responsable ya asignado → YA_ACEPTADO (audita FAIL)', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.NUEVO,
+        asignado_nombre: 'Alguien',
+      });
+      await expect(service.aceptar(mockReporte.id, 'user-1')).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'YA_ACEPTADO',
+        }),
+      );
+    });
+
+    it('estado no NUEVO → SOLO_NUEVOS_SE_ACEPTAN (audita FAIL)', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.EN_CURSO,
+      });
+      await expect(service.aceptar(mockReporte.id, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'SOLO_NUEVOS_SE_ACEPTAN',
+        }),
+      );
+    });
+  });
+
   describe('asignar', () => {
     it('asigna por trabajador y audita SUCCESS', async () => {
       await service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1');
@@ -497,8 +541,8 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
   });
 
   describe('findStats', () => {
-    it('cuenta nuevos/enCurso/cerrados + criticosActivos + porArea', async () => {
-      const stats = await service.findStats();
+    it('cuenta nuevos/enCurso/cerrados + criticosActivos + porArea (con ámbito del usuario)', async () => {
+      const stats = await service.findStats('user-1');
       expect(stats).toEqual({
         nuevos: expect.any(Number),
         enCurso: expect.any(Number),

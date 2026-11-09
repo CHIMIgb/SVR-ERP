@@ -753,6 +753,8 @@ export interface ReporteCampoDTO {
   proyecto: string | null;
   latitud: number | null;
   longitud: number | null;
+  /** Quién levantó el incidente: nombre, teléfono, rol (para el detalle). */
+  reportadoPor: ReportadoPorDTO | null;
   fecha: string;
   hora: string;
   descripcion: string;
@@ -786,8 +788,16 @@ export interface AdjuntoDTO {
   creadoEn: string;
 }
 
+export interface ReportadoPorDTO {
+  nombre: string | null;
+  telefono: string | null;
+  rol: string | null;
+  area: string | null;
+}
+
 export interface ReportesIncidenteDetalle {
   reporte: ReporteCampoDTO;
+  reportadoPor: ReportadoPorDTO | null;
   actividades: ActividadDTO[];
   adjuntos: AdjuntoDTO[];
 }
@@ -861,6 +871,10 @@ export const reportesCampoApi = {
   /** Iniciar (EN_CURSO) o Cerrar (CERRADO) el incidente. */
   cambiarEstado: (id: string, estado: 'EN_CURSO' | 'CERRADO') =>
     apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/estado`, { estado }),
+
+  /** Aceptar el incidente: RESPONSABLE = quien lo acepta. */
+  aceptar: (id: string) =>
+    apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/aceptar`, {}),
 
   /** Asigna "quién le cae": trabajador del sistema y/o nombre libre. */
   asignar: (id: string, data: { asignadoA?: string | null; asignadoNombre?: string | null }) =>

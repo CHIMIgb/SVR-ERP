@@ -96,8 +96,10 @@ export class ReportesCampoService {
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
+  //  Ámbito por usuario: admins (nivel 100) ven todos; el resto solo la torre
+  //  de su rol/usuario (o suyos, si no tiene torre asignada — Trabajador).
   // ────────────────────────────────────────────
-  async findAll(query: QueryReportesCampoDto) {
+  async findAll(query: QueryReportesCampoDto, userId: string) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 10, 100);
 
@@ -123,6 +125,9 @@ export class ReportesCampoService {
       where.prioridad = { in: [Prioridad.ALTA, Prioridad.CRITICA] };
       where.estado = { not: EstadoIncidente.CERRADO };
     }
+
+    // Ámbito por usuario (no-admin solo vede su torre / sus propios reportes)
+    await this.aplicarAmbito(where, userId);
 
     const [items, total] = await Promise.all([
       this.prisma.reportes_campo.findMany({
@@ -159,7 +164,7 @@ export class ReportesCampoService {
       throw new NotFoundException(`Reporte de campo con id "${id}" no encontrado`);
     }
 
-    const [actividades, adjuntos] = await Promise.all([
+    const [actividades, adjuntos, reportadoPor] = await Promise.all([
       this.prisma.reportes_actividades.findMany({
         where: { reporte_id: id },
         orderBy: { creado_en: 'asc' },
@@ -168,10 +173,12 @@ export class ReportesCampoService {
         where: { reporte_id: id },
         orderBy: { creado_en: 'asc' },
       }),
+      this.datosDelReportador(reporte.usuario_id),
     ]);
 
     return {
       reporte: this.serialize(reporte),
+      reportadoPor,
       actividades: actividades.map((a) => ({
         id: a.id,
         texto: a.texto,
@@ -180,6 +187,173 @@ export class ReportesCampoService {
       })),
       adjuntos: adjuntos.map((a) => this.serializeAdjunto(a)),
     };
+  }
+
+  /**
+   * Ámbito de visibilidad: nivel 100 (Administrador) ve todo; el resto solo los
+   * incidentes de su torre (user.torre ?? torre del rol) — y sin torre (Trabajador)
+   * solo los suyos. Auditable y rejunte con findStats/findAll.
+   */
+  private async aplicarAmbito(
+    where: Prisma.reportes_campoWhereInput,
+    userId: string,
+  ): Promise<void> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        torre: true,
+        users_roles_users_roles_user_idTousers: {
+          select: { roles: { select: { nivel: true, torre: true } } },
+        },
+      },
+    });
+    const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
+    const nivelMaximo = Math.max(0, ...usuarioRoles.map((ur: { roles: { nivel: number } }) => ur.roles.nivel));
+    if (nivelMaximo >= 100) return; // Administrador: acceso total
+
+    const torre = user?.torre ?? usuarioRoles.filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => b.roles.nivel - a.roles.nivel)[0]?.roles.torre ?? null;
+    if (torre) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where.categoria = torre as any;
+    } else {
+      where.usuario_id = userId; // Trabajador sin torre: solo sus propios reportes
+    }
+  }
+
+  /**
+   * Datos del que levantó el incidente: nombre, teléfono (persona), rol y área.
+   * personas.telefono ya existe en BD (los usuarios demo lo traen sembrado).
+   */
+  private async datosDelReportador(usuarioId: string | null) {
+    if (!usuarioId) return null;
+    const user = await this.prisma.users.findUnique({
+      where: { id: usuarioId },
+      select: {
+        torre: true,
+        personas_users_persona_idTopersonas: {
+          select: { nombre: true, apellido_paterno: true, apellido_materno: true, telefono: true },
+        },
+        users_roles_users_roles_user_idTousers: {
+          select: { es_principal: true, roles: { select: { nombre: true, nivel: true } } },
+        },
+      },
+    });
+    if (!user) return null;
+    const persona = user.personas_users_persona_idTopersonas;
+    const nombre = [persona.nombre, persona.apellido_paterno, persona.apellido_materno]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const rolPrincipal = (user.users_roles_users_roles_user_idTousers ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => b.roles.nivel - a.roles.nivel)[0]?.roles.nombre ?? null;
+    return {
+      nombre: nombre || null,
+      telefono: persona.telefono ?? null,
+      rol: rolPrincipal,
+      area: user.torre ?? null,
+    };
+  }
+
+  /**
+   * ACEPTAR — la torre toma el incidente: la columna RESPONSABLE se llena con el
+   * nombre de quien lo acepta. Solo incidentes NUEVO sin responsable; con las
+   * variables correctas (dos aceptos simultáneos → conflicto), auditado SUCCESS/FAIL.
+   */
+  async aceptar(id: string, userId: string) {
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if ((existente.estado as EstadoIncidente) !== EstadoIncidente.NUEVO) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'SOLO_NUEVOS_SE_ACEPTAN',
+        BadRequestException,
+        `Solo los incidentes Nuevos pueden aceptarse (estado actual: ${ESTADO_LABELS[existente.estado as EstadoIncidente]})`,
+      );
+    }
+
+    if (existente.asignado_a_id || existente.asignado_nombre) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'YA_ACEPTADO',
+        ConflictException,
+        'Alguien ya aceptó este incidente: recarga la lista',
+      );
+    }
+
+    const reportadoPor = await this.datosDelReportador(userId);
+    const nombre = reportadoPor?.nombre ?? userId;
+
+    const actualizada = await this.prisma.reportes_campo.updateMany({
+      where: {
+        id,
+        estado: EstadoIncidente.NUEVO,
+        asignado_a_id: null,
+        asignado_nombre: null,
+        eliminado_en: null,
+      },
+      data: {
+        asignado_nombre: nombre,
+        asignado_en: new Date(),
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      },
+    });
+    if (actualizada.count === 0) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'YA_ACEPTADO',
+        ConflictException,
+        'Alguien ya aceptó este incidente: recarga la lista',
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+      include: REPORTE_INCLUDE,
+    });
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    const serialized = this.serialize(reporte);
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_ASIGNADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: { asignadoAId: null, asignadoNombre: null },
+      newValue: { aceptadoPor: nombre, estado: ESTADO_LABELS[existente.estado as EstadoIncidente] },
+    });
+
+    return serialized;
   }
 
   // ────────────────────────────────────────────
@@ -785,10 +959,11 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  ESTADÍSTICAS (alimentan las tarjetas y el banner)
+  //  ESTADÍSTICAS (alimentan las tarjetas — con el mismo árbol del usuario)
   // ────────────────────────────────────────────
-  async findStats() {
-    const baseWhere = { eliminado_en: null };
+  async findStats(userId: string) {
+    const baseWhere: Prisma.reportes_campoWhereInput = { eliminado_en: null };
+    await this.aplicarAmbito(baseWhere, userId);
 
     const [nuevos, enCurso, cerrados, criticosActivos, porAreaRaw] = await Promise.all([
       this.prisma.reportes_campo.count({

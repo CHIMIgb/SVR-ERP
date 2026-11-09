@@ -65,14 +65,9 @@ const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
 /** Opción especial: el incidente queda dentro del área del que lo levanta. */
 const MISMA_AREA = 'MISMA_AREA';
 
-/** Descripción breve con recorte para la tabla. */
-function descripcionBreve(texto: string, max = 90): string {
-  return texto.length > max ? `${texto.slice(0, max)}…` : texto;
-}
-
 /**
  * Convierte cualquier imagen (image/*) a WebP con canvas (calidad 0.85) para
- * alistet peso. Devuelve el data URI WebP + su tamaño, o null si el navegador
+ * que pesen menos. Devuelve el data URI WebP + su tamaño, o null si el navegador
  * no pudo decodificar/convertir (formato ajeno al canvas, p.ej. HEIC viejo).
  */
 async function convertirAWebp(
@@ -187,6 +182,7 @@ export default function ReportesOperacionesPage() {
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
+  const [aceptando, setAceptando] = useState(false);
   /** Imágenes en espera del alta (mismos límites del detalle: máx 4, 2MB). */
   const [imagenesAlta, setImagenesAlta] = useState<AdjuntoImagenAlta[]>([]);
   /** Adjuntos existentes en el modal Editar (null = cargando). */
@@ -631,6 +627,48 @@ export default function ReportesOperacionesPage() {
   }, [asignarItem, asignarForm, showToast, refetch, detalleOpen, detalle, openDetalle]);
 
   // ── Flujo de estados: Iniciar / Cerrar (desde el detalle) ──
+  /** ACEPTAR — el responsable queda con el nombre de quien acepta (carrier/auditoría server-side). */
+  const handleAceptar = useCallback(
+    async (item: ReporteCampoDTO) => {
+      const res = await reportesCampoApi.aceptar(item.id);
+      if (res.success) {
+        showToast(
+          `Incidente aceptado — RESPONSABLE: ${res.data.asignadoANombre ?? ''}`.trim(),
+          'success',
+        );
+        openDetalle(item);
+        refetch();
+        fetchStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el incidente.'), 'error');
+        refetch();
+      }
+    },
+    [showToast, refetch, fetchStats, openDetalle],
+  );
+
+  /** Aceptar dentro del detalle (misma ruta, refresca el detalle). */
+  const aceptarDetalle = useCallback(
+    async (item: ReporteCampoDTO) => {
+      if (!item) return;
+      setAceptando(true);
+      const res = await reportesCampoApi.aceptar(item.id);
+      setAceptando(false);
+      if (res.success) {
+        showToast(
+          `Incidente aceptado — RESPONSABLE: ${res.data.asignadoANombre ?? ''}`.trim(),
+          'success',
+        );
+        openDetalle(item);
+        refetch();
+        fetchStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el incidente.'), 'error');
+      }
+    },
+    [showToast, refetch, fetchStats, openDetalle],
+  );
+
   const iniciarIncidente = useCallback(
     async (item: ReporteCampoDTO) => {
       const res = await reportesCampoApi.cambiarEstado(item.id, 'EN_CURSO');
@@ -854,12 +892,13 @@ export default function ReportesOperacionesPage() {
       key: 'descripcion',
       header: 'Descripción',
       minWidth: '380px',
-      className: 'whitespace-normal',
+      className: 'max-w-sm',
       render: (report) => (
-        <div className="max-w-xl">
+        // puntos suspensivos al llegar al ancho de la columna (texto completo en el tooltip y el detalle)
+        <div className="max-w-sm min-w-0">
           <Tooltip placement="top" content={report.descripcion} maxWidth={480}>
-            <span className="font-medium text-ui-600">
-              &ldquo;{descripcionBreve(report.descripcion)}&rdquo;
+            <span className="block truncate font-medium text-ui-600">
+              &ldquo;{report.descripcion}&rdquo;
             </span>
           </Tooltip>
         </div>
@@ -893,6 +932,19 @@ export default function ReportesOperacionesPage() {
                 onClick={() => openEdit(report)}
               >
                 Editar
+              </Button>
+            </Tooltip>
+          )}
+          {puedeEditar && report.estado === 'Nuevo' && !report.asignadoANombre && (
+            <Tooltip content="Aceptar el incidente — RESPONSABLE: tú">
+              <Button
+                variant="success"
+                size="sm"
+                aria-label="Aceptar incidente"
+                icon={<Check className="w-3.5 h-3.5" />}
+                onClick={() => handleAceptar(report)}
+              >
+                Aceptar
               </Button>
             </Tooltip>
           )}
@@ -1297,6 +1349,16 @@ export default function ReportesOperacionesPage() {
                   <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Responsable</p>
                   <p className="font-bold text-ui-800">{detalle.reporte.asignadoANombre ?? 'Sin asignar'}</p>
                 </div>
+                <div>
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide">Levantó</p>
+                  <p className="font-bold text-ui-800">{detalle.reporte.usuario}</p>
+                  {detalle.reportadoPor && (
+                    <p className="text-[11px] font-medium text-ui-500">
+                      {detalle.reportadoPor.telefono ? `${detalle.reportadoPor.telefono} · ` : ''}
+                      {detalle.reportadoPor.rol ?? '—'}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="mt-3 pt-3 border-t border-ui-100">
                 <p className="text-[10px] font-black text-ui-400 uppercase tracking-wide mb-1">Descripción</p>
@@ -1314,7 +1376,18 @@ export default function ReportesOperacionesPage() {
                   >
                     {detalle.reporte.asignadoANombre ? 'Reasignar' : 'Asignar'}
                   </Button>
-                  {detalle.reporte.estado === 'Nuevo' && (
+                  {detalle.reporte.estado === 'Nuevo' && !detalle.reporte.asignadoANombre && (
+                    <Button
+                      variant="success"
+                      size="sm"
+                      icon={<Check className="w-3.5 h-3.5" />}
+                      disabled={aceptando}
+                      onClick={() => aceptarDetalle(detalle.reporte)}
+                    >
+                      Aceptar
+                    </Button>
+                  )}
+                  {detalle.reporte.estado === 'Nuevo' && detalle.reporte.asignadoANombre && (
                     <Button variant="primary" size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={() => iniciarIncidente(detalle.reporte)}>
                       Iniciar
                     </Button>
