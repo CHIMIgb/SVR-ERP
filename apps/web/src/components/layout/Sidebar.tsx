@@ -240,7 +240,7 @@ function SidebarContent() {
       <div className="p-3 border-t border-white/5">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 text-xs font-semibold hover:text-red-400 hover:bg-red-500/10 active:scale-[0.98] transition-all"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 active:scale-[0.98] transition-all"
           title="Cerrar Sesión"
         >
           <LogOut className="w-4 h-4" />
