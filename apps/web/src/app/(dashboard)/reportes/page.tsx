@@ -1393,7 +1393,8 @@ export default function ReportesOperacionesPage() {
                 <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   Imágenes ({detalle.adjuntos.length}/4)
                 </p>
-                {puedeEditar && detalle.reporte.estado !== 'Cerrado' && (
+                {/* Agregar imagen es de la torre que atiende: el Residente solo seguirí yет does */}
+                {puedeEditar && !esResidente && detalle.reporte.estado !== 'Cerrado' && (
                   <label className={adjuntando ? 'opacity-50 pointer-events-none' : ''}>
                     <input
                       type="file"
@@ -1719,20 +1720,23 @@ export default function ReportesOperacionesPage() {
                     ))}
                   </div>
                 )}
-                <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={adjuntando || editAdjuntos.length >= MAX_IMAGENES}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (file) handleAdjuntarEnEdicion(file);
-                    }}
-                  />
-                  {adjuntando ? 'Subiendo…' : (<> <ImagePlus className="w-3.5 h-3.5" /> Agregar imagen</>)}
-                </label>
+                {/* Agregar imagen es de la torre que atiende: el Residente solo revisa el registro */}
+                {!esResidente && (
+                  <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={adjuntando || editAdjuntos.length >= MAX_IMAGENES}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) handleAdjuntarEnEdicion(file);
+                      }}
+                    />
+                    {adjuntando ? 'Subiendo…' : (<> <ImagePlus className="w-3.5 h-3.5" /> Agregar imagen</>)}
+                  </label>
+                )}
                 {editAdjuntos.length === 0 && <p className="text-xs text-ui-400">Sin imágenes todavía</p>}
               </div>
             )}

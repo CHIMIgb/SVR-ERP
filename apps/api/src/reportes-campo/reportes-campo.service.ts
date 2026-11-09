@@ -966,6 +966,18 @@ export class ReportesCampoService {
       );
     }
 
+    // Las imágenes son evidencia de la torre que atiende — el Residente solo
+    // revisa el registro y comenta.
+    if (await this.esRolResidente(userId)) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'RESIDENTE_SOLO_SEGUIMIENTO',
+        ForbiddenException,
+        'Los Residentes solo dan seguimiento: las imágenes las agrega la torre que atiende',
+      );
+    }
+
     if (!MIMES_ADJUNTO.includes(dto.mime)) {
       return this.fallir(
         AuditAction.REPORTE_ADJUNTO,
