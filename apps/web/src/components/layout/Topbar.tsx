@@ -33,7 +33,7 @@ const MODULOS = [
 export default function Topbar() {
   const router = useRouter();
   const { openMobile } = useSidebar();
-  const { user, logout, isInitialized } = useAuth();
+  const { user, isInitialized } = useAuth();
   const { 
     notifications, 
     unreadCount, 
