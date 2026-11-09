@@ -79,7 +79,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           disabled={!product}
           options={units.map((u) => ({
             value: u,
-            label: `${u} — ${formatCurrency(productUnitPrice(product, u))}`,
+            label: `${u} — ${formatCurrency(productUnitPrice(product!, u))}`,
           }))}
         />
         <Input
