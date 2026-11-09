@@ -26,7 +26,6 @@ import {
   type ReportesCampoStats,
   type ReporteCampoCreateInput,
   type SubcategoriaDTO,
-  type ProyectoDTO,
   type EstadoIncidenteApi,
   type PrioridadReporteApi,
   type CategoriaReporteApi,
