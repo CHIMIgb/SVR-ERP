@@ -182,7 +182,14 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 
 #### Roles de plantilla (5 — /reportes y dashboard)
 
-| Email | Contraseña | Rol (nivel) | Área (torre) | En /reportes puede |
+> **Estas cuentas ya no se crean con `migrate`** (review PR #17: ninguna
+> migración debe dejar usuarios con contraseña conocida en producción).
+> Se siembran a mano con `prisma/demo-seed.sql`, cuyo hash llega por variable
+> de psql — **la contraseña la define quien ejecuta el seed**, las de la
+> tabla son las sugeridas para dev. Ver las instrucciones en la cabecera de
+> ese archivo.
+
+| Email | Contraseña sugerida (seed dev) | Rol (nivel) | Área (torre) | En /reportes puede |
 |-------|------------|-------------|--------------|--------------------|
 | `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
 | `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |

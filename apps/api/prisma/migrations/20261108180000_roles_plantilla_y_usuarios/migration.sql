@@ -121,41 +121,7 @@ BEGIN
 END $$;
 
 -- ════════════════════════════════════════════════
--- 4. Un usuario por rol (persona + user + users_roles)
+-- 4. USUARIOS DEMO — RETIRADOS de la migración (review PR #17):
+--    migrar era crear cuentas con contraseña conocida en producción.
+--    Ahora viven en prisma/demo-seed.sql (ejecución manual en dev).
 -- ════════════════════════════════════════════════
-INSERT INTO personas (id, nombre, apellido_paterno, apellido_materno, correo, activo, creado_en, actualizado_en)
-SELECT v.id::uuid, v.nombre_p, v.ap1, v.ap2, NULL, true, NOW(), NOW()
-FROM (VALUES
-  ('e1000000-0000-0000-0000-0000000000a1', 'Laura',  'Administrativo', 'Oficina'),
-  ('e1000000-0000-0000-0000-0000000000a2', 'Óscar',  'Residente',      'de Obra'),
-  ('e1000000-0000-0000-0000-0000000000a3', 'Rubén',  'Técnico',        'de Flota'),
-  ('e1000000-0000-0000-0000-0000000000a4', 'Carla',  'Cobradora',      'de Criba'),
-  ('e1000000-0000-0000-0000-0000000000a5', 'Juan',   'Trabajador',     'de Campo')
-) AS v(id, nombre_p, ap1, ap2)
-WHERE NOT EXISTS (SELECT 1 FROM personas p WHERE p.id = v.id::uuid);
-
-INSERT INTO users (id, persona_id, email, password_hash, email_verificado, activo, preferencias, creado_en, actualizado_en)
-SELECT v.id::uuid, v.persona_id::uuid, v.email, v.pass, true, true, '{}', NOW(), NOW()
-FROM (VALUES
-  ('e2000000-0000-0000-0000-0000000000a1', 'e1000000-0000-0000-0000-0000000000a1', 'administrativo@svr-constructora.com', '$2b$10$kTxPe.w2joWkNickhX9FZub0NCBHjTOim1FoyIWvjvz3eBH2MuFQy'),
-  ('e2000000-0000-0000-0000-0000000000a2', 'e1000000-0000-0000-0000-0000000000a2', 'residente@svr-constructora.com',      '$2b$10$1EhoXDUUZhKSI/SD.7dT6e0fN6kRVsRScy2j6oZKTvjMgvnnrDrYe'),
-  ('e2000000-0000-0000-0000-0000000000a3', 'e1000000-0000-0000-0000-0000000000a3', 'tecnico@svr-constructora.com',        '$2b$10$0hUObSVRKOf1q822D6sY1OeIkoHRqFFumRZdwQYFXRvKVxMTXfl16'),
-  ('e2000000-0000-0000-0000-0000000000a4', 'e1000000-0000-0000-0000-0000000000a4', 'cobrador@svr-constructora.com',       '$2b$10$uP.snRJaeAyi0lt1PxYh9ugO79TGV2rJY2DIt25QETVRgwyqhuZjy'),
-  ('e2000000-0000-0000-0000-0000000000a5', 'e1000000-0000-0000-0000-0000000000a5', 'trabajador@svr-constructora.com',     '$2b$10$Se6q8ljVOkd4AyIv9pQSNeoJVyA5bhv9aROJbYBmF/vSH1IQp8FD6')
-) AS v(id, persona_id, email, pass)
-WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.email = v.email);
-
-INSERT INTO users_roles (id, user_id, rol_id, es_principal, activo, asignado_en)
-SELECT gen_random_uuid(), u.id, r.id, true, true, NOW()
-FROM (VALUES
-  ('administrativo@svr-constructora.com', 'Administrativo'),
-  ('residente@svr-constructora.com',      'Residente'),
-  ('tecnico@svr-constructora.com',        'Técnico'),
-  ('cobrador@svr-constructora.com',       'Cobrador'),
-  ('trabajador@svr-constructora.com',     'Trabajador')
-) AS v(email, rol_nombre)
-JOIN users u ON u.email = v.email
-JOIN roles r ON r.nombre = v.rol_nombre
-WHERE NOT EXISTS (
-  SELECT 1 FROM users_roles ur WHERE ur.user_id = u.id AND ur.rol_id = r.id
-);
