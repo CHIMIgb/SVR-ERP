@@ -36,6 +36,10 @@
 
 ## Pendientes y riesgos
 
+- **Seguimiento (commit e0885474):** en claro el trazo `ui-200` seguía sin verse;
+  ahora filas y columnas son **negras** en claro (`border-ui-900`) y conservan el
+  trazo sutil en oscuro (`dark:border-ui-200` filas / `dark:border-ui-100`
+  columnas).
 - El trazo `border-ui-200` en filas es más marcado en las ~12 vistas que usan
   DataTable: si alguna vista prefería lo froto, se regresa vista-por-vista con
   `className` de columna, no cambio global otra vez.
