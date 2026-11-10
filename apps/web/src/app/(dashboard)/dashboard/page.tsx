@@ -380,13 +380,13 @@ export default function DashboardPage() {
       ruta: '/asistencia',
     });
   }
-  if (reportesListos && reportesListos.pendientes + reportesListos.enRevision > 0) {
-    const { pendientes, enRevision } = reportesListos;
+  if (reportesListos && reportesListos.nuevos + reportesListos.enCurso > 0) {
+    const { nuevos, enCurso } = reportesListos;
     avisos.push({
       clave: 'reportes',
       peso: 5,
-      titulo: `${plural(pendientes + enRevision, 'reporte', 'reportes')} por atender`,
-      detalle: `${plural(pendientes, 'pendiente', 'pendientes')}, ${enRevision} en revisión`,
+      titulo: `${plural(nuevos + enCurso, 'reporte', 'reportes')} por atender`,
+      detalle: `${plural(nuevos, 'pendiente', 'pendientes')}, ${enCurso} en curso`,
       etiqueta: 'Reportes',
       variante: 'info',
       ruta: '/reportes',
