@@ -33,6 +33,7 @@ import {
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
+import { ApiError } from '@svr-erp/shared';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -166,6 +167,10 @@ export default function ReportesOperacionesPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
+  /** Descarte de respuestas viejas (review PR #17): último número de solicitud por pantalla. */
+  const listaSolicitudRef = useRef(0);
+  const statsSolicitudRef = useRef(0);
+  const detalleSolicitudRef = useRef(0);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   // ── Estado de búsqueda y filtros ──
@@ -181,6 +186,8 @@ export default function ReportesOperacionesPage() {
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [detalleCargando, setDetalleCargando] = useState(false);
   const [detalle, setDetalle] = useState<ReportesIncidenteDetalle | null>(null);
+  /** Candado contra doble clic: id del incidente en proceso de aceptación. */
+  const [aceptandoId, setAceptandoId] = useState<string | null>(null);
   const [cerrarOpen, setCerrarOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReporteCampoDTO | null>(null);
   const [asignarItem, setAsignarItem] = useState<ReporteCampoDTO | null>(null);
@@ -216,6 +223,9 @@ export default function ReportesOperacionesPage() {
 
   // ── Cargar datos ──
   const fetchData = useCallback(async (page = 1, searchVal?: string, filters?: Record<string, string>) => {
+    // Descarte de respuestas viejas (review PR #17): las respuestas fuera de
+    // fila no pintan datos ni disparan errores/spinners del momento actual.
+    const solicitud = ++listaSolicitudRef.current;
     if (!hasLoaded.current) {
       setInitialLoading(true);
     } else {
@@ -229,6 +239,7 @@ export default function ReportesOperacionesPage() {
         page,
         limit: PAGE_SIZE,
       });
+      if (solicitud !== listaSolicitudRef.current) return; // llegó tarde: descartar
       if (res.success && res.data) {
         setReportes(res.data.items);
         setPagination(res.data.pagination);
@@ -236,20 +247,33 @@ export default function ReportesOperacionesPage() {
         showToast('Error al cargar los incidentes.', 'error');
       }
     } catch {
+      if (solicitud !== listaSolicitudRef.current) return;
       showToast('No se pudo conectar con el servidor.', 'error');
     } finally {
-      hasLoaded.current = true;
-      setInitialLoading(false);
-      setRefreshing(false);
+      if (solicitud === listaSolicitudRef.current) {
+        hasLoaded.current = true;
+        setInitialLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [showToast]);
 
   const fetchStats = useCallback(async () => {
-    const res = await reportesCampoApi.stats();
-    if (res.success && res.data) {
-      setStats(res.data);
+    const solicitud = ++statsSolicitudRef.current;
+    try {
+      const res = await reportesCampoApi.stats();
+      if (solicitud !== statsSolicitudRef.current) return;
+      if (res.success && res.data) {
+        setStats(res.data);
+        return;
+      }
+      // llegó un fallo: tanto ApiError como un ApiSuccess vacío cuentan
+      showToast(mensajeErrorApi((res as ApiError).error, 'No se pudieron cargar los indicadores.'), 'error');
+    } catch {
+      if (solicitud !== statsSolicitudRef.current) return;
+      showToast('No se pudieron cargar los indicadores (sin conexión).', 'error');
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     const inicial = async () => {
@@ -377,6 +401,9 @@ export default function ReportesOperacionesPage() {
 
   const openDetalle = useCallback(
     (item: ReporteCampoDTO) => {
+      // Descarte de detalle viejo: si abro otro incidente antes de que llegue
+      // este, su respuesta no pinta y no cierra el modal ajeno.
+      const solicitud = ++detalleSolicitudRef.current;
       setDetalleOpen(true);
       setDetalleCargando(true);
       setComentarioTexto('');
@@ -384,6 +411,7 @@ export default function ReportesOperacionesPage() {
       reportesCampoApi
         .detalle(item.id)
         .then((res) => {
+          if (solicitud !== detalleSolicitudRef.current) return; // llegó tarde
           if (!res.success) {
             showToast(mensajeErrorApi(res.error, 'Error al cargar el incidente.'), 'error');
             setDetalleOpen(false);
@@ -392,10 +420,13 @@ export default function ReportesOperacionesPage() {
           setDetalle(res.data);
         })
         .catch(() => {
+          if (solicitud !== detalleSolicitudRef.current) return;
           showToast('No se pudo conectar con el servidor.', 'error');
           setDetalleOpen(false);
         })
-        .finally(() => setDetalleCargando(false));
+        .finally(() => {
+          if (solicitud === detalleSolicitudRef.current) setDetalleCargando(false);
+        });
     },
     [showToast],
   );
@@ -645,24 +676,33 @@ export default function ReportesOperacionesPage() {
   }, [asignarItem, asignarForm, showToast, refetch, detalleOpen, detalle, openDetalle]);
 
   // ── Flujo de estados: Iniciar / Cerrar (desde el detalle) ──
-  /** ACEPTAR — el responsable queda con el nombre de quien acepta (carrier/auditoría server-side). */
+  /** ACEPTAR — el responsable queda con el nombre de quien acepta (server-side desde el token). */
   const handleAceptar = useCallback(
     async (item: ReporteCampoDTO) => {
-      const res = await reportesCampoApi.aceptar(item.id);
-      if (res.success) {
-        showToast(
-          `Incidente aceptado — RESPONSABLE: ${res.data.asignadoANombre ?? ''}`.trim(),
-          'success',
-        );
-        openDetalle(item);
-        refetch();
-        fetchStats();
-      } else {
-        showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el incidente.'), 'error');
-        refetch();
+      // candado contra doble clic (review PR #17): un aceptado en curso no re-envía
+      if (aceptandoId === item.id) return;
+      setAceptandoId(item.id);
+      try {
+        const res = await reportesCampoApi.aceptar(item.id);
+        if (res.success) {
+          showToast(
+            `Incidente aceptado — RESPONSABLE: ${res.data.asignadoANombre ?? ''}`.trim(),
+            'success',
+          );
+          openDetalle(item);
+          refetch();
+          fetchStats();
+        } else {
+          showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el incidente.'), 'error');
+          refetch();
+        }
+      } catch {
+        showToast('No se pudo conectar con el servidor.', 'error');
+      } finally {
+        setAceptandoId((actual) => (actual === item.id ? null : actual));
       }
     },
-    [showToast, refetch, fetchStats, openDetalle],
+    [aceptandoId, showToast, refetch, fetchStats, openDetalle],
   );
 
   const iniciarIncidente = useCallback(
@@ -938,6 +978,8 @@ export default function ReportesOperacionesPage() {
                 size="sm"
                 aria-label="Aceptar incidente"
                 icon={<Check className="w-3.5 h-3.5" />}
+                loading={aceptandoId === report.id}
+                disabled={aceptandoId === report.id}
                 onClick={() => handleAceptar(report)}
               >
                 Aceptar
