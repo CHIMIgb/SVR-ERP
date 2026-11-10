@@ -435,23 +435,6 @@ export default function ProyectosPage() {
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  // ── Barra de progreso por fila ──
-  const renderProgreso = (item: ProyectoDTO) => {
-    const barColor =
-      item.progreso >= 100 ? 'bg-green-500'
-      : item.estado === 'Pausado' ? 'bg-amber-500'
-      : 'bg-primary';
-    return (
-      <div className="flex items-center gap-2 min-w-[120px]">
-        <div className="flex-1 h-2 bg-ui-100 rounded-full overflow-hidden">
-          {/* Width calculada en runtime — excepción permitida */}
-          <div className={`${barColor} h-full rounded-full transition-all`} style={{ width: `${Math.min(100, item.progreso)}%` }} />
-        </div>
-        <span className="text-xs font-black text-ui-600 w-10 text-right">{item.progreso}%</span>
-      </div>
-    );
-  };
-
   // ── Columnas de DataTable ──
   const columns: Column<ProyectoDTO>[] = [
     {
@@ -470,11 +453,6 @@ export default function ProyectosPage() {
       render: (item) => (
         <Badge variant={estadoVariant[item.estado]} size="sm">{item.estado}</Badge>
       ),
-    },
-    {
-      key: 'progreso',
-      header: 'Progreso',
-      render: renderProgreso,
     },
     {
       key: 'ubicacion',
