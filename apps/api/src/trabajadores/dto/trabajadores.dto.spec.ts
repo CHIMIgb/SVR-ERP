@@ -16,6 +16,7 @@ describe('CreateTrabajadorDto', () => {
     sueldoFiscal: 2500,
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto',
+    fechaContratacion: '2024-03-01',
   };
 
   it('should pass with valid data', async () => {
@@ -51,6 +52,35 @@ describe('CreateTrabajadorDto', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it.each(['7am', '7:00', '24:00', '07:60', ''])('should fail with entrada "%s" (not HH:mm)', async (entrada) => {
+    const dto = plainToInstance(CreateTrabajadorDto, { ...base, entrada });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('entrada');
+  });
+
+  it('should require fechaContratacion (the finiquito seniority comes from it)', async () => {
+    const { fechaContratacion: _omitida, ...sinFecha } = base;
+    void _omitida;
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, sinFecha));
+    expect(errors.map((e) => e.property)).toContain('fechaContratacion');
+  });
+
+  it.each(['       ', '55-abc-1234', '12345'])('should fail with telefono "%s" (needs 7 digits)', async (telefono) => {
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, { ...base, telefono }));
+    expect(errors.map((e) => e.property)).toContain('telefono');
+  });
+
+  it('should trim nombre before validating its length ("  a  " is not a name)', async () => {
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, { ...base, nombre: '  a  ' }));
+    expect(errors.map((e) => e.property)).toContain('nombre');
+  });
+
+  it('should fail with a telefono longer than 20 characters', async () => {
+    const dto = plainToInstance(CreateTrabajadorDto, { ...base, telefono: '5'.repeat(21) });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('telefono');
+  });
+
   it('should fail with invalid nested licencia categoria', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, {
       ...base,
@@ -58,6 +88,29 @@ describe('CreateTrabajadorDto', () => {
     });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  // Topes de las columnas: antes un valor fuera de rango pasaba el DTO y la BD respondía con un 500.
+  it.each([
+    ['vacacionesDias con decimales (la columna es Int)', { vacacionesDias: 2.5 }],
+    ['vacacionesDias de más de un año', { vacacionesDias: 400 }],
+    ['horasExtraSemana de más de 168 h', { horasExtraSemana: 200 }],
+    ['tarifaHoraExtra que no cabe en Decimal(10,2)', { tarifaHoraExtra: 1e9 }],
+    ['descuentosSemana con 3 decimales', { descuentosSemana: 10.555 }],
+  ])('should fail with %s', async (_caso, extra) => {
+    const errors = await validate(plainToInstance(CreateTrabajadorDto, { ...base, ...extra }));
+    expect(errors.map((e) => e.property)).toContain(Object.keys(extra)[0]);
+  });
+
+  it('should fail with a contacto de emergencia phone that is not a phone, or oversized texts', async () => {
+    const telefonoMalo = await validate(
+      plainToInstance(CreateTrabajadorDto, { ...base, contactoEmergencia: { nombre: 'María', telefono: 'abcdefgh', parentesco: 'Esposa' } }),
+    );
+    expect(telefonoMalo.map((e) => e.property)).toContain('contactoEmergencia');
+    const folioEnorme = await validate(
+      plainToInstance(CreateTrabajadorDto, { ...base, licencia: { tipo: 'DC3', categoria: 'DC3', folio: 'F'.repeat(300) } }),
+    );
+    expect(folioEnorme.map((e) => e.property)).toContain('licencia');
   });
 });
 
@@ -68,10 +121,26 @@ describe('UpdateTrabajadorDto', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it('should fail with entrada not in HH:mm', async () => {
+    const dto = plainToInstance(UpdateTrabajadorDto, { entrada: '25:00' });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('entrada');
+  });
+
   it('should fail with invalid estado', async () => {
     const dto = plainToInstance(UpdateTrabajadorDto, { estado: 'Suspendido' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['vacacionesDias con decimales', { vacacionesDias: 1.5 }],
+    ['horasExtraSemana de más de 168 h', { horasExtraSemana: 500 }],
+    ['tarifaHoraExtra que no cabe en Decimal(10,2)', { tarifaHoraExtra: 1e9 }],
+    ['descuentosSemana que no cabe en Decimal(10,2)', { descuentosSemana: 1e9 }],
+  ])('should fail with %s', async (_caso, extra) => {
+    const errors = await validate(plainToInstance(UpdateTrabajadorDto, extra));
+    expect(errors.map((e) => e.property)).toContain(Object.keys(extra)[0]);
   });
 });
 
@@ -98,6 +167,16 @@ describe('LiquidarTrabajadorDto', () => {
     });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
+  });
+
+  it('should fail with more than 31 dias trabajados or 365 dias de vacaciones', async () => {
+    const dto = plainToInstance(LiquidarTrabajadorDto, {
+      tipoTerminacion: 'Renuncia',
+      diasTrabajadosPeriodo: 32,
+      diasVacacionesPendientes: 366,
+    });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property).sort()).toEqual(['diasTrabajadosPeriodo', 'diasVacacionesPendientes']);
   });
 
   it('should fail with invalid tipoTerminacion', async () => {

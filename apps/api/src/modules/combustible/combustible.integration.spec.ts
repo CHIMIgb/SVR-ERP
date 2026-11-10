@@ -10,13 +10,15 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, NotFoundException } from '@nestjs/common';
+import { INestApplication, NotFoundException, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { AuditContextService } from '../../audit/audit-context.service';
 import { CombustibleService } from './combustible.service';
+import { MaquinasService } from '../maquinas/maquinas.service';
+import { hoyEnZona } from '../../common/validacion';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -29,13 +31,15 @@ describe('Combustible Audit (Real DB)', () => {
   let tipoMaquinaId: string;
   let maquinaId: string;
   const maquinaCodigo = `CB-${TEST_ID}`;
+  let maquinasService: MaquinasService;
   const createdCargaIds: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, CombustibleService],
+      providers: [PrismaService, AuditContextService, AuditService, CombustibleService, MaquinasService],
     }).compile();
 
+    maquinasService = module.get(MaquinasService);
     app = module.createNestApplication();
     await app.init();
 
@@ -155,6 +159,27 @@ describe('Combustible Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.COMBUSTIBLE_ELIMINADO, carga.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+  });
+
+  describe('fecha futura y alerta de consumo en Flota', () => {
+    it('rechaza una carga con fecha futura y lo audita como FAIL FECHA_FUTURA', async () => {
+      const antes = new Date();
+      await expect(service.create(createDto({ fecha: '2999-01-01' }), ACTOR_USER_ID)).rejects.toThrow(BadRequestException);
+      const fallos = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COMBUSTIBLE_CARGADO, error_code: 'FECHA_FUTURA', timestamp: { gte: antes } },
+      });
+      expect(fallos.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('Flota toma el rendimiento y la alerta de la última carga real (antes eran columnas que nadie actualizaba)', async () => {
+      // 300 L en 8 h = 37.5 L/h contra 14 esperados: posible ordeña.
+      const carga = await service.create(createDto({ litros: 300, horasTrabajadasPeriodo: 8, fecha: hoyEnZona() }), ACTOR_USER_ID);
+      createdCargaIds.push(carga.id);
+      expect(carga.alertaOrdena).toBe(true);
+
+      const maquina = (await maquinasService.findAll()).find((m) => m.id === maquinaCodigo);
+      expect(maquina).toMatchObject({ alertaConsumoAnormal: true, rendimientoActualLtsHora: 37.5 });
     });
   });
 });

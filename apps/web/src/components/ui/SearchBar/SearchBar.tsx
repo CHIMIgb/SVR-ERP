@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Search, X, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { searchBarClasses } from './SearchBar.styles';
@@ -75,21 +75,43 @@ export function SearchBar({
   const [showFilters, setShowFilters] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const debounceRef = useCallback(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    return (val: string) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => onSearch?.(val), debounceMs);
-    };
-  }, [debounceMs, onSearch])();
+  // El temporizador vive en un ref: antes se creaba de nuevo en cada render, así que nunca se cancelaba el
+  // anterior y onSearch se disparaba una vez por tecla (con respuestas que podían llegar en desorden).
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchRef = useRef(onSearch);
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  const cancelarBusquedaPendiente = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+
+  // Si la vista cambia el valor desde fuera (p. ej. "Limpiar filtros") mientras hay una búsqueda pendiente de lo
+  // que se escribió, esa búsqueda vieja ya no aplica: se cancela para que no llegue después con el texto anterior.
+  const ultimoEscritoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (controlledValue !== undefined && controlledValue !== ultimoEscritoRef.current && timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [controlledValue]);
 
   const handleChange = (val: string) => {
+    ultimoEscritoRef.current = val;
     setInternalValue(val);
     onChange?.(val);
-    debounceRef(val);
+    cancelarBusquedaPendiente();
+    timerRef.current = setTimeout(() => onSearchRef.current?.(val), debounceMs);
   };
 
   const handleClear = () => {
+    // Sin esto, una búsqueda pendiente de lo que se escribió antes podía llegar después y deshacer el borrado.
+    cancelarBusquedaPendiente();
     setInternalValue('');
     onChange?.('');
     onSearch?.('');
@@ -108,11 +130,12 @@ export function SearchBar({
           type="text"
           value={value}
           placeholder={placeholder}
+          aria-label={placeholder}
           onChange={(e) => handleChange(e.target.value)}
           className={searchBarClasses.searchInput}
         />
         {value && (
-          <button onClick={handleClear} className={searchBarClasses.searchClear} aria-label="Limpiar busqueda">
+          <button type="button" onClick={handleClear} className={searchBarClasses.searchClear} aria-label="Limpiar búsqueda">
             <X size={16} />
           </button>
         )}
@@ -121,6 +144,7 @@ export function SearchBar({
       {/* Filter Toggle Button */}
       {filters.length > 0 && (
         <button
+          type="button"
           onClick={() => setShowFilters(!showFilters)}
           className={cn(
             searchBarClasses.filterBtn,

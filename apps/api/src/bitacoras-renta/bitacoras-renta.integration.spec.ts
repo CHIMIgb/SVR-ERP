@@ -168,6 +168,37 @@ describe('BitacorasRenta Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
     });
+
+    it('registrar la firma deja lista para facturar una bitácora pendiente', async () => {
+      const bitacora = await service.create(createDto(), ACTOR_USER_ID); // sin firma
+      createdBitacoraIds.push(bitacora.id);
+      expect(bitacora.estadoCobro).toBe('Pendiente Firma');
+
+      const firmada = await service.update(
+        bitacora.id,
+        { firmado: true, nombreResidente: 'Ing. Residente IT', cargoResidente: 'Residente de obra' },
+        ACTOR_USER_ID,
+      );
+      expect(firmada.estadoCobro).toBe('Listo para Facturar');
+      expect(firmada.firmaCliente).toEqual(
+        expect.objectContaining({ firmado: true, nombreResidente: 'Ing. Residente IT', cargoResidente: 'Residente de obra' }),
+      );
+    });
+
+    it('no debe modificar una bitácora ya facturada (su importe es el de la CxC)', async () => {
+      const bitacora = await service.create(createDto({ firmado: true }), ACTOR_USER_ID);
+      createdBitacoraIds.push(bitacora.id);
+      // Se marca facturada directo (no con facturar()) para probar solo esta regla, sin depender de la CxC.
+      await prisma.bitacoras_renta_diaria.update({ where: { id: bitacora.id }, data: { estado_cobro: 'FACTURADO' } });
+
+      await expect(service.update(bitacora.id, { horasEfectivas: 9 }, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      const enDb = await prisma.bitacoras_renta_diaria.findUnique({ where: { id: bitacora.id } });
+      expect(Number(enDb!.importe_total_renta)).toBe(bitacora.importeTotalRenta);
+      const audits = await findAudits(AuditAction.BITACORA_RENTA_ACTUALIZADA, bitacora.id);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('BITACORA_YA_FACTURADA');
+    });
   });
 
   describe('BITACORA_RENTA_ELIMINADA', () => {
@@ -181,6 +212,17 @@ describe('BitacorasRenta Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.BITACORA_RENTA_ELIMINADA, bitacora.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('no debe eliminar una bitácora facturada (respalda una cuenta por cobrar)', async () => {
+      const bitacora = await service.create(createDto({ firmado: true }), ACTOR_USER_ID);
+      createdBitacoraIds.push(bitacora.id);
+      await prisma.bitacoras_renta_diaria.update({ where: { id: bitacora.id }, data: { estado_cobro: 'FACTURADO' } });
+
+      await expect(service.remove(bitacora.id, ACTOR_USER_ID)).rejects.toThrow(ConflictException);
+
+      const enDb = await prisma.bitacoras_renta_diaria.findUnique({ where: { id: bitacora.id } });
+      expect(enDb!.eliminado_en).toBeNull();
     });
   });
 

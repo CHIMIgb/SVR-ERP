@@ -12,6 +12,7 @@ describe('MantenimientoService', () => {
   const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
   const mockMaquinasService = {
     mapaCodigoAId: jest.fn().mockResolvedValue(new Map([['M001', 'maquina-uuid-1']])),
+    proximoServicioPorMaquina: jest.fn().mockResolvedValue(new Map([['maquina-uuid-1', 1250]])),
   };
 
   const mockRegistro = {
@@ -98,16 +99,42 @@ describe('MantenimientoService', () => {
     });
   });
 
+  describe('findAll con máquina inexistente', () => {
+    it('filters by machine code through the relation (an unknown code no longer puts a non-uuid in maquina_id)', async () => {
+      await service.findAll({ maquinaId: ' NOEX ' });
+      const where = prisma.registros_mantenimiento.findMany.mock.calls[0][0].where;
+      expect(where.maquinas).toEqual({ codigo: 'NOEX' });
+      expect(where.maquina_id).toBeUndefined();
+    });
+  });
+
   describe('findStats', () => {
-    it('should flag a machine as próxima when horometro is within 50hrs of proximoServicioHoras', async () => {
-      prisma.registros_mantenimiento.findMany.mockResolvedValue([
-        { maquina_id: 'maquina-uuid-1', fecha: new Date('2026-08-20'), proximo_servicio_horas: 1250 },
+    beforeEach(() => {
+      prisma.maquinas.findMany.mockResolvedValue([
+        { id: 'maquina-uuid-1', horometro: 1200 },
+        { id: 'maquina-uuid-2', horometro: 300 },
       ]);
+      prisma.registros_mantenimiento.aggregate.mockImplementation(({ _avg }: { _avg?: unknown }) =>
+        Promise.resolve(_avg ? { _avg: { horas_servicio: 940 } } : { _count: { _all: 3 }, _sum: { costo: 16500 } }),
+      );
+      prisma.registros_mantenimiento.count.mockResolvedValue(1);
+    });
+
+    it('flags a machine within 50 h of its next service, using the shared rule of MaquinasService', async () => {
       const stats = await service.findStats();
+      expect(mockMaquinasService.proximoServicioPorMaquina).toHaveBeenCalledWith(['maquina-uuid-1', 'maquina-uuid-2']);
       expect(stats.serviciosProximos).toBe(1);
-      expect(stats.totalMaquinas).toBe(4);
-      expect(stats.equiposEnOptimoEstado).toBe(3);
-      expect(stats.promedioHorasServicio).toBe(940);
+      expect(stats.umbralServicioHoras).toBe(50);
+      expect(stats.sinServicioRegistrado).toBe(1);
+      expect(stats.totalMaquinas).toBe(2);
+    });
+
+    it('returns the services, cost and corrective repairs of the current month', async () => {
+      const stats = await service.findStats();
+      expect(stats).toMatchObject({ serviciosMes: 3, costoMes: 16500, correctivosMes: 1 });
+      const delMes = prisma.registros_mantenimiento.count.mock.calls[0][0].where;
+      expect(delMes.tipo).toBe('CORRECTIVO');
+      expect(delMes.fecha.gte.getUTCDate()).toBe(1);
     });
   });
 

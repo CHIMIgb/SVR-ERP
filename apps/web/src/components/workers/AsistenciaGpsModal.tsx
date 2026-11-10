@@ -24,6 +24,15 @@ interface AsistenciaGpsModalProps {
   onActualizarEstado?: (registroId: string, nuevoEstado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') => Promise<void>;
   /** Sin este callback no se muestra el botón de autorizar horas extra. */
   onAprobarHorasExtra?: (horasExtraId: string) => Promise<void>;
+  /** Abre la resolución de la omisión (falta o retardo con motivo). Sin él, la omisión solo se muestra. */
+  onResolverOmision?: () => void;
+  /**
+   * Abre la corrección de una omisión ya resuelta. Quien lo pasa decide si todavía se puede (el mismo día, hasta
+   * las 17:00); sin él no se ofrece.
+   */
+  onCorregirOmision?: () => void;
+  /** Mientras hay un modal encima, Escape no cierra este. */
+  persistent?: boolean;
 }
 
 function mensajeError(error: unknown, respaldo: string): string {
@@ -47,6 +56,9 @@ export default function AsistenciaGpsModal({
   trabajador,
   onActualizarEstado,
   onAprobarHorasExtra,
+  onResolverOmision,
+  onCorregirOmision,
+  persistent,
 }: AsistenciaGpsModalProps) {
   const { showToast } = useToast();
   const [procesando, setProcesando] = useState(false);
@@ -56,8 +68,18 @@ export default function AsistenciaGpsModal({
   const distancia = registro.distanciaMetros >= 1000
     ? `${(registro.distanciaMetros / 1000).toFixed(2)} km`
     : `${registro.distanciaMetros} m`;
-  const radioKm = (registro.radioPermitidoMetros / 1000).toFixed(1);
+  // Con radios de obra chicos (p. ej. 150 m), "0.1 km" era engañoso: abajo de 1 km va en metros.
+  const radioTexto = registro.radioPermitidoMetros >= 1000
+    ? `${(registro.radioPermitidoMetros / 1000).toFixed(1)} km`
+    : `${Math.round(registro.radioPermitidoMetros)} m`;
   const horasExtra = registro.horasExtra;
+  const esOmision = registro.estado === 'Omisión';
+  // Una omisión se resuelve con su motivo, y la ya resuelta no se toca: la decisión es de la administradora.
+  // Sin marcaje no hay GPS que validar ni excepción de geocerca que justificar.
+  const puedeValidar = !!onActualizarEstado && !esOmision && !registro.omisionResueltaEn && !registro.sinMarcaje;
+  // "Marcar falta" sobra si ya es falta, y "Confirmar" no debe convertir una falta en sitio en Puntual.
+  const mostrarMarcarFalta = puedeValidar && !registro.enSitio && registro.estado !== 'Falta';
+  const mostrarAprobar = puedeValidar && !(registro.enSitio && registro.estado === 'Falta');
   const puedeAutorizarHorasExtra =
     !!onAprobarHorasExtra && !!horasExtra && horasExtra.estado !== 'Aprobado' && horasExtra.estado !== 'Rechazado';
 
@@ -72,7 +94,8 @@ export default function AsistenciaGpsModal({
     if (!onActualizarEstado || procesando) return;
     setProcesando(true);
     try {
-      await onActualizarEstado(registro.id, registro.enSitio ? 'Puntual' : 'Justificado');
+      // Confirmar no borra un retardo: antes lo pasaba a Puntual.
+      await onActualizarEstado(registro.id, !registro.enSitio ? 'Justificado' : registro.estado === 'Retardo' ? 'Retardo' : 'Puntual');
       showToast(`Asistencia de ${trabajador?.nombre ?? 'el trabajador'} validada.`, 'success');
       onClose();
     } catch (error) {
@@ -87,7 +110,7 @@ export default function AsistenciaGpsModal({
     setProcesando(true);
     try {
       await onActualizarEstado(registro.id, 'Falta');
-      showToast(`Falta registrada: marcó fuera del radio permitido de ${radioKm} km.`, 'warning');
+      showToast(`Falta registrada: marcó fuera del radio permitido de ${radioTexto}.`, 'warning');
       onClose();
     } catch (error) {
       showToast(mensajeError(error, 'No se pudo marcar la falta.'), 'error');
@@ -110,26 +133,35 @@ export default function AsistenciaGpsModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} size="full">
+    <Modal open={isOpen} onClose={onClose} size="full" persistent={persistent}>
       <ModalHeader
         title="Detalle de asistencia"
-        subtitle={`${trabajador?.nombre ?? 'Trabajador'}${trabajador?.puesto ? ` · ${trabajador.puesto}` : ''} · ${registro.obraAsignada}`}
+        // Sin marcaje, la obra es de relleno ("Por definir"): no se muestra.
+        subtitle={`${trabajador?.nombre ?? 'Trabajador'}${trabajador?.puesto ? ` · ${trabajador.puesto}` : ''}${registro.sinMarcaje ? '' : ` · ${registro.obraAsignada}`}`}
         onClose={onClose}
       />
 
       <ModalBody className="space-y-5">
-        {/* Resultado de la geocerca */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <Badge variant={registro.enSitio ? 'success' : 'error'}>{registro.enSitio ? 'En sitio' : 'Fuera de rango'}</Badge>
+        {registro.sinMarcaje && (
           <p className="text-sm text-ui-600">
-            Marcó a <span className="font-semibold text-ui-900">{distancia}</span> de la obra · radio permitido {radioKm} km
+            Sin marcaje: la administradora registró este día como {registro.estado.toLowerCase()}. No hay ubicación GPS.
           </p>
-        </div>
+        )}
+
+        {/* Resultado de la geocerca */}
+        {!registro.sinMarcaje && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Badge variant={registro.enSitio ? 'success' : 'error'}>{registro.enSitio ? 'En sitio' : 'Fuera de rango'}</Badge>
+            <p className="text-sm text-ui-600">
+              Marcó a <span className="font-semibold text-ui-900">{distancia}</span> de la obra · radio permitido {radioTexto}
+            </p>
+          </div>
+        )}
 
         {/* Datos del marcaje */}
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ui-200 border border-ui-200 rounded-xl overflow-hidden">
           <Dato etiqueta="Entrada" valor={registro.horaEntrada ?? 'Sin marcar'} detalle={registro.horaMarcajeExacta} />
-          <Dato etiqueta="Salida" valor={registro.horaSalida ?? 'Jornada activa'} detalle={registro.horaSalidaExacta} />
+          <Dato etiqueta="Salida" valor={registro.horaSalida ?? (registro.sinMarcaje ? '—' : 'Jornada activa')} detalle={registro.horaSalidaExacta} />
           <Dato etiqueta="Horas ordinarias" valor={registro.horasTrabajadasOrdinarias != null ? `${registro.horasTrabajadasOrdinarias} h` : '—'} />
           <Dato
             etiqueta="Dispositivo"
@@ -137,6 +169,23 @@ export default function AsistenciaGpsModal({
             detalle={registro.bateria != null ? `Batería ${registro.bateria} %` : undefined}
           />
         </dl>
+
+        {esOmision && (
+          <div className="px-4 py-3 rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-sm">
+            <p className="font-semibold text-violet-800 dark:text-violet-300">
+              {registro.omisionVencida ? 'Omisión vencida: cuenta como falta mientras no se resuelva' : 'Omisión: checó después de su tolerancia de entrada'}
+            </p>
+            <p className="text-violet-700 dark:text-violet-300 mt-0.5">
+              Se resuelve como falta o retardo con el motivo que dé el trabajador (plazo: hoy a las 17:00).
+            </p>
+          </div>
+        )}
+        {registro.omisionResueltaEn && (
+          <p className="text-sm text-ui-600 break-words">
+            <span className="text-ui-500">Omisión resuelta como {registro.estado.toLowerCase()}. Motivo: </span>
+            {registro.omisionMotivo}
+          </p>
+        )}
 
         {registro.salidaAnticipada && (
           <div className="px-4 py-3 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-sm">
@@ -149,69 +198,71 @@ export default function AsistenciaGpsModal({
           </div>
         )}
 
-        {/* Esquema de la geocerca */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-ui-500">Ubicación del marcaje (esquema, no a escala)</p>
-            <a href={googleMapsUrl} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-semibold text-primary hover:underline">
-              Ver en Google Maps
-            </a>
-          </div>
-
-          <div className="relative h-56 sm:h-64 w-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 select-none">
-            <div
-              className="absolute inset-0 opacity-25"
-              style={{
-                backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.2) 1px, transparent 0)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-
-            {/* Geocerca */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 border-emerald-400/70 bg-emerald-500/10" />
-
-            {/* Obra */}
-            <div className="absolute flex flex-col items-center z-10 -translate-x-1/2 -translate-y-1/2" style={{ top: '50%', left: '50%' }}>
-              <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl flex items-center justify-center border-2 border-white">
-                <Building2 className="w-4 h-4" />
-              </div>
-              <div className="mt-1 max-w-[140px] truncate bg-slate-950/80 text-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded">
-                {registro.obraAsignada}
-              </div>
+        {/* Esquema de la geocerca (sin marcaje no hay GPS: en 0,0 dibujaba un punto falso) */}
+        {!registro.sinMarcaje && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-ui-500">Ubicación del marcaje (esquema, no a escala)</p>
+              <a href={googleMapsUrl} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-semibold text-primary hover:underline">
+                Ver en Google Maps
+              </a>
             </div>
 
-            {/* Línea obra → trabajador */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20" aria-hidden="true">
-              <line
-                x1="50%"
-                y1="50%"
-                x2={`${posicionTrabajador.x}%`}
-                y2={`${posicionTrabajador.y}%`}
-                stroke={registro.enSitio ? '#34d399' : '#f87171'}
-                strokeWidth="2"
-                strokeDasharray="5,5"
+            <div className="relative h-56 sm:h-64 w-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 select-none">
+              <div
+                className="absolute inset-0 opacity-25"
+                style={{
+                  backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.2) 1px, transparent 0)',
+                  backgroundSize: '24px 24px',
+                }}
               />
-            </svg>
 
-            {/* Trabajador */}
-            <div
-              className="absolute flex flex-col items-center z-30 -translate-x-1/2 -translate-y-1/2"
-              style={{ top: `${posicionTrabajador.y}%`, left: `${posicionTrabajador.x}%` }}
-            >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white border-2 border-white ${registro.enSitio ? 'bg-blue-600' : 'bg-red-600'}`}>
-                <User className="w-4 h-4" />
-              </div>
-              <div className="mt-1 whitespace-nowrap bg-slate-950/80 text-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded">
-                {distancia}
-              </div>
-            </div>
+              {/* Geocerca */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 border-emerald-400/70 bg-emerald-500/10" />
 
-            <div className="absolute bottom-2 left-2 right-2 flex flex-wrap items-center justify-between gap-x-3 bg-slate-950/80 px-3 py-1.5 rounded-lg text-[10px] font-medium text-slate-300 z-30 tabular-nums">
-              <span>GPS: {registro.coordenadas.lat.toFixed(5)}, {registro.coordenadas.lng.toFixed(5)}</span>
-              <span>Precisión ±{registro.precisionGpsMetros} m</span>
+              {/* Obra */}
+              <div className="absolute flex flex-col items-center z-10 -translate-x-1/2 -translate-y-1/2" style={{ top: '50%', left: '50%' }}>
+                <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl flex items-center justify-center border-2 border-white">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div className="mt-1 max-w-[140px] truncate bg-slate-950/80 text-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded">
+                  {registro.obraAsignada}
+                </div>
+              </div>
+
+              {/* Línea obra → trabajador */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-20" aria-hidden="true">
+                <line
+                  x1="50%"
+                  y1="50%"
+                  x2={`${posicionTrabajador.x}%`}
+                  y2={`${posicionTrabajador.y}%`}
+                  stroke={registro.enSitio ? '#34d399' : '#f87171'}
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                />
+              </svg>
+
+              {/* Trabajador */}
+              <div
+                className="absolute flex flex-col items-center z-30 -translate-x-1/2 -translate-y-1/2"
+                style={{ top: `${posicionTrabajador.y}%`, left: `${posicionTrabajador.x}%` }}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white border-2 border-white ${registro.enSitio ? 'bg-blue-600' : 'bg-red-600'}`}>
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="mt-1 whitespace-nowrap bg-slate-950/80 text-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded">
+                  {distancia}
+                </div>
+              </div>
+
+              <div className="absolute bottom-2 left-2 right-2 flex flex-wrap items-center justify-between gap-x-3 bg-slate-950/80 px-3 py-1.5 rounded-lg text-[10px] font-medium text-slate-300 z-30 tabular-nums">
+                <span>GPS: {registro.coordenadas.lat.toFixed(5)}, {registro.coordenadas.lng.toFixed(5)}</span>
+                <span>Precisión ±{registro.precisionGpsMetros} m</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Horas extra */}
         {horasExtra && (
@@ -250,7 +301,13 @@ export default function AsistenciaGpsModal({
         <Button variant="outline" onClick={onClose}>
           Cerrar
         </Button>
-        {onActualizarEstado && !registro.enSitio && (
+        {esOmision && onResolverOmision && (
+          <Button onClick={onResolverOmision}>Resolver omisión</Button>
+        )}
+        {!esOmision && registro.omisionResueltaEn && onCorregirOmision && (
+          <Button variant="outline" onClick={onCorregirOmision}>Corregir resolución</Button>
+        )}
+        {mostrarMarcarFalta && (
           <Button
             variant="outline"
             onClick={handleMarcarFalta}
@@ -260,7 +317,7 @@ export default function AsistenciaGpsModal({
             Marcar falta
           </Button>
         )}
-        {onActualizarEstado && (
+        {mostrarAprobar && (
           <Button onClick={handleAprobar} loading={procesando}>
             {registro.enSitio ? 'Confirmar asistencia' : 'Justificar excepción'}
           </Button>

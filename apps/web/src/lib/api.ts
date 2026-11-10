@@ -6,6 +6,9 @@ import {
   type RegisterCredentials,
   type RefreshCredentials,
   type UserAuth,
+  type Maquina,
+  type DespachoMaquina,
+  type ChecklistPreoperacional,
 } from '@svr-erp/shared';
 
 import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
@@ -509,10 +512,19 @@ export interface MantenimientoDTO {
 }
 
 export interface MantenimientoStats {
+  /** Máquinas a `umbralServicioHoras` o menos de su próximo servicio, o ya pasadas. */
   serviciosProximos: number;
-  promedioHorasServicio: number;
-  equiposEnOptimoEstado: number;
+  umbralServicioHoras: number;
+  serviciosMes: number;
+  costoMes: number;
+  correctivosMes: number;
+  /** Máquinas sin ningún servicio registrado (no se sabe cuándo les toca). */
+  sinServicioRegistrado: number;
   totalMaquinas: number;
+  /** Compatibilidad: promedio del horómetro al dar servicio. La vista ya no lo muestra. */
+  promedioHorasServicio: number;
+  /** Compatibilidad: contaba como "óptimas" a las máquinas sin servicio registrado. La vista ya no lo muestra. */
+  equiposEnOptimoEstado: number;
 }
 
 export interface MantenimientoCreateInput {
@@ -616,6 +628,107 @@ export const combustibleApi = {
 
   /** Estadísticas para las tarjetas */
   stats: () => apiClient.get<CombustibleStats>('/combustible/stats'),
+};
+
+// ────────────────────────────────────────────────────────────
+// FLOTA (máquinas, despachos, checklists) Y HORÓMETRO
+// ────────────────────────────────────────────────────────────
+
+/** Arma "?a=1&b=2" con los parámetros que sí traen valor. */
+function queryString(params?: Record<string, string | number | undefined>): string {
+  const sp = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== '') sp.set(k, String(v));
+  });
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export interface MaquinaCreateInput {
+  /** Código del equipo (ej. "M005"); la API lo guarda en mayúsculas. */
+  id: string;
+  tipo: string;
+  nombre: string;
+  horometro: number;
+  combustible: number;
+  consumoEsperado: number;
+}
+
+export const maquinasApi = {
+  /** Catálogo de la flota (datos maestros, sin paginar: lo usan los selects de varias vistas). */
+  listar: () => apiClient.get<Maquina[]>('/maquinas'),
+  crear: (data: MaquinaCreateInput) => apiClient.post<Maquina>('/maquinas', data),
+};
+
+export interface DespachoCreateInput {
+  maquinaId: string;
+  /** Código del proyecto (ej. "P001"). */
+  proyectoId: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export const despachosApi = {
+  /** Paginado. Con `desde` y `hasta` trae solo los despachos que se enciman con esas fechas (cronograma). */
+  listar: (params?: { maquinaId?: string; desde?: string; hasta?: string; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResponse<DespachoMaquina>>(`/despachos${queryString(params)}`),
+  crear: (data: DespachoCreateInput) => apiClient.post<DespachoMaquina>('/despachos', data),
+};
+
+export type ChecklistCreateInput = Omit<ChecklistPreoperacional, 'id' | 'fecha' | 'hora' | 'estado'>;
+
+export const checklistsApi = {
+  listar: (params?: { maquinaId?: string; estado?: 'Aprobado' | 'Con Falla'; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResponse<ChecklistPreoperacional>>(`/checklists${queryString(params)}`),
+  crear: (data: ChecklistCreateInput) => apiClient.post<ChecklistPreoperacional>('/checklists', data),
+};
+
+export interface LecturaHorometroDTO {
+  id: string;
+  maquinaId: string;
+  maquinaNombre: string;
+  fecha: string;
+  lecturaInicial: number;
+  lecturaFinal: number;
+  horasTrabajadas: number;
+  /** Operador asignado a la máquina cuando se registró la lectura. */
+  operador: string | null;
+}
+
+export interface ServicioPorHorasDTO {
+  maquinaId: string;
+  nombre: string;
+  horometro: number;
+  proximoServicioHoras: number | null;
+  /** Negativo = el servicio ya se pasó. null = sin servicio registrado en Mantenimiento. */
+  horasRestantes: number | null;
+}
+
+export interface HorometroStats {
+  fecha: string;
+  horasHoy: number;
+  lecturasHoy: number;
+  horasSemana: number;
+  maquinasSinLecturaHoy: string[];
+  umbralServicioHoras: number;
+  serviciosProximos: number;
+  servicios: ServicioPorHorasDTO[];
+}
+
+export interface LecturaHorometroCreateInput {
+  maquinaId: string;
+  fecha: string;
+  lecturaInicial: number;
+  lecturaFinal: number;
+  /** Confirma una lectura inicial más de 24 h arriba del horómetro de la máquina (si no, la API la rechaza). */
+  confirmarSalto?: boolean;
+}
+
+export const horometroApi = {
+  listar: (params?: { search?: string; maquinaId?: string; desde?: string; hasta?: string; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResponse<LecturaHorometroDTO>>(`/lecturas-horometro${queryString(params)}`),
+  stats: () => apiClient.get<HorometroStats>('/lecturas-horometro/stats'),
+  crear: (data: LecturaHorometroCreateInput) => apiClient.post<LecturaHorometroDTO>('/lecturas-horometro', data),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -987,6 +1100,8 @@ export interface LiquidacionDesglose {
 export interface ProyectoCatalogoDTO {
   id: string;
   nombre: string;
+  /** Ubicación de su primera obra ('' si no tiene); `/catalogos/proyectos` la manda. */
+  ubicacion?: string;
 }
 
 export interface MaquinaCatalogoDTO {
@@ -998,6 +1113,20 @@ export const catalogosApi = {
   proyectos: () => apiClient.get<ProyectoCatalogoDTO[]>('/catalogos/proyectos'),
   maquinas: () => apiClient.get<MaquinaCatalogoDTO[]>('/maquinas'),
 };
+
+/** Máquina para los selects de Trabajadores: `codigo` es lo que esperan la API de trabajadores y la de bitácoras. */
+export interface MaquinaTrabajadoresDTO {
+  codigo: string;
+  nombre: string;
+  /** Trabajador que la tiene asignada hoy (para avisar antes de reasignarla). */
+  operadorId: string | null;
+  operadorNombre: string | null;
+}
+
+export interface CatalogosTrabajadoresDTO {
+  maquinas: MaquinaTrabajadoresDTO[];
+  proyectos: ProyectoCatalogoDTO[];
+}
 
 export const trabajadoresApi = {
   /** Listar trabajadores con búsqueda, filtros y paginación */
@@ -1013,6 +1142,9 @@ export const trabajadoresApi = {
   },
 
   obtener: (id: string) => apiClient.get<TrabajadorDTO>(`/trabajadores/${id}`),
+
+  /** Máquinas y proyectos con el permiso de RRHH (rrhh.trabajadores.ver). */
+  catalogos: () => apiClient.get<CatalogosTrabajadoresDTO>('/trabajadores/catalogos'),
 
   crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorDTO>('/trabajadores', data),
 
@@ -1129,7 +1261,14 @@ export interface RegistroAsistenciaDTO {
   fecha: string;
   horaEntrada?: string;
   horaSalida?: string;
-  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada';
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'No Presentado' | 'Salida Anticipada' | 'Omisión';
+  /** Registrado sin checar (falta u omisión resuelta): sus coordenadas y obra son de relleno, no reales. */
+  sinMarcaje: boolean;
+  /** Omisión sin resolver pasada la hora límite (17:00) o de un día anterior: cuenta como falta. */
+  omisionVencida?: boolean;
+  /** Motivo con el que la administradora resolvió la omisión, y cuándo. */
+  omisionMotivo?: string;
+  omisionResueltaEn?: string;
   ubicacion: string;
   coordenadas: { lat: number; lng: number };
   salidaCoordenadas?: { lat: number; lng: number };
@@ -1154,7 +1293,9 @@ export interface RegistroAsistenciaDTO {
 export interface DiaAsistenciaSemanaDTO {
   dia: 'Lun' | 'Mar' | 'Mie' | 'Jue' | 'Vie' | 'Sab';
   fecha: string;
-  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso';
+  /** 'Omisión': aún puede justificarse hoy. 'Pendiente': hoy, todavía dentro de su tolerancia de entrada. */
+  estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado' | 'Salida Anticipada' | 'Descanso' | 'Omisión' | 'Pendiente';
+  registroId?: string;
   horaEntrada?: string;
   horaSalida?: string;
   horasTrabajadas: number;
@@ -1170,16 +1311,38 @@ export interface AsistenciaSemanalDTO {
   totalDiasAsistidos: number;
   totalFaltas: number;
   totalRetardos: number;
+  totalOmisionesPendientes: number;
+  /** Omisiones sin resolver que ya vencieron; están incluidas en totalFaltas. */
+  totalOmisionesVencidas: number;
   totalHorasOrdinarias: number;
+  /** Horas extra registradas que siguen vigentes (sin rechazadas ni borradas), aprobadas o no. */
   totalHorasExtra: number;
+  /** Lo único que paga la nómina: horas extra aprobadas, al monto con que se aprobaron. */
+  totalHorasExtraAprobadas: number;
+  montoHorasExtraAprobadas: number;
+  /** Pendientes o en curso: todavía no se pagan. */
+  totalHorasExtraSinAutorizar: number;
 }
 
+export type ResolucionOmision = 'Falta' | 'Retardo';
+
+export interface ResolverOmisionInput {
+  resolucion: ResolucionOmision;
+  motivo: string;
+}
+
+export interface RegistrarUbicacionObraInput {
+  lat: number;
+  lng: number;
+  radioPermitidoMetros: number;
+  /** Sin precisión, la API la toma como captura manual. */
+  precisionGpsMetros?: number;
+}
+
+/** La API valida la geocerca con la ubicación y el radio guardados de la obra; el cliente solo manda su GPS. */
 export interface MarcarEntradaInput {
   trabajadorId: string;
   obraId: string;
-  obraLat: number;
-  obraLng: number;
-  radioPermitidoMetros?: number;
   lat: number;
   lng: number;
   precisionGpsMetros?: number;
@@ -1203,9 +1366,6 @@ export interface MarcarSalidaInput {
 
 export interface MarcarCuadrillaInput {
   obraId: string;
-  obraLat: number;
-  obraLng: number;
-  radioPermitidoMetros?: number;
   trabajadorIds: string[];
   lat: number;
   lng: number;
@@ -1281,6 +1441,18 @@ export const asistenciaApi = {
   actualizarEstado: (id: string, estado: 'Puntual' | 'Retardo' | 'Falta' | 'Justificado') =>
     apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/${id}/estado`, { estado }),
 
+  /** La administradora resuelve la omisión de un registro (checó tarde). Permiso: rrhh.asistencia.editar */
+  resolverOmision: (id: string, data: ResolverOmisionInput) =>
+    apiClient.patch<RegistroAsistenciaDTO>(`/asistencia/${id}/omision`, data),
+
+  /** Omisión de quien no checó nada ese día: crea el registro ya resuelto. */
+  resolverOmisionSinMarcaje: (data: ResolverOmisionInput & { trabajadorId: string; fecha?: string }) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/omisiones', data),
+
+  /** Centro y radio de la geocerca de una obra. Permiso: rrhh.asistencia.editar */
+  registrarUbicacionObra: (obraId: string, data: RegistrarUbicacionObraInput) =>
+    apiClient.patch<ObraLite>(`/asistencia/obras/${obraId}/ubicacion`, data),
+
   registrarHorasExtra: (id: string, data: RegistrarHorasExtraInput) =>
     apiClient.post<RegistroAsistenciaDTO>(`/asistencia/${id}/horas-extra`, data),
 
@@ -1350,7 +1522,17 @@ export const nominaApi = {
   },
 
   sincronizarAsistencia: (periodoId: string) =>
-    apiClient.post<{ items: NominaRowDTO[]; totalHorasExtraSincronizadas: number; totalFaltasAplicadas: number }>(
+    apiClient.post<{
+      items: NominaRowDTO[];
+      totalHorasExtraSincronizadas: number;
+      totalFaltasAplicadas: number;
+      totalOmisionesPendientes: number;
+      totalOmisionesVencidas: number;
+      /** Nóminas ya pagadas que la sincronización no tocó. */
+      nominasPagadasSinCambio: number;
+      /** Horas extra pendientes o en curso: no se pagaron porque todavía no se autorizan. */
+      totalHorasExtraSinAutorizar: number;
+    }>(
       `/nomina/${periodoId}/sincronizar`,
       {},
     ),
@@ -2865,6 +3047,8 @@ export interface MaquinaGpsDTO {
   hours: number;
   lastUpdate: string;
   ultimaFechaHora: string | null;
+  /** true si la última posición la generó la simulación (todavía no hay feed del proveedor). */
+  simulada?: boolean;
   operator?: string;
   geocercas: Array<{ nombre: string; color: string }>;
 }

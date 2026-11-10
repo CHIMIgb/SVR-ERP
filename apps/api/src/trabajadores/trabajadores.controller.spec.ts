@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
+import { REQUIRE_PERMISSION_KEY } from '../auth/guards/require-permission.decorator';
 import { TrabajadoresController } from './trabajadores.controller';
 import { TrabajadoresService } from './trabajadores.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +16,7 @@ describe('TrabajadoresController', () => {
   const mockService = {
     findAll: jest.fn().mockResolvedValue(mockResult),
     findOne: jest.fn().mockResolvedValue(mockTrabajador),
+    catalogos: jest.fn().mockResolvedValue({ maquinas: [], proyectos: [] }),
     create: jest.fn().mockResolvedValue(mockTrabajador),
     update: jest.fn().mockResolvedValue(mockTrabajador),
     remove: jest.fn().mockResolvedValue({ message: 'Trabajador eliminado exitosamente' }),
@@ -47,6 +50,16 @@ describe('TrabajadoresController', () => {
   it('findOne delegates to service', async () => {
     await controller.findOne('trab-uuid-1');
     expect(service.findOne).toHaveBeenCalledWith('trab-uuid-1');
+  });
+
+  it('catalogos delegates to service', async () => {
+    await expect(controller.catalogos()).resolves.toEqual({ maquinas: [], proyectos: [] });
+    expect(service.catalogos).toHaveBeenCalled();
+  });
+
+  it('catalogos only needs rrhh.trabajadores.ver (RRHH has no access to /maquinas nor /catalogos/proyectos)', () => {
+    const permiso = new Reflector().get(REQUIRE_PERMISSION_KEY, TrabajadoresController.prototype.catalogos);
+    expect(permiso).toEqual({ modulo: 'rrhh', recurso: 'trabajadores', accion: 'ver' });
   });
 
   it('create passes the userId from the JWT request', async () => {

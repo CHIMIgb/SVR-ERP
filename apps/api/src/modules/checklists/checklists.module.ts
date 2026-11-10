@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ChecklistsController } from './checklists.controller';
 import { ChecklistsService } from './checklists.service';
-import { MaquinasModule } from '../maquinas/maquinas.module';
+import { AuditModule } from '../../audit/audit.module';
 
 @Module({
-  imports: [MaquinasModule],
+  imports: [AuditModule],
   controllers: [ChecklistsController],
   providers: [ChecklistsService],
 })
