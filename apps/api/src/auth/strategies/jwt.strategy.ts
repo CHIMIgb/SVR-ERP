@@ -19,10 +19,11 @@ export interface AuthenticatedUser {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(private readonly prisma: PrismaService) {
+    // El check de presencia/corte lo hace main.ts antes de arrancar la app.
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+      secretOrKey: process.env.JWT_ACCESS_SECRET!,
     });
   }
 

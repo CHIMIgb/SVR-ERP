@@ -40,7 +40,7 @@ describe('Cotizaciones e2e (HTTP real)', () => {
       { sub, email, jti: randomUUID(), tipo: 'access', sessionId: randomUUID() },
       {
         expiresIn: '15m',
-        secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+        secret: process.env.JWT_ACCESS_SECRET,
       },
     );
 

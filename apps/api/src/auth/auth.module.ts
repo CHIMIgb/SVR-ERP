@@ -18,7 +18,7 @@ const ACCESS_TOKEN_EXPIRY_SECONDS = parseInt(
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+      secret: process.env.JWT_ACCESS_SECRET,
       signOptions: { expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS },
     }),
     BloqueoModule,

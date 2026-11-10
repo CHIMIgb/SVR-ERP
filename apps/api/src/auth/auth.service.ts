@@ -290,12 +290,12 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(accessPayload, {
       expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
-      secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+      secret: process.env.JWT_ACCESS_SECRET,
     });
 
     const refreshToken = this.jwtService.sign(refreshPayload, {
       expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
-      secret: process.env.JWT_REFRESH_SECRET || 'svr-erp-refresh-secret-dev',
+      secret: process.env.JWT_REFRESH_SECRET,
     });
 
     // 8. Actualizar último login
@@ -509,7 +509,7 @@ export class AuthService {
       { sub: userId, email: user.email, jti: accessJti, tipo: 'access', sessionId: session.id },
       {
         expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
-        secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+        secret: process.env.JWT_ACCESS_SECRET,
       },
     );
 
@@ -522,7 +522,7 @@ export class AuthService {
       },
       {
         expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
-        secret: process.env.JWT_REFRESH_SECRET || 'svr-erp-refresh-secret-dev',
+        secret: process.env.JWT_REFRESH_SECRET,
       },
     );
 
