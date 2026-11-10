@@ -7,6 +7,10 @@ describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
   let prisma: Record<string, any>;
 
+  // La estrategia exige el secreto del entorno (sin respaldo: fail-fast en el
+  // bootstrap de la app) — los tests definen el suyo de prueba.
+  process.env.JWT_ACCESS_SECRET = 'test-access-secret-unit-32-characters!!';
+
   const validPayload: JwtPayload = {
     sub: 'user-1',
     email: 'admin@svr-constructora.com',

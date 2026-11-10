@@ -46,7 +46,7 @@ describe('Auth Integration (Real DB)', () => {
       imports: [
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.register({
-          secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-k3y-2026-prod',
+          secret: process.env.JWT_ACCESS_SECRET,
           signOptions: { expiresIn: 900 },
         }),
       ],

@@ -5,6 +5,17 @@ import { ValidationPipe } from '@nestjs/common';
 import { json } from 'express';
 import { AppModule } from './app.module';
 
+// Los secretos del JWT no admiten respaldo: sin them, cualquiera podría forjar
+// tokens de administrador con el valor público del código.
+for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+  if (!process.env[key] || process.env[key].length < 32) {
+    throw new Error(
+      `Variable de entorno "${key}" faltante o demasiado corta (mínimo 32 caracteres). ` +
+      'La API no arranca sin sus secretos de JWT — configúralos en apps/api/.env o en el entorno del servidor.',
+    );
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const port = parseInt(process.env.PORT || '3001', 10);
