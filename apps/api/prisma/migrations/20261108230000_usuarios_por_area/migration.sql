@@ -1,0 +1,4 @@
+-- Usuarios demo por área — RETIRADO de la migración (review PR #17):
+-- migrar era crear cuentas demo con contraseña conocida en producción.
+-- Todo el contenido (personas + users + users_roles + torre del técnico)
+-- vive en prisma/demo-seed.sql (ejecución manual en dev, hash por variable).

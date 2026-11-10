@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Plus, FileText, SlidersHorizontal, X, Pencil,
-  Loader2, Eye, Clock, CheckCircle2, XCircle, CalendarDays,
+  Eye, Clock, CheckCircle2, XCircle, CalendarDays,
   Building2, TrendingUp, ThumbsDown,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -29,6 +29,8 @@ import {
   type ClienteDTO,
   type EstadoCotizacionApi,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -255,7 +257,7 @@ export default function CotizacionesPage() {
         setCreateOpen(false);
         refresh();
       } else {
-        showToast(res.error?.message || 'Error al crear cotización.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear cotización.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear cotización.', 'error');
@@ -296,7 +298,7 @@ export default function CotizacionesPage() {
         setSelected(null);
         refresh();
       } else {
-        showToast(res.error?.message || `Error al ${esRechazo ? 'rechazar' : 'aceptar'} la cotización.`, 'error');
+        showToast(mensajeErrorApi(res.error, `Error al ${esRechazo ? 'rechazar' : 'aceptar'} la cotización.`), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el estado.', 'error');
@@ -332,7 +334,7 @@ export default function CotizacionesPage() {
         setEditId(null);
         refresh();
       } else {
-        showToast(res.error?.message || 'Error al actualizar la cotización.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la cotización.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar la cotización.', 'error');
@@ -394,7 +396,7 @@ export default function CotizacionesPage() {
       render: (item) => {
         const esPendiente = item.estado === 'Pendiente';
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-center gap-1">
             <Button
               variant="info"
               size="sm"
@@ -403,7 +405,9 @@ export default function CotizacionesPage() {
             >
               Ver
             </Button>
-            {puedeEditar && (
+            {/* Editar/Aceptar/Rechazar solo tienen sentido en PENDIENTE: en los
+                demás estados las acciones se ocultan (ver = la única operación). */}
+            {puedeEditar && esPendiente && (
               <>
                 <Button
                   variant="warning"
@@ -417,8 +421,6 @@ export default function CotizacionesPage() {
                   variant="success"
                   size="sm"
                   icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                  disabled={!esPendiente}
-                  title={!esPendiente ? 'Solo cotizaciones pendientes' : undefined}
                   onClick={(e) => { e.stopPropagation(); openEstado(item, 'ACEPTADA'); }}
                 >
                   Aceptar
@@ -427,8 +429,6 @@ export default function CotizacionesPage() {
                   variant="danger"
                   size="sm"
                   icon={<XCircle className="w-3.5 h-3.5" />}
-                  disabled={!esPendiente}
-                  title={!esPendiente ? 'Solo cotizaciones pendientes' : undefined}
                   onClick={(e) => { e.stopPropagation(); openEstado(item, 'RECHAZADA'); }}
                 >
                   Rechazar
@@ -448,7 +448,8 @@ export default function CotizacionesPage() {
         subtitle="Presupuestos enviados, seguimiento y cierre de ventas por contratar."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCrear}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCrear}>
               Nueva Cotización
             </Button>
           ) : undefined
@@ -461,6 +462,7 @@ export default function CotizacionesPage() {
           value={`${stats.total} totales`}
           label="Total Cotizaciones"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Clock className="w-6 h-6" />}
@@ -468,6 +470,7 @@ export default function CotizacionesPage() {
           label="En Espera"
           color="warning"
           onClick={stats.pendientes > 0 ? () => handleFilterChange('estado', 'PENDIENTE') : undefined}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<TrendingUp className="w-6 h-6" />}
@@ -475,6 +478,7 @@ export default function CotizacionesPage() {
           label={`${stats.aceptadas} Aceptadas`}
           color="success"
           onClick={stats.aceptadas > 0 ? () => handleFilterChange('estado', 'ACEPTADA') : undefined}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ThumbsDown className="w-6 h-6" />}
@@ -482,6 +486,7 @@ export default function CotizacionesPage() {
           label="Rechazadas"
           color="neutral"
           onClick={stats.rechazadas > 0 ? () => handleFilterChange('estado', 'RECHAZADA') : undefined}
+        loading={initialLoading}
         />
       </div>
 
@@ -573,11 +578,7 @@ export default function CotizacionesPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={cotizaciones}

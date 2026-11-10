@@ -4,15 +4,16 @@ import { useEffect, useState } from 'react';
 import { Lock, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { CorteCaja } from '@/components/pos/CorteCaja';
 import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
-import { ventasApi, type TurnoConfig } from '@/lib/api';
+import { ventasApi, ventaDtoToSale, type TurnoConfig } from '@/lib/api';
 import { parseHM, permiteCerrarCaja } from '@/lib/pos';
 
 export default function CorteDelDiaPage() {
   const { user } = useAuth();
-  const { sales, retiros } = usePOS();
+  const { sales, retiros, addSale } = usePOS();
 
   const cashierName = user?.persona && user.persona.nombre
     ? `${user.persona.nombre} ${user.persona.apellidoPaterno ?? ''}`.trim()
@@ -25,9 +26,11 @@ export default function CorteDelDiaPage() {
   // Configuración de turno + validación de ventana de cierre
   const [turnoConfig, setTurnoConfig] = useState<TurnoConfig | null>(null);
   const [fueraDeVentana, setFueraDeVentana] = useState(false);
+  const [cargandoConfig, setCargandoConfig] = useState(true);
+  const [cargandoVentas, setCargandoVentas] = useState(true);
 
   useEffect(() => {
-    ventasApi.config().then((res) => {
+    ventasApi.config().then(async (res) => {
       if (res.success) {
         setTurnoConfig(res.data);
         // Verificar si se puede cerrar (según el tipo de turno: diurno/nocturno)
@@ -37,7 +40,17 @@ export default function CorteDelDiaPage() {
         const fuera = !permiteCerrarCaja(nowMin, aH * 60 + aM, cH * 60 + cM);
         setFueraDeVentana(fuera);
       }
-    });
+    }).finally(() => setCargandoConfig(false));
+  }, []);
+
+  // Ventas del dia: si se entra directo a /ventas/corte, el provider
+  // puede estar vacio - fetch idempotente (addSale dedupe por id).
+  useEffect(() => {
+    ventasApi.hoy().then((res) => {
+      if (res.success) {
+        for (const venta of res.data.ventas) addSale(ventaDtoToSale(venta, []));
+      }
+    }).finally(() => setCargandoVentas(false));
   }, []);
 
   return (
@@ -46,6 +59,8 @@ export default function CorteDelDiaPage() {
         title="Corte del Día"
         subtitle={`Cierre de caja · Cajero: ${cashierName}`}
       />
+
+      {cargandoConfig && <Skeleton variant="card" />}
 
       {!puedeVer ? (
         <EmptyState
@@ -73,7 +88,7 @@ export default function CorteDelDiaPage() {
             </div>
           )}
 
-          <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} />
+          <CorteCaja sales={sales} cashierName={cashierName} retiros={retiros} isAdmin={isAdmin} loading={cargandoConfig || cargandoVentas} />
         </>
       )}
     </div>

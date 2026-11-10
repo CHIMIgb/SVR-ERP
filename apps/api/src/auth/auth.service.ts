@@ -290,12 +290,12 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(accessPayload, {
       expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
-      secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+      secret: process.env.JWT_ACCESS_SECRET,
     });
 
     const refreshToken = this.jwtService.sign(refreshPayload, {
       expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
-      secret: process.env.JWT_REFRESH_SECRET || 'svr-erp-refresh-secret-dev',
+      secret: process.env.JWT_REFRESH_SECRET,
     });
 
     // 8. Actualizar último login
@@ -509,7 +509,7 @@ export class AuthService {
       { sub: userId, email: user.email, jti: accessJti, tipo: 'access', sessionId: session.id },
       {
         expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
-        secret: process.env.JWT_ACCESS_SECRET || 'svr-erp-access-secret-dev',
+        secret: process.env.JWT_ACCESS_SECRET,
       },
     );
 
@@ -522,7 +522,7 @@ export class AuthService {
       },
       {
         expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
-        secret: process.env.JWT_REFRESH_SECRET || 'svr-erp-refresh-secret-dev',
+        secret: process.env.JWT_REFRESH_SECRET,
       },
     );
 
@@ -690,10 +690,17 @@ export class AuthService {
       return { modulo: parts[0], recurso: parts[1], accion: parts[2] };
     });
 
+    const usuarioRolesAuth = user.users_roles_users_roles_user_idTousers as any[];
+    const torreDelRol =
+      usuarioRolesAuth
+        .filter((ur: any) => ur.roles.torre != null)
+        .sort((a: any, b: any) => Number(b.es_principal) - Number(a.es_principal))[0]?.roles.torre ?? null;
+
     return {
       id: user.id,
       email: user.email,
       activo: user.activo,
+      torre: (user.torre ?? torreDelRol) as import('@prisma/client').CategoriaReporte | null,
       persona: {
         nombre: user.personas_users_persona_idTopersonas.nombre,
         apellidoPaterno:

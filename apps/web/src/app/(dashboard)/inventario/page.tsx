@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Package, AlertTriangle, TrendingDown, ShoppingCart,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Eye,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -21,6 +21,8 @@ import {
   type ArticuloInventarioDTO,
   type InventarioCatalogos,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -276,7 +278,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear artículo.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear artículo.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear artículo.', 'error');
@@ -310,7 +312,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar artículo.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar artículo.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar artículo.', 'error');
@@ -339,7 +341,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar entrada.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar entrada.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar entrada.', 'error');
@@ -360,7 +362,7 @@ export default function InventarioPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar artículo.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar artículo.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar artículo.', 'error');
@@ -469,15 +471,16 @@ export default function InventarioPage() {
         subtitle="Control de stock, órdenes de compra y almacén central."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Artículo
             </Button>
           ) : undefined
         }
       />
 
-      {lowStockCount > 0 && (
-        <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {!initialLoading && lowStockCount > 0 && (
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-[fadeScaleIn_0.2s_ease-out]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center shrink-0">
               <AlertTriangle className="w-6 h-6" />
@@ -506,6 +509,7 @@ export default function InventarioPage() {
           value={`${stats.totalArticulos} tipos`}
           label="Total Artículos"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<TrendingDown className="w-6 h-6" />}
@@ -513,12 +517,14 @@ export default function InventarioPage() {
           label="Stock Bajo"
           color={stats.stockBajo > 0 ? 'error' : 'success'}
           onClick={stats.stockBajo > 0 ? handleFilterLowStock : undefined}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ShoppingCart className="w-6 h-6" />}
           value={formatCurrency(stats.valorTotal)}
           label="Valor Inventario"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 
@@ -603,12 +609,7 @@ export default function InventarioPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={articulos}

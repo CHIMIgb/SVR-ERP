@@ -59,7 +59,7 @@ src/
 - **Tailwind v4 only.** Custom tokens are in `globals.css` `@theme {}` block (colors: primary, secondary, sidebar, background; fonts: sans, display; radii: lg, xl, 2xl).
 - `tailwind.config.ts` is legacy v3 config — **ignore it, do not edit**.
 - Two reusable CSS classes exist: `.btn-primary` and `.card` (defined in `@layer components`).
-- Two keyframes: `slideInRight` (toasts), `fadeScaleIn` (modals). Use via `animate-[slideInRight_0.3s_ease-out]`.
+- Two keyframes: `slideInRight` (toasts), `fadeScaleIn` (modals and post-load conditional alert banners). Use via `animate-[slideInRight_0.3s_ease-out]` / `animate-[fadeScaleIn_0.2s_ease-out]`.
 - `cn()` utility (clsx + tailwind-merge) is defined locally in `Sidebar.tsx` — not extracted yet. If you need it elsewhere, import from `Sidebar` or create `src/lib/utils.ts`.
 
 ## Component Patterns
@@ -69,6 +69,29 @@ src/
 - Context providers: `ToastProvider` (in `Toast.tsx`) and `NotificationProvider` (in `NotificationContext.tsx`), nested in dashboard layout.
 - Currency formatting: `new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })` — duplicated in 17 files (no shared utility yet).
 - Icons: import individual icons from `lucide-react`, never the barrel.
+
+### Loaders/Skeletons — regla dura (todas las vistas: Operaciones, Comercial y TODOS los módulos)
+
+**La primera impresión de una vista cargando nunca es un bloque vacío ni un "0" falso: tablas con skeleton, KPIs con spinner.**
+
+1. **Tablas:** `<DataTable loading={cargando} ...>` — pinta skeleton de filas internamente + `emptyText` cuando no hay datos. NUNCA renderizar un spinner encima del DataTable para la carga inicial.
+1b. **Orden del sleep demo:** si una página con `await sleepDemo()` tiene su estado de carga en `false` por defecto (p. ej. `/ventas` con `cargandoCatalogo`), el sleep va DESPUÉS de encender la bandera (`set...Loading(true)`) — si va antes, los 3 segundos cargan sin spinner (bug de la demo del 2026-11-07). Con flags que inician en `true` el orden no altera el efecto.
+2. **KPIs (`StatsCard`):** con `loading={...}` el **spinner vive solo en el espacio del valor** (el icono y la etiqueta se ven reales desde el primer render; nunca "0" falso — las KPIs siempre cargan números, no skeleton).
+2b. **Color único del spinner:** todo `Loader2` de carga es `Loader2 className="w-5 h-5 (o w-6) text-primary animate-spin"` — NUNCA colorear el spinner con el color del dato (green/blue/indigo...); el color propio solo aplica al valor ya cargado. Como todos los spinners viven en componentes globales, cualquier ajuste de color/tamaño se hace UNA sola vez ahí.
+3. **Bloques no tabulares** (tab de detalle, paneles, cards de contenido): `<Skeleton variant="card" />` / `row` / `text` (con `SkeletonText` cuando el contenido simula párrafos).
+4. **Refetches con datos ya en pantalla** (filtros, paginación, búsqueda): `<RefreshOverlay show={refetch} />` dentro de un padre `relative` — nunca un skeleton completo ni un spinner suelto.
+5. **`Button skeleton`** placeholder en las acciones principales durante la carga inicial; **`LoadingState`** queda reservado para estados de autenticación/layout.
+6. Banners/alertas condicionales (stock crítico, incidentes críticos, etc.): **NO existen durante la carga** (gatear con `!initialLoading && <condición>`) y al aparecer usan `animate-[fadeScaleIn_0.2s_ease-out]`. NUNCA un skeleton rojo de banner — simularía una alerta inexistente. Effect documentado en COMPONENTS.md (keyframes).
+7. Reutiliza el kit — `LoadingState`, `Skeleton`, `SkeletonText`, `DataTable.loading`, `Button.loading/skeleton`, `StatsCard.loading`, `FormModal.isSubmitting`, `RefreshOverlay`. Está prohibido copiar/pegar bloques de `Loader2 + animate-spin` entre vistas (ese patrón ya se extrajo y consolidó).
+
+### Toasts de error — helper único (`mensajeErrorApi`)
+
+**El mensaje de todo toast de error de API sale SIEMPRE del helper `mensajeErrorApi(res.error, '<fallback de la vista>')`** (vive en `lib/api.ts`) — nunca `res.error?.message || '...'` a mano. Razón: el backend responde los 422 con `details[]` (class-validator) y el helper los une con "·" para que el usuario vea QUÉ campo falló; el `||` directo pierde esa información y muestra solo "Error de validación".
+
+1. Prioridad del helper: `details[].map(String).join(' · ')` → `error.message` → fallback de la vista.
+2. NUNCA componer a mano `details?.join(...) || ...` ni `res.error?.message || ...` en un toast.
+3. Los `catch` de red mantienen su mensaje de conexión (p. ej. "Error de conexión...") — no pasan por el helper salvo que re-lancen un error del contrato.
+4. Aplicado 2026-11-07 en las vistas de Comercial + Operaciones (49 ramas + 3 manuales); el resto de módulos es de otro dev — aplicar el MISMO patrón cuando los toque (el helper ya está disponible en `lib/api.ts`).
 
 ## Data Layer
 

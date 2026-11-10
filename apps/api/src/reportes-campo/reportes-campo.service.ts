@@ -3,13 +3,15 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   Prisma,
-  EstadoReporteCampo,
+  EstadoIncidente,
   Prioridad,
   TipoReporteCampo,
+  CategoriaReporte,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
@@ -20,12 +22,12 @@ import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { AsignarReporteDto } from './dto/asignar-reporte.dto';
+import { ActividadDto } from './dto/actividad.dto';
+import { AdjuntoDto, MAX_BYTES_DECODIFICADOS_ADJUNTO } from './dto/adjunto.dto';
 
 const REPORTE_INCLUDE = {
-  maquinas: { select: { id: true, codigo: true, nombre: true } },
-  obras: { select: { id: true, nombre: true } },
-  clientes: { select: { id: true, nombre: true } },
-  proyectos: { select: { id: true, nombre: true } },
+  subcategoria: { select: { id: true, nombre: true } },
+  proyectos: { select: { id: true, nombre: true, calle: true, colonia: true, ciudad: true } },
   asignado_a: { select: { id: true, nombre: true, puesto: true } },
 } as const;
 
@@ -40,15 +42,16 @@ const TIPO_LABELS: Record<TipoReporteCampo, string> = {
   [TipoReporteCampo.INCIDENTE]: 'Incidente',
   [TipoReporteCampo.INGENIERO]: 'Ingeniero',
   [TipoReporteCampo.TRABAJADOR]: 'Trabajador',
+  [TipoReporteCampo.SOLDADOR]: 'Soldador',
+  [TipoReporteCampo.DIESEL]: 'Diesel',
+  [TipoReporteCampo.MANTENIMIENTO]: 'Mantenimiento',
+  [TipoReporteCampo.RESIDENTE]: 'Residente',
 };
 
-const ESTADO_LABELS: Record<EstadoReporteCampo, string> = {
-  [EstadoReporteCampo.PENDIENTE]: 'Pendiente',
-  [EstadoReporteCampo.VISTO]: 'Visto',
-  [EstadoReporteCampo.ATENDIDO]: 'Atendido',
-  [EstadoReporteCampo.EN_REVISION]: 'En Revisión',
-  [EstadoReporteCampo.RESUELTO]: 'Resuelto',
-  [EstadoReporteCampo.FACTURADO]: 'Facturado',
+const ESTADO_LABELS: Record<EstadoIncidente, string> = {
+  [EstadoIncidente.NUEVO]: 'Nuevo',
+  [EstadoIncidente.EN_CURSO]: 'En curso',
+  [EstadoIncidente.CERRADO]: 'Cerrado',
 };
 
 const PRIORIDAD_LABELS: Record<Prioridad, string> = {
@@ -58,18 +61,48 @@ const PRIORIDAD_LABELS: Record<Prioridad, string> = {
   [Prioridad.CRITICA]: 'Crítica',
 };
 
+/** Reintentos de folio ante carrera INC (patrón facturas). */
+const MAX_INTENTOS_FOLIO = 5;
+
+/** Días que un incidente Cerrado sigue visible antes de darse de baja del listado (no-admin). */
+const AUTO_BAJA_DIAS = 2;
+
+/** Categoría responsable ("torre que atiende") — sale de /nueva-info (PWA). */
+const CATEGORIA_LABELS: Record<string, string> = {
+  MECANICO: 'Mecanico',
+  SOLDADOR: 'Soldador',
+  DIESEL: 'Diesel',
+  MANTENIMIENTO: 'Mantenimiento',
+  ADMINISTRATIVO: 'Administrativo',
+  RESIDENTE: 'Residente',
+};
+
+/** Flujo simplificado del incidente (mini-ServiceNow). */
+const TRANSICIONES: Record<EstadoIncidente, EstadoIncidente[]> = {
+  [EstadoIncidente.NUEVO]: [EstadoIncidente.EN_CURSO, EstadoIncidente.CERRADO],
+  [EstadoIncidente.EN_CURSO]: [EstadoIncidente.CERRADO],
+  [EstadoIncidente.CERRADO]: [],
+};
+
 /**
- * Flujo de seguimiento permitido — espejo exacto del frontend.
- * RESUELTO es terminal; EN_REVISION solo se alcanza desde VISTO si se
- * habilita en el futuro (hoy ninguna transición lleva a él salvo seed).
+ * Adjuntos (imágenes): límites conservadores sin almacenamiento externo.
  */
-const TRANSICIONES: Record<EstadoReporteCampo, EstadoReporteCampo[]> = {
-  [EstadoReporteCampo.PENDIENTE]: [EstadoReporteCampo.VISTO],
-  [EstadoReporteCampo.VISTO]: [EstadoReporteCampo.ATENDIDO],
-  [EstadoReporteCampo.ATENDIDO]: [EstadoReporteCampo.RESUELTO],
-  [EstadoReporteCampo.EN_REVISION]: [EstadoReporteCampo.RESUELTO],
-  [EstadoReporteCampo.RESUELTO]: [],
-  [EstadoReporteCampo.FACTURADO]: [],
+const MAX_ADJUNTOS = 4;
+const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
+const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/**
+ * Firma de cabecera requerida por mime (bytes reales decodificados) —
+ * el contenido debe SER esa imagen, no un archivo renombrado.
+ */
+const ADJUNTO_FIRMAS: Record<string, (bytes: Buffer) => boolean> = {
+  'image/jpeg': (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/png': (b) => b.length >= 4 && b[0] === 0x89 && b.slice(1, 4).toString('latin1') === 'PNG',
+  'image/webp': (b) =>
+    b.length >= 12 &&
+    b.slice(0, 4).toString('latin1') === 'RIFF' &&
+    b.slice(8, 12).toString('latin1') === 'WEBP',
+  'image/gif': (b) => b.length >= 4 && b.slice(0, 4).toString('latin1') === 'GIF8',
 };
 
 @Injectable()
@@ -81,8 +114,10 @@ export class ReportesCampoService {
 
   // ────────────────────────────────────────────
   //  LISTAR (con búsqueda, filtros y paginación)
+  //  Ámbito por usuario: admins (nivel 100) ven todos; el resto solo la torre
+  //  de su rol/usuario (o suyos, si no tiene torre asignada — Trabajador).
   // ────────────────────────────────────────────
-  async findAll(query: QueryReportesCampoDto) {
+  async findAll(query: QueryReportesCampoDto, userId: string) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 10, 100);
 
@@ -102,11 +137,27 @@ export class ReportesCampoService {
     if (query.tipo) where.tipo = query.tipo;
     if (query.prioridad) where.prioridad = query.prioridad;
 
-    // Banner de críticos: INCIDENTE con prioridad Alta/Crítica sin resolver
+    // Banner de críticos: INCIDENTE con prioridad Alta/Crítica sin cerrar
     if (query.criticos === 'true') {
       where.tipo = TipoReporteCampo.INCIDENTE;
       where.prioridad = { in: [Prioridad.ALTA, Prioridad.CRITICA] };
-      where.estado = { not: EstadoReporteCampo.RESUELTO };
+      where.estado = { not: EstadoIncidente.CERRADO };
+    }
+
+    // Ámbito por usuario (no-admin solo vede su torre / sus propios reportes)
+    const [esAdmin] = await Promise.all([this.esUsuarioAdmin(userId)]);
+    await this.aplicarAmbito(where, userId);
+
+    // Baja automática (sin borrar de la BD): un incidente Cerrado sale del
+    // listado a los 2 días — solo para no-admins; el Administrador sigue viéndolos.
+    if (!esAdmin) {
+      const limite = new Date(Date.now() - AUTO_BAJA_DIAS * 24 * 60 * 60 * 1000);
+      where.AND = [
+        ...((where.AND as Prisma.reportes_campoWhereInput[]) ?? []),
+        {
+          OR: [{ cerrado_en: null }, { cerrado_en: { gte: limite } }],
+        },
+      ];
     }
 
     const [items, total] = await Promise.all([
@@ -132,9 +183,9 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  OBTENER UNO
+  //  DETALLE (reporte + actividades + adjuntos)
   // ────────────────────────────────────────────
-  async findOne(id: string) {
+  async findOne(id: string, userId: string) {
     const reporte = await this.prisma.reportes_campo.findFirst({
       where: { id, eliminado_en: null },
       include: REPORTE_INCLUDE,
@@ -144,43 +195,377 @@ export class ReportesCampoService {
       throw new NotFoundException(`Reporte de campo con id "${id}" no encontrado`);
     }
 
-    return this.serialize(reporte);
+    // Acceso directo respeta el mismo ámbito que el listado.
+    if (!(await this.enAmbito(reporte, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ACCESO_DENEGADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
+    const [actividades, adjuntos, reportadoPor] = await Promise.all([
+      this.prisma.reportes_actividades.findMany({
+        where: { reporte_id: id },
+        orderBy: { creado_en: 'asc' },
+      }),
+      this.prisma.reportes_adjuntos.findMany({
+        where: { reporte_id: id },
+        orderBy: { creado_en: 'asc' },
+      }),
+      this.datosDelReportador(reporte.usuario_id),
+    ]);
+
+    return {
+      reporte: this.serialize(reporte),
+      reportadoPor,
+      actividades: actividades.map((a) => ({
+        id: a.id,
+        texto: a.texto,
+        autorNombre: a.autor_nombre,
+        creadoEn: a.creado_en.toISOString(),
+      })),
+      adjuntos: adjuntos.map((a) => this.serializeAdjunto(a)),
+    };
+  }
+
+  /** ¿El usuario tiene el rol Residente (solo seguimiento en /reportes)? */
+  private async esRolResidente(userId: string): Promise<boolean> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { users_roles_users_roles_user_idTousers: { select: { roles: { select: { nombre: true } } } } },
+    });
+    return (user?.users_roles_users_roles_user_idTousers ?? []).some(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ur: any) => ur.roles.nombre === 'Residente',
+    );
+  }
+
+  /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados. */
+  private async esUsuarioAdmin(userId: string): Promise<boolean> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { users_roles_users_roles_user_idTousers: { select: { roles: { select: { nivel: true } } } } },
+    });
+    const anos = user?.users_roles_users_roles_user_idTousers ?? [];
+    return Math.max(0, ...anos.map((ur: { roles: { nivel: number } }) => ur.roles.nivel)) >= 100;
+  }
+
+  /**
+   * Ámbito de visibilidad: nivel 100 (Administrador) ve todo. Los Residentes ven
+   * los suyos + los de SUS trabajadores (jefe_user_id). El resto solo los de su
+   * torre (user.torre ?? torre del rol) — y sin torre (Trabajador) solo los suyos.
+   */
+  private async aplicarAmbito(
+    where: Prisma.reportes_campoWhereInput,
+    userId: string,
+  ): Promise<void> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        torre: true,
+        users_roles_users_roles_user_idTousers: {
+          select: { roles: { select: { nivel: true, torre: true, nombre: true } } },
+        },
+      },
+    });
+    const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
+    const nivelMaximo = Math.max(0, ...usuarioRoles.map((ur: { roles: { nivel: number } }) => ur.roles.nivel));
+    if (nivelMaximo >= 100) return; // Administrador: acceso total
+
+    if (usuarioRoles.some((ur: { roles: { nombre: string } }) => ur.roles.nombre === 'Residente')) {
+      // Residente: los reportes de SUS trabajadores (a su cargo) + los suyos
+      const subordinados = await this.prisma.users.findMany({
+        where: { jefe_user_id: userId, eliminado_en: null },
+        select: { id: true },
+      });
+      where.usuario_id = { in: [userId, ...subordinados.map((s: { id: string }) => s.id)] };
+      return;
+    }
+
+    const torre = user?.torre ?? usuarioRoles.filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => b.roles.nivel - a.roles.nivel)[0]?.roles.torre ?? null;
+    if (torre) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where.categoria = torre as any;
+    } else {
+      where.usuario_id = userId; // Trabajador sin torre: solo sus propios reportes
+    }
+  }
+
+  /**
+   * Datos del que levantó el incidente: nombre, teléfono (persona), rol y área.
+   * personas.telefono ya existe en BD (los usuarios demo lo traen sembrado).
+   */
+  private async datosDelReportador(usuarioId: string | null) {
+    if (!usuarioId) return null;
+    const user = await this.prisma.users.findUnique({
+      where: { id: usuarioId },
+      select: {
+        torre: true,
+        personas_users_persona_idTopersonas: {
+          select: { nombre: true, apellido_paterno: true, apellido_materno: true, telefono: true },
+        },
+        users_roles_users_roles_user_idTousers: {
+          select: { es_principal: true, roles: { select: { nombre: true, nivel: true } } },
+        },
+      },
+    });
+    if (!user) return null;
+    const persona = user.personas_users_persona_idTopersonas;
+    const nombre = [persona.nombre, persona.apellido_paterno, persona.apellido_materno]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const rolPrincipal = (user.users_roles_users_roles_user_idTousers ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => b.roles.nivel - a.roles.nivel)[0]?.roles.nombre ?? null;
+    return {
+      nombre: nombre || null,
+      telefono: persona.telefono ?? null,
+      rol: rolPrincipal,
+      area: user.torre ?? null,
+    };
+  }
+
+  /**
+   * ACEPTAR — la torre toma el incidente: la columna RESPONSABLE se llena con el
+   * nombre de quien lo acepta. Solo incidentes NUEVO sin responsable; con las
+   * variables correctas (dos aceptos simultáneos → conflicto), auditado SUCCESS/FAIL.
+   */
+  async aceptar(id: string, userId: string) {
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if ((existente.estado as EstadoIncidente) !== EstadoIncidente.NUEVO) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'SOLO_NUEVOS_SE_ACEPTAN',
+        BadRequestException,
+        `Solo los incidentes Nuevos pueden aceptarse (estado actual: ${ESTADO_LABELS[existente.estado as EstadoIncidente]})`,
+      );
+    }
+
+    // La aceptación es de la torre que atiende: mismo ámbito que el listado.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
+    // Los Residentes solo dan seguimiento (ver los reportes de sus trabajadores):
+    // la función de aceptar es de las torres que atienden (técnicos).
+    if (await this.esRolResidente(userId)) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'RESIDENTE_SOLO_SEGUIMIENTO',
+        ForbiddenException,
+        'Los Residentes solo dan seguimiento: el incidente lo acepta la torre asignada',
+      );
+    }
+
+    if (existente.asignado_a_id || existente.asignado_nombre) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'YA_ACEPTADO',
+        ConflictException,
+        'Alguien ya aceptó este incidente: recarga la lista',
+      );
+    }
+
+    const reportadoPor = await this.datosDelReportador(userId);
+    const nombre = reportadoPor?.nombre ?? userId;
+
+    const actualizada = await this.prisma.reportes_campo.updateMany({
+      where: {
+        id,
+        estado: EstadoIncidente.NUEVO,
+        asignado_a_id: null,
+        asignado_nombre: null,
+        eliminado_en: null,
+      },
+      data: {
+        asignado_nombre: nombre,
+        asignado_en: new Date(),
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      },
+    });
+    if (actualizada.count === 0) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'YA_ACEPTADO',
+        ConflictException,
+        'Alguien ya aceptó este incidente: recarga la lista',
+      );
+    }
+
+    const reporte = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+      include: REPORTE_INCLUDE,
+    });
+    if (!reporte) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    const serialized = this.serialize(reporte);
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_ASIGNADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      previousValue: { asignadoAId: null, asignadoNombre: null },
+      newValue: { aceptadoPor: nombre, estado: ESTADO_LABELS[existente.estado as EstadoIncidente] },
+    });
+
+    return serialized;
+  }
+
+  /** Proyectos EN_PROCESO para el select "Ubicación — Proyecto" (datos maestros). */
+  async proyectosEnProceso() {
+    return this.prisma.proyectos.findMany({
+      where: { estado: 'EN_PROCESO', activo: true, eliminado_en: null },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
+  // ────────────────────────────────────────────
+  //  CATÁLOGO de subcategorías (datos maestros — sin paginar)
+  // ────────────────────────────────────────────
+  async subcategorias() {
+    const rows = await this.prisma.subcategorias_reporte.findMany({
+      where: { activo: true },
+      orderBy: [{ categoria: 'asc' }, { nombre: 'asc' }],
+    });
+    return rows.map((s) => ({
+      id: s.id,
+      categoria: CATEGORIA_LABELS[s.categoria] ?? s.categoria,
+      nombre: s.nombre,
+    }));
   }
 
   // ────────────────────────────────────────────
   //  CREAR
   // ────────────────────────────────────────────
   async create(dto: CreateReporteCampoDto, userId: string) {
-    if (dto.maquinaId) {
-      await this.resolverMaquina(dto.maquinaId, AuditAction.REPORTE_CREADO, null);
+    // Torre destino del incidente: explícita (otra torre) o resuelta con el
+    // puesto del que reporta ("misma área").
+    let torre = dto.categoria ?? null;
+    if (dto.mismaArea) {
+      torre = await this.resolverTorreDelUsuario(userId);
     }
-    if (dto.obraId) {
-      await this.resolverObra(dto.obraId, AuditAction.REPORTE_CREADO, null);
+    if (!torre) {
+      return this.fallir(
+        AuditAction.REPORTE_CREADO,
+        null,
+        'CATEGORIA_REQUERIDA',
+        BadRequestException,
+        'Declara a qué área se envía el incidente (torre o misma área)',
+      );
     }
+    await this.validarSubcategoria(torre, dto.subcategoriaId, AuditAction.REPORTE_CREADO, null);
+    if (dto.proyectoId) {
+      await this.resolverProyecto(dto.proyectoId, AuditAction.REPORTE_CREADO, null);
+    }
+    await this.validarUbicacionGps(dto, AuditAction.REPORTE_CREADO, null);
 
-    const reporte = await this.prisma.reportes_campo.create({
-      data: {
-        id: randomUUID(),
-        tipo: dto.tipo,
-        usuario: dto.usuario.trim(),
-        usuario_id: userId,
-        maquina_id: dto.maquinaId ?? null,
-        obra_id: dto.obraId ?? null,
-        obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada',
-        cliente_id: dto.clienteId ?? null,
-        proyecto_id: dto.proyectoId ?? null,
-        monto_servicio: dto.montoServicio ?? null,
-        fecha: new Date(dto.fecha),
-        hora: new Date(`1970-01-01T${dto.hora}:00`),
-        descripcion: dto.descripcion.trim(),
-        estado: EstadoReporteCampo.PENDIENTE,
-        prioridad: dto.prioridad ?? null,
-        creado_por: userId,
-        actualizado_por: userId,
-        actualizado_en: new Date(),
-      },
-      include: REPORTE_INCLUDE,
-    });
+    // "Reporta" sellado por el backend con la persona del TOKEN real (no del
+    // front) — evita dueños/texto desalineados si hay sesiones mezcladas.
+    const reportador = await this.datosDelReportador(userId);
+
+    // Folio secuencial INC%04d con reintento anti-colisión (patrón facturas):
+    // dos creates concurrentes pueden derivar el mismo codigo (count+1); al
+    // chocar P2002 en el unique se reintenta con conteo fresco. En el último
+    // intento cae el sufijo UUID.
+    let reporte;
+    for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
+      const conteo = await this.prisma.reportes_campo.count({
+        where: { codigo: { startsWith: 'INC' } },
+      });
+      const codigo =
+        intento === MAX_INTENTOS_FOLIO - 1
+          ? `INC-${randomUUID().slice(0, 6).toUpperCase()}`
+          : `INC${String(conteo + 1).padStart(4, '0')}`;
+
+      try {
+        reporte = await this.prisma.reportes_campo.create({
+          data: {
+            id: randomUUID(),
+            codigo,
+            categoria: torre,
+            subcategoria_id: dto.subcategoriaId ?? null,
+            proyecto_id: dto.proyectoId ?? null,
+            latitud: dto.latitud ?? null,
+            longitud: dto.longitud ?? null,
+            // El tipo (vocabulario interno) es espejo de la torre elegida.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tipo: torre as any,
+            // "Reporta" = persona del usuario autenticado (fuente: servidor)
+            usuario: reportador?.nombre ?? dto.usuario.trim(),
+            usuario_id: userId,
+            obra_texto: 'Sin obra asociada',
+            fecha: this.fechaDelMomento(),
+            hora: this.horaDelMomento(),
+            descripcion: dto.descripcion.trim(),
+            estado: EstadoIncidente.NUEVO,
+            prioridad: dto.prioridad ?? null,
+            creado_por: userId,
+            actualizado_por: userId,
+            actualizado_en: new Date(),
+          },
+          include: REPORTE_INCLUDE,
+        });
+        break;
+      } catch (e) {
+        // Patrón cobranza/proveedores (idioma-neutral): único unique
+        // colisionable en este create es `codigo` (ver facturas.service).
+        if (
+          intento < MAX_INTENTOS_FOLIO - 1 &&
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          continue; // colisión de folio: reintentar con conteo fresco
+        }
+        throw e;
+      }
+    }
+    if (!reporte) {
+      // Inalcanzable: el último intento siempre lanza o asigna. Guard de tipos.
+      throw new Error('No se pudo asignar folio de reporte');
+    }
 
     const serialized = this.serialize(reporte);
 
@@ -199,7 +584,7 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  ACTUALIZAR — solo permitido mientras PENDIENTE
+  //  ACTUALIZAR —permitido mientras NO esté Cerrado
   // ────────────────────────────────────────────
   async update(id: string, dto: UpdateReporteCampoDto, userId: string) {
     const existente = await this.prisma.reportes_campo.findFirst({
@@ -216,36 +601,49 @@ export class ReportesCampoService {
       );
     }
 
-    if (existente.estado !== EstadoReporteCampo.PENDIENTE) {
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
       return this.fallir(
         AuditAction.REPORTE_ACTUALIZADO,
         id,
-        'EDITAR_SOLO_PENDIENTES',
+        'CERRADO_NO_EDITABLE',
         BadRequestException,
-        `Solo los reportes Pendientes pueden editarse (estado actual: ${ESTADO_LABELS[existente.estado as EstadoReporteCampo]})`,
+        `Un incidente Cerrado no puede editarse`,
       );
     }
 
-    if (dto.maquinaId) {
-      await this.resolverMaquina(dto.maquinaId, AuditAction.REPORTE_ACTUALIZADO, id);
+    // Solo un Administrador edita reportes ajenos; los empleados solo los suyos.
+    if (existente.usuario_id !== userId && !(await this.esUsuarioAdmin(userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ACTUALIZADO,
+        id,
+        'EDITAR_SOLO_CREADOR_O_ADMIN',
+        ForbiddenException,
+        'Solo puedes editar los incidentes que tú levantaste (un Administrador edita cualquiera)',
+      );
     }
-    if (dto.obraId) {
-      await this.resolverObra(dto.obraId, AuditAction.REPORTE_ACTUALIZADO, id);
+
+    //torne destino al editar: explícita o re-resuelta con "misma área".
+    let torreFinal = dto.categoria ?? (existente.categoria as CategoriaReporte | null);
+    if (dto.mismaArea) {
+      torreFinal = await this.resolverTorreDelUsuario(userId);
     }
+    if (dto.subcategoriaId) {
+      await this.validarSubcategoria(torreFinal, dto.subcategoriaId, AuditAction.REPORTE_ACTUALIZADO, id);
+    }
+    if (dto.proyectoId) {
+      await this.resolverProyecto(dto.proyectoId, AuditAction.REPORTE_ACTUALIZADO, id);
+    }
+    await this.validarUbicacionGps(dto, AuditAction.REPORTE_ACTUALIZADO, id);
 
     const reporte = await this.prisma.reportes_campo.update({
       where: { id },
       data: {
-        ...(dto.tipo !== undefined && { tipo: dto.tipo }),
+        ...(torreFinal !== undefined && { categoria: torreFinal, tipo: torreFinal as never }),
+        ...(dto.subcategoriaId !== undefined && { subcategoria_id: dto.subcategoriaId }),
+        ...(dto.proyectoId !== undefined && { proyecto_id: dto.proyectoId }),
+        ...(dto.latitud !== undefined && { latitud: dto.latitud }),
+        ...(dto.longitud !== undefined && { longitud: dto.longitud }),
         ...(dto.usuario !== undefined && { usuario: dto.usuario.trim() }),
-        ...(dto.maquinaId !== undefined && { maquina_id: dto.maquinaId ?? null }),
-        ...(dto.obraId !== undefined && { obra_id: dto.obraId ?? null }),
-        ...(dto.obraTexto !== undefined && { obra_texto: dto.obraTexto?.trim() || 'Sin obra asociada' }),
-        ...(dto.clienteId !== undefined && { cliente_id: dto.clienteId ?? null }),
-        ...(dto.proyectoId !== undefined && { proyecto_id: dto.proyectoId ?? null }),
-        ...(dto.montoServicio !== undefined && { monto_servicio: dto.montoServicio ?? null }),
-        ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
-        ...(dto.hora !== undefined && { hora: new Date(`1970-01-01T${dto.hora}:00`) }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
         ...(dto.prioridad !== undefined && { prioridad: dto.prioridad }),
         actualizado_por: userId,
@@ -275,7 +673,7 @@ export class ReportesCampoService {
   //  ASIGNAR RESPONSABLE (quién lo debe resolver)
   // ────────────────────────────────────────────
   /**
-   * Define "quién le cae" al reporte: un trabajador activo (FK) y/o un nombre
+   * Define "quién le cae" al incidente: un trabajador activo (FK) y/o un nombre
    * libre. Con ambos vacíos se limpia la asignación. Audita REPORTE_ASIGNADO
    * como FALLIDO con error_code antes de lanzar en cada fallo.
    */
@@ -294,6 +692,18 @@ export class ReportesCampoService {
         'REPORTE_NO_ENCONTRADO',
         NotFoundException,
         `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    // ASIGNAR/REASIGNAR es de Administrador — los demás roles toman el incidente
+    // con "Aceptar" (RESPONSABLE = quien acepta).
+    if (!(await this.esUsuarioAdmin(userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'ASIGNAR_SOLO_ADMIN',
+        ForbiddenException,
+        'Solo un Administrador puede asignar o reasignar responsables',
       );
     }
 
@@ -327,25 +737,22 @@ export class ReportesCampoService {
       }
     }
 
-    const saliendoEstadoTerminal =
-      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.RESUELTO ||
-      (existente.estado as EstadoReporteCampo) === EstadoReporteCampo.FACTURADO;
-    if (saliendoEstadoTerminal) {
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
       return this.fallir(
         AuditAction.REPORTE_ASIGNADO,
         id,
-        'REPORTE_TERMINAL',
+        'REPORTE_CERRADO',
         BadRequestException,
-        `No se puede reasignar un reporte ${ESTADO_LABELS[(existente.estado as EstadoReporteCampo)]}`,
+        'No se puede reasignar un incidente Cerrado',
       );
     }
 
-    // Guard anti-carrera: solo reasigna el reporte que sigue en el estado Y la
+    // Guard anti-carrera: solo reasigna el incidente que sigue en el estado Y la
     // asignación leída (reasignaciones simultáneas → conflicto, no last-write)
     const actualizada = await this.prisma.reportes_campo.updateMany({
       where: {
         id,
-        estado: (existente.estado as EstadoReporteCampo),
+        estado: (existente.estado as EstadoIncidente),
         asignado_a_id: existente.asignado_a_id,
         asignado_nombre: existente.asignado_nombre,
         eliminado_en: null,
@@ -364,7 +771,7 @@ export class ReportesCampoService {
         id,
         'CONFLICTO_CONCURRENCIA',
         ConflictException,
-        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+        'El incidente cambió simultáneamente: recarga e intenta de nuevo',
       );
     }
 
@@ -399,7 +806,7 @@ export class ReportesCampoService {
       newValue: {
         asignadoAId: asignadoA,
         asignadoNombre,
-        estado: ESTADO_LABELS[existente.estado as EstadoReporteCampo],
+        estado: ESTADO_LABELS[existente.estado as EstadoIncidente],
       },
     });
 
@@ -407,7 +814,7 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  CAMBIAR ESTADO (flujo de seguimiento)
+  //  CAMBIAR ESTADO (Nuevo → En curso → Cerrado)
   // ────────────────────────────────────────────
   async cambiarEstado(id: string, dto: CambiarEstadoDto, userId: string) {
     const existente = await this.prisma.reportes_campo.findFirst({
@@ -424,8 +831,19 @@ export class ReportesCampoService {
       );
     }
 
-    const estadoActual = existente.estado as EstadoReporteCampo;
+    const estadoActual = existente.estado as EstadoIncidente;
     const permitidos = TRANSICIONES[estadoActual] ?? [];
+
+    // La transición la vive el dueño, el asignado o la torre que atiende.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
 
     if (!permitidos.includes(dto.estado)) {
       const permitidosLabel = permitidos.map((e) => ESTADO_LABELS[e]).join(', ') || 'ninguno (terminal)';
@@ -434,38 +852,32 @@ export class ReportesCampoService {
         id,
         'TRANSICION_NO_VALIDA',
         BadRequestException,
-        `Transición no válida: de ${ESTADO_LABELS[estadoActual]} solo puede avanzar a ${permitidosLabel}`,
+        `Transición no válida: de ${ESTADO_LABELS[estadoActual]} solo puede pasar a ${permitidosLabel}`,
       );
     }
 
-    // El cliente no es confiable: RESUELTO exige responsable previo en la BD,
-    // no solo en la UI (review PR #15, sugerencia "Sin asignar").
-    if (dto.estado === EstadoReporteCampo.RESUELTO && !existente.asignado_a_id && !existente.asignado_nombre) {
+    // CERRAR es de Administrador — los demás roles siguen el flujo hasta En curso.
+    if (dto.estado === EstadoIncidente.CERRADO && !(await this.esUsuarioAdmin(userId))) {
       return this.fallir(
         AuditAction.ESTATUS_CAMBIADO,
         id,
-        'RESPONSABLE_REQUERIDO',
-        BadRequestException,
-        'No se puede marcar Resuelto sin responsable: asígnale uno primero',
+        'CERRAR_SOLO_ADMIN',
+        ForbiddenException,
+        'Solo un Administrador puede cerrar incidentes',
       );
     }
 
-    // Guard anti-carrera (review PR #15): solo cambia el reporte que SIGUE en
-    // el estado y con la MISMA asignación que se leyó — si otro cambio
-    // simultáneo movió el estado o la asignación, el updateMany no toca nada
-    // (impide pisar resuelto_en y el caso "quitan asignación mientras otro
-    // marca Resuelto").
+    // Guard anti-carrera: solo cambia el incidente que SIGUE en el estado leído
+    // (si otro cambio simultáneo lo movió, el updateMany no toca nada).
     const actualizada = await this.prisma.reportes_campo.updateMany({
       where: {
         id,
         estado: estadoActual,
-        asignado_a_id: existente.asignado_a_id,
-        asignado_nombre: existente.asignado_nombre,
         eliminado_en: null,
       },
       data: {
         estado: dto.estado,
-        ...(dto.estado === EstadoReporteCampo.RESUELTO && { resuelto_en: new Date() }),
+        ...(dto.estado === EstadoIncidente.CERRADO && { cerrado_en: new Date() }),
         actualizado_por: userId,
         actualizado_en: new Date(),
       },
@@ -476,7 +888,7 @@ export class ReportesCampoService {
         id,
         'CONFLICTO_CONCURRENCIA',
         ConflictException,
-        'El reporte cambió de estado simultáneamente: recarga e intenta de nuevo',
+        'El incidente cambió simultáneamente: recarga e intenta de nuevo',
       );
     }
 
@@ -505,15 +917,217 @@ export class ReportesCampoService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: { estado: ESTADO_LABELS[estadoActual] },
-      newValue: {
-        estado: ESTADO_LABELS[dto.estado],
-        ...(dto.estado === EstadoReporteCampo.RESUELTO && {
-          resueltoPor: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? 'Sin asignar',
-        }),
-      },
+      newValue: { estado: ESTADO_LABELS[dto.estado] },
     });
 
     return serialized;
+  }
+
+  // ────────────────────────────────────────────
+  //  COMENTAR (actividad del incidente)
+  // ────────────────────────────────────────────
+  async comentar(id: string, dto: ActividadDto, userId: string) {
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_COMENTADO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
+      return this.fallir(
+        AuditAction.REPORTE_COMENTADO,
+        id,
+        'INCIDENTE_CERRADO',
+        BadRequestException,
+        'Un incidente Cerrado no admite más actividades',
+      );
+    }
+
+    // Señuelo de seguimiento: dueño, asignado, admin, la torre que atiende o el
+    // residente de su equipo — mismo ámbito que el listado.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_COMENTADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
+    const nombreAutor = this.nombreActor(existente, userId);
+
+    const actividad = await this.prisma.reportes_actividades.create({
+      data: {
+        id: randomUUID(),
+        reporte_id: id,
+        texto: dto.texto.trim(),
+        autor_nombre: nombreAutor,
+      },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_COMENTADO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        actividadId: actividad.id,
+        codigo: existente.codigo,
+        texto: dto.texto.trim().slice(0, 120),
+      },
+    });
+
+    return {
+      id: actividad.id,
+      texto: actividad.texto,
+      autorNombre: actividad.autor_nombre,
+      creadoEn: actividad.creado_en.toISOString(),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  ADJUNTAR IMAGEN (base64 en BD)
+  // ────────────────────────────────────────────
+  async adjuntar(id: string, dto: AdjuntoDto, userId: string) {
+    const existente = await this.prisma.reportes_campo.findFirst({
+      where: { id, eliminado_en: null },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'REPORTE_NO_ENCONTRADO',
+        NotFoundException,
+        `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    if ((existente.estado as EstadoIncidente) === EstadoIncidente.CERRADO) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'INCIDENTE_CERRADO',
+        BadRequestException,
+        'Un incidente Cerrado no admite más adjuntos',
+      );
+    }
+
+    // Las imágenes son evidencia de la torre que atiende — el Residente solo
+    // revisa el registro y comenta.
+    if (await this.esRolResidente(userId)) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'RESIDENTE_SOLO_SEGUIMIENTO',
+        ForbiddenException,
+        'Los Residentes solo dan seguimiento: las imágenes las agrega la torre que atiende',
+      );
+    }
+
+    // La imagen es evidencia del dueño, del asignado o de la torre que atiende.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
+    if (!MIMES_ADJUNTO.includes(dto.mime)) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'MIME_NO_PERMITIDO',
+        BadRequestException,
+        `Formato no permitido (${dto.mime}). Usa JPG, PNG, WebP o GIF`,
+      );
+    }
+
+    // El tamaño ya no lo declara el cliente (review PR #17): se DERIVA del
+    // base64 recibido (≈ 3/4 de la longitud) — nada de 1.5 sobre columna Int.
+    const bytesDecodificados = Math.floor((dto.datos.length * 3) / 4);
+    if (bytesDecodificados > MAX_BYTES_DECODIFICADOS_ADJUNTO) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'ADJUNTO_MUY_GRANDE',
+        BadRequestException,
+        'La imagen excede el máximo de 2 MB',
+      );
+    }
+
+    // La firma del contenido debe corresponder con el mime: nada de un PDF
+    // mendigando pasar por PNG.
+    const firmaReal = Buffer.from(dto.datos.slice(0, 16), 'base64');
+    if (!ADJUNTO_FIRMAS[dto.mime]?.(firmaReal)) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'ADJUNTO_CORRUPTO',
+        BadRequestException,
+        'El contenido del archivo no corresponde al formato declarado',
+      );
+    }
+
+    // Carrera cerrada (review PR #17): conteo + insert en UNA transacción con
+    // lock advisory por incidente — dos adjuntos simultáneos no cruzan el tope.
+    const adjunto = await this.prisma.$transaction(async (tx: any) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+      const total = await tx.reportes_adjuntos.count({ where: { reporte_id: id } });
+      if (total >= MAX_ADJUNTOS) return null;
+      return tx.reportes_adjuntos.create({
+        data: {
+          id: randomUUID(),
+          reporte_id: id,
+          nombre: dto.nombre.trim() || 'imagen',
+          mime: dto.mime,
+          tamano: bytesDecodificados,
+          datos: dto.datos,
+        },
+      });
+    });
+    if (adjunto === null) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'LIMITE_ADJUNTOS',
+        BadRequestException,
+        `El incidente ya tiene ${MAX_ADJUNTOS} imágenes`,
+      );
+    }
+
+    await this.auditService.log({
+      action: AuditAction.REPORTE_ADJUNTO,
+      entityType: 'reportes_campo',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        adjuntoId: adjunto.id,
+        codigo: existente.codigo,
+        nombre: adjunto.nombre,
+        tamano: adjunto.tamano,
+      },
+    });
+
+    return this.serializeAdjunto(adjunto);
   }
 
   // ────────────────────────────────────────────
@@ -531,6 +1145,17 @@ export class ReportesCampoService {
         'REPORTE_NO_ENCONTRADO',
         NotFoundException,
         `Reporte de campo con id "${id}" no encontrado`,
+      );
+    }
+
+    // Eliminar respeta el mismo ámbito que el listado (dueño/asignado/torre/admin/residente).
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ELIMINADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
       );
     }
 
@@ -554,187 +1179,37 @@ export class ReportesCampoService {
   }
 
   // ────────────────────────────────────────────
-  //  FACTURAR (reporte RESUELTO → CxC, O5)
+  //  ESTADÍSTICAS (alimentan las tarjetas — con el mismo árbol del usuario)
   // ────────────────────────────────────────────
-  /**
-   * Cierra el reporte de campo facturado y hace nacer la CxC en una sola
-   * transacción: estado FACTURADO (guard anti doble clic) + cuenta por cobrar
-   * PENDIENTE a 30 días. Emite los audits REPORTE_CAMPO_FACTURADO +
-   * CXC_CREADA (SUCCESS). Permiso: operaciones.reportes_campo.editar
-   */
-  async facturar(id: string, userId: string) {
-    const reporte = await this.prisma.reportes_campo.findFirst({
-      where: { id, eliminado_en: null },
-    });
+  async findStats(userId: string) {
+    const baseWhere: Prisma.reportes_campoWhereInput = { eliminado_en: null };
+    await this.aplicarAmbito(baseWhere, userId);
 
-    if (!reporte) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'REPORTE_NO_ENCONTRADO',
-        NotFoundException,
-        `Reporte de campo con id "${id}" no encontrado`,
-      );
-    }
-
-    if (reporte.estado !== EstadoReporteCampo.RESUELTO) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'REPORTE_NO_RESUELTO',
-        ConflictException,
-        `Solo los reportes Resueltos pueden facturarse (estado actual: ${ESTADO_LABELS[reporte.estado as EstadoReporteCampo]})`,
-      );
-    }
-
-    if (!reporte.cliente_id || !reporte.monto_servicio) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'DATOS_FACTURACION_INCOMPLETOS',
-        ConflictException,
-        'El reporte necesita cliente y monto de servicio para facturarse',
-      );
-    }
-    const clienteId = reporte.cliente_id;
-    const monto = Number(reporte.monto_servicio);
-
-    const cliente = await this.prisma.clientes.findFirst({
-      where: { id: clienteId, activo: true, eliminado_en: null },
-      select: { id: true },
-    });
-    if (!cliente) {
-      return this.fallir(
-        AuditAction.REPORTE_CAMPO_FACTURADO,
-        id,
-        'CLIENTE_INACTIVO',
-        ConflictException,
-        'El cliente del reporte está inactivo',
-      );
-    }
-
-    const proyectoId = reporte.proyecto_id ?? null;
-    const now = new Date();
-    const vencimiento = new Date();
-    vencimiento.setDate(vencimiento.getDate() + 30);
-    const idCxc = randomUUID();
-
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        // Guard anti doble clic: solo marca FACTURADO la fila que sigue RESUELTO.
-        const actualizada = await tx.reportes_campo.updateMany({
-          where: { id, estado: EstadoReporteCampo.RESUELTO },
-          data: { estado: EstadoReporteCampo.FACTURADO, actualizado_por: userId, actualizado_en: now },
-        });
-        if (actualizada.count === 0) {
-          throw new ConflictException('El reporte ya fue facturado');
-        }
-
-        await tx.cuentas_por_cobrar.create({
-          data: {
-            id: idCxc,
-            cliente_id: clienteId,
-            proyecto_id: proyectoId,
-            monto,
-            fecha_vencimiento: vencimiento,
-            estado: 'PENDIENTE',
-            activo: true,
-            actualizado_en: now,
-          },
-        });
-      });
-    } catch (e) {
-      // Carrera de doble clic: el updateMany no marcó nada → conflicto con audit FAIL.
-      if (e instanceof ConflictException) {
-        return this.fallir(
-          AuditAction.REPORTE_CAMPO_FACTURADO,
-          id,
-          'REPORTE_YA_FACTURADO',
-          ConflictException,
-          'El reporte ya fue facturado',
-        );
-      }
-      throw e;
-    }
-
-    await this.auditService.log({
-      action: AuditAction.REPORTE_CAMPO_FACTURADO,
-      entityType: 'reportes_campo',
-      entityId: id,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      newValue: { codigo: reporte.codigo, monto, proyectoId, cuentaId: idCxc },
-    });
-
-    await this.auditService.log({
-      action: AuditAction.CXC_CREADA,
-      entityType: 'cuentas_por_cobrar',
-      entityId: idCxc,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      newValue: {
-        reporteId: id,
-        codigo: reporte.codigo,
-        monto,
-        proyectoId,
-        vencimiento: vencimiento.toISOString().slice(0, 10),
-      },
-    });
-
-    return {
-      cuenta: {
-        id: idCxc,
-        reporteId: id,
-        codigo: reporte.codigo,
-        clienteId: reporte.cliente_id,
-        proyectoId,
-        monto,
-        fechaVencimiento: vencimiento.toISOString().slice(0, 10),
-        estado: 'PENDIENTE',
-      },
-      reporte: { id, codigo: reporte.codigo, estado: 'Facturado' },
-    };
-  }
-
-  // ────────────────────────────────────────────
-  //  ESTADÍSTICAS (alimentan las tarjetas y el banner)
-  // ────────────────────────────────────────────
-  async findStats() {
-    const baseWhere = { eliminado_en: null };
-
-    const [pendientes, enRevision, atendidos, resueltos, criticosActivos, porAreaRaw] =
-      await Promise.all([
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.PENDIENTE },
-        }),
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.EN_REVISION },
-        }),
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.ATENDIDO },
-        }),
-        this.prisma.reportes_campo.count({
-          where: { ...baseWhere, estado: EstadoReporteCampo.RESUELTO },
-        }),
-        this.prisma.reportes_campo.count({
-          where: {
-            ...baseWhere,
-            tipo: TipoReporteCampo.INCIDENTE,
-            prioridad: { in: [Prioridad.ALTA, Prioridad.CRITICA] },
-            estado: { not: EstadoReporteCampo.RESUELTO },
-          },
-        }),
-        // Desglose por área (tipo de reporte): alimenta los chips de filtro.
-        this.prisma.reportes_campo.groupBy({
-          by: ['tipo'],
-          where: baseWhere,
-          _count: true,
-        }),
-      ]);
+    const [nuevos, enCurso, cerrados, criticosActivos, porAreaRaw] = await Promise.all([
+      this.prisma.reportes_campo.count({
+        where: { ...baseWhere, estado: EstadoIncidente.NUEVO },
+      }),
+      this.prisma.reportes_campo.count({
+        where: { ...baseWhere, estado: EstadoIncidente.EN_CURSO },
+      }),
+      this.prisma.reportes_campo.count({
+        where: { ...baseWhere, estado: EstadoIncidente.CERRADO },
+      }),
+      this.prisma.reportes_campo.count({
+        where: {
+          ...baseWhere,
+          tipo: TipoReporteCampo.INCIDENTE,
+          prioridad: { in: [Prioridad.ALTA, Prioridad.CRITICA] },
+          estado: { not: EstadoIncidente.CERRADO },
+        },
+      }),
+      // Desglose por área (tipo de reporte): alimenta los chips de filtro.
+      this.prisma.reportes_campo.groupBy({
+        by: ['tipo'],
+        where: baseWhere,
+        _count: true,
+      }),
+    ]);
 
     const porArea: Record<string, number> = {};
     for (const agregado of porAreaRaw) {
@@ -742,15 +1217,67 @@ export class ReportesCampoService {
       porArea[label] = agregado._count;
     }
 
-    return { pendientes, enRevision, atendidos, resueltos, criticosActivos, porArea };
+    return {
+      nuevos,
+      enCurso,
+      cerrados,
+      criticosActivos,
+      porArea,
+    };
   }
 
-  // ────────────────────────────────────────────
-  //  PRIVADOS
-  // ────────────────────────────────────────────
+  // ════════════════════════════════════════════
+  //  HELPERS PRIVADOS
+  // ════════════════════════════════════════════
 
-  /** Audita un fallo de negocio y lanza la excepción correspondiente. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /**
+   * Ámbito de un ACCESO DIRECTO por id — las mismas reglas del listado
+   * (aplicarAmbito), aplicadas por método: admin (nivel≥100) pasa; el dueño
+   * del reporte pasa; el asignado pasa; el Residente solo si es reporte de
+   * su equipo (su jefe_user_id); si no, la torre de quien consulta debe
+   * coincidir con la categoría del reporte; sin torre, solo dueño.
+   * Devuelve true si el acceso procede — false lo trata el caller con `fallir`.
+   */
+  private async enAmbito(
+    reporte: { usuario_id: string | null; categoria: CategoriaReporte | null; asignado_a_id: string | null },
+    userId: string,
+  ): Promise<boolean> {
+    if (reporte.usuario_id === userId || reporte.asignado_a_id === userId) return true;
+
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        torre: true,
+        users_roles_users_roles_user_idTousers: {
+          select: { roles: { select: { nivel: true, torre: true, nombre: true } } },
+        },
+      },
+    });
+    const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
+    if (Math.max(0, ...usuarioRoles.map((ur: { roles: { nivel: number } }) => ur.roles.nivel)) >= 100) {
+      return true; // Administrador: acceso total
+    }
+
+    if (usuarioRoles.some((ur: { roles: { nombre: string } }) => ur.roles.nombre === 'Residente')) {
+      // Residente: los reportes de SUS trabajadores (a su cargo); el propio ya
+      // quedó cubierto por usuario_id arriba.
+      const subordinados = await this.prisma.users.findMany({
+        where: { jefe_user_id: userId, eliminado_en: null },
+        select: { id: true },
+      });
+      return subordinados.some((s: { id: string }) => s.id === reporte.usuario_id);
+    }
+
+    const torre = user?.torre ?? usuarioRoles.filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => b.roles.nivel - a.roles.nivel)[0]?.roles.torre ?? null;
+    if (torre) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return reporte.categoria === (torre as any);
+    }
+    return false; // Trabajador sin torre: solo sus propios reportes
+  }
+
   private async fallir<A extends new (message: string) => any>(
     action: AuditAction,
     entityId: string | null,
@@ -811,34 +1338,202 @@ export class ReportesCampoService {
     return obra.id;
   }
 
+  // (resolverMaquina/resolverObra eliminados — la ubicación es solo el área destino;
+  //  obra_texto queda 'Sin obra asociada' en BD por el default del schema.)
+
+  /**
+   * Resuelve la torre ("misma área") del reportante:
+   *   user.torre (sobrescribe) → torre del rol principal → ADMINISTRATIVO.
+   */
+  private async resolverTorreDelUsuario(userId: string): Promise<CategoriaReporte> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        torre: true,
+        users_roles_users_roles_user_idTousers: {
+          select: { es_principal: true, roles: { select: { torre: true } } },
+        },
+      },
+    });
+    const propia = user?.torre ?? null;
+    if (propia) return propia;
+    const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
+    const conTorre = usuarioRoles
+      .filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => Number(b.es_principal) - Number(a.es_principal))[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (conTorre?.roles.torre as any) ?? CategoriaReporte.ADMINISTRATIVO;
+  }
+
+  /** Fecha/hora automáticas al registrar (no las captura el usuario). */
+  private fechaDelMomento(): Date {
+    return new Date();
+  }
+
+  /**
+   * Hora de la jornada anclada a UTC (misma convención que `trabajadores.horaAUtc`):
+   * la pared del reloj se toma en America/Mexico_City (fijo por TZ en main.ts, pero
+   * anclada EXPLÍCITA en Intl para no depender de la TZ del servidor ni de los
+   * offsets HISTÓRICOS de 1970 en la tz database — el patrón `1970-01-01THH:mm:00`
+   * desfavorecía 1 h) y se guarda como parts UTC: hora → '1970-01-01THH:mm:ssZ'.
+   */
+  private horaDelMomento(fecha: Date = new Date()): Date {
+    const partes = new Intl.DateTimeFormat('es-MX', {
+      timeZone: 'America/Mexico_City',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(fecha);
+    const valor = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value ?? 0);
+    const hh = valor('hour') % 24;
+    const mm = valor('minute');
+    const ss = valor('second');
+    return new Date(Date.UTC(1970, 0, 1, hh, mm, ss));
+  }
+
+  /**
+   * Ubicación GPS ("mi ubicación actual"): ambos o ninguno; y no se mezclan
+   * proyecto + GPS en el mismo incidente.
+   */
+  private async validarUbicacionGps(
+    dto: { latitud?: number; longitud?: number; proyectoId?: string },
+    action: AuditAction,
+    entityId: string | null,
+  ): Promise<void> {
+    const gpsParcial = (dto.latitud == null) !== (dto.longitud == null);
+    if (gpsParcial || (dto.proyectoId && dto.latitud != null)) {
+      await this.fallir(
+        action,
+        entityId,
+        'UBICACION_INVALIDA',
+        BadRequestException,
+        'Ubica el incidente con proyecto o GPS (lat/long), un solo modo y completo',
+      );
+    }
+  }
+
+  /**
+   * Valida que el proyecto exista y esté EN_PROCESO — reports solos ápuntan a
+   * proyectos en curso (tabla proyectos; la tabla obras queda fuera del flujo).
+   */
+  private async resolverProyecto(
+    proyectoId: string,
+    action: AuditAction,
+    entityId: string | null,
+  ): Promise<string> {
+    const proyecto = await this.prisma.proyectos.findFirst({
+      where: { id: proyectoId, eliminado_en: null, estado: 'EN_PROCESO' },
+      select: { id: true },
+    });
+    if (!proyecto) {
+      return this.fallir(
+        action,
+        entityId,
+        'PROYECTO_NO_EN_PROCESO',
+        BadRequestException,
+        `Proyecto con id "${proyectoId}" no encontrado o no está EN_PROCESO`,
+      );
+    }
+    return proyecto.id;
+  }
+
+  /** Autor visible de la actividad: persona asignada, quien reporta o usuario autenticado. */
+  private nombreActor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    reporte: any,
+    userId: string,
+  ): string {
+    const asignado = reporte.asignado_a?.nombre ?? reporte.asignado_nombre;
+    return asignado ?? reporte.usuario ?? userId;
+  }
+
+  /**
+   * Valida que la subcategoría exista, esté activa y pertenezca a la categoría
+   * (torre) declarada — si no, audita FAIL y lanza.
+   */
+  private async validarSubcategoria(
+    categoria: CategoriaReporte | null,
+    subcategoriaId: string | undefined,
+    action: AuditAction,
+    entityId: string | null,
+  ): Promise<void> {
+    if (!subcategoriaId) return;
+
+    const subcategoria = await this.prisma.subcategorias_reporte.findFirst({
+      where: { id: subcategoriaId, activo: true },
+      select: { categoria: true },
+    });
+
+    if (!subcategoria) {
+      await this.fallir(
+        action,
+        entityId,
+        'SUBCATEGORIA_NO_ENCONTRADA',
+        BadRequestException,
+        `Subcategoría con id "${subcategoriaId}" no encontrada`,
+      );
+    }
+
+    if (categoria && subcategoria!.categoria !== categoria) {
+      await this.fallir(
+        action,
+        entityId,
+        'SUBCATEGORIA_INVALIDA',
+        BadRequestException,
+        `La subcategoría no pertenece a la categoría ${CATEGORIA_LABELS[categoria] ?? categoria}`,
+      );
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private serializeAdjunto(adjunto: any) {
+    return {
+      id: adjunto.id,
+      nombre: adjunto.nombre,
+      mime: adjunto.mime,
+      tamano: adjunto.tamano,
+      datos: adjunto.datos,
+      creadoEn: adjunto.creado_en.toISOString(),
+    };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(reporte: any) {
     return {
       id: reporte.id,
       codigo: reporte.codigo,
       tipo: TIPO_LABELS[reporte.tipo as TipoReporteCampo] ?? reporte.tipo,
+      categoria:
+        reporte.categoria != null
+          ? (CATEGORIA_LABELS[reporte.categoria] ?? reporte.categoria)
+          : null,
+      subcategoriaId: reporte.subcategoria_id,
+      subcategoria: reporte.subcategoria?.nombre ?? null,
       usuario: reporte.usuario,
       usuarioId: reporte.usuario_id,
-      maquinaId: reporte.maquina_id,
-      maquinaCodigo: reporte.maquinas?.codigo ?? null,
-      maquinaNombre: reporte.maquinas?.nombre ?? null,
-      obraId: reporte.obra_id,
-      obra: reporte.obra_texto,
-      clienteId: reporte.cliente_id,
-      cliente: reporte.clientes?.nombre ?? null,
       proyectoId: reporte.proyecto_id,
       proyecto: reporte.proyectos?.nombre ?? null,
-      montoServicio: reporte.monto_servicio != null ? Number(reporte.monto_servicio) : null,
+      proyectoDireccion: reporte.proyectos
+        ? (
+            [reporte.proyectos.calle, reporte.proyectos.colonia, reporte.proyectos.ciudad]
+              .filter(Boolean)
+              .join(', ') || null
+          )
+        : null,
+      latitud: reporte.latitud != null ? Number(reporte.latitud) : null,
+      longitud: reporte.longitud != null ? Number(reporte.longitud) : null,
       fecha:
         reporte.fecha instanceof Date
           ? reporte.fecha.toISOString().split('T')[0]
           : String(reporte.fecha).split('T')[0],
       hora:
         reporte.hora instanceof Date
-          ? reporte.hora.toTimeString().slice(0, 5)
+          ? reporte.hora.toISOString().slice(11, 16)
           : String(reporte.hora).slice(0, 5),
       descripcion: reporte.descripcion,
-      estado: ESTADO_LABELS[reporte.estado as EstadoReporteCampo] ?? reporte.estado,
+      estado: ESTADO_LABELS[reporte.estado as EstadoIncidente] ?? reporte.estado,
       prioridad:
         reporte.prioridad != null
           ? PRIORIDAD_LABELS[reporte.prioridad as Prioridad]
@@ -847,7 +1542,7 @@ export class ReportesCampoService {
       asignadoANombre: reporte.asignado_a?.nombre ?? reporte.asignado_nombre ?? null,
       asignadoAPuesto: reporte.asignado_a?.puesto ?? null,
       asignadoEn: reporte.asignado_en?.toISOString?.() ?? reporte.asignado_en ?? null,
-      resueltoEn: reporte.resuelto_en?.toISOString?.() ?? reporte.resuelto_en ?? null,
+      cerradoEn: reporte.cerrado_en?.toISOString?.() ?? reporte.cerrado_en ?? null,
       detalles: reporte.detalles,
       activo: reporte.activo,
       creadoEn: reporte.creado_en?.toISOString?.() ?? reporte.creado_en,

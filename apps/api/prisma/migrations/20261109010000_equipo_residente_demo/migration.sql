@@ -1,0 +1,4 @@
+-- Equipo demo del residente — RETIRADO de la migración (review PR #17):
+-- migrar era crear cuentas demo con contraseña conocida en producción.
+-- Todo el contenido (personas + users con jefe_user_id + users_roles) vive
+-- en prisma/demo-seed.sql (ejecución manual en dev, hash por variable).

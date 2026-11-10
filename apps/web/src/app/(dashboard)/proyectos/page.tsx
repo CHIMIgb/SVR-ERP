@@ -26,6 +26,8 @@ import {
   type ProyectoCatalogos,
   type ProyectoCreateInput,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -357,7 +359,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear el proyecto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear el proyecto.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear el proyecto.', 'error');
@@ -379,7 +381,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar el proyecto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el proyecto.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el proyecto.', 'error');
@@ -403,7 +405,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar finanzas.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar finanzas.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar finanzas.', 'error');
@@ -424,7 +426,7 @@ export default function ProyectosPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar el proyecto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el proyecto.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar el proyecto.', 'error');
@@ -432,23 +434,6 @@ export default function ProyectosPage() {
       setSubmitting(false);
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
-
-  // ── Barra de progreso por fila ──
-  const renderProgreso = (item: ProyectoDTO) => {
-    const barColor =
-      item.progreso >= 100 ? 'bg-green-500'
-      : item.estado === 'Pausado' ? 'bg-amber-500'
-      : 'bg-primary';
-    return (
-      <div className="flex items-center gap-2 min-w-[120px]">
-        <div className="flex-1 h-2 bg-ui-100 rounded-full overflow-hidden">
-          {/* Width calculada en runtime — excepción permitida */}
-          <div className={`${barColor} h-full rounded-full transition-all`} style={{ width: `${Math.min(100, item.progreso)}%` }} />
-        </div>
-        <span className="text-xs font-black text-ui-600 w-10 text-right">{item.progreso}%</span>
-      </div>
-    );
-  };
 
   // ── Columnas de DataTable ──
   const columns: Column<ProyectoDTO>[] = [
@@ -468,11 +453,6 @@ export default function ProyectosPage() {
       render: (item) => (
         <Badge variant={estadoVariant[item.estado]} size="sm">{item.estado}</Badge>
       ),
-    },
-    {
-      key: 'progreso',
-      header: 'Progreso',
-      render: renderProgreso,
     },
     {
       key: 'ubicacion',
@@ -585,7 +565,8 @@ export default function ProyectosPage() {
         subtitle="Control físico y financiero de obras activas."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Proyecto
             </Button>
           ) : undefined
@@ -598,18 +579,21 @@ export default function ProyectosPage() {
           value={stats.total}
           label="Total Proyectos"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<HardHat className="w-6 h-6" />}
           value={stats.enProceso}
           label="En Proceso"
           color={stats.enProceso > 0 ? 'primary' : 'neutral'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<CheckCircle2 className="w-6 h-6" />}
           value={stats.finalizados}
           label="Finalizados"
           color={stats.finalizados > 0 ? 'success' : 'neutral'}
+        loading={initialLoading}
         />
       </div>
 
@@ -694,11 +678,7 @@ export default function ProyectosPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={registros}

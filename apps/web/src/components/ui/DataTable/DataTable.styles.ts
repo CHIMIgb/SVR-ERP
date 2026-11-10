@@ -13,12 +13,28 @@ export const dataTableClasses = {
   /* ── Header neutro (headerVariant="neutral") ── */
   thNeutral: 'px-3 sm:px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap text-ui-500 bg-ui-50 border-b border-ui-200 first:rounded-tl-xl last:rounded-tr-xl',
 
-  /* ── Body ── */
-  tr: 'border-b border-ui-100 last:border-0 transition-colors',
+  /* Body — separadores por modo (lines): 'bold' (default) con líneas negras en
+     claro y verticales por celda; 'subtle' heredó el trazo default de filas,
+     sin verticales — para tablas densas o de solo lectura. Tokens invertibles
+     con .dark en ambos modos. */
+  lines: {
+    bold: {
+      tr: 'border-b border-ui-900 dark:border-ui-200 last:border-0 transition-colors',
+      td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-ui-700 whitespace-nowrap border-l border-ui-900 dark:border-ui-100 first:border-l-0',
+    },
+    subtle: {
+      tr: 'border-b border-ui-100 last:border-0 transition-colors',
+      td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-ui-700 whitespace-nowrap',
+    },
+  },
+
+  /* Compatibilidad: llaves previas (bold) para usos directos de dataTableClasses */
+  tr: 'border-b border-ui-900 dark:border-ui-200 last:border-0 transition-colors',
+  td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-ui-700 whitespace-nowrap border-l border-ui-900 dark:border-ui-100 first:border-l-0',
   trInteractive: 'hover:bg-ui-50/80 cursor-pointer focus-visible:outline-none focus-visible:bg-ui-100',
   trEven: 'bg-surface',
   trOdd: 'bg-ui-50/30',
-  td: 'px-3 sm:px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-ui-700 whitespace-nowrap',
+  tdTruncate: 'overflow-hidden text-ellipsis',
   tdRight: 'text-right',
   tdCenter: 'text-center',
 

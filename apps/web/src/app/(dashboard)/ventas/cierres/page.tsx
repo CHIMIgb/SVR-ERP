@@ -22,6 +22,8 @@ import {
   type CierreVentaDTO,
   type QueryCierresDto,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -176,7 +178,7 @@ export default function CierresCajaPage() {
         showToast('Cierre aprobado correctamente.', 'success');
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'No se pudo aprobar el cierre.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo aprobar el cierre.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -203,7 +205,7 @@ export default function CierresCajaPage() {
         setSelectedCierre(null);
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'No se pudo rechazar el cierre.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo rechazar el cierre.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -341,18 +343,21 @@ export default function CierresCajaPage() {
           value={`${stats.total} cierres`}
           label="Total Registrados"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<CheckCircle2 className="w-6 h-6" />}
           value={`${stats.aprobados} aprobados`}
           label="Aprobados"
           color={stats.aprobados > 0 ? 'success' : 'neutral'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<AlertTriangle className="w-6 h-6" />}
           value={`${stats.pendientes} pendientes`}
           label="Pendientes de Aprobación"
           color={stats.pendientes > 0 ? 'warning' : 'success'}
+        loading={initialLoading}
         />
       </div>
 
@@ -446,11 +451,7 @@ export default function CierresCajaPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={cierres}

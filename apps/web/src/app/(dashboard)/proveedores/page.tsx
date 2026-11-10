@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
@@ -23,7 +22,7 @@ import {
   type ProveedorDTO, type OrdenCompraDTO, type EstadoCuentaResumenDTO,
   type LedgerDetalleDTO, type EstadoOrdenApi, type ArticuloInventarioDTO,
 } from '@/lib/api';
-
+import { mensajeErrorApi } from '@/lib/api';
 // ─── Tipos UI ────────────────────────────────────────────────────────────────
 type CategoriaProveedor = 'Refacciones' | 'Combustible' | 'Materiales' | 'Servicios' | 'Otros';
 type EstadoOrden = 'Pendiente' | 'Aprobada' | 'Recibida' | 'Cancelada';
@@ -346,7 +345,7 @@ export default function ProveedoresPage() {
         setProvModal(false);
         refetchAll();
       } else {
-        showToast(res.error?.details?.join(' · ') || res.error?.message || 'Error al guardar proveedor.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al guardar proveedor.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -365,7 +364,7 @@ export default function ProveedoresPage() {
         setDeleteProv(null);
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al eliminar proveedor.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar proveedor.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -413,7 +412,7 @@ export default function ProveedoresPage() {
         setOcForm(emptyOcForm);
         refetchAll();
       } else {
-        showToast(res.error?.details?.join(' · ') || res.error?.message || 'Error al crear la orden.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la orden.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -446,7 +445,7 @@ export default function ProveedoresPage() {
         setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' });
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al registrar el abono.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar el abono.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -483,7 +482,7 @@ export default function ProveedoresPage() {
           setMotivoCancelacion('');
           refetchAll();
         } else {
-          showToast(res.error?.message || 'Error al cambiar el estado.', 'error');
+          showToast(mensajeErrorApi(res.error, 'Error al cambiar el estado.'), 'error');
         }
       } catch {
         showToast('No se pudo conectar con el servidor.', 'error');
@@ -504,7 +503,7 @@ export default function ProveedoresPage() {
         setDeleteOC(null);
         refetchAll();
       } else {
-        showToast(res.error?.message || 'Error al eliminar la orden.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la orden.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -520,7 +519,7 @@ export default function ProveedoresPage() {
     try {
       const res = await proveedoresApi.ledger(r.proveedorId);
       if (!res.success) {
-        showToast(res.error?.message || 'Error al cargar el estado de cuenta.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al cargar el estado de cuenta.'), 'error');
         return;
       }
       setLedger(res.data);
@@ -795,10 +794,10 @@ export default function ProveedoresPage() {
         action={
           puedeCrear ? (
             <div className="flex flex-wrap gap-3">
-              <Button variant="primary" icon={<FileText className="w-4 h-4" />} onClick={() => { setOcForm(emptyOcForm); setOcModal(true); }}>
+              <Button skeleton={initialLoading} variant="primary" icon={<FileText className="w-4 h-4" />} onClick={() => { setOcForm(emptyOcForm); setOcModal(true); }}>
                 Nueva Orden
               </Button>
-              <Button variant="outline" icon={<Plus className="w-4 h-4" />} onClick={openCreateProv}>
+              <Button skeleton={initialLoading} variant="outline" icon={<Plus className="w-4 h-4" />} onClick={openCreateProv}>
                 Proveedor
               </Button>
             </div>
@@ -813,18 +812,21 @@ export default function ProveedoresPage() {
           value={formatCurrency(stats.porPagar)}
           label="Por Pagar"
           color={stats.porPagar > 0 ? 'error' : 'success'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ClipboardList className="w-6 h-6" />}
           value={`${stats.ordenesActivas} activas`}
           label="Órdenes Activas"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ShoppingCart className="w-6 h-6" />}
           value={formatCurrency(stats.totalCompras)}
           label="Total Compras"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 
@@ -882,26 +884,18 @@ export default function ProveedoresPage() {
                 filters={filterFields}
                 values={filterValues}
                 onChange={handleFilterChange}
-                onClear={handleClearFilters}
+               
               />
             )}
 
-            {initialLoading ? (
-              <EmptyState title="Cargando proveedores..." subtitle="Espera un momento." />
-            ) : proveedores.length === 0 ? (
-              <EmptyState
-                title="Sin proveedores"
-                subtitle="No se encontraron proveedores para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={proveedorColumns}
                   data={proveedores}
                   keyExtractor={(p) => p.id}
-                  emptyText="No se encontraron proveedores."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading}
+              emptyText="No se encontraron proveedores para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationProv.page}
                   totalPages={paginationProv.totalPages}
@@ -909,8 +903,6 @@ export default function ProveedoresPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchProveedores(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -952,26 +944,18 @@ export default function ProveedoresPage() {
                 filters={filterFields}
                 values={filterValues}
                 onChange={handleFilterChange}
-                onClear={handleClearFilters}
+               
               />
             )}
 
-            {initialLoading ? (
-              <EmptyState title="Cargando órdenes..." subtitle="Espera un momento." />
-            ) : ordenes.length === 0 ? (
-              <EmptyState
-                title="Sin órdenes de compra"
-                subtitle="No se encontraron órdenes para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={ordenColumns}
                   data={ordenes}
                   keyExtractor={(o) => o.id}
-                  emptyText="No se encontraron órdenes de compra."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading}
+              emptyText="No se encontraron órdenes para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationOC.page}
                   totalPages={paginationOC.totalPages}
@@ -979,8 +963,6 @@ export default function ProveedoresPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchOrdenes(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -1022,27 +1004,18 @@ export default function ProveedoresPage() {
                 filters={filterFields}
                 values={filterValues}
                 onChange={handleFilterChange}
-                onClear={handleClearFilters}
+               
               />
             )}
 
-            {resumenFiltrado.length === 0 ? (
-              <EmptyState
-                title="Sin estados de cuenta"
-                subtitle="No se encontraron proveedores con operaciones para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <p className="text-xs text-ui-500 font-medium">
-                  Usa el botón <span className="font-bold">Ver</span> de cada proveedor para consultar su estado de cuenta completo (saldo corrido por operación).
-                </p>
-                <DataTable
+            <DataTable
                   columns={estadoResumenColumns}
                   data={resumenPagina}
                   keyExtractor={(r) => r.proveedorId}
-                  emptyText="Sin proveedores con operaciones."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading}
+              emptyText="No se encontraron proveedores con operaciones para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={pageEstados}
                   totalPages={totalPagesEstados}
@@ -1050,8 +1023,6 @@ export default function ProveedoresPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={setPageEstados}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
       </Tabs>
@@ -1541,6 +1512,7 @@ export default function ProveedoresPage() {
                     columns={ledgerColumns}
                     data={ledger.movimientos}
                     keyExtractor={(r) => r.folio}
+                    loading={!ledger}
                     emptyText="Sin operaciones registradas."
                     maxBodyHeight="320px"
                   />

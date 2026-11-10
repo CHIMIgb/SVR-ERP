@@ -29,6 +29,25 @@
 | §10 | Futuro — Fecha de vencimiento en CxP |
 | §11 | **Plataforma, POS y experiencia (NUEVO):** **F1** notificaciones · **F2** loaders/skeletons · **F3** validación en todos los formularios · **F4** comprobación de flujos de datos Operaciones/Comercial · **F5** configuración de POS (horario de caja + categorías visibles) · **F6** seeds demo de todos los workflows |
 
+### Orden de ejecución por dificultad (meta: revisión del martes)
+
+> Vista de prioridad para la ejecución — el detalle de cada tarea vive en su sección
+> (índice de arriba). Regla del orden: fácil→difícil Y visibilidad en la demo del
+> martes. Rama de trabajo: `plataforma-experiencia`.
+
+| Tier | Tareas (de la más fácil a la más difícil) | Sección |
+|------|-------------------------------------------|---------|
+| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix físico espera "go") · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · ✅ **7. P4b** venta POS descuenta inventario — REALIZADO 2026-11-08 (guard anti-carrera + movimientos SALIDA `Venta POS`; ver §3 P4b) · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
+
+> Nota (2026-11-08): el bug `/inventario` al filtrar por categoría (`categoriaId must be
+> a UUID`) se resolvió — los IDs pseudo-UUID de las categorías/unidades del seed de
+> unificar_ventas_inventario violaban el RFC 4122; corregidos con la migración
+> `20261108000000_fix_uuids_categorias_unidades` (ver historial-cambios del día).
+
+| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
+| 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
+
 ---
 
 ## 0. Fases ejecutadas — ciclo de dinero (plan `implementation_plan copy.md`)
@@ -212,8 +231,21 @@ venta/factura se descarga **`articulos_inventario`** y se registra un
 
 **Hallazgo verificado en schema:** `ventas_items` **ya tiene FK a
 `articulos_inventario`** (`articulo_id`). Es decir, la venta del punto de venta ya
-sabe **qué artículo** vendió — lo que NO hace hoy es descontar stock ni registrar el
-movimiento. Este sub-flujo es implementable **ya**, sin esperar P2 ni P7.
+sabe **qué artículo** vendió — lo que NO hacía era descontar stock ni registrar el
+movimiento.
+
+**Estado (2026-11-08): ✅ REALIZADO** — implementado en `ventas.service.ts`:
+el descuento corre DENTRO de la `$transaction` de la venta con **updateMany
+condicional** (`where: { id, stock: { gte: cantidad } }`) — guard anti-carrera
+contra stock negativo por ventas simultáneas — y por cada línea nace un
+**`movimientos_inventario` SALIDA** con `motivo 'Venta POS'`,
+`referencia_tipo 'VENTA_POS'` y `referencia_id = venta.id`
+(traceable en /inventario). Si el guard no descuenta (carrera), la
+transacción REVERTE la venta completa y responde `STOCK_INSUFICIENTE`
+con auditoría FAIL.
+**Test de idempotencia integración real:** reintentar la venta con la MISMA
+`idempotencia_key` NO duplica descuento (stock queda en 97 tras 98→97,
+1 movimiento únicamente). Specs unitarios 35/35, integración 10/10.
 
 **Cómo se aplicará:**
 1. **`ventas.service.ts`** — en la `$transaction` que registra la venta, por cada
@@ -362,6 +394,57 @@ medida base para evitar que la vista de inventario y el POS se desincronicen.
 > sumar/validar por artículo), para que el POS descuente existencias correctas por unidad
 > de venta. Esta separación es un requisito colateral de P7, no parte de la edición de
 > precios.
+
+---
+
+### P9 — Retiro futuro del campo "prioridad" en /reportes (idea del cliente)
+
+**Estado:** campo `prioridad` ACTIVO hoy en el alta/lista de `/reportes`, pero con
+vía de retiro planeada. **Regla acordada (2026-11-08):** cuando la empresa termine
+de poblar las **subcategorías por torre**, estas se **agruparán por un nivel de
+prioridad** y el incidente llevará su prioridad **de forma automática** derivada de
+la subcategoría — el campo manual se elimina del alta (y de la columna en la
+tabla). Relación con lo ya documentado: subcategorías por torre en
+`subcategorias_reporte` (§3 P7), y las torres vinculan con los roles
+(`roles.torre`).
+
+**Cómo se aplicará (futuro):**
+1. Agregar `nivel_prioridad` (o el nombre que se defina) al catálogo
+   `subcategorias_reporte` y poblarlo por subcategoría con la empresa.
+2. Derivar la prioridad en el alta: `create` guarda `prioridad` según la
+   subcategoría elegida (sin campo manual); en el listado mostrarla como hoy
+   (columna/celda) pero de solo lectura.
+3. Retirar el select de prioridad del alta y del detalle de /reportes.
+4. Historia conservada: los reportes antiguos mantienen su `prioridad`
+   capturada a mano.
+
+---
+
+### P10 — Equipos por residente: la relación jefe↔trabajador (parcial, 2026-11-08)
+
+**Lo que YA EXISTE en la DB (funcionando):**
+- Columna **`users.jefe_user_id`** (FK self a `users`, índice, `ON DELETE SET NULL`)
+  — dice qué usuario es **jefe/residente de cada trabajador** (usuario↔usuario;
+  **no** va por `trabajadores` ni `trabajadores_proyectos`). Asignación demo:
+  `trabajador@`, `pedro.chofer@` y `luis.operador@` a cargo de `residente@`.
+- **Scope de /reportes implementado** (`aplicarAmbito`): los Residentes ven los
+  reportes **levatados por sus trabajadores** (`jefe_user_id = yo`) + los suyos;
+  y pueden dar seguimiento (aceptar/cerrar-como-admin/comentar/adjuntar según
+  permisos).
+
+**Lo que NO existe todavía (documentado como punto de trabajo):**
+- **No hay UI ni endpoint para asignar el jefe** — hoy es solo SQL (`UPDATE users
+  SET jefe_user_id = …`). Cuando se construya el **panel de usuarios**, la misma
+  columna se expone ahí con un select de residentes para cada trabajador.
+- **El vínculo es usuario↔usuario**: no va por la tabla `trabajadores` ni por
+  `trabajadores_proyectos` (worker↔proyecto). Si el negocio prefiere asignar
+  trabajadores **por proyecto** al residente (y que el residente herede los
+  reportes de todos los de esa obra), es la variante B: `proyectos.residente_id`
+  + scope por `trabajadores_proyectos` — pendiente de confirmar con el cliente.
+- **Fallback ya implementado:** cualquier trabajador **sin jefe asignado** solo ve
+  sus propios reportes (nadie más los ve, salvo Admin).
+- El mismo mecanismo (`jefe_user_id`) sirve para cualquier rol con subordinados
+  (p. ej. administrativos que supervisan personal de oficina) sin cambios.
 
 ---
 
@@ -606,7 +689,58 @@ la curva S con datos reales en vez del mock.
 - **Hoy:** CRUD por API. **Actualización 2026-11-06:** el `ProjectDetailsModal`
   ("Ver detalle") está detallado abajo; sigue filtrando mock de `@/lib/data`
   (**único residuo** junto a `MachineCard`/dashboard/gps/documentos).
-- **Flujo pendiente:**
+- **Flujo de datos proyecto ↔ obra — HOY (verificado 2026-11-07):** el flujo
+**no existe**; peor, la nomenclatura genera confusión:
+1. La vista `/proyectos` llama "obra" a lo que crea ("Registra una nueva obra...",
+   "Ubicación de la obra") — nomenclatura heredada — pero `proyectos.service.create`
+   solo inserta en la tabla `proyectos` (calles/colonia/ciudad como "ubicación").
+   **No toca `obras`.**
+2. La tabla `obras` (frente físico con `lat/lng/radio_permitido_metros`, que alimentan
+   bitácoras, asistencia GPS y reportes-campo) **no tiene endpoint de creación ni UI**:
+   un `grep` completo confirma que solo la leen catálogos; sus 3 filas vinieron del
+   dump/seed manual.
+3. Consecuencia: los proyectos se registran pero las obras no se generan → el
+   catálogo de `/operaciones`/`/asistencia` queda cojo (solo obras del dump).
+
+**Flujo de datos proyecto ↔ obra — DEBE SER (diseño a implementar en 6.6):**
+1. **Crear proyecto (EN_PROCESO) → nace obra base** en la misma `$transaction`:
+   `obras` hereda `nombre` del proyecto + `proyecto_id` (FK que ya existe), activo,
+   sin ubicación (se captura después para GPS). Con guard idempotente: si al correr
+   de nuevo el proyecto ya tiene obra, no duplica (reutilizable como seed).
+2. **Obras múltiples por proyecto (multi-frente):** un proyecto puede registrar
+   varias obras (p. ej. "Fraccionamiento Valle Sur" → "calle A", "calle B").
+   **Regla del cliente (2026-11-07):** al registrar la primera obra manual del
+   proyecto, la **obra base automática (la que heredó el nombre del proyecto) se
+   retira** (soft-delete `eliminado_en` en la misma transacción) — quedan **solo la
+   obra u obras que el encargado creó**. Registro 0→N: proyecto sin obras manuales
+   muestra la base; con ≥1 manual, solo las manuales.
+3. **Ubicación del botón "Agregar obra": decisión (2026-11-07).** Va como **acción
+   contextual del proyecto** (en las acciones de fila y/o en el modal Ver Detalle,
+   como "Obras (N)"), **NO al lado del botón "Registrar proyecto"**: una obra SIEMPRE
+   nace con un `proyecto_id` — ponerla junto al registro de proyectos permitiría
+   crear obras huérfanas, que es exactamente el bug de hoy. Nace la obra → abre un
+   mini-modal desde el proyecto (nombre del frente + ubicación + radio GPS).
+   Necesita un módulo/endpoint de `obras` con los 4 checkpoints (hoy no existe
+   backend de obras).
+4. **Sincronización de estados:** al marcar proyecto FINALIZADO/PAUSADO, sus obras
+   activas toman el mismo estado en la misma transacción (incluida la base que aún
+   exista) → desaparecen del catálogo de registro de operaciones/horas (termina con
+   el caso "Puente Atizapán" apareciendo con proyecto FINALIZADO).
+5. **Catálogos con filtro por proyecto:** `GET /bitacora/catalogos` (y asistencia)
+   exponen también el `proyecto_id/proyecto nombre` de cada obra para mostrarlos
+   agrupados en el select (obra — proyecto).
+6. **Nomenclatura UI:** actualizar labels de `/proyectos` ("obra" → "proyecto") para
+   que la palabra "obra" queda reservada al frente físico — evita la confusión actual
+   del personal de campo.
+7. **Tests:** unit + integración (obra nace con proyecto, no duplica on re-run,
+   base se retira al crear primera obra manual, estados sincronizados, catálogo
+   filtrado).
+
+**Impacto:** cierra el puente comercial→operación tipo contrato real: proyecto = lo
+que se factura; obra(s) = donde se ejecuta. Sin él, la operación de campo depende de
+inserts manuales (hoy).
+
+**Flujo pendiente:**
   - **Proyecto → Obra(s):** `proyectos` tiene `obras[]`; cerrar el flujo de creación de
     obra desde un proyecto. **Gap confirmado en BD real (2026-11-06):** de los
     **6 proyectos EN_PROCESO, solo 2 tienen obra** (la BD total tiene 3 obras, una en
@@ -614,7 +748,9 @@ la curva S con datos reales en vez del mock.
     registros (`GET /bitacora/catalogos`, obras `estado != FINALIZADA`) solo muestra
     3 — **no es bug de filtro, es falta de obras**. Los proyectos sin obra no reciben
     operaciones hasta que exista la obra → cerrar este flujo (o sembrar obras) es
-    prerrequisito operativo, no cosmético.
+    prerrequisito operativo, no cosmético. Este punto queda aclarado por completo en
+    el flujo "DEBE SER" de arriba (el seed de Tier 0 resuelve el hoy; el flujo 6.6
+    resuelve el futuro).
   - **Proyecto → Despacho de máquina:** `despachos_maquina` cruza `maquina_id +
     proyecto_id + operador_id`; alimentar el detalle del proyecto con las máquinas
     despachadas.
@@ -638,13 +774,11 @@ frente al plan, salud financiera y recursos humanos/flota asignados. Muestra, po
 1. **Migración a API real** (cosen las partes alimentables: finanzas de proyecto,
    personal por proyecto, despachos); los índices CPI/SPI se calculan igual con datos
    reales.
-2. **Contraste en modo oscuro (fix de letras):** el modal usa colores de modo claro
-   hardcodeados (`text-slate-900`, `text-slate-600/500`, `text-slate-400`,
-   fondos `bg-green-100`, `bg-blue-50`, `bg-slate-100`) **sin variantes `dark:`** —
-   en modo oscuro varios textos pierden contraste (títulos casi negros sobre fondo
-   oscuro). La corrección: variantes `dark:` consistentes con el resto del modo
-   oscuro del proyecto para textos y fondos de icono, en TODOS los bloques del
-   modal (FinRow incluido).
+2. ~~Contraste en modo oscuro~~ → ✅ **REALIZADO (2026-11-07, Tier 0 tarea 2):**
+   migración de las 18 clases `slate-*` crudas a **tokens `ui-*`** según la regla
+   oficial de `globals.css` (mismo valor en claro, se invierte en oscuro) + chips de
+   color con `dark:bg-{c}-500/15` / `dark:text-{c}-400` (convención ya usada en
+   `/inventario`). Verificado: `tsc` sin error y sin rastro `slate-*` en el archivo; vista en claro intacta por diseño.
 
 **Workflow entre pantallas:**
 ```
@@ -713,7 +847,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | P1 | Aceptar cot. → Factura + Cuenta por Cobrar | `/cotizaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 3, workflow 01) |
 | P2 | Partidas de cotización (`cotizacion_items`) | `/cotizaciones` (editor interno) | ⏳ Pendiente (`cotizacion_items` no existe en schema — verificado) |
 | P3 | Cotización ↔ Proyecto/obra | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
-| P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | ⏳ Pendiente (**P4b no depende de P2** — `ventas_items.articulo_id` ya cruza a inventario) |
+| P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | **P4b ✅ Realizado 2026-11-08** (updateMany condicional anti-carrera + movimientos SALIDA `VentaPos` + test idempotencia real) · la parte de cotizaciones sigue ⏳ (depende de P2) |
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
 | P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
@@ -727,11 +861,11 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ✅ **Realizado** (`GET /clientes/:id/consolidado` + tabs cuentas/facturas/cobros/cotizaciones). Falta tab de trabajadores por proyecto |
 | 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
 | F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
-| F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ⏳ Pendiente (componentes `LoadingState`/`Skeleton` existen en `@/components/ui`; falta aplicar en vistas con spinners manuales) |
-| F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ⏳ Pendiente (el API ya responde 422 con `details`; falta validación UI y toasts con `details` universalizados) |
-| F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ⏳ Pendiente (ciclo de dinero y OC→stock ya al 100% — ver §11 F4; la matriz detectará qué vista aún come mock) |
+| F2 | Loaders/skeletons estandarizados en todas las vistas | transversal (todas las páginas) | ✅ **Realizado 2026-11-07** (ver §11 F2): `RefreshOverlay` nuevo + 11 overlays consolidados, cargas a pulmón → `LoadingState`/`Skeleton`, paginación siempre visible, KPIs con spinner en el valor, botones con `skeleton`, banners post-carga animados, regla dura en `AGENTS.md` |
+| F3 | Validación consistente en todos los formularios | transversal (todos los modales/create) | ✅ **Realizado 2026-11-07** SOLO en Comercial + Operaciones (ver §11 F3): helper `mensajeErrorApi` en `lib/api.ts` aplicado en 50 toasts de 13 vistas; las demás vistas son de otro dev — el helper ya existe para cuando los toque (regla documentada en `AGENTS.md`) |
+| F4 | Comprobación de flujos de datos Operaciones/Comercial (matriz vista → insumos) | `/operaciones`, `/reportes-campo`, `/criba`, `/inventario`… | ✅ **Análisis realizado 2026-11-07** (matriz completa en §11 F4: 6 cadenas al 100%, 14 gaps mapeados con su habilitador y tarea) |
 | F5 | Config POS: horario de caja que gatee + categorías visibles | `/configuracion` → `/ventas` | ⏳ Pendiente (verificado: `aperturas_caja`/`cierres_caja` NO tienen campos de horario; el gate no existe hoy) |
-| F6 | Seeds demo funcionales de todos los workflows | transversal | ⏳ Pendiente (solo existen `seed-proveedores.ts` y seeds de RBAC) |
+| F6 | Seeds demo funcionales de todos los workflows | transversal | ✅ **Realizado 2026-11-08** (`seed-demo-workflows.ts` idempotente vía servicios oficiales con auditoría; + data fix `turno_cierre 23:00` que bloqueaba el POS; cobertura verificada por psql: venta/retiros/apertura reales, cotizaciones/bitácoras/nóminas con variedad ya existente) |
 
 > **Regla general:** cada flujo se construye cuando el módulo destino está completo,
 > para evitar acoplar a un destino que no existe. El orden sugerido original
@@ -973,10 +1107,13 @@ por audiencia.
 
 ### F2 — Componentes de loader/skeleton estandarizados
 
-**Estado:** ⏳ Pendiente de auditoría + unificación. Los componentes YA EXISTEN en
-`@/components/ui` (`LoadingState`, `Skeleton`, `SkeletonText`, documentados en
-`COMPONENTS.md`) — el problema es que **no todas las vistas los usan**: hay páginas
-que muestran contenido vacío o spinners manuales `Loader2` durante la carga inicial.
+**Estado:** ✅ **REALIZADO (2026-11-07).** La primera impresión de toda vista es
+skeleton (tablas → `DataTable.loading`), spinner en KPIs (`StatsCard.loading`),
+botones con `skeleton`, refetches con `RefreshOverlay` (componente nuevo en ui,
+documentado en `COMPONENTS.md`), banners/alertas post-carga con `fadeScaleIn`,
+y la regla dura completa vive en `AGENTS.md` (Loaders/Skeletons, 7 puntos).
+El delay de demo (`sleepDemo` 3s) se usó durante la demo y **se retiró el mismo
+día** (helper `lib/demo-delay.ts` eliminado).
 
 **Cómo se aplicará:**
 1. **Auditoría:** grep de `Loader2`, `animate-spin`, `nulo estado de carga` en
@@ -990,11 +1127,25 @@ que muestran contenido vacío o spinners manuales `Loader2` durante la carga ini
 
 ### F3 — Validación consistente en todos los formularios existentes
 
-**Estado:** ⏳ Pendiente de unificación. El backend ya cumple su parte: ValidationPipe
+**Estado (actualizado 2026-11-07): ✅ REALIZADO en Comercial + Operaciones** quedarías las
+demás vistas partea otro dev (el hever yá enta disponible en `lib/api.ts` para
+cuando las toque; regla dura documentada en `AGENTS.md` — "Toasts de error").
+
+**Qué se hizo:**
+1. **Helper único `mensajeErrorApi(res.error, fallback)`** en `lib/api.ts`:
+   prioridad `details[].map(String).join(' · ')` → `error.message` → fallback de
+   la vista (seguro con `details: unknown[]`).
+2. **50 toasts reescritos en 13 vistas** (operaciones 3, inventario 4, proyectos
+   4, criba 3, reportes 7, clientes 5, cotizaciones 3 — incluido el fallback con
+   template literal —, facturas 6, cobranza 1, finanzas 3, proveedores 7 — los 2
+   manuales details-join migrados —, ventas 2, cierres 2); `/ventas/corte` no
+   tiene ramas de fallo de API.
+3. Regla única en `AGENTS.md`: prohibido `res.error?.message || ...` a mano.
+
+**Original (para referencia):** el backend ya cumple su parte: ValidationPipe
 global con `whitelist + forbidNonWhitelisted` responde 422 con `details[]`
-(`message = 'Error de validación'`). El problema es el frontend: algunos módulos
-tocados recientemente muestran `details?.join(' · ')` en el toast; el resto de las
-vistas muestra un error genérico o nada.
+(`message = 'Error de validación'`). El problema era el frontend: solo
+/proveedores mostraba los `details`; el resto mostraba error genérico o nada.
 
 **Cómo se aplicará:**
 1. **Auditoría:** inventario de todos los `FormModal` presentes en
@@ -1009,6 +1160,61 @@ vistas muestra un error genérico o nada.
 4. **Tests:** del helper compartido (unit front simple si aplica).
 
 ### F4 — Comprobación de flujos de datos: qué vista de Operaciones/Comercial necesita a cuál
+
+**Estado (2026-11-07): ✅ ANÁLISIS REALIZADO** — la matriz siguiente es la salida
+del audit (estática, verificada contra `schema.prisma`, la BD local y los
+workflows). **Regla de uso: una vista del ERP se considera "al 100%" solo cuando
+TODOS sus insumos tienen fila con ✅ en esta matriz.** Los gaps remiten a la
+tarea del índice que los habilita.
+
+#### Lo que YA está al 100% (cadena cierra end-to-end)
+
+| Flujo | Cadena completa | Ref |
+|---|---|---|
+| Ciclo comercial del dinero | cotización → factura → CxC → cobro → transacción INGRESO (`$transaction` + folio anti-colisión) | workflows 01–03 |
+| Renta facturable | bitácora-renta cerrada → factura → CxC (firma residente gatea) | workflow 02 |
+| Reportes facturables | reporte-campo (máquina de estados) → factura → CxC | PR #15 |
+| Compras → bodega | OC con líneas → recepción → **stock + movimientos en inventario** → CxP → abono → egreso | Fase 7 |
+| Cobranza → tesorería | cobro atómico + reversión compensatoria | workflow 03 |
+| Consolidado de cliente | `/clientes` tabs cotizaciones/facturas/CxC/cobros | restan tab trabajadores×proyecto (6.7) |
+
+#### Matriz de gaps (vista → insumo → estado → habilitador)
+
+**OPERACIONES**
+
+| Vista | Insumo → Fuente | Estado | Habilitador |
+|---|---|---|---|
+| `/operaciones` | obras activas ← tabla `obras` | 🔴 BD con 3 obras; 4 proyectos EN_PROCESO sin obra | seed 4 obras (pendiente "go") + flujo proyecto→obra (Tier 2 #11) |
+| `/operaciones` | catálogo de máquinas sin fallas ← `maquinas` | ✅ 100% | — |
+| `/inventario` | salidas ← venta POS | ⏳ P4b (ventas_items ya cruza) | Tier 1 #7 |
+| `/inventario` | entradas ← producción criba | ⏳ 6.5 | Tier 3 |
+| `/criba` | FK `maquina_id`/`proyecto_id` | ⏳ 6.4 (solo FK trabajadores) | Tier 2 #13 |
+| `/proyectos` | gastos desglosados | ⏳ Fase 3 FLUJO-PROGRESO | Tier 3 (6.8) |
+| `/proyectos` | modal Ver Detalle | 🔴 mock | Tier 2 (6.6, tras flujo obra) |
+| `/reportes` | incidente resuelto → deriva mantenimiento/reporte | ⏳ 6.2 | Tier 2 #12 |
+| `/reportes` | progreso ← metas P8 / transacciones por costo | ⏳ 6.3 | Tier 1 #8 |
+
+**COMERCIAL**
+
+| Vista | Insumo → Fuente | Estado | Habilitador |
+|---|---|---|---|
+| `/cotizaciones` | partidas `cotizacion_items` | ⏳ P2 | Tier 3 |
+| `/cotizaciones` | acción crear proyecto | ⏳ P3 | Tier 3 |
+| `/cotizaciones` | UI: sin botones fantasma | ✅ 2026-11-07 — Aceptar/Rechazar solo en PENDIENTE (antes deshabilitados flotando) | — |
+| `/ventas` | catálogo ← inventario + `articulos_precio` | ✅ (editor de medida = P7) | Tier 3 |
+| `/ventas` | descuento → stock | ⏳ P4b | Tier 1 #7 |
+| `/ventas` | venta a crédito → CxC | 🔴 C3 (service de ventas no crea entidad) | Tier 3 |
+| `/ventas` | config: horario gate + categorías | 🔴 sin schema | F5 §11 |
+| `/cobranza` | CxC de los 3 orígenes reales | ✅ (POS-crédito falta = C3) | = C3 |
+| `/facturas` | fuentes facturadas | ✅ | — |
+| `/finanzas` | CxP con `fecha_vencimiento` (flujo proyectado) | ⏳ §10 (columna sin uso) | Tier 2 #10 |
+| `/finanzas` | egresos por puntero polimórfico | ⏳ diseño (FK vs puntero, 6.3) | Tier 3 |
+| `/proveedores` | vencimiento OC → `cuentas_por_pagar` | ⏳ §10 | Tier 2 #10 |
+| `/clientes` | tab trabajadores×proyecto | ⏳ 6.7 | Tier 2 #14 |
+
+> **Deuda transversal conocida (fuera del par de módulos, referida por §6):**
+> `dashboard`, `gps`, `documentos`, `MachineCard`, `ProjectCard`,
+> `ProjectDetailsModal` siguen consumiendo mock de `@/lib/data`.
 
 **Estado:** ⏳ Pendiente de auditoría formal. Objetivo: matriz **vista → insumos que
 necesita para funcionar al 100%**, detectando vistas que aún comen mock o que le
@@ -1065,9 +1271,15 @@ Tampoco existe configuración de qué categorías de producto muestra el catálo
 
 ### F6 — Seeds demo funcionales de todos los workflows
 
-**Estado:** ⏳ Pendiente. Hoy solo existen `seed-proveedores.ts` y los seeds de RBAC.
-Cuando los datos son escasos (BD restaurada del dump), las vistas ven vacío o datos
-viejos que no ilustran ningún flujo completo.
+**Estado (2026-11-08): ✅ REALIZADO — `apps/api/scripts/seed-demo-workflows.ts`
+idempotente, corrido contra la BD local con auditoría real:**
+apertura (fondo 5,000) + venta POS con pagos mixtos 60/40 sobre catálogo real
+(folio S17941004220715557, total 1,540) + retiro `[DEMO]` 350; guard
+anti-producción (`NODE_ENV=production` requiere `DEMO_SEED=permiso`).
+Hallazgo de la corrida: `configuracion_sistema.turno_cierre = '00:00'` dejaba el
+POS bloqueado SIEMPRE (se interpreta nocturno) — data fix aplicado: `'23:00'`
+(pendiente post-demo: soportar cierre medianoche en el backend). Los demás
+workflows ya tenían variedad (verificada por psql).
 
 **Cómo se aplicará:**
 1. **`apps/api/scripts/seed-demo-workflows.ts`:** poblar datos demo que ejerciten

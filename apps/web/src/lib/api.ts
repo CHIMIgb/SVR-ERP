@@ -22,6 +22,24 @@ interface FetchOptions extends RequestInit {
   raw?: boolean;
 }
 
+
+/**
+ * Mensaje de error para toasts, regla compartida del ERP:
+ * 1) si el backend mando details[] (422 de class-validator), se unen con "·" —
+ *    el usuario ve QUE campo fallo, no un generico;
+ * 2) si no, el message del contrato (p. ej. "CODIGO_DUPLICADO: ...");
+ * 3) si el error ni siquiera trae contrato, el fallback de la vista.
+ */
+export function mensajeErrorApi(
+  error?: { message?: string; details?: unknown[] } | null,
+  fallback = 'Error al procesar la solicitud.',
+): string {
+  const detalles = error?.details
+    ?.map((d) => (typeof d === 'string' ? d : JSON.stringify(d)))
+    .filter(Boolean);
+  if (detalles?.length) return detalles.join(' · ');
+  return error?.message || fallback;
+}
 // ── Access token: almacenado EN MEMORIA (no localStorage) para mitigar XSS ──
 // Solo el refresh token persiste en localStorage (necesario para Capacitor/offline)
 let inMemoryAccessToken: string | null = null;
@@ -825,66 +843,104 @@ export const proyectosApi = {
 // ────────────────────────────────────────────────────────────
 
 export type TipoReporte = 'Administrativo' | 'Mecanico' | 'Operador' | 'Pipero' | 'Checador' | 'Incidente' | 'Ingeniero' | 'Trabajador';
-export type EstadoReporte = 'Pendiente' | 'Visto' | 'Atendido' | 'En Revisión' | 'Resuelto' | 'Facturado';
+export type EstadoIncidente = 'Nuevo' | 'En curso' | 'Cerrado';
 export type PrioridadReporte = 'Baja' | 'Media' | 'Alta' | 'Crítica';
+export type CategoriaReporte = 'Mecanico' | 'Soldador' | 'Diesel' | 'Mantenimiento' | 'Administrativo' | 'Residente';
 
 /** Valores de enum que acepta la API en query/body (mayúsculas). */
 export type TipoReporteApi = 'ADMINISTRATIVO' | 'MECANICO' | 'OPERADOR' | 'PIPERO' | 'CHECADOR' | 'INCIDENTE' | 'INGENIERO' | 'TRABAJADOR';
-export type EstadoReporteApi = 'PENDIENTE' | 'VISTO' | 'ATENDIDO' | 'EN_REVISION' | 'RESUELTO' | 'FACTURADO';
+export type EstadoIncidenteApi = 'NUEVO' | 'EN_CURSO' | 'CERRADO';
 export type PrioridadReporteApi = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+export type CategoriaReporteApi = 'MECANICO' | 'SOLDADOR' | 'DIESEL' | 'MANTENIMIENTO' | 'ADMINISTRATIVO' | 'RESIDENTE';
 
 export interface ReporteCampoDTO {
   id: string;
   codigo: string | null;
   tipo: TipoReporte;
+  categoria: CategoriaReporte | null;
+  subcategoriaId: string | null;
+  subcategoria: string | null;
   usuario: string;
   usuarioId: string | null;
-  maquinaId: string | null;
-  maquinaCodigo: string | null;
-  maquinaNombre: string | null;
-  obraId: string | null;
-  obra: string;
-  clienteId: string | null;
-  cliente: string | null;
   proyectoId: string | null;
   proyecto: string | null;
-  montoServicio: number | null;
+  /** Dirección guardada del proyecto (calle, colonia, ciudad). */
+  proyectoDireccion: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  /** Quién levantó el incidente: nombre, teléfono, rol (para el detalle). */
+  reportadoPor: ReportadoPorDTO | null;
   fecha: string;
   hora: string;
   descripcion: string;
-  estado: EstadoReporte;
+  estado: EstadoIncidente;
   prioridad: PrioridadReporte | null;
   asignadoAId: string | null;
   asignadoANombre: string | null;
   asignadoAPuesto: string | null;
   asignadoEn: string | null;
-  resueltoEn: string | null;
+  cerradoEn: string | null;
   detalles: Record<string, unknown> | null;
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
 }
 
+export interface ActividadDTO {
+  id: string;
+  texto: string;
+  autorNombre: string;
+  creadoEn: string;
+}
+
+export interface AdjuntoDTO {
+  id: string;
+  nombre: string;
+  mime: string;
+  tamano: number;
+  /** base64 puro (sin data: URI). */
+  datos: string;
+  creadoEn: string;
+}
+
+export interface ReportadoPorDTO {
+  nombre: string | null;
+  telefono: string | null;
+  rol: string | null;
+  area: string | null;
+}
+
+export interface ReportesIncidenteDetalle {
+  reporte: ReporteCampoDTO;
+  reportadoPor: ReportadoPorDTO | null;
+  actividades: ActividadDTO[];
+  adjuntos: AdjuntoDTO[];
+}
+
+export interface SubcategoriaDTO {
+  id: string;
+  categoria: CategoriaReporte;
+  nombre: string;
+}
+
 export interface ReportesCampoStats {
-  pendientes: number;
-  enRevision: number;
-  atendidos: number;
-  resueltos: number;
+  nuevos: number;
+  enCurso: number;
+  cerrados: number;
   criticosActivos: number;
   porArea: Partial<Record<TipoReporte, number>>;
 }
 
 export interface ReporteCampoCreateInput {
-  tipo: TipoReporteApi;
-  usuario: string;
-  maquinaId?: string;
-  obraId?: string;
-  obraTexto: string;
-  clienteId?: string;
+  /** Torre destino — o `mismaArea: true` para resolverla con el rol del que reporta. */
+  categoria?: CategoriaReporteApi;
+  mismaArea?: boolean;
+  subcategoriaId?: string;
+  /** Ubicación — proyecto EN_PROCESO (tabla proyectos) o GPS (lat/long). */
   proyectoId?: string;
-  montoServicio?: number;
-  fecha: string;
-  hora: string;
+  latitud?: number;
+  longitud?: number;
+  usuario: string;
   descripcion: string;
   prioridad?: PrioridadReporteApi;
 }
@@ -892,7 +948,7 @@ export interface ReporteCampoCreateInput {
 export const reportesCampoApi = {
   listar: (params?: {
     search?: string;
-    estado?: EstadoReporteApi;
+    estado?: EstadoIncidenteApi;
     tipo?: TipoReporteApi;
     prioridad?: PrioridadReporteApi;
     criticos?: boolean;
@@ -913,8 +969,13 @@ export const reportesCampoApi = {
     );
   },
 
-  obtener: (id: string) =>
-    apiClient.get<ReporteCampoDTO>(`/reportes-campo/${id}`),
+  /** Detalle del incidente: reporte + actividades + adjuntos. */
+  detalle: (id: string) =>
+    apiClient.get<ReportesIncidenteDetalle>(`/reportes-campo/${id}`),
+
+  /** Catálogo maestro de subcategorías por torre. */
+  subcategorias: () =>
+    apiClient.get<SubcategoriaDTO[]>('/reportes-campo/subcategorias'),
 
   crear: (data: ReporteCampoCreateInput) =>
     apiClient.post<ReporteCampoDTO>('/reportes-campo', data),
@@ -922,31 +983,33 @@ export const reportesCampoApi = {
   actualizar: (id: string, data: Partial<ReporteCampoCreateInput>) =>
     apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}`, data),
 
-  cambiarEstado: (id: string, estado: EstadoReporteApi) =>
+  /** Iniciar (EN_CURSO) o Cerrar (CERRADO) el incidente. */
+  cambiarEstado: (id: string, estado: 'EN_CURSO' | 'CERRADO') =>
     apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/estado`, { estado }),
+
+  /** Aceptar el incidente: RESPONSABLE = quien lo acepta. */
+  aceptar: (id: string) =>
+    apiClient.post<ReporteCampoDTO>(`/reportes-campo/${id}/aceptar`, {}),
+
+  /** Proyectos EN_PROCESO para el select "Ubicación — Proyecto". */
+  proyectos: () => apiClient.get<{ id: string; nombre: string }[]>('/reportes-campo/proyectos-en-proceso'),
 
   /** Asigna "quién le cae": trabajador del sistema y/o nombre libre. */
   asignar: (id: string, data: { asignadoA?: string | null; asignadoNombre?: string | null }) =>
     apiClient.patch<ReporteCampoDTO>(`/reportes-campo/${id}/asignar`, data),
 
+  /** Publica una actividad en la bitácora del incidente. */
+  comentar: (id: string, texto: string) =>
+    apiClient.post<ActividadDTO>(`/reportes-campo/${id}/actividades`, { texto }),
+
+  /** Adjunta una imagen (base64) al incidente. */
+  adjuntar: (
+    id: string,
+    data: { nombre: string; mime: string; tamano: number; datos: string },
+  ) => apiClient.post<AdjuntoDTO>(`/reportes-campo/${id}/adjuntos`, data),
+
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/reportes-campo/${id}`),
-
-  /** Factura un reporte Resuelto con cliente + monto → nace la CxC. */
-  facturar: (id: string) =>
-    apiClient.post<{
-      cuenta: {
-        id: string;
-        reporteId: string;
-        codigo: string | null;
-        clienteId: string;
-        proyectoId: string | null;
-        monto: number;
-        fechaVencimiento: string;
-        estado: string;
-      };
-      reporte: { id: string; codigo: string | null; estado: string };
-    }>(`/reportes-campo/${id}/facturar`, {}),
 
   stats: () =>
     apiClient.get<ReportesCampoStats>('/reportes-campo/stats'),

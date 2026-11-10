@@ -1,62 +1,44 @@
-import {
-  IsDateString,
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsPositive,
-  IsString,
-  IsUUID,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
-import { Prioridad, TipoReporteCampo } from '@prisma/client';
+import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Prioridad, CategoriaReporte } from '@prisma/client';
+
+// El `tipo` se deriva del área (torre) — ya no se captura ni edita.
+// La fecha y la hora también son automáticas: ya no se editan.
 
 export class UpdateReporteCampoDto {
   @IsOptional()
-  @IsEnum(TipoReporteCampo)
-  tipo?: TipoReporteCampo;
+  @IsEnum(CategoriaReporte)
+  categoria?: CategoriaReporte;
+
+  @IsOptional()
+  @IsBoolean()
+  mismaArea?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  subcategoriaId?: string;
+
+  /** Ubicación — proyecto EN_PROCESO o GPS (lat/long ambos o ninguno). */
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitud?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitud?: number;
 
   @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(100)
   usuario?: string;
-
-  @IsOptional()
-  @IsUUID()
-  maquinaId?: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(200)
-  obraTexto?: string;
-
-  @IsOptional()
-  @IsUUID()
-  obraId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  clienteId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  proyectoId?: string;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  montoServicio?: number;
-
-  @IsOptional()
-  @IsDateString()
-  fecha?: string;
-
-  @IsOptional()
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'hora debe tener formato HH:mm' })
-  hora?: string;
 
   @IsOptional()
   @IsString()

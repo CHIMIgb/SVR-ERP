@@ -12,6 +12,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  /** Placeholder de carga: barra con el tamaño del botón, sin texto ni click. */
+  skeleton?: boolean;
   icon?: React.ReactNode;
   iconPosition?: 'left' | 'right';
   fullWidth?: boolean;
@@ -23,6 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant = 'primary',
       size = 'md',
       loading = false,
+      skeleton = false,
       icon,
       iconPosition = 'left',
       fullWidth = false,
@@ -33,10 +36,15 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
+    // Barra de contraste sobre el bg del botón (ui-* se invierte en oscuro).
+    const skeletonBar = (
+      <span className="block h-4 w-24 rounded bg-ui-300/70 dark:bg-ui-600/40 animate-pulse" />
+    );
+
     return (
       <button
         ref={ref}
-        disabled={disabled || loading}
+        disabled={disabled || loading || skeleton}
         className={cn(
           buttonClasses.base,
           buttonClasses.variants[variant],
@@ -47,14 +55,22 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           className
         )}
         {...props}
+        onClick={skeleton ? undefined : props.onClick}
+        aria-busy={skeleton ? true : undefined}
       >
-        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {!loading && icon && iconPosition === 'left' && (
-          <span className="shrink-0">{icon}</span>
-        )}
-        {children && <span className="truncate">{children}</span>}
-        {!loading && icon && iconPosition === 'right' && (
-          <span className="shrink-0">{icon}</span>
+        {skeleton ? (
+          skeletonBar
+        ) : (
+          <>
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {!loading && icon && iconPosition === 'left' && (
+              <span className="shrink-0">{icon}</span>
+            )}
+            {children && <span className="truncate">{children}</span>}
+            {!loading && icon && iconPosition === 'right' && (
+              <span className="shrink-0">{icon}</span>
+            )}
+          </>
         )}
       </button>
     );

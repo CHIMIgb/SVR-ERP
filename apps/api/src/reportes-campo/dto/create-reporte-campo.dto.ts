@@ -1,61 +1,62 @@
 import {
-  IsDateString,
+  IsBoolean,
   IsEnum,
   IsNumber,
   IsOptional,
-  IsPositive,
   IsString,
   IsUUID,
-  Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
-import { Prioridad, TipoReporteCampo } from '@prisma/client';
+import { Prioridad, CategoriaReporte } from '@prisma/client';
+
+// El `tipo` del reporte es interno y se deriva del área (torre) elegida —
+// el vocabulario viejo ("Área tipo de reporte") queda fuera del UI y del API.
+// La fecha y la hora son automáticas (se registran con la hora del servidor).
 
 export class CreateReporteCampoDto {
-  @IsEnum(TipoReporteCampo)
-  tipo!: TipoReporteCampo;
+  /**
+   * Torre responsable a la que se ENVÍA el incidente. Si viene `mismaArea`,
+   * este campo se ignora y el backend resuelve la torre con el rol/puesto del
+   * trabajador que reporta (fallback: ADMINISTRATIVO).
+   */
+  @IsOptional()
+  @IsEnum(CategoriaReporte)
+  categoria?: CategoriaReporte;
+
+  @IsOptional()
+  @IsBoolean()
+  mismaArea?: boolean;
+
+  /** Subcategoría del catálogo por torre (opcional; debe pertenecer a la categoría). */
+  @IsOptional()
+  @IsUUID()
+  subcategoriaId?: string;
+
+  /** Ubicación — proyecto EN_PROCESO (tabla proyectos) o GPS (lat/long, ambos o ninguno). */
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitud?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitud?: number;
 
   /** Quién reporta desde campo (texto libre, ej. "Marcos G."). */
   @IsString()
   @MinLength(3)
   @MaxLength(100)
   usuario!: string;
-
-  @IsOptional()
-  @IsUUID()
-  maquinaId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  obraId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  clienteId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  proyectoId?: string;
-
-  /** Monto del servicio cobrable al cliente (permite facturar el reporte). */
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  montoServicio?: number;
-
-  /** Texto de la obra — opcional (hay reportes que no se relacionan con obra). */
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(200)
-  obraTexto?: string;
-
-  @IsDateString()
-  fecha!: string;
-
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'hora debe tener formato HH:mm' })
-  hora!: string;
 
   @IsString()
   @MinLength(5)

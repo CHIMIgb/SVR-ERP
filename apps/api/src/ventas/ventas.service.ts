@@ -30,6 +30,14 @@ function hoyIso(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+/** Marcador interno: carrera de stock (transacción revierte + 400 auditable). */
+class StockInsuficienteRuntimeError extends Error {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = 'StockInsuficienteRuntimeError';
+  }
+}
+
 /**
  * Fecha/hora de inicio del turno actual (misma fecha que `fechaIso`) según el
  * horario de apertura configurado. Los scopes del día (ventas, retiros, cierre)
@@ -372,77 +380,117 @@ export class VentasService {
     const base = Math.round((totalCobrado - iva) * 100) / 100;
 
     // 4. Ticket secuencial del día + guardar (transacción)
-    const venta = await this.prisma.$transaction(async (tx) => {
-      const hoy = hoyIso();
-      const maxTicket = await tx.ventas.aggregate({
-        where: {
-          creado_en: {
-            gte: new Date(`${hoy}T00:00:00.000Z`),
-            lte: new Date(`${hoy}T23:59:59.999Z`),
+    let venta;
+    try {
+      venta = await this.prisma.$transaction(async (tx) => {
+        const hoy = hoyIso();
+        const maxTicket = await tx.ventas.aggregate({
+          where: {
+            creado_en: {
+              gte: new Date(`${hoy}T00:00:00.000Z`),
+              lte: new Date(`${hoy}T23:59:59.999Z`),
+            },
           },
-        },
-        _max: { ticket: true },
-      });
-      const ticket = (maxTicket._max.ticket ?? 0) + 1;
-
-      const created = await tx.ventas.create({
-        data: {
-          id: randomUUID(),
-          folio: `S${Date.now()}${String(Math.floor(1000 + Math.random() * 9000))}`,
-          ticket,
-          terminal: dto.terminal ?? 'TER-01',
-          caja: dto.caja ?? 'CAJA-PV',
-          cliente: dto.cliente?.trim() || 'Público en general',
-          cajero: dto.cajero.trim(),
-          subtotal: base,
-          iva,
-          ieps: 0,
-          total: totalCobrado,
-          metodo,
-          efectivo_recibido: dto.efectivoRecibido ?? null,
-          cambio: dto.cambio ?? null,
-          items_count: dto.items.length,
-          idempotencia_key: dto.idempotenciaKey ?? null,
-          creado_por: userId,
-          actualizado_en: new Date(),
-          items: {
-            create: dto.items.map((i) => {
-              const mat = byId.get(i.materialId)!;
-              const subtotalLinea =
-                Math.round(i.precioUnitario * i.cantidad * 100) / 100;
-              return {
-                id: randomUUID(),
-                articulo_id: mat.id,
-                nombre: mat.nombre,
-                cantidad: i.cantidad,
-                medida: i.medida,
-                precio_unitario: i.precioUnitario,
-                subtotal: subtotalLinea,
-              };
-            }),
-          },
-          pagos: {
-            create: dto.pagos.map((p) => ({
-              id: randomUUID(),
-              metodo: toMetodoPago(p.metodo),
-              monto: p.monto,
-            })),
-          },
-        },
-        include: { items: true, pagos: true },
-      });
-
-      // 5. Descontar stock del artículo de inventario (atómico; mismo stock
-      //    que descuenta /inventario)
-      for (const item of dto.items) {
-        await tx.articulos_inventario.update({
-          where: { id: item.materialId },
-          data: { stock: { decrement: item.cantidad } },
+          _max: { ticket: true },
         });
-      }
+        const ticket = (maxTicket._max.ticket ?? 0) + 1;
 
-      return created;
-    });
+        const created = await tx.ventas.create({
+          data: {
+            id: randomUUID(),
+            folio: `S${Date.now()}${String(Math.floor(1000 + Math.random() * 9000))}`,
+            ticket,
+            terminal: dto.terminal ?? 'TER-01',
+            caja: dto.caja ?? 'CAJA-PV',
+            cliente: dto.cliente?.trim() || 'Público en general',
+            cajero: dto.cajero.trim(),
+            subtotal: base,
+            iva,
+            ieps: 0,
+            total: totalCobrado,
+            metodo,
+            efectivo_recibido: dto.efectivoRecibido ?? null,
+            cambio: dto.cambio ?? null,
+            items_count: dto.items.length,
+            idempotencia_key: dto.idempotenciaKey ?? null,
+            creado_por: userId,
+            actualizado_en: new Date(),
+            items: {
+              create: dto.items.map((i) => {
+                const mat = byId.get(i.materialId)!;
+                const subtotalLinea =
+                  Math.round(i.precioUnitario * i.cantidad * 100) / 100;
+                return {
+                  id: randomUUID(),
+                  articulo_id: mat.id,
+                  nombre: mat.nombre,
+                  cantidad: i.cantidad,
+                  medida: i.medida,
+                  precio_unitario: i.precioUnitario,
+                  subtotal: subtotalLinea,
+                };
+              }),
+            },
+            pagos: {
+              create: dto.pagos.map((p) => ({
+                id: randomUUID(),
+                metodo: toMetodoPago(p.metodo),
+                monto: p.monto,
+              })),
+            },
+          },
+          include: { items: true, pagos: true },
+        });
+
+        // 5. Descontar stock del artículo de inventario (ATÓMICO y con guard
+        //    anti-carrera: updateMany condicional — si un cambio concurrente
+        //    vació el stock, count = 0 y TODA la venta revierte; nunca stock
+        //    negativo) + movimiento SALIDA con referencia VENTA_POS.
+        const ahora = new Date();
+        for (const item of dto.items) {
+          const upd = await tx.articulos_inventario.updateMany({
+            where: { id: item.materialId, stock: { gte: item.cantidad } },
+            data: { stock: { decrement: item.cantidad } },
+          });
+          if (upd.count === 0) {
+            throw new StockInsuficienteRuntimeError(
+              `Stock insuficiente para "${(byId.get(item.materialId) as { nombre: string }).nombre}" (otro cambio simultáneo vació el stock)`,
+            );
+          }
+          const actual = await tx.articulos_inventario.findUnique({
+            where: { id: item.materialId },
+            select: { stock: true },
+          });
+          await tx.movimientos_inventario.create({
+            data: {
+              id: randomUUID(),
+              articulo_id: item.materialId,
+              tipo: 'SALIDA',
+              cantidad: item.cantidad,
+              stock_resultante: Number(actual?.stock ?? 0),
+              motivo: 'Venta POS',
+              referencia_tipo: 'VENTA_POS',
+              referencia_id: created.id,
+              fecha: ahora,
+              creado_por: userId,
+            },
+          });
+        }
+
+        return created;
+      });
+    } catch (e) {
+      if (e instanceof StockInsuficienteRuntimeError) {
+        return this.fallir(
+          AuditAction.VENTA_CREADA,
+          null,
+          'STOCK_INSUFICIENTE',
+          BadRequestException,
+          e.message,
+        );
+      }
+      throw e;
+    }
 
     const serialized = this.serializeVenta(venta);
 

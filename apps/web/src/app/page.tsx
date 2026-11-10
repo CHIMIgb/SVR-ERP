@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HardHat, Lock, User, Loader2, AlertCircle } from "lucide-react";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
@@ -52,7 +53,7 @@ export default function LoginPage() {
   if (!isInitialized) {
     return (
       <main className="min-h-screen bg-secondary flex items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <LoadingState size="lg" />
       </main>
     );
   }

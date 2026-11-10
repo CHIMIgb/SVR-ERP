@@ -8,10 +8,10 @@ import {
   ArrowDownCircle,
   Trash2,
   Banknote,
-  Loader2,
   RefreshCw,
   Clock,
 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -49,6 +49,7 @@ import type { CreateVentaInput } from '@/lib/api';
 import { generateUUID } from '@/lib/utils';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { mensajeErrorApi } from '@/lib/api';
 
 function parseHM(s: string): { h: number; m: number } {
   const [h, m] = s.split(':').map(Number);
@@ -248,7 +249,7 @@ export default function VentasPage() {
     try {
       const res = await ventasApi.crear(payload);
       if (!res.success) {
-        showToast(res.error?.message ?? 'No se pudo registrar la venta.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo registrar la venta.'), 'error');
         return;
       }
       const sale = ventaDtoToSale(res.data, products);
@@ -277,7 +278,7 @@ export default function VentasPage() {
         autorizadoPor,
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'No se pudo registrar el retiro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo registrar el retiro.'), 'error');
         return;
       }
       const nuevo: Retiro = {
@@ -316,6 +317,7 @@ export default function VentasPage() {
         action={
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
+              skeleton={cargandoCatalogo}
               variant="secondary"
               icon={<ReceiptText className="w-4 h-4" />}
               onClick={() => setShowHistory(true)}
@@ -365,24 +367,28 @@ export default function VentasPage() {
               value={ventasHoy.length}
               label="Ventas de hoy"
               color="primary"
+              loading={cargandoCatalogo}
             />
             <StatsCard
               icon={<Banknote className="w-5 h-5" />}
               value={formatCurrency(ingresosNetos)}
               label="Ingresos del día (netos)"
               color="success"
+              loading={cargandoCatalogo}
             />
             <StatsCard
               icon={<ReceiptText className="w-5 h-5" />}
               value={formatCurrency(ticketPromedio)}
               label="Ticket promedio"
               color="info"
+              loading={cargandoCatalogo}
             />
             <StatsCard
               icon={<Plus className="w-5 h-5" />}
               value={piezasHoy}
               label="Artículos vendidos"
               color="warning"
+              loading={cargandoCatalogo}
             />
           </div>
 
@@ -401,12 +407,7 @@ export default function VentasPage() {
                 <div className="lg:col-span-3 space-y-4">
                   {!catalogoCargado && !catalogoError && (
                     <div className={posClasses.card}>
-                      <div className="flex items-center gap-3">
-                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                        <p className="text-sm text-ui-500">
-                          Cargando catálogo de materiales...
-                        </p>
-                      </div>
+                      <Skeleton variant="card" />
                     </div>
                   )}
                   {!catalogoCargado && catalogoError && (

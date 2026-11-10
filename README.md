@@ -180,6 +180,48 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 | **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
 | **No tiene acceso** | Maquinaria, Operaciones, Comercial, Sistema, Configuración |
 
+#### Roles de plantilla (5 — /reportes y dashboard)
+
+> **Estas cuentas ya no se crean con `migrate`** (review PR #17: ninguna
+> migración debe dejar usuarios con contraseña conocida en producción).
+> Se siembran a mano con `prisma/demo-seed.sql`, cuyo hash llega por variable
+> de psql — **la contraseña la define quien ejecuta el seed**, las de la
+> tabla son las sugeridas para dev. Ver las instrucciones en la cabecera de
+> ese archivo.
+
+| Email | Contraseña sugerida (seed dev) | Rol (nivel) | Área (torre) | En /reportes puede |
+|-------|------------|-------------|--------------|--------------------|
+| `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
+| `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |
+| `tecnico@svr-constructora.com` | `tecnico123` | Tecnico Mecanico (70) | Mecanico | ver, crear, editar |
+| `soldador@svr-constructora.com` | `tecnico123` | Tecnico Soldador (70) | Soldador | ver, crear, editar |
+| `diesel@svr-constructora.com` | `tecnico123` | Tecnico Diesel (70) | Diesel | ver, crear, editar |
+| `mantenimiento@svr-constructora.com` | `tecnico123` | Tecnico Mantenimiento (70) | Mantenimiento | ver, crear, editar |
+| `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | ver, crear (también /criba, /ventas y /ventas/corte) |
+| `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
+
+> Cada usuario hereda su **área (torre)** → el alta "Misma área" de /reportes
+> envía el incidente a esa torre automáticamente (y sus subcategorías). La torre
+> vive en `users.torre` (toma precedencia) o en `roles.torre` — se ajusta por SQL
+> o con el futuro panel de usuarios.
+
+### Áreas del sistema (torres de /reportes)
+
+Las **6 áreas** del alta "Área (a la que se envía)" y qué abarca cada una (guía del cliente):
+
+| Área (torre) | Quiénes pertenecen / qué abarca | Rol de plantilla |
+|--------------|----------------------------------|------------------|
+| **Administrativo** | **Administradores, jefes y personas en oficina** + el cobrador de criba y punto de venta (solo es 1) | Administrador · Administrativo · Cobrador |
+| **Residente** | **Ingenieros encargados de obra y de personal** — ven los reportes que levantan sus trabajadores y dan seguimiento | Residente |
+| **Mecanico** | **Técnicos** mecánicos de flota | Técnico Mecánico |
+| **Soldador** | **Técnicos** soldadores | Tecnico Soldador |
+| **Diesel** | **Técnicos** de diésel (suministro/reparto — los piperos históricos) | Técnico Diésel |
+| **Mantenimiento** | **Técnicos** de mantenimiento general | Tecnico Mantenimiento |
+
+**Trabajadores** (operadores, choferes y demás personal de campo) no tienen área
+propia: levantan el reporte y lo **envían a la torre que corresponde** (mecánico,
+residente, etc.); "Misma área" para ellos cae en oficina (Administrativo).
+
 **Endpoints de autenticación:**
 
 ```bash

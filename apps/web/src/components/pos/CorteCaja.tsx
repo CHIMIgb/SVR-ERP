@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
+  Loader2,
   Lock,
   Printer,
   ShieldCheck,
@@ -46,6 +47,8 @@ interface CorteCajaProps {
   retiros: Array<{ id: string; concepto: string; monto: number; fecha: string; autorizadoPor: string }>;
   /** true si el usuario tiene el rol Administrador (puede aprobar/rechazar cierres). */
   isAdmin: boolean;
+  /** Carga inicial de ventas/config: spinner SOLO en la línea del valor (icono y etiqueta reales). */
+  loading?: boolean;
 }
 
 /** Configuración del turno (fallback si el backend no responde). */
@@ -85,7 +88,7 @@ function paymentLabel(sale: POSSale): string {
  * Cierre de caja (replica del prototipo mobile): apertura del turno,
  * arqueo por denominaciones, cierre y ticket imprimible.
  */
-export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaProps) {
+export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = false }: CorteCajaProps) {
   // Turno de caja compartido (sobrevive al navegar entre Pos y Corte)
   const { register, setRegister } = usePOS();
   const { showToast } = useToast();
@@ -305,26 +308,34 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin }: CorteCajaPro
   // ── Vista principal: cierre ──────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      {/* Resumen del día */}
+      {/* Resumen del día — spinner solo en el valor (icono/etiqueta reales) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className={posClasses.summaryCard}>
           <Banknote className="w-5 h-5 text-green-600" />
-          <span className={posClasses.summaryValue}>{formatCurrency(totalSales)}</span>
+          <span className={posClasses.summaryValue}>
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(totalSales)}
+          </span>
           <span className={posClasses.summaryLabel}>Total ventas</span>
         </div>
         <div className={posClasses.summaryCard}>
           <Wallet className="w-5 h-5 text-primary" />
-          <span className={posClasses.summaryValue}>{formatCurrency(metodos.efectivo)}</span>
+          <span className={posClasses.summaryValue}>
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(metodos.efectivo)}
+          </span>
           <span className={posClasses.summaryLabel}>Efectivo</span>
         </div>
         <div className={posClasses.summaryCard}>
-          <CreditCard className="w-5 h-5 text-blue-600" />
-          <span className={posClasses.summaryValue}>{formatCurrency(metodos.tarjeta)}</span>
+          <CreditCard className="w-5 h-5 text-blue-600"/>
+          <span className={posClasses.summaryValue}>
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(metodos.tarjeta)}
+          </span>
           <span className={posClasses.summaryLabel}>Tarjeta</span>
         </div>
         <div className={posClasses.summaryCard}>
           <Banknote className="w-5 h-5 text-indigo-600" />
-          <span className={posClasses.summaryValue}>{formatCurrency(metodos.transferencia)}</span>
+          <span className={posClasses.summaryValue}>
+            {loading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : formatCurrency(metodos.transferencia)}
+          </span>
           <span className={posClasses.summaryLabel}>Transferencia</span>
         </div>
       </div>

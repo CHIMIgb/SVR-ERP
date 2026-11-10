@@ -25,6 +25,8 @@ import {
   type CribaCatalogos,
   type TurnoCribaApi,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -291,7 +293,7 @@ export default function CribaPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar el turno.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar el turno.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar el turno.', 'error');
@@ -317,7 +319,7 @@ export default function CribaPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar el registro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el registro.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar el registro.', 'error');
@@ -338,7 +340,7 @@ export default function CribaPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar el registro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el registro.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar el registro.', 'error');
@@ -467,7 +469,8 @@ export default function CribaPage() {
         subtitle="Producción diaria por turno — material producido y enviado al banco."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Registrar Turno
             </Button>
           ) : undefined
@@ -481,24 +484,28 @@ export default function CribaPage() {
           value={`${stats.totalProducido} m³`}
           label="Total Produ."
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ArrowUpRight size={22} />}
           value={`${stats.totalAlBanco} m³`}
           label="Al Banco"
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Clock size={22} />}
           value={`${stats.totalHoras} h`}
           label="Horas Trab."
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Gauge size={22} />}
           value={`${stats.eficiencia}%`}
           label="Eficiencia"
           color={colorEficiencia(stats.eficiencia)}
+        loading={initialLoading}
         />
       </div>
 
@@ -519,25 +526,31 @@ export default function CribaPage() {
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${materialDot[tipo]}`} />
                   <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
                 </div>
-                <Badge variant={colorEficiencia(ef)} size="sm">Efic. {ef}%</Badge>
+                <Badge size="sm" variant={initialLoading ? 'neutral' : colorEficiencia(ef)}>
+                  {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `Efic. ${ef}%`}
+                </Badge>
               </div>
 
               {/* Tres métricas del material */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Producido</p>
-                  <p className="text-base font-black text-ui-900">{producido}</p>
+                  <p className="text-base font-black text-ui-900">
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : producido}
+                  </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Al banco</p>
-                  <p className="text-base font-black text-green-700">{alBanco}</p>
+                  <p className="text-base font-black text-green-700">
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : alBanco}
+                  </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Merma</p>
                   <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-900'}`}>
-                    {merma}
+                    {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : merma}
                   </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
@@ -549,7 +562,7 @@ export default function CribaPage() {
                   Merma del material
                 </span>
                 <span className={`text-xs font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-700'}`}>
-                  {merma} m³ · {mermaPct}%
+                  {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `${merma} m³ · ${mermaPct}%`}
                 </span>
               </div>
             </Card>
@@ -638,11 +651,7 @@ export default function CribaPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={registros}

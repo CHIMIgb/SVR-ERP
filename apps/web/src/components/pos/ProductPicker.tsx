@@ -20,11 +20,15 @@ interface ProductPickerProps {
  * venta (m³, tonelada, viaje, pieza...) y cantidad.
  */
 export function ProductPicker({ products, onAdd }: ProductPickerProps) {
-  const [productId, setProductId] = useState(products[0]?.id ?? '');
-  const [unit, setUnit] = useState(products[0]?.unit ?? '');
-  const [quantity, setQuantity] = useState('1');
+  // Arranca vacío como cualquier formulario — el vendedor elige material y medida.
+  const [productId, setProductId] = useState('');
+  const [unit, setUnit] = useState('');
+  const [quantity, setQuantity] = useState('');
 
-  const product = useMemo(() => products.find((p) => p.id === productId) ?? products[0], [products, productId]);
+  const product = useMemo(
+    () => products.find((p) => p.id === productId) ?? null,
+    [products, productId],
+  );
   const units = useMemo(() => product?.units ?? (product ? [product.unit] : []), [product]);
   const pricePerUnit = product ? productUnitPrice(product, unit) : 0;
 
@@ -41,7 +45,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
     onAdd(product, unit, qty);
   };
 
-  if (!product) {
+  if (products.length === 0) {
     return (
       <div className={posClasses.card}>
         <p className="text-sm text-ui-400 text-center py-4">No hay productos en el catálogo.</p>
@@ -61,6 +65,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           label="Material"
           value={productId}
           onChange={(e) => handleProductChange(e.target.value)}
+          placeholder="Seleccionar material..."
           options={products.map((p) => ({
             value: p.id,
             label: p.name,
@@ -70,9 +75,11 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           label="Medida"
           value={unit}
           onChange={(e) => setUnit(e.target.value)}
+          placeholder="Seleccionar medida..."
+          disabled={!product}
           options={units.map((u) => ({
             value: u,
-            label: `${u} — ${formatCurrency(productUnitPrice(product, u))}`,
+            label: `${u} — ${formatCurrency(productUnitPrice(product!, u))}`,
           }))}
         />
         <Input
@@ -80,6 +87,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           type="number"
           min={1}
           inputMode="numeric"
+          placeholder="0"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
         />
@@ -87,6 +95,7 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           <Button
             variant="primary"
             fullWidth
+            disabled={!product || !unit}
             icon={<PackagePlus className="w-4 h-4" />}
             onClick={handleAdd}
           >
@@ -94,9 +103,11 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           </Button>
         </div>
       </div>
-      <p className={posClasses.hint}>
-        {formatCurrency(pricePerUnit)} por {unit} · stock {product.stock}
-      </p>
+      {product && (
+        <p className={posClasses.hint}>
+          {formatCurrency(pricePerUnit)} por {unit} · stock {product.stock}
+        </p>
+      )}
     </div>
   );
 }

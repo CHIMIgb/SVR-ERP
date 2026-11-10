@@ -34,6 +34,8 @@ export interface UserAuth {
   id: string;
   email: string;
   activo: boolean;
+  /** Área (torre) asignada al empleado — para "misma área" en /reportes. */
+  torre?: string | null;
   persona: PersonaAuth;
   roles: RolAuth[];
   vistas: VistaAuth[];

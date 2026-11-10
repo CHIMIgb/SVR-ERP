@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
@@ -24,6 +23,8 @@ import {
   type GrupoProyectoDTO,
   type EstadoCuentaCobranza, type MetodoPagoCobro, type SituacionCobranza,
 } from '@/lib/api';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 8;
@@ -445,7 +446,7 @@ export default function CobranzaPage() {
         await refetchAll();
         await openLedger(res.data.cuenta);
       } else {
-        showToast(res.error?.message || 'No se pudo revertir el cobro.', 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo revertir el cobro.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -644,7 +645,13 @@ export default function CobranzaPage() {
         subtitle="Saldos por cliente · Estados de cuenta · Control de cobros"
         action={
           puedeExportar && (
-            <Button variant="secondary" size="md" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+            <Button
+              skeleton={initialLoading}
+              variant="secondary"
+              size="md"
+              icon={<Download className="w-4 h-4" />}
+              onClick={handleExportar}
+            >
               Exportar
             </Button>
           )
@@ -653,10 +660,10 @@ export default function CobranzaPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatsCard icon={<Wallet className="w-5 h-5" />} label="Por cobrar" value={formatCurrency(stats.totalPorCobrar)} color="error" />
-        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" />
-        <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" />
-        <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" />
+        <StatsCard icon={<Wallet className="w-5 h-5" />} label="Por cobrar" value={formatCurrency(stats.totalPorCobrar)} color="error" loading={initialLoading} />
+        <StatsCard icon={<AlertTriangle className="w-5 h-5" />} label="Vencido" value={formatCurrency(stats.vencido)} color="warning" loading={initialLoading} />
+        <StatsCard icon={<HandCoins className="w-5 h-5" />} label="Cobrado este mes" value={formatCurrency(stats.cobradoMes)} color="success" loading={initialLoading} />
+        <StatsCard icon={<Building2 className="w-5 h-5" />} label="Clientes con saldo" value={stats.clientesConSaldo} color="info" loading={initialLoading} />
         <StatsCard
           icon={<Wallet className="w-5 h-5" />}
           label={
@@ -669,24 +676,28 @@ export default function CobranzaPage() {
           }
           value={formatCurrency(totalesPorProyecto.monto)}
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<HandCoins className="w-5 h-5" />}
           label="Pagado"
           value={formatCurrency(totalesPorProyecto.pagado)}
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Building2 className="w-5 h-5" />}
           label="Saldo por obra"
           value={formatCurrency(totalesPorProyecto.saldo)}
           color="warning"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<AlertTriangle className="w-5 h-5" />}
           label="Vencido por obra"
           value={formatCurrency(totalesPorProyecto.vencido)}
           color="error"
+        loading={initialLoading}
         />
       </div>
 
@@ -742,22 +753,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <EmptyState title="Cargando cuentas por cobrar..." subtitle="Espera un momento." />
-            ) : cuentas.length === 0 ? (
-              <EmptyState
-                title="Sin cuentas por cobrar"
-                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={cuentaColumns}
                   data={cuentas}
                   keyExtractor={(c) => c.id}
-                  emptyText="No se encontraron cuentas."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationCuentas.page}
                   totalPages={paginationCuentas.totalPages}
@@ -765,8 +768,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchCuentas(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -807,22 +808,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <EmptyState title="Cargando movimientos de cobro..." subtitle="Espera un momento." />
-            ) : cobros.length === 0 ? (
-              <EmptyState
-                title="Sin movimientos de cobro"
-                subtitle="No se encontraron cobros para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={cobroColumns}
                   data={cobros}
                   keyExtractor={(c) => c.id}
-                  emptyText="No se encontraron cobros."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No se encontraron cobros para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationCobros.page}
                   totalPages={paginationCobros.totalPages}
@@ -830,8 +823,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchCobros(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
 
@@ -872,22 +863,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <EmptyState title="Cargando vencimientos..." subtitle="Espera un momento." />
-            ) : vencimientos.length === 0 ? (
-              <EmptyState
-                title="Sin vencimientos pendientes"
-                subtitle="No hay saldos por cobrar con vencimientos para este rango."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={vencColumns}
                   data={vencimientos}
                   keyExtractor={(v) => v.id}
-                  emptyText="No se encontraron vencimientos."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No hay saldos por cobrar con vencimientos para este rango."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={paginationVenc.page}
                   totalPages={paginationVenc.totalPages}
@@ -895,8 +878,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={(page) => fetchVenc(page, search, filterValues)}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
       {/* ─── POR OBRA (cartera agrupada por proyecto, O2) ─────────────── */}
@@ -936,22 +917,14 @@ export default function CobranzaPage() {
               onClear={handleClearFilters}
             />
 
-            {initialLoading || refreshing ? (
-              <EmptyState title="Cargando cartera por obra..." subtitle="Espera un momento." />
-            ) : grupos.length === 0 ? (
-              <EmptyState
-                title="Sin saldos por proyecto"
-                subtitle="No se encontraron cuentas para la búsqueda o filtros aplicados."
-              />
-            ) : (
-              <>
-                <DataTable
+            <DataTable
                   columns={porObraColumns}
                   data={porObraPaginated}
                   keyExtractor={(g) => g.proyecto?.id ?? 'sin-proyecto'}
-                  emptyText="No se encontraron grupos para la búsqueda."
-                  maxBodyHeight="500px"
-                />
+              loading={initialLoading || refreshing}
+              emptyText="No se encontraron cuentas para la búsqueda o filtros aplicados."
+              maxBodyHeight="500px"
+            />
                 <Pagination
                   currentPage={porObraPage}
                   totalPages={porObraTotalPages}
@@ -959,8 +932,6 @@ export default function CobranzaPage() {
                   pageSize={PAGE_SIZE}
                   onPageChange={setPorObraPage}
                 />
-              </>
-            )}
           </div>
         </TabPanel>
       </Tabs>

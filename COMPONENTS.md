@@ -212,7 +212,7 @@ const { preferencia, temaAplicado, setPreferencia } = useTheme();
 
 Keyframes adicionales (no en `@theme`, usados con notacion arbitraria):
 - `slideInRight` — para toasts: `animate-[slideInRight_0.3s_ease-out]`
-- `fadeScaleIn` — para modales: `animate-[fadeScaleIn_0.2s_ease-out]`
+- `fadeScaleIn` — para modales **y para banners/alertas condicionales que aparecen tras cargar la vista** (gateados por `!initialLoading` — ver regla de Loaders/Skeletons en AGENTS.md): `animate-[fadeScaleIn_0.2s_ease-out]`
 
 ### 1.3 Iconografia
 
@@ -336,6 +336,7 @@ import type { ButtonProps } from '@/components/ui/Button';
 | `iconPosition` | `'left' \| 'right'` | `'left'` | Posicion del icono relativa al texto |
 | `fullWidth` | `boolean` | `false` | El boton ocupa todo el ancho disponible |
 | `disabled` | `boolean` | `false` | Deshabilita el boton |
+| `skeleton` | `boolean` | `false` | **Placeholder de carga**: barra pulsante con el tamaño del botón, sin texto y sin click (pásale `skeleton={initialLoading}` en la primera carga — según la regla dura de Loaders/Skeletons de AGENTS.md) |
 
 Tambien extiende todas las props nativas de `<button>` (`React.ButtonHTMLAttributes<HTMLButtonElement>`).
 
@@ -2442,6 +2443,7 @@ import { StatsCard } from '@/components/ui/StatsCard';
 | `trend` | `'up' \| 'down' \| 'neutral'` | `undefined` | Direccion del trend (flecha) |
 | `trendValue` | `string` | `undefined` | Texto del trend (ej: "+12%", "-5%") |
 | `onClick` | `() => void` | `undefined` | Hace la tarjeta clickeable |
+| `loading` | `boolean` | `false` | **Spinner en el espacio del valor**: el icono y la etiqueta se muestran reales, solo el número gira mientras el dato llega (`loading={initialLoading}` — nunca "0" falso). Regla dura de Loaders/Skeletons de AGENTS.md |
 
 #### Colores del icono
 
@@ -3081,6 +3083,49 @@ import { SkeletonText } from '@/components/ui/SkeletonText';
 
 ---
 
+### 4.7 RefreshOverlay
+
+Overlay translúcido que indica un refetch en curso **sobre contenido ya cargado** (no mueve ni vacía la pantalla). El repo lo extrae de la copia manual que existía en ~10 vistas.
+
+**Archivos:**
+- `src/components/ui/RefreshOverlay/RefreshOverlay.tsx`
+- `src/components/ui/RefreshOverlay/RefreshOverlay.styles.ts`
+- `src/components/ui/RefreshOverlay/index.ts`
+
+**Importación:**
+```tsx
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+```
+
+#### Props
+
+| Prop | Tipo | Default | Descripción |
+|------|------|---------|-------------|
+| `show` | `boolean` | `false` | Mostrar el overlay (típicamente `refreshing && !initialLoading`) |
+| `className` | `string` | `undefined` | Clases extra sobre el contenedor (`absolute inset-0`) |
+
+#### Ejemplo
+
+```tsx
+<div className="relative">          {/* el overlay SE POSICIONA dentro → el padre SIEMPRE es relative */}
+  <RefreshOverlay show={refreshing && !initialLoading} />
+  <DataTable columns={columns} data={items} loading={initialLoading} ... />
+</div>
+```
+
+#### Cuando usar
+
+- Refetch en vivo (filtros/paginación/búsqueda) donde ya hay datos y NO se debe usar el loading completo de `DataTable`.
+- Sobre listados/tablas/tab-paneles dentro de un contenedor `relative`.
+
+#### No usar cuando
+
+- **Primera carga** de la vista — usar `loading={}` de `DataTable` o `<LoadingState>`.
+- Estados vacíos o primer render — arrastraría un overlay sin sentido.
+- La sección no puede tener clase `relative` en su padre (no hay dónde anclarse).
+
+---
+
 ## 5. Componentes de Datos
 
 ### 5.1 DataTable
@@ -3110,6 +3155,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 | `maxBodyHeight` | `string` | `'400px'` | Altura maxima del body con scroll vertical |
 | `className` | `string` | `undefined` | Clases adicionales del container |
 | `headerVariant` | `'brand' \| 'neutral'` | `'brand'` | `brand`: encabezado naranja alternado. `neutral`: encabezado gris claro, alineado como cada columna (vistas limpias de RRHH / Maquinaria) |
+| `lines` | `'bold' \| 'subtle'` | `'bold'` | (review PR #17) Líneas del cuerpo de la tabla. `bold`: línea negra entre filas (en claro) **y** separador vertical por celda — la tabla con rejilla marcada. `subtle`: solo línea fina entre filas, sin verticales — tablas densas o de jerarquía visual baja |
 
 #### Tipo Column<T>
 
@@ -3120,10 +3166,48 @@ interface Column<T> {
   render?: (item: T) => React.ReactNode;    // Renderizado custom de celda
   className?: string;                       // Clases adicionales
   align?: 'left' | 'center' | 'right';     // Alineacion del contenido de la celda
-  minWidth?: string;                        // Ancho minimo (ej: '120px')
+  minWidth?: string;                        // Ancho minimo (ej: '120px') — dicta el ancho de la columna
   nowrap?: boolean;                         // No romper contenido
+  truncate?: boolean;                       // Corta el contenido con puntos suspensivos al ancho de la columna
 }
 ```
+
+> **`truncate: true`** pasa esa tabla a `table-layout: fixed` (los anchos los mandan
+> los `minWidth` de las cabeceras) y la celda recorta con `text-ellipsis`. Usarlo
+> en columnas de texto largo (Descripción, Direcciones).
+
+#### Líneas de la tabla — `lines` (review PR #17)
+
+Dos niveles de rejilla sobre el cuerpo, con tokens que se invierten solos
+entre claro y oscuro (`.dark`):
+
+| Modo | Filas | Celdas | Para qué |
+|------|-------|--------|----------|
+| `'bold'` (default) | Línea **negra** en claro / `ui-200` en oscuro | Separador vertical **por celda** (negro en claro / `ui-100` en oscuro) | **CRUDs estándar del ERP** — rejilla marcada, lectura por columna fácil (Inventario, Clientes, Reportes…) |
+| `'subtle'` | Línea fina `ui-100` | **Sin** verticales | Tablas densas, de solo lectura, o dentro de un detail-heavy page donde la rejilla grosera compite con el contenido (ej. historiales largos, dashboards de solo lectura) |
+
+**Ejemplo — modo por defecto (se ve como hasta hoy):**
+
+```tsx
+<DataTable<Articulo> columns={columnas} data={articulos} keyExtractor={(a) => a.id} />
+```
+
+**Ejemplo — tabla densa con rejilla más delicada:**
+
+```tsx
+<DataTable<Trabajador>
+  columns={columnas}
+  data={trabajadores}
+  keyExtractor={(t) => t.id}
+  lines="subtle"
+/>
+```
+
+**Cuándo NO usar `lines="subtle"`:**
+- En CRUDs con columnas anchas y contenido desalineado a la derecha — sin
+  verticales pierde la guía por columna ( ⓘ mantener `'bold'` ).
+- En tablas con `truncate` de texto largo — la doble frontera ayuda a ver
+  el corte.
 
 #### Headers Naranja Alternados
 
@@ -3365,9 +3449,11 @@ import { Pagination } from '@/components/ui/Pagination';
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ Pagina 3 de 10 — Mostrando 21-30 de 98 registros     «  ‹  1  2  [3]  4  5  ...  10  ›  »  │
+│ Mostrando 21-30 de 98 registros        Pagina 3 de 10  «  ‹  1  2  [3]  ...  ›  » │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+> En móvil se apila: "Pagina X de Y" + navegación centrados, "Mostrando…" debajo.
 
 | Elemento | Icono | Funcion |
 |----------|-------|---------|

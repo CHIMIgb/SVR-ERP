@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, ClipboardList, Clock, HardHat, MapPin,
-  Eye, Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
+  Eye, Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -19,6 +19,8 @@ import { TimelineCard } from '@/components/ui/TimelineCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { bitacoraApi, type BitacoraDTO, type BitacoraCatalogos } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -253,7 +255,7 @@ export default function OperacionesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al registrar la operación.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al registrar la operación.'), 'error');
       }
     } catch {
       showToast('Error de conexión al registrar la operación.', 'error');
@@ -282,7 +284,7 @@ export default function OperacionesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar la operación.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la operación.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar la operación.', 'error');
@@ -303,7 +305,7 @@ export default function OperacionesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar la operación.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la operación.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar la operación.', 'error');
@@ -396,7 +398,8 @@ export default function OperacionesPage() {
         subtitle="Registro diario de actividades realizadas por maquinaria en obra."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Registro
             </Button>
           ) : undefined
@@ -410,18 +413,21 @@ export default function OperacionesPage() {
           value={stats.totalRegistros}
           label="Total Operaciones"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Clock className="w-6 h-6" />}
           value={`${stats.horasTotales} hrs`}
           label="Horas Totales"
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<HardHat className="w-6 h-6" />}
           value={stats.maquinasActivas}
           label="Máquinas Activas"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 
@@ -510,12 +516,7 @@ export default function OperacionesPage() {
       {/* ── Tabla + paginación ── */}
       <div className="space-y-3">
         <div className="relative">
-          {/* Overlay sutil durante refetches — solo cuando ya hay datos */}
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={registros}

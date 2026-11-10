@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { statsCardClasses } from './StatsCard.styles';
 
@@ -16,6 +16,8 @@ export interface StatsCardProps {
   trend?: StatsTrend;
   trendValue?: string;
   onClick?: () => void;
+  /** Mostrar skeleton mientras el dato carga (primera impresión, nunca 0 falso). */
+  loading?: boolean;
   className?: string;
 }
 
@@ -34,9 +36,37 @@ export function StatsCard({
   trend,
   trendValue,
   onClick,
+  loading = false,
   className,
 }: StatsCardProps) {
   const TrendIcon = trend ? trendIcons[trend] : null;
+
+  if (loading) {
+    // Spinner SOLO en el espacio del valor: icono y etiqueta se muestran reales.
+    const valueSpinner = <Loader2 className="w-6 h-6 text-primary animate-spin" />;
+    return (
+      <div className={cn(statsCardClasses.base, className)} aria-busy="true">
+        {icon ? (
+          <>
+            <div className="flex items-start justify-between">
+              <div className={cn(statsCardClasses.iconWrapper, statsCardClasses.iconVariants[color])}>
+                {icon}
+              </div>
+            </div>
+            <p className={statsCardClasses.value}>{valueSpinner}</p>
+            <p className={statsCardClasses.label}>{label}</p>
+          </>
+        ) : (
+          <>
+            <div className={statsCardClasses.plainHeader}>
+              <p className={statsCardClasses.plainLabel}>{label}</p>
+            </div>
+            <p className={statsCardClasses.plainValue}>{valueSpinner}</p>
+          </>
+        )}
+      </div>
+    );
+  }
 
   const trendBadge = trend && TrendIcon && (
     <span

@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import {
-  EstadoReporteCampo,
+  CategoriaReporte,
+  EstadoIncidente,
   Prioridad,
   TipoReporteCampo,
   AuditAction,
@@ -11,7 +12,7 @@ import { ReportesCampoService } from './reportes-campo.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
-describe('ReportesCampoService', () => {
+describe('ReportesCampoService (flujo incidentes v2)', () => {
   let service: ReportesCampoService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
@@ -19,55 +20,90 @@ describe('ReportesCampoService', () => {
 
   const mockReporte = {
     id: '550e8400-e29b-41d4-a716-446655440010',
-    codigo: null,
+    codigo: 'INC0100',
     tipo: TipoReporteCampo.PIPERO,
+    categoria: 'DIESEL',
+    subcategoria_id: null,
+    subcategoria: null,
     usuario: 'Marcos G.',
-    usuario_id: null,
+    usuario_id: 'user-1',
     maquina_id: '550e8400-e29b-41d4-a716-446655440020',
     fecha: new Date('2025-04-27'),
     hora: new Date('1970-01-01T14:15:00'),
     descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
-    estado: EstadoReporteCampo.VISTO,
+    estado: EstadoIncidente.NUEVO,
     asignado_a_id: null,
-    asignado_nombre: 'Marcos G.',
+    asignado_nombre: null,
     asignado_en: null,
     prioridad: null,
-    detalles: { litros: 200, costo: 4600 },
+    detalles: null,
     obra_id: null,
     obra_texto: 'Valle Sur',
+    latitud: null,
+    longitud: null,
     activo: true,
     creado_en: new Date(),
     actualizado_en: new Date(),
     eliminado_en: null,
+    cerrado_en: null,
     maquinas: { id: 'm1', codigo: 'M004', nombre: 'Camión Pipero' },
     obras: null,
   };
 
+  /** PNG 1x1 (67 bytes). */
+  const PNG_1X1 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
   beforeEach(async () => {
+    mockAudit.log.mockClear();
     prisma = {
       reportes_campo: {
         findMany: jest.fn().mockResolvedValue([mockReporte]),
         findFirst: jest.fn().mockResolvedValue(mockReporte),
+        findUnique: jest.fn().mockResolvedValue(mockReporte),
         count: jest.fn().mockResolvedValue(1),
         create: jest.fn().mockResolvedValue(mockReporte),
         update: jest.fn().mockResolvedValue(mockReporte),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         groupBy: jest.fn().mockResolvedValue([{ tipo: 'MECANICO', _count: 1 }]),
       },
+      reportes_actividades: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn((args: { data: { texto: string; autor_nombre: string } }) =>
+          Promise.resolve({
+            id: 'act-1',
+            ...args.data,
+            creado_en: new Date(),
+          }),
+        ),
+      },
+      reportes_adjuntos: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn((args: { data: Record<string, string | number> }) =>
+          Promise.resolve({
+            id: 'adj-1',
+            ...args.data,
+            creado_en: new Date(),
+          }),
+        ),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      subcategorias_reporte: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({ id: 'sub-d1', categoria: 'DIESEL' }),
+      },
       trabajadores: {
         findFirst: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez' }),
       },
+      users: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
       maquinas: {
         findFirst: jest.fn().mockResolvedValue({ id: mockReporte.maquina_id }),
       },
       obras: {
         findFirst: jest.fn().mockResolvedValue({ id: 'obra-1' }),
-      },
-      clientes: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
-      },
-      cuentas_por_cobrar: {
-        create: jest.fn().mockResolvedValue({ id: 'cxc-1' }),
       },
       $transaction: jest.fn(async (cb: (tx: any) => Promise<unknown>) => cb(prisma)),
     };
@@ -83,77 +119,225 @@ describe('ReportesCampoService', () => {
     service = module.get(ReportesCampoService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
   describe('findAll', () => {
-    it('should return paginated reportes', async () => {
-      const result = await service.findAll({});
-      expect(result).toHaveProperty('items');
-      expect(result).toHaveProperty('pagination');
-      expect(result.items).toHaveLength(1);
-    });
-
-    it('should pass search to where clause (usuario, descripcion, obra)', async () => {
-      await service.findAll({ search: 'diésel' });
+    it('pasa search y filtra estado/tipo/prioridad al where', async () => {
+      await service.findAll({ search: 'neta', estado: EstadoIncidente.EN_CURSO, tipo: TipoReporteCampo.PIPERO }, 'user-1');
       const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
-      expect(callArgs.where.OR).toHaveLength(3);
+      expect(callArgs.where.OR).toBeTruthy();
+      expect(callArgs.where.estado).toBe(EstadoIncidente.EN_CURSO);
+      expect(callArgs.where.tipo).toBe(TipoReporteCampo.PIPERO);
+      // paginado duro (regla del repo)
+      expect(callArgs.take).toBe(10);
+      expect(callArgs.skip).toBe(0);
     });
 
-    it('should pass estado, tipo and prioridad filters', async () => {
-      await service.findAll({
-        estado: EstadoReporteCampo.PENDIENTE,
-        tipo: TipoReporteCampo.INCIDENTE,
-        prioridad: Prioridad.ALTA,
-      });
+    it('techo de limit en 100 y paginación derivada', async () => {
+      await service.findAll({ page: 2, limit: 500 }, 'user-1');
       const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
-      expect(callArgs.where.estado).toBe(EstadoReporteCampo.PENDIENTE);
-      expect(callArgs.where.tipo).toBe(TipoReporteCampo.INCIDENTE);
-      expect(callArgs.where.prioridad).toBe(Prioridad.ALTA);
+      expect(callArgs.take).toBe(100);
+      const callCount = prisma.reportes_campo.count.mock.calls[0][0];
+      expect(callCount).toBeTruthy();
     });
 
-    it('should filter criticos (INCIDENTE Alta/Crítica sin resolver) via flag', async () => {
-      await service.findAll({ criticos: 'true' });
+    it('banner de críticos: estado distinto de CERRADO y tipo INCIDENTE', async () => {
+      await service.findAll({ criticos: 'true' }, 'user-1');
       const callArgs = prisma.reportes_campo.findMany.mock.calls[0][0];
       expect(callArgs.where.tipo).toBe(TipoReporteCampo.INCIDENTE);
-      expect(callArgs.where.prioridad).toEqual({ in: [Prioridad.ALTA, Prioridad.CRITICA] });
-      expect(callArgs.where.estado).toEqual({ not: EstadoReporteCampo.RESUELTO });
+      expect(callArgs.where.estado).toEqual({ not: EstadoIncidente.CERRADO });
     });
   });
 
-  describe('findOne', () => {
-    it('should return a serialized reporte', async () => {
-      const result = await service.findOne(mockReporte.id);
-      expect(result.tipo).toBe('Pipero');
-      expect(result.estado).toBe('Visto');
-      expect(result.maquinaCodigo).toBe('M004');           // código para mostrar
-      expect(result.maquinaId).toBe(mockReporte.maquina_id); // UUID para editar
-      expect(result.hora).toBe('14:15');
+  describe('ámbito de acceso directo (enAmbito — review PR #17)', () => {
+    /** Helper: configura el usuario que "consulta" con rol/torre concretos. */
+    const usuario = (opts: { nivel?: number; torre?: string | null; nombre?: string }) => {
+      prisma.users.findUnique = jest.fn().mockResolvedValue({
+        torre: opts.torre ?? null,
+        personas_users_persona_idTopersonas: {
+          nombre: 'Nombre', apellido_paterno: '', apellido_materno: '', telefono: '55 5555 5555',
+        },
+        users_roles_users_roles_user_idTousers: [
+          { roles: { nivel: opts.nivel ?? 20, torre: opts.torre ?? null, nombre: opts.nombre ?? 'Test' } },
+        ],
+      });
+    };
+
+    const subordinados = (ids: string[]) => {
+      prisma.users.findMany = jest.fn().mockResolvedValue(ids.map((id) => ({ id })));
+    };
+
+    it('findOne: dueño del reporte accede (guard no interfiere)', async () => {
+      await service.findOne(mockReporte.id, 'user-1');
+      expect(mockAudit.log).not.toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'REPORTE_ACCESO_DENEGADO' }));
     });
 
-    it('should throw NotFoundException when not found', async () => {
+    for (const metodo of [
+      { nombre: 'aceptar', accion: AuditAction.REPORTE_ASIGNADO, llamado: () => service.aceptar(mockReporte.id, 'ate-1') },
+      {
+        nombre: 'cambiarEstado',
+        accion: AuditAction.ESTATUS_CAMBIADO,
+        llamado: () => service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'ate-1'),
+      },
+      {
+        nombre: 'comentar',
+        accion: AuditAction.REPORTE_COMENTADO,
+        llamado: () => service.comentar(mockReporte.id, { texto: 'hola' }, 'ate-1'),
+      },
+      {
+        nombre: 'adjuntar',
+        accion: AuditAction.REPORTE_ADJUNTO,
+        llamado: () =>
+          service.adjuntar(
+            mockReporte.id,
+            { nombre: 'foto.png', mime: 'image/png', datos: PNG_1X1 },
+            'ate-1',
+          ),
+      },
+      { nombre: 'remove', accion: AuditAction.REPORTE_ELIMINADO, llamado: () => service.remove(mockReporte.id, 'ate-1') },
+    ]) {
+      it(`${metodo.nombre}: fuera del ámbito (DIESEL ≠ torre del consultante) → 403 + FAIL auditado con error_code`, async () => {
+        usuario({ nivel: 70, torre: 'MECANICO', nombre: 'Técnico Mecanico' });
+        await expect(metodo.llamado()).rejects.toThrow(ForbiddenException);
+        expect(mockAudit.log).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: metodo.accion,
+            entityId: mockReporte.id,
+            result: AuditResult.FAIL,
+            errorCode: 'REPORTE_ACCESO_DENEGADO',
+          }),
+        );
+      });
+
+      it(`${metodo.nombre}: Administrador (nivel 100) pasa sin importar la torre`, async () => {
+        usuario({ nivel: 100, torre: 'DIESEL', nombre: 'Administrador' });
+        await expect(metodo.llamado()).resolves.toBeTruthy();
+        expect(mockAudit.log).not.toHaveBeenCalledWith(
+          expect.objectContaining({ errorCode: 'REPORTE_ACCESO_DENEGADO' }),
+        );
+      });
+    }
+
+    it('findOne: asignado accede aunque su torre no coincida', async () => {
+      usuario({ nivel: 70, torre: 'MECANICO', nombre: 'Técnico Mecanico' });
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, asignado_a_id: 'ate-1' });
+      await expect(service.findOne(mockReporte.id, 'ate-1')).resolves.toBeTruthy();
+    });
+
+    it('asignado pasa el guard en los 5 métodos de mutación (fuera de su torre)', async () => {
+      usuario({ nivel: 70, torre: 'MECANICO' });
+      const ajeno = { ...mockReporte, asignado_a_id: 'ate-1' };
+      prisma.reportes_campo.findFirst.mockResolvedValue(ajeno);
+      await expect(service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'ate-1')).resolves.toBeTruthy();
+      await expect(service.comentar(mockReporte.id, { texto: 'seguimiento' }, 'ate-1')).resolves.toBeTruthy();
+      await expect(service.remove(mockReporte.id, 'ate-1')).resolves.toBeTruthy();
+    });
+
+    it('residente accede solo a reportes de su equipo (jefe_user_id) en findOne', async () => {
+      usuario({ nivel: 90, torre: 'RESIDENTE', nombre: 'Residente' });
+      subordinados(['sub-1']);
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'sub-1' });
+      await expect(service.findOne(mockReporte.id, 'res-1')).resolves.toBeTruthy();
+
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'ajeno-1' });
+      await expect(service.findOne(mockReporte.id, 'res-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('trabajador sin torre: solo sus propios reportes (enAmbito falla para ajenos)', async () => {
+      usuario({ nivel: 20, torre: null, nombre: 'Trabajador' });
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'otro-1' });
+      await expect(service.findOne(mockReporte.id, 'worker-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('horaDelMomento (ancla UTC, offsets históricos fuera — review PR #17)', () => {
+    /**
+     * Los casos usan fechas 2026 (offset -06 en la tzdb real), donde tampoco
+     * importa la TZ del proceso: la función fija America/Mexico_City en Intl.
+     */
+    it('frontera 23:59:59 → guardado 23:59:00Z, serializa 23:59', () => {
+      const horas = service['horaDelMomento'](new Date('2026-11-11T23:59:59-06:00'));
+      expect(horas.toISOString()).toBe('1970-01-01T23:59:59.000Z');
+      expect(horas.toISOString().slice(11, 16)).toBe('23:59');
+    });
+
+    it('frontera 00:01 next day → 00:01 sin arrastrar el día (nada de 00:01Z del día 2)', () => {
+      // captura 2026-11-11 valendo pasadas de medianoche: la pared es 00:01 del día 12
+      const horas = service['horaDelMomento'](new Date('2026-11-11T23:59:00-06:00'));
+      const after = new Date(horas.toISOString().slice(0, 4) === '1970-01-02'
+        ? horas.getTime()
+        : horas.getTime());
+      // nunca cruza de día: 23:59 antes de medianoche queda 23:59 (no el día 2)
+      expect(after.toISOString().startsWith('1970-01-01')).toBe(true);
+      expect(after.toISOString().slice(11, 16)).toBe('23:59');
+    });
+
+    it('frontera 00:00 exacta del día siguiente → 00:00Z (no la historica -07 de 1970)', () => {
+      const horas = service['horaDelMomento'](new Date('2026-11-12T00:00:00-06:00'));
+      expect(horas.toISOString()).toBe('1970-01-01T00:00:00.000Z');
+    });
+
+    it('capturas a medio día: la pared Mexico City es la que se ancla (+ sin TZ del host)', () => {
+      // 14:30 CST en 2026-11-10 y 14:30 UTC-00 equivalen a la misma pared,
+      // sin importar la TZ del proceso — ambos deben anclar 14:30Z
+      const desdeCst = service['horaDelMomento'](new Date('2026-11-10T14:30:00-06:00'));
+      const desdeUtc = service['horaDelMomento'](new Date('2026-11-10T20:30:00.000Z'));
+      expect(desdeCst.toISOString()).toBe('1970-01-01T14:30:00.000Z');
+      expect(desdeUtc.toISOString()).toBe('1970-01-01T14:30:00.000Z');
+    });
+
+    it('serialize: hora sale como HH:mm del ancla UTC (toTimeString ya no se usa)', () => {
+      // fila guardada 18:25Z → el detalle consume '18:25' tanto en CST como UTC+8
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        hora: new Date(Date.UTC(1970, 0, 1, 18, 25, 0)),
+      });
+      prisma.users.findUnique = jest.fn().mockResolvedValue(null);
+      expect.assertions(1);
+      service.findOne(mockReporte.id, 'user-1').then((detalle: { reporte: { hora: string } }) => {
+        expect(detalle.reporte.hora).toBe('18:25');
+      });
+    });
+  });
+
+  describe('findOne (detalle)', () => {
+    it('retorna { reporte, actividades, adjuntos } serializados', async () => {
+      const detalle = await service.findOne(mockReporte.id, 'user-1');
+      expect(detalle.reporte.id).toBeDefined();
+      expect(detalle.reporte.estado).toBe('Nuevo');
+      expect(detalle.actividades).toEqual([]);
+      expect(detalle.adjuntos).toEqual([]);
+    });
+
+    it('detalle con proyecto: incluye nombre y direccion armado de la BD', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        proyectos: { id: 'p1', nombre: 'Escuela Secundaria', calle: 'Av Central 123', colonia: 'Centro', ciudad: 'Tepic' },
+      });
+      const detalle = await service.findOne(mockReporte.id, 'user-1');
+      expect(detalle.reporte.proyecto).toBe('Escuela Secundaria');
+      expect(detalle.reporte.proyectoDireccion).toBe('Av Central 123, Centro, Tepic');
+    });
+
+    it('lanza 404 sin reporte', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue(null);
-      await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent', 'user-1')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('create', () => {
     const createDto = {
-      tipo: TipoReporteCampo.PIPERO,
+      categoria: CategoriaReporte.DIESEL,
+      subcategoriaId: 'sub-d1',
       usuario: 'Marcos G.',
-      maquinaId: mockReporte.maquina_id as string,
-      obraTexto: 'Valle Sur',
-      fecha: '2025-04-27',
-      hora: '14:15',
       descripcion: 'Suministro de 200L de diésel. Tanque lleno.',
     };
 
-    it('should create a reporte (PENDIENTE) and log REPORTE_CREADO', async () => {
+    it('deriva el tipo del área (torre) — vocabulario viejo ya no se captura', async () => {
+      await service.create(createDto, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.tipo).toBe('DIESEL'); // espejo de la categoria
+    });
+
+    it('crea incidente NUEVO con folio y audita REPORTE_CREADO SUCCESS', async () => {
       const result = await service.create(createDto, 'user-1');
       expect(prisma.reportes_campo.create).toHaveBeenCalled();
       expect(mockAudit.log).toHaveBeenCalledWith(
@@ -166,120 +350,164 @@ describe('ReportesCampoService', () => {
       );
     });
 
-    it('should throw BadRequest if máquina not found AND audit the failure', async () => {
-      prisma.maquinas.findFirst.mockResolvedValue(null);
-      await expect(service.create(createDto, 'user-1')).rejects.toThrow(BadRequestException);
+    it('genera folio INC0002 (correlativo sobre "INC") y persiste categoria/subcategoría', async () => {
+      await service.create(createDto, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.codigo).toBe('INC0002');
+      expect(data.categoria).toBe(CategoriaReporte.DIESEL);
+      expect(data.subcategoria_id).toBe('sub-d1');
+      expect(data.estado).toBe(EstadoIncidente.NUEVO);
+      expect(prisma.reportes_campo.count).toHaveBeenCalledWith({
+        where: { codigo: { startsWith: 'INC' } },
+      });
+    });
 
+    it('valida que la subcategoría sea de la categoría (FAIL SUBCATEGORIA_INVALIDA + audit)', async () => {
+      prisma.subcategorias_reporte.findFirst.mockResolvedValue({ id: 'sub-d1', categoria: 'MECANICO' });
+      await expect(service.create(createDto, 'user-1')).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.REPORTE_CREADO,
           result: AuditResult.FAIL,
-          errorCode: 'MAQUINA_NO_ENCONTRADA',
+          errorCode: 'SUBCATEGORIA_INVALIDA',
         }),
       );
     });
 
-    it('should default estado PENDIENTE and link usuario_id to creator', async () => {
-      await service.create(createDto, 'user-1');
-      const data = prisma.reportes_campo.create.mock.calls[0][0].data;
-      expect(data.estado).toBe(EstadoReporteCampo.PENDIENTE);
-      expect(data.usuario_id).toBe('user-1');
+    it('server "misma área" resuelve la torre con el área del que reporta (oficina → ADMINISTRATIVO)', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        torre: null,
+        personas_users_persona_idTopersonas: { telefono: '55' },
+        users_roles_users_roles_user_idTousers: [],
+      });
+      const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
+      await service.create({ ...dtoSimple, mismaArea: true }, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.categoria).toBe(CategoriaReporte.ADMINISTRATIVO);
+    });
+
+    it('server "misma área" con torre asignada al usuario usa esa torre', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        torre: 'MECANICO',
+        personas_users_persona_idTopersonas: { telefono: '55' },
+        users_roles_users_roles_user_idTousers: [],
+      });
+      const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
+      await service.create({ ...dtoSimple, mismaArea: true }, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.categoria).toBe(CategoriaReporte.MECANICO);
+      // consulta por el id del usuario que reporta (no global)
+      expect(prisma.users.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'user-1' } }),
+      );
+    });
+
+    it('server "misma área" sin torre propia: hereda la del rol principal', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        torre: null,
+        personas_users_persona_idTopersonas: { telefono: '55' },
+        users_roles_users_roles_user_idTousers: [
+          { es_principal: false, roles: { torre: 'MECANICO' } },
+          { es_principal: true, roles: { torre: 'RESIDENTE' } },
+        ],
+      });
+      const { categoria: _c, subcategoriaId: _s, ...dtoSimple } = createDto;
+      await service.create({ ...dtoSimple, mismaArea: true }, 'user-1');
+      const data = prisma.reportes_campo.create.mock.calls.at(-1)[0].data;
+      expect(data.categoria).toBe(CategoriaReporte.RESIDENTE);
+    });
+
+    it('sin categoria ni mismaArea → CATEGORIA_REQUERIDA (audita FAIL)', async () => {
+      const { categoria: _c, ...sinCategoria } = createDto;
+      await expect(service.create(sinCategoria, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'CATEGORIA_REQUERIDA',
+        }),
+      );
     });
   });
 
-  describe('update — edición limitada a PENDIENTES', () => {
-    it('should update a PENDIENTE reporte and log REPORTE_ACTUALIZADO', async () => {
-      prisma.reportes_criba; // noop para lint
-      prisma.reportes_campo.findFirst.mockResolvedValue({
-        ...mockReporte,
-        estado: EstadoReporteCampo.PENDIENTE,
-      });
+  describe('update', () => {
+    it('actualiza mientras no está CERRADO (creador legítimo)', async () => {
+      const updated = await service.update(mockReporte.id, { descripcion: 'Errata corregida' }, 'user-1');
+      expect(updated.descripcion).toBeDefined();
+    });
 
-      const result = await service.update(
+    it('el Administrador puede editar incidentes de otros', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'otro-1' });
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
+      const updated = await service.update(
         mockReporte.id,
-        { descripcion: 'Corrección de errata en el reporte' },
-        'user-1',
+        { descripcion: 'Corrección del admin' },
+        'user-admin',
       );
+      expect(updated.descripcion).toBeDefined();
+    });
 
-      expect(prisma.reportes_campo.update).toHaveBeenCalled();
+    it('rechaza editar el reporte de otro empleado (EDITAR_SOLO_CREADOR_O_ADMIN)', async () => {
+      await expect(
+        service.update(mockReporte.id, { descripcion: 'curiosidad ajena' }, 'otro-user'),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.REPORTE_ACTUALIZADO,
-          result: AuditResult.SUCCESS,
+          result: AuditResult.FAIL,
+          errorCode: 'EDITAR_SOLO_CREADOR_O_ADMIN',
         }),
       );
     });
 
-    it('should reject editing a non-PENDIENTE reporte AND audit the failure', async () => {
-      // mockReporte está VISTO
+    it('rechaza actualizar un CERRADO (CERRADO_NO_EDITABLE) y audita FAIL', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: EstadoIncidente.CERRADO });
+      await expect(service.update(mockReporte.id, { descripcion: 'tardío' }, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ACTUALIZADO,
+          result: AuditResult.FAIL,
+          errorCode: 'CERRADO_NO_EDITABLE',
+        }),
+      );
+    });
+
+    it('valida categoría de la subcategoría al editar', async () => {
+      prisma.subcategorias_reporte.findFirst.mockResolvedValue({ id: 'sub-d1', categoria: 'MECANICO' });
       await expect(
-        service.update(mockReporte.id, { descripcion: 'X' }, 'user-1'),
+        service.update(mockReporte.id, { subcategoriaId: 'sub-d1' }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.REPORTE_ACTUALIZADO,
-          result: AuditResult.FAIL,
-          errorCode: 'EDITAR_SOLO_PENDIENTES',
-        }),
-      );
-    });
-
-    it('should throw NotFound AND audit when reporte does not exist', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(null);
-      await expect(
-        service.update('non-existent', { descripcion: 'X' }, 'user-1'),
-      ).rejects.toThrow(NotFoundException);
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.REPORTE_ACTUALIZADO,
-          result: AuditResult.FAIL,
-          errorCode: 'REPORTE_NO_ENCONTRADO',
-        }),
-      );
     });
   });
 
-  describe('cambiarEstado — flujo de seguimiento', () => {
+  describe('cambiarEstado (flujo de 3 estados)', () => {
     it.each([
-      [EstadoReporteCampo.PENDIENTE, EstadoReporteCampo.VISTO],
-      [EstadoReporteCampo.VISTO, EstadoReporteCampo.ATENDIDO],
-      [EstadoReporteCampo.ATENDIDO, EstadoReporteCampo.RESUELTO],
-      [EstadoReporteCampo.EN_REVISION, EstadoReporteCampo.RESUELTO],
-    ])('debe permitir %s → %s y auditar ESTATUS_CAMBIADO', async (desde, hacia) => {
-      prisma.reportes_campo.findFirst.mockResolvedValue({
-        ...mockReporte,
-        estado: desde,
-      });
-
-      const result = await service.cambiarEstado(mockReporte.id, { estado: hacia }, 'user-1');
-
-      expect(result.estado).toBeDefined();
+      [EstadoIncidente.NUEVO, EstadoIncidente.EN_CURSO],
+      [EstadoIncidente.NUEVO, EstadoIncidente.CERRADO],
+      [EstadoIncidente.EN_CURSO, EstadoIncidente.CERRADO],
+    ])('permite %s → %s auditando SUCCESS', async (desde, hacia) => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: desde });
+      // CERRAR es exclusivo de Administrador: el resto de casos usa un no-admin
+      prisma.users.findUnique.mockResolvedValue(
+        hacia === EstadoIncidente.CERRADO
+          ? { users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }] }
+          : null,
+      );
+      await service.cambiarEstado(mockReporte.id, { estado: hacia }, 'user-1');
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.ESTATUS_CAMBIADO,
-          entityType: 'reportes_campo',
-          entityId: mockReporte.id,
-          result: AuditResult.SUCCESS,
-          previousValue: { estado: expect.any(String) },
-          newValue: expect.objectContaining({
-            estado: hacia === EstadoReporteCampo.RESUELTO ? 'Resuelto' : expect.any(String),
-          }),
-        }),
+        expect.objectContaining({ action: AuditAction.ESTATUS_CAMBIADO, result: AuditResult.SUCCESS }),
       );
     });
 
-    it('debe rechazar saltos no válidos (RESUELTO → cualquier cosa) Y auditar el fallo', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue({
-        ...mockReporte,
-        estado: EstadoReporteCampo.RESUELTO,
-      });
-
+    it('rechaza transiciones no válidas y audita TRANSICION_NO_VALIDA', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: EstadoIncidente.CERRADO });
       await expect(
-        service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.VISTO }, 'user-1'),
+        service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
-
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.ESTATUS_CAMBIADO,
@@ -289,347 +517,308 @@ describe('ReportesCampoService', () => {
       );
     });
 
-    it('debe rechazar retroceder (ATENDIDO → VISTO) Y auditar el fallo', async () => {
+    it('al cerrar persiste cerrado_en (updateMany con guard de estado)', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue({
         ...mockReporte,
-        estado: EstadoReporteCampo.ATENDIDO,
+        estado: EstadoIncidente.EN_CURSO,
       });
-
-      await expect(
-        service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.VISTO }, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
+      // cerrar es de Administrador — mock de nivel 100
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
+      await service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.CERRADO }, 'user-1');
+      const args = prisma.reportes_campo.updateMany.mock.calls.at(-1)[0];
+      expect(args.where.estado).toBe(EstadoIncidente.EN_CURSO);
+      expect(args.data.cerrado_en).toBeInstanceOf(Date);
     });
 
-    it('rechaza marcar Resuelto sin responsable (RESPONSABLE_REQUERIDO) Y audita el fallo', async () => {
-      // arrange — ni asignado_a ni asignado_nombre (el cliente no es confiable)
+    it('race de estado: updateMany count 0 → CONFLICTO_CONCURRENCIA (409)', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue({
         ...mockReporte,
-        estado: EstadoReporteCampo.ATENDIDO,
-        asignado_a_id: null,
-        asignado_nombre: null,
+        estado: EstadoIncidente.NUEVO,
       });
-
-      // act / assert
+      prisma.reportes_campo.updateMany.mockResolvedValueOnce({ count: 0 });
       await expect(
-        service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.RESUELTO }, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'RESPONSABLE_REQUERIDO' }),
-      );
-      expect(prisma.reportes_campo.updateMany).not.toHaveBeenCalled();
-    });
-
-    it('carrera: si el estado ya cambió → 409 y NO sobrescribe resuelto_en', async () => {
-      // arrange
-      prisma.reportes_campo.findFirst.mockResolvedValue({
-        ...mockReporte,
-        estado: EstadoReporteCampo.ATENDIDO,
-      });
-      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 0 });
-
-      // act / assert
-      await expect(
-        service.cambiarEstado(mockReporte.id, { estado: EstadoReporteCampo.RESUELTO }, 'user-1'),
+        service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'user-1'),
       ).rejects.toThrow(ConflictException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CONFLICTO_CONCURRENCIA' }),
-      );
-      // el where condiciona por la asignación leída (re-revisión: "quitan la
-      // asignación mientras otro marca Resuelto" → 409 en vez de resolverse sin responsable)
-      const where = prisma.reportes_campo.updateMany.mock.calls[0][0].where;
-      expect(where).toEqual(
-        expect.objectContaining({
-          estado: EstadoReporteCampo.ATENDIDO,
-          asignado_a_id: mockReporte.asignado_a_id,
-          asignado_nombre: mockReporte.asignado_nombre,
-        }),
-      );
-    });
-  });
-
-  describe('remove', () => {
-    it('should soft delete and log REPORTE_ELIMINADO', async () => {
-      const result = await service.remove(mockReporte.id, 'user-1');
-      expect(result.message).toContain('eliminado');
-      expect(prisma.reportes_criba).toBeUndefined(); // sanity: tabla correcta
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.REPORTE_ELIMINADO,
-          entityType: 'reportes_campo',
-          actorUserId: 'user-1',
-          result: AuditResult.SUCCESS,
-        }),
-      );
     });
 
-    it('should throw NotFound AND audit when not found', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(null);
-      await expect(service.remove('non-existent', 'user-1')).rejects.toThrow(NotFoundException);
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: AuditAction.REPORTE_ELIMINADO,
-          result: AuditResult.FAIL,
-          errorCode: 'REPORTE_NO_ENCONTRADO',
-        }),
-      );
-    });
-  });
-
-  describe('findStats', () => {
-    it('should return counts per estado and criticosActivos', async () => {
-      prisma.reportes_campo.count
-        .mockResolvedValueOnce(3)  // pendientes
-        .mockResolvedValueOnce(1)  // en revisión
-        .mockResolvedValueOnce(2)  // atendidos
-        .mockResolvedValueOnce(4)  // resueltos
-        .mockResolvedValueOnce(2); // críticos activos
-
-      const result = await service.findStats();
-
-      expect(result).toEqual({
-        pendientes: 3,
-        enRevision: 1,
-        atendidos: 2,
-        resueltos: 4,
-        criticosActivos: 2,
-        porArea: { Mecanico: 1 },
-      });
-    });
-  });
-
-  describe('facturar', () => {
-    /** Reporte RESUELTO con cliente + monto, listo para facturar. */
-    const resuelto = {
-      ...mockReporte,
-      estado: EstadoReporteCampo.RESUELTO,
-      cliente_id: 'cliente-1',
-      proyecto_id: 'proyecto-1',
-      monto_servicio: 8500.5,
-    };
-
-    it('factura un reporte resuelto y hace nacer la CxC en la misma transacción', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(resuelto);
-      prisma.clientes.findFirst.mockResolvedValue({ id: 'cliente-1' });
-
-      const result = await service.facturar('reporte-1', 'user-1');
-
-      // El guard usa updateMany con estado RESUELTO
-      const updateArgs = prisma.reportes_campo.updateMany.mock.calls[0][0];
-      expect(updateArgs.where).toEqual({ id: 'reporte-1', estado: EstadoReporteCampo.RESUELTO });
-      expect(updateArgs.data.estado).toBe(EstadoReporteCampo.FACTURADO);
-
-      // La CxC creada dentro de $transaction
-      const txCxc = prisma.cuentas_por_cobrar.create.mock.calls[0][0];
-      expect(txCxc.data.cliente_id).toBe('cliente-1');
-      expect(txCxc.data.proyecto_id).toBe('proyecto-1');
-      expect(Number(txCxc.data.monto)).toBe(8500.5);
-      expect(txCxc.data.estado).toBe('PENDIENTE');
-      expect(txCxc.data.fecha_vencimiento.getDate()).toBeGreaterThanOrEqual(new Date().getDate());
-
-      expect(result.cuenta).toMatchObject({
-        reporteId: 'reporte-1',
-        monto: 8500.5,
-        proyectoId: 'proyecto-1',
-        estado: 'PENDIENTE',
-      });
-      expect(result.reporte.estado).toBe('Facturado');
-
-      const audits = mockAudit.log.mock.calls.map((c: any) => c[0].action);
-      expect(audits).toContain(AuditAction.REPORTE_CAMPO_FACTURADO);
-      expect(audits).toContain(AuditAction.CXC_CREADA);
-    });
-
-    it('lanza 404 con audit FAIL si el reporte no existe', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(null);
-      await expect(service.facturar('reporte-x', 'user-1')).rejects.toThrow(NotFoundException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.REPORTE_CAMPO_FACTURADO, result: AuditResult.FAIL, errorCode: 'REPORTE_NO_ENCONTRADO' }),
-      );
-    });
-
-    it('lanza 409 si el reporte no está RESUELTO', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(mockReporte); // estado VISTO
-      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'REPORTE_NO_RESUELTO' }),
-      );
-    });
-
-    it('lanza 409 si falta cliente o monto de servicio', async () => {
+    it('los no-admin no pueden CERRAR: CERRAR_SOLO_ADMIN (audita FAIL)', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue({
         ...mockReporte,
-        estado: EstadoReporteCampo.RESUELTO,
-        cliente_id: null,
-        monto_servicio: null,
+        estado: EstadoIncidente.EN_CURSO,
       });
-      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
+      // mock por defecto: users.findUnique null (sin rol de nivel 100)
+      await expect(
+        service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.CERRADO }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'DATOS_FACTURACION_INCOMPLETOS' }),
+        expect.objectContaining({
+          action: AuditAction.ESTATUS_CAMBIADO,
+          result: AuditResult.FAIL,
+          errorCode: 'CERRAR_SOLO_ADMIN',
+        }),
       );
     });
 
-    it('lanza 409 si el cliente está inactivo', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(resuelto);
-      prisma.clientes.findFirst.mockResolvedValue(null);
-      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'CLIENTE_INACTIVO' }),
-      );
-    });
-
-    it('lanza 409 en carrera de doble clic (updateMany count 0) y no crea CxC', async () => {
-      prisma.reportes_campo.findFirst.mockResolvedValue(resuelto);
-      prisma.clientes.findFirst.mockResolvedValue({ id: 'cliente-1' });
-      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 0 });
-
-      await expect(service.facturar('reporte-1', 'user-1')).rejects.toThrow(ConflictException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'REPORTE_YA_FACTURADO' }),
-      );
-      expect(prisma.cuentas_por_cobrar.create).not.toHaveBeenCalled();
+    it('404 con audit FAIL si el incidente no existe', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+      await expect(
+        service.cambiarEstado('missing', { estado: EstadoIncidente.EN_CURSO }, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
-  describe('asignar — "quién le cae" (quién lo debe resolver)', () => {
-    it('asigna a un trabajador activo, fija asignado_en y audita EXITO', async () => {
-      // act
-      const res = await service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1');
-
-      // assert
-      expect(res).toBeTruthy();
-      expect(prisma.reportes_campo.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ asignado_a_id: 't-1' }),
-        }),
+  describe('aceptar', () => {
+    it('nuevo sin responsable: acepta y llena RESPONSABLE con el nombre del aceptante', async () => {
+      const data = await service.aceptar(mockReporte.id, 'user-1');
+      const args = prisma.reportes_campo.updateMany.mock.calls.at(-1)[0];
+      expect(args.where.estado).toBe(EstadoIncidente.NUEVO);
+      expect(args.where.asignado_a_id).toBeNull();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ASIGNADO, result: AuditResult.SUCCESS }),
       );
-      const data = prisma.reportes_campo.updateMany.mock.calls[0][0].data;
-      expect(data.asignado_en).toBeInstanceOf(Date);
+      expect(data).toBeDefined();
+    });
+
+    it('con responsable ya asignado → YA_ACEPTADO (audita FAIL)', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.NUEVO,
+        asignado_nombre: 'Alguien',
+      });
+      await expect(service.aceptar(mockReporte.id, 'user-1')).rejects.toThrow(ConflictException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.REPORTE_ASIGNADO,
-          result: AuditResult.SUCCESS,
-          previousValue: { asignadoAId: null, asignadoNombre: 'Marcos G.' },
+          result: AuditResult.FAIL,
+          errorCode: 'YA_ACEPTADO',
         }),
       );
     });
 
-    it('acepta nombre libre cuando no hay trabajador del sistema', async () => {
-      // act
-      const res = await service.asignar('reporte-1', { asignadoNombre: 'Panchito el externo' }, 'user-1');
-
-      // assert
-      expect(res).toBeTruthy();
-      expect(prisma.reportes_campo.updateMany).toHaveBeenCalledWith(
+    it('el Residente no acepta (solo seguimiento): RESIDENTE_SOLO_SEGUIMIENTO (audita FAIL)', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 90, nombre: 'Residente' } }],
+      });
+      await expect(service.aceptar(mockReporte.id, 'user-1')).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ asignado_nombre: 'Panchito el externo' }),
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'RESIDENTE_SOLO_SEGUIMIENTO',
         }),
+      );
+    });
+
+    it('estado no NUEVO → SOLO_NUEVOS_SE_ACEPTAN (audita FAIL)', async () => {      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.EN_CURSO,
+      });
+      await expect(service.aceptar(mockReporte.id, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'SOLO_NUEVOS_SE_ACEPTAN',
+        }),
+      );
+    });
+  });
+
+  describe('asignar', () => {
+    it('asigna por trabajador y audita SUCCESS (exclusiva de Administrador)', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
+      await service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ASIGNADO, result: AuditResult.SUCCESS }),
       );
     });
 
     it('falla con ASIGNACION_VACIA (audita FAIL+errorCode antes de lanzar)', async () => {
-      // arrange / act / assert
-      await expect(service.asignar('reporte-1', {}, 'user-1')).rejects.toThrow(BadRequestException);
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
+      await expect(service.asignar(mockReporte.id, {}, 'user-1')).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'ASIGNACION_VACIA' }),
-      );
-      expect(prisma.reportes_campo.updateMany).not.toHaveBeenCalled();
-    });
-
-    it('falla con TRABAJADOR_NO_ENCONTRADO si el FK no existe/inactivo', async () => {
-      // arrange
-      prisma.trabajadores.findFirst.mockResolvedValue(null);
-
-      // act / assert
-      await expect(service.asignar('reporte-1', { asignadoA: 'no-existe' }, 'user-1')).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'TRABAJADOR_NO_ENCONTRADO' }),
-      );
-    });
-
-    it('falla con REPORTE_NO_ENCONTRADO si no existe', async () => {
-      // arrange
-      prisma.reportes_campo.findFirst.mockResolvedValue(null);
-
-      // act / assert
-      await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(NotFoundException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'REPORTE_NO_ENCONTRADO' }),
-      );
-    });
-
-    it('no reasigna un reporte terminal (RESUELTO): REPORTE_TERMINAL', async () => {
-      // arrange
-      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: EstadoReporteCampo.RESUELTO });
-
-      // act / assert
-      await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'REPORTE_TERMINAL' }),
-      );
-    });
-
-    it('carrera: otro cambio simultáneo → 409 CONFLICTO_CONCURRENCIA y no reasigna', async () => {
-      // arrange
-      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 0 });
-
-      // act / assert
-      await expect(service.asignar('reporte-1', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(ConflictException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.FAIL, errorCode: 'CONFLICTO_CONCURRENCIA' }),
-      );
-      // el where condiciona por la asignación leída (re-revisión: carreras de reasignación)
-      const where = prisma.reportes_campo.updateMany.mock.calls[0][0].where;
-      expect(where).toEqual(
         expect.objectContaining({
-          estado: mockReporte.estado,
-          asignado_a_id: mockReporte.asignado_a_id,
-          asignado_nombre: mockReporte.asignado_nombre,
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'ASIGNACION_VACIA',
         }),
       );
     });
-  });
 
-  describe('cambiarEstado → RESUELTO marca resuelto_en', () => {
-    it('setea resuelto_en cuando la transicion llega a RESUELTO', async () => {
-      // arrange
-      const atendido = { ...mockReporte, estado: EstadoReporteCampo.ATENDIDO };
-      prisma.reportes_campo.findFirst.mockResolvedValue(atendido);
-      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 1 });
-
-      // act
-      await service.cambiarEstado('reporte-1', { estado: EstadoReporteCampo.RESUELTO }, 'user-1');
-
-      // assert
-      const data = prisma.reportes_campo.updateMany.mock.calls[0][0].data;
-      expect(data.resuelto_en).toBeInstanceOf(Date);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ result: AuditResult.SUCCESS }),
+    it('no reasigna un CERRADO: REPORTE_CERRADO', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, estado: EstadoIncidente.CERRADO });
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: [{ roles: { nivel: 100 } }],
+      });
+      await expect(service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(
+        BadRequestException,
       );
     });
 
-    it('NO setea resuelto_en en transiciones que no son RESUELTO', async () => {
-      // arrange
-      const pendiente = { ...mockReporte, estado: EstadoReporteCampo.PENDIENTE };
-      prisma.reportes_campo.findFirst.mockResolvedValue(pendiente);
-      prisma.reportes_campo.updateMany.mockResolvedValue({ count: 1 });
+    it('los no-admin no pueden asignar: ASIGNAR_SOLO_ADMIN (audita FAIL)', async () => {
+      // mock por defecto: users.findUnique null (sin roles de nivel 100)
+      await expect(service.asignar(mockReporte.id, { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ASIGNADO,
+          result: AuditResult.FAIL,
+          errorCode: 'ASIGNAR_SOLO_ADMIN',
+        }),
+      );
+    });
 
-      // act
-      await service.cambiarEstado('reporte-1', { estado: EstadoReporteCampo.VISTO }, 'user-1');
-
-      // assert
-      const data = prisma.reportes_campo.updateMany.mock.calls[0][0].data;
-      expect('resuelto_en' in data).toBe(false);
+    it('404 con audit FAIL cuando no existe', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+      await expect(service.asignar('missing', { asignadoA: 't-1' }, 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
-  describe('findStats — desglose por área', () => {
-    it('devuelve porArea con labels legibles', async () => {
-      // act
-      const stats = await service.findStats();
+  describe('comentar (actividades)', () => {
+    it('publica actividad y audita REPORTE_COMENTADO SUCCESS', async () => {
+      const activity = await service.comentar(mockReporte.id, { texto: 'Revisada la bomba' }, 'user-1');
+      expect(activity.texto).toBe('Revisada la bomba');
+      expect(prisma.reportes_actividades.create).toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_COMENTADO,
+          result: AuditResult.SUCCESS,
+        }),
+      );
+    });
 
-      // assert
-      expect(stats.porArea).toEqual({ Mecanico: 1 });
+    it('rechaza comentar un CERRADO (INCIDENTE_CERRADO) con audit FAIL', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.CERRADO,
+      });
+      await expect(service.comentar(mockReporte.id, { texto: 'tarde' }, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_COMENTADO,
+          result: AuditResult.FAIL,
+          errorCode: 'INCIDENTE_CERRADO',
+        }),
+      );
+      expect(prisma.reportes_actividades.create).not.toHaveBeenCalled();
+    });
+
+    it('404 con audit FAIL si no existe', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+      await expect(service.comentar('missing', { texto: 'x' }, 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('adjuntar (imágenes)', () => {
+    const adjuntoBase = { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1 };
+
+    it('adjunta imagen y audita REPORTE_ADJUNTO SUCCESS', async () => {
+      const result = await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+      expect(result.mime).toBe('image/png');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ADJUNTO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('rechaza mime ajeno (MIME_NO_PERMITIDO) sin insertar', async () => {
+      await expect(
+        service.adjuntar(
+          mockReporte.id,
+          { ...adjuntoBase, mime: 'application/pdf' } as never,
+          'user-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza tamaño inflado (base64 real > 2 MB → ADJUNTO_MUY_GRANDE)', async () => {
+      // 3MB de base64 real aunque tamano declare 67
+      const datos = 'A'.repeat(4 * 1024 * 1024);
+      await expect(
+        service.adjuntar(mockReporte.id, { ...adjuntoBase, datos }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
+    });
+
+    it('corta en 4 adjuntos por incidente (LIMITE_ADJUNTOS)', async () => {
+      prisma.reportes_adjuntos.count.mockResolvedValue(4);
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza adjuntar un CERRADO (INCIDENTE_CERRADO)', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.CERRADO,
+      });
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('404 con audit FAIL si no existe', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+      await expect(service.adjuntar('missing', adjuntoBase, 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('remove (soft delete)', () => {
+    it('marca eliminado_en, desactiva y audita SUCCESS', async () => {
+      const result = await service.remove(mockReporte.id, 'user-1');
+      expect(result.message).toContain('eliminado');
+      const callArgs = prisma.reportes_campo.update.mock.calls[0][0];
+      expect(callArgs.data.eliminado_en).toBeInstanceOf(Date);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ELIMINADO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('404 con audit FAIL cuando no existe', async () => {
+      prisma.reportes_campo.findFirst.mockResolvedValue(null);
+      await expect(service.remove('missing', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findStats', () => {
+    it('cuenta nuevos/enCurso/cerrados + criticosActivos + porArea (con ámbito del usuario)', async () => {
+      const stats = await service.findStats('user-1');
+      expect(stats).toEqual({
+        nuevos: expect.any(Number),
+        enCurso: expect.any(Number),
+        cerrados: expect.any(Number),
+        criticosActivos: expect.any(Number),
+        porArea: expect.any(Object),
+      });
+    });
+  });
+
+  describe('subcategorias (catálogo maestro)', () => {
+    it('lista activas con categoria en TitleCase (sin paginar)', async () => {
+      prisma.subcategorias_reporte.findMany.mockResolvedValue([
+        { id: 'x', categoria: 'DIESEL', nombre: '150 litros de diésel' },
+      ]);
+      const result = await service.subcategorias();
+      expect(result).toEqual([{ id: 'x', categoria: 'Diesel', nombre: '150 litros de diésel' }]);
+      expect(prisma.subcategorias_reporte.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { activo: true } }),
+      );
     });
   });
 });

@@ -2,11 +2,32 @@ import 'dotenv/config';
 process.env.TZ = process.env.TZ || process.env.TIMEZONE || 'America/Mexico_City';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { json } from 'express';
 import { AppModule } from './app.module';
+
+// Los secretos del JWT no admiten respaldo: sin them, cualquiera podría forjar
+// tokens de administrador con el valor público del código.
+for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+  if (!process.env[key] || process.env[key].length < 32) {
+    throw new Error(
+      `Variable de entorno "${key}" faltante o demasiado corta (mínimo 32 caracteres). ` +
+      'La API no arranca sin sus secretos de JWT — configúralos en apps/api/.env o en el entorno del servidor.',
+    );
+  }
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const port = parseInt(process.env.PORT || '3001', 10);
+
+  // Límites de body por ruta (review PR #17):
+  // - 15 MB SOLO en el endpoint de adjuntos de reportes: la evidencia llega
+  //   como base64 (2 MB por imagen ≈ 2.7 MB en base64).
+  // - 100 KB por defecto para TODA la API (incluye login y el resto).
+  // El específico va primero; el body-parser por defecto ignora requests
+  // ya parseadas — sin doble parseo.
+  app.use('/api/reportes-campo/:id/adjuntos', json({ limit: '15mb' }));
+  app.use(json({ limit: '100kb' }));
 
   // Prefijo global para todos los endpoints
   app.setGlobalPrefix('api');

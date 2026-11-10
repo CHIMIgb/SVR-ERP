@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Receipt, Clock, BadgeCheck, Ban, Banknote, Download,
-  Trash2, SlidersHorizontal, X, Loader2, Eye, Check, Pencil,
+  Trash2, SlidersHorizontal, X, Eye, Check, Pencil,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -23,6 +23,8 @@ import {
   type FacturaConceptoDTO,
   type FacturasStats,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -325,7 +327,7 @@ export default function FacturasPage() {
         })),
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al crear la factura.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la factura.'), 'error');
         return;
       }
       showToast(`Factura ${res.data.codigo} creada en estado Pendiente.`, 'success');
@@ -360,7 +362,7 @@ export default function FacturasPage() {
         setSelected(null);
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'Error al cambiar estado.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al cambiar estado.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -380,7 +382,7 @@ export default function FacturasPage() {
         setSelected(null);
         fetchData(pagination.page, search, filterValues);
       } else {
-        showToast(res.error?.message ?? 'Error al eliminar.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar.'), 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -409,7 +411,7 @@ export default function FacturasPage() {
         objetoImpuesto: conceptoForm.objetoImpuesto,
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al agregar el concepto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al agregar el concepto.'), 'error');
         return;
       }
       showToast('Concepto agregado.', 'success');
@@ -440,7 +442,7 @@ export default function FacturasPage() {
         impuestoTasa: esExento ? null : 0.16,
       });
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al guardar el concepto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al guardar el concepto.'), 'error');
         return;
       }
       showToast('Concepto actualizado.', 'success');
@@ -464,7 +466,7 @@ export default function FacturasPage() {
     try {
       const res = await facturasApi.eliminarConcepto(selected.id, selectedConcepto.id);
       if (!res.success) {
-        showToast(res.error?.message ?? 'Error al eliminar el concepto.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar el concepto.'), 'error');
         return;
       }
       showToast('Concepto eliminado.', 'success');
@@ -613,12 +615,22 @@ export default function FacturasPage() {
           (puedeCrear || puedeExportar) ? (
             <div className="flex flex-wrap gap-3">
               {puedeExportar && (
-                <Button variant="outline" icon={<Download className="w-4 h-4" />} onClick={handleExportar}>
+                <Button
+                  skeleton={initialLoading}
+                  variant="outline"
+                  icon={<Download className="w-4 h-4" />}
+                  onClick={handleExportar}
+                >
                   Exportar
                 </Button>
               )}
               {puedeCrear && (
-                <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={() => setCreateOpen(true)}>
+                <Button
+                  skeleton={initialLoading}
+                  variant="primary"
+                  icon={<Plus className="w-5 h-5" />}
+                  onClick={() => setCreateOpen(true)}
+                >
                   Nueva factura
                 </Button>
               )}
@@ -628,10 +640,10 @@ export default function FacturasPage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
-        <StatsCard icon={<Receipt className="w-6 h-6" />} value={`${stats.total}`} label="Total Facturas" color="info" />
-        <StatsCard icon={<Clock className="w-6 h-6" />} value={`${stats.pendientes}`} label="Pendientes" color="warning" />
-        <StatsCard icon={<BadgeCheck className="w-6 h-6" />} value={`${stats.timbradas}`} label="Timbradas" color="success" />
-        <StatsCard icon={<Banknote className="w-6 h-6" />} value={formatCurrency(stats.montoTotal)} label="Total facturado" color="primary" />
+        <StatsCard icon={<Receipt className="w-6 h-6" />} value={`${stats.total}`} label="Total Facturas" color="info" loading={initialLoading} />
+        <StatsCard icon={<Clock className="w-6 h-6" />} value={`${stats.pendientes}`} label="Pendientes" color="warning" loading={initialLoading} />
+        <StatsCard icon={<BadgeCheck className="w-6 h-6" />} value={`${stats.timbradas}`} label="Timbradas" color="success" loading={initialLoading} />
+        <StatsCard icon={<Banknote className="w-6 h-6" />} value={formatCurrency(stats.montoTotal)} label="Total facturado" color="primary" loading={initialLoading} />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -715,11 +727,7 @@ export default function FacturasPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={facturas}

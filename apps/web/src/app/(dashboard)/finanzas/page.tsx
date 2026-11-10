@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp, ArrowRightLeft,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, Download, Landmark,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Download, Landmark,
   Receipt, BadgeCheck, Unlink,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
@@ -28,6 +28,8 @@ import {
   type FlujoNetoDTO,
   type VentanaFlujoItem,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -55,6 +57,7 @@ export default function FinanzasPage() {
     items: [],
     totales: { porCobrar: 0, porPagar: 0, neto: 0 },
   });
+  const [flujoLoading, setFlujoLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -118,9 +121,14 @@ export default function FinanzasPage() {
   }, []);
 
   const fetchFlujo = useCallback(async () => {
-    const res = await finanzasApi.flujoNeto();
-    if (res.success && res.data) {
-      setFlujo(res.data);
+    setFlujoLoading(true);
+    try {
+      const res = await finanzasApi.flujoNeto();
+      if (res.success && res.data) {
+        setFlujo(res.data);
+      }
+    } finally {
+      setFlujoLoading(false);
     }
   }, []);
 
@@ -271,7 +279,7 @@ export default function FinanzasPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear la transacción.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la transacción.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear la transacción.', 'error');
@@ -304,7 +312,7 @@ export default function FinanzasPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar la transacción.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la transacción.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar la transacción.', 'error');
@@ -325,7 +333,7 @@ export default function FinanzasPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar la transacción.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la transacción.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar la transacción.', 'error');
@@ -421,12 +429,12 @@ export default function FinanzasPage() {
         action={
           <div className="flex items-center gap-2">
             {puedeExportar && (
-              <Button variant="outline" icon={<Download className="w-5 h-5" />} onClick={handleExportar}>
+              <Button skeleton={initialLoading} variant="outline" icon={<Download className="w-5 h-5" />} onClick={handleExportar}>
                 Exportar
               </Button>
             )}
             {puedeCrear && (
-              <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+              <Button skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
                 Nueva Transacción
               </Button>
             )}
@@ -440,18 +448,21 @@ export default function FinanzasPage() {
           value={formatCurrency(stats.balance)}
           label="Balance Total"
           color={stats.balance >= 0 ? 'success' : 'error'}
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ArrowUpCircle className="w-6 h-6" />}
           value={formatCurrency(stats.totalIngresos)}
           label="Ingresos"
           color="success"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<ArrowDownCircle className="w-6 h-6" />}
           value={formatCurrency(stats.totalEgresos)}
           label="Egresos"
           color="error"
+        loading={initialLoading}
         />
         {tab === 'conciliacion' && (
           <>
@@ -460,18 +471,21 @@ export default function FinanzasPage() {
               value={formatCurrency(concTotales.cargado)}
               label="Total cargado"
               color="primary"
+            loading={initialLoading}
             />
             <StatsCard
               icon={<BadgeCheck className="w-6 h-6" />}
               value={formatCurrency(concTotales.conciliado)}
               label="Conciliado"
               color="success"
+            loading={initialLoading}
             />
             <StatsCard
               icon={<Unlink className="w-6 h-6" />}
               value={formatCurrency(concTotales.sinConciliar)}
               label="Sin conciliar"
               color={concTotales.sinConciliar === 0 ? 'success' : 'warning'}
+            loading={initialLoading}
             />
           </>
         )}
@@ -507,6 +521,7 @@ export default function FinanzasPage() {
           columns={flujoColumns}
           data={flujo.items}
           keyExtractor={(item) => item.ventana}
+          loading={flujoLoading}
           emptyText="Sin cuentas por cobrar ni por pagar activas."
           className="min-w-[560px]"
         />
@@ -625,11 +640,7 @@ export default function FinanzasPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={transacciones}

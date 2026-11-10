@@ -28,6 +28,9 @@ import {
   type CotizacionDTO,
   type ConsolidadoClienteDTO,
 } from '@/lib/api';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 8;
@@ -273,7 +276,7 @@ export default function ClientesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al crear cliente.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear cliente.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear cliente.', 'error');
@@ -301,7 +304,7 @@ export default function ClientesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al actualizar cliente.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar cliente.'), 'error');
       }
     } catch {
       showToast('Error de conexión al actualizar cliente.', 'error');
@@ -322,7 +325,7 @@ export default function ClientesPage() {
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(res.error?.message || 'Error al eliminar cliente.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar cliente.'), 'error');
       }
     } catch {
       showToast('Error de conexión al eliminar cliente.', 'error');
@@ -344,7 +347,7 @@ export default function ClientesPage() {
         setConsolidadoData(res.data);
       } else {
         setConsolidadoData(null);
-        showToast(res.error?.message || 'Error al obtener el estado de cuenta.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al obtener el estado de cuenta.'), 'error');
       }
     } catch {
       setConsolidadoData(null);
@@ -388,7 +391,7 @@ export default function ClientesPage() {
           fetchCotizaciones(cotizacionCliente.id, historialPagination.page, historialPagination.limit, { paging: false });
         }
       } else {
-        showToast(res.error?.message || 'Error al crear la cotización.', 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la cotización.'), 'error');
       }
     } catch {
       showToast('Error de conexión al crear la cotización.', 'error');
@@ -563,7 +566,8 @@ export default function ClientesPage() {
         subtitle="Gestión de contactos comerciales y empresas contratantes."
         action={
           puedeCrear ? (
-            <Button variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
+            <Button
+          skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
               Nuevo Cliente
             </Button>
           ) : undefined
@@ -576,18 +580,21 @@ export default function ClientesPage() {
           value={`${stats.totalClientes} clientes`}
           label="Total Clientes"
           color="info"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<FolderKanban className="w-6 h-6" />}
           value={`${stats.clientesActivos} activos`}
           label="Clientes Activos"
           color="primary"
+        loading={initialLoading}
         />
         <StatsCard
           icon={<Building2 className="w-6 h-6" />}
           value={`${stats.empresas} empresas`}
           label="Empresas"
           color="neutral"
+        loading={initialLoading}
         />
       </div>
 
@@ -631,11 +638,7 @@ export default function ClientesPage() {
 
       <div className="space-y-3">
         <div className="relative">
-          {refreshing && !initialLoading && (
-            <div className="absolute inset-0 z-20 bg-surface/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center transition-opacity">
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            </div>
-          )}
+          <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
             data={clientes}
@@ -821,11 +824,7 @@ export default function ClientesPage() {
                         </li>
                       ))}
                     </ul>
-                    {historialPaging && (
-                      <div className="absolute inset-0 bg-surface/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
-                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                      </div>
-                    )}
+                    <RefreshOverlay show={historialPaging} />
                   </div>
                   {historialPagination.totalPages > 1 && (
                     <Pagination
@@ -1007,9 +1006,7 @@ export default function ClientesPage() {
         />
         <ModalBody>
           {consolidadoLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            </div>
+            <LoadingState size="md" />
           ) : consolidadoData ? (
             <>
               <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
@@ -1018,24 +1015,28 @@ export default function ClientesPage() {
                   value={formatCurrency(consolidadoData.saldoTotal)}
                   label="Saldo total"
                   color="primary"
+                loading={initialLoading}
                 />
                 <StatsCard
                   icon={<Receipt className="w-5 h-5" />}
                   value={`${consolidadoData.cuentasPorCobrar.length}`}
                   label="Cuentas por cobrar"
                   color="info"
+                loading={initialLoading}
                 />
                 <StatsCard
                   icon={<FileText className="w-5 h-5" />}
                   value={`${consolidadoData.facturas.length}`}
                   label="Facturas recientes"
                   color="neutral"
+                loading={initialLoading}
                 />
                 <StatsCard
                   icon={<HandCoins className="w-5 h-5" />}
                   value={`${consolidadoData.cobros.length}`}
                   label="Cobros recientes"
                   color="success"
+                loading={initialLoading}
                 />
               </div>
 
