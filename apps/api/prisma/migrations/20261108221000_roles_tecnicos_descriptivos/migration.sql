@@ -1,6 +1,7 @@
 -- Roles Tecnicos descriptivos (evitar confusion): un rol por area, con su torre.
--- Los usuarios del rol generico "Tecnico" se reasignan segun su users.torre y el
--- rol generico se elimina solo cuando queda vacio.
+-- Los usuarios del rol generico "Técnico" (asi nace en 20261108180000) se
+-- reasignan segun su users.torre y el rol generico se elimina solo cuando
+-- queda vacio — review PR #17: la busqueda sin acento no encontraba NADA.
 
 INSERT INTO roles (id, nombre, descripcion, nivel, es_sistema, activo, torre, creado_en, actualizado_en)
 SELECT v.id::uuid, v.nombre, v.descrip, 70, false, true, v.torre::"CategoriaReporte", NOW(), NOW()
@@ -38,7 +39,7 @@ INSERT INTO users_roles (id, user_id, rol_id, es_principal, activo, asignado_en)
 SELECT gen_random_uuid(), u.id, nr.id, TRUE, TRUE, NOW()
 FROM users u
 JOIN users_roles ur ON ur.user_id = u.id
-JOIN roles viejo ON viejo.id = ur.rol_id AND viejo.nombre = 'Tecnico'
+JOIN roles viejo ON viejo.id = ur.rol_id AND viejo.nombre = 'Técnico'
 JOIN roles nr ON nr.nombre = CASE text(u.torre)
   WHEN 'MECANICO'      THEN 'Tecnico Mecanico'
   WHEN 'SOLDADOR'      THEN 'Tecnico Soldador'
@@ -56,24 +57,24 @@ FROM users_roles ur
 USING roles r, users u
 WHERE r.id = ur.rol_id
   AND u.id = ur.user_id
-  AND r.nombre = 'Tecnico'
+  AND r.nombre = 'Técnico'
   AND u.torre IS NOT NULL;
 
 DELETE
 FROM role_permissions rp
 USING roles r
 WHERE r.id = rp.rol_id
-  AND r.nombre = 'Tecnico'
+  AND r.nombre = 'Técnico'
   AND NOT EXISTS (SELECT 1 FROM users_roles ur WHERE ur.rol_id = r.id);
 
 DELETE
 FROM role_vistas rv
 USING roles r
 WHERE r.id = rv.rol_id
-  AND r.nombre = 'Tecnico'
+  AND r.nombre = 'Técnico'
   AND NOT EXISTS (SELECT 1 FROM users_roles ur WHERE ur.rol_id = r.id);
 
 DELETE
 FROM roles r
-WHERE r.nombre = 'Tecnico'
+WHERE r.nombre = 'Técnico'
   AND NOT EXISTS (SELECT 1 FROM users_roles ur WHERE ur.rol_id = r.id);

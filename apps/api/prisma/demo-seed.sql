@@ -64,12 +64,12 @@ FROM users u
 JOIN (VALUES
   ('administrativo@svr-constructora.com', 'Administrativo'),
   ('residente@svr-constructora.com',      'Residente'),
-  ('tecnico@svr-constructora.com',        'Técnico'),
+  ('tecnico@svr-constructora.com',        'Tecnico Mecanico'),
   ('cobrador@svr-constructora.com',       'Cobrador'),
   ('trabajador@svr-constructora.com',     'Trabajador'),
-  ('soldador@svr-constructora.com',       'Técnico'),
-  ('diesel@svr-constructora.com',         'Técnico'),
-  ('mantenimiento@svr-constructora.com',  'Técnico'),
+  ('soldador@svr-constructora.com',       'Tecnico Soldador'),
+  ('diesel@svr-constructora.com',         'Tecnico Diesel'),
+  ('mantenimiento@svr-constructora.com',  'Tecnico Mantenimiento'),
   ('pedro.chofer@svr-constructora.com',   'Trabajador'),
   ('luis.operador@svr-constructora.com',  'Trabajador')
 ) AS v(email, rol_nombre) ON u.email = v.email
