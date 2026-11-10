@@ -132,10 +132,10 @@ describe('ActividadDto', () => {
   });
 });
 
-describe('AdjuntoDto', () => {
-  const base = { nombre: 'evidencia.png', mime: 'image/png', tamano: 67, datos: 'iVBORw0KGgo=' };
+describe('AdjuntoDto (sin tamano del cliente — review PR #17)', () => {
+  const base = { nombre: 'evidencia.png', mime: 'image/png', datos: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf' };
 
-  it('acepta PNG válido', async () => {
+  it('acepta un PNG recortado válido (sin tamano del cliente)', async () => {
     const dto = plainToInstance(AdjuntoDto, base);
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
@@ -147,9 +147,22 @@ describe('AdjuntoDto', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('rechaza tamano > 2 MB', async () => {
-    const dto = plainToInstance(AdjuntoDto, { ...base, tamano: 3 * 1024 * 1024 });
+  it('rechaza datos que no son base64', async () => {
+    const dto = plainToInstance(AdjuntoDto, { ...base, datos: '%%no-base64%%' });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('rechaza datos por arriba del tope de 2 MB de base64', async () => {
+    // > 2,800,004 chars de base64 = más de 2 MB decodificados
+    const dto = plainToInstance(AdjuntoDto, { ...base, datos: 'A'.repeat(2_800_050) });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('ya NO existe la propiedad tamano en el contrato del DTO', () => {
+    // El contrato ya no la conoce: un cliente no puede inflarla por esta vía.
+    expect(Object.keys(AdjuntoDto.prototype)).not.toContain('tamano');
+    expect(Object.keys(new AdjuntoDto() as unknown as Record<string, unknown>)).not.toContain('tamano');
   });
 });

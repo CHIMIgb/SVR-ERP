@@ -23,7 +23,7 @@ import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { AsignarReporteDto } from './dto/asignar-reporte.dto';
 import { ActividadDto } from './dto/actividad.dto';
-import { AdjuntoDto } from './dto/adjunto.dto';
+import { AdjuntoDto, MAX_BYTES_DECODIFICADOS_ADJUNTO } from './dto/adjunto.dto';
 
 const REPORTE_INCLUDE = {
   subcategoria: { select: { id: true, nombre: true } },
@@ -90,6 +90,20 @@ const TRANSICIONES: Record<EstadoIncidente, EstadoIncidente[]> = {
 const MAX_ADJUNTOS = 4;
 const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
 const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/**
+ * Firma de cabecera requerida por mime (bytes reales decodificados) —
+ * el contenido debe SER esa imagen, no un archivo renombrado.
+ */
+const ADJUNTO_FIRMAS: Record<string, (bytes: Buffer) => boolean> = {
+  'image/jpeg': (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/png': (b) => b.length >= 4 && b[0] === 0x89 && b.slice(1, 4).toString('latin1') === 'PNG',
+  'image/webp': (b) =>
+    b.length >= 12 &&
+    b.slice(0, 4).toString('latin1') === 'RIFF' &&
+    b.slice(8, 12).toString('latin1') === 'WEBP',
+  'image/gif': (b) => b.length >= 4 && b.slice(0, 4).toString('latin1') === 'GIF8',
+};
 
 @Injectable()
 export class ReportesCampoService {
@@ -1044,10 +1058,10 @@ export class ReportesCampoService {
       );
     }
 
-    // tamaño declarado y tamaño real del base64 (≈ 3/4 de la longitud) deben
-    // caber en el límite — evita que un payload inflado pase con tamano falso.
+    // El tamaño ya no lo declara el cliente (review PR #17): se DERIVA del
+    // base64 recibido (≈ 3/4 de la longitud) — nada de 1.5 sobre columna Int.
     const bytesDecodificados = Math.floor((dto.datos.length * 3) / 4);
-    if (dto.tamano > MAX_TAMANO_ADJUNTO || bytesDecodificados > MAX_TAMANO_ADJUNTO) {
+    if (bytesDecodificados > MAX_BYTES_DECODIFICADOS_ADJUNTO) {
       return this.fallir(
         AuditAction.REPORTE_ADJUNTO,
         id,
@@ -1057,8 +1071,37 @@ export class ReportesCampoService {
       );
     }
 
-    const total = await this.prisma.reportes_adjuntos.count({ where: { reporte_id: id } });
-    if (total >= MAX_ADJUNTOS) {
+    // La firma del contenido debe corresponder con el mime: nada de un PDF
+    // mendigando pasar por PNG.
+    const firmaReal = Buffer.from(dto.datos.slice(0, 16), 'base64');
+    if (!ADJUNTO_FIRMAS[dto.mime]?.(firmaReal)) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'ADJUNTO_CORRUPTO',
+        BadRequestException,
+        'El contenido del archivo no corresponde al formato declarado',
+      );
+    }
+
+    // Carrera cerrada (review PR #17): conteo + insert en UNA transacción con
+    // lock advisory por incidente — dos adjuntos simultáneos no cruzan el tope.
+    const adjunto = await this.prisma.$transaction(async (tx: any) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+      const total = await tx.reportes_adjuntos.count({ where: { reporte_id: id } });
+      if (total >= MAX_ADJUNTOS) return null;
+      return tx.reportes_adjuntos.create({
+        data: {
+          id: randomUUID(),
+          reporte_id: id,
+          nombre: dto.nombre.trim() || 'imagen',
+          mime: dto.mime,
+          tamano: bytesDecodificados,
+          datos: dto.datos,
+        },
+      });
+    });
+    if (adjunto === null) {
       return this.fallir(
         AuditAction.REPORTE_ADJUNTO,
         id,
@@ -1067,17 +1110,6 @@ export class ReportesCampoService {
         `El incidente ya tiene ${MAX_ADJUNTOS} imágenes`,
       );
     }
-
-    const adjunto = await this.prisma.reportes_adjuntos.create({
-      data: {
-        id: randomUUID(),
-        reporte_id: id,
-        nombre: dto.nombre.trim() || 'imagen',
-        mime: dto.mime,
-        tamano: dto.tamano,
-        datos: dto.datos,
-      },
-    });
 
     await this.auditService.log({
       action: AuditAction.REPORTE_ADJUNTO,

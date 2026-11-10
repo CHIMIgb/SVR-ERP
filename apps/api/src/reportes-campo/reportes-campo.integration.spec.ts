@@ -430,7 +430,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
         () =>
           service.adjuntar(
             reporte.id,
-            { nombre: 'evidencia.png', mime: 'image/png', tamano: 67, datos: PNG_1X1_BASE64 },
+            { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
             ACTOR_USER_ID,
           ),
       );
@@ -457,7 +457,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
           await expect(
             service.adjuntar(
               reporte.id,
-              { nombre: 'doc.pdf', mime: 'application/pdf', tamano: 100, datos: PNG_FALSO_BASE64 },
+              { nombre: 'doc.pdf', mime: 'application/pdf', datos: PNG_FALSO_BASE64 },
               ACTOR_USER_ID,
             ),
           ).rejects.toThrow(BadRequestException);
@@ -479,8 +479,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
           {
             nombre: `img${i}.png`,
             mime: 'image/png',
-            tamano: 67,
-            datos: PNG_1X1_BASE64,
+                        datos: PNG_1X1_BASE64,
           },
           ACTOR_USER_ID,
         );
@@ -492,7 +491,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
           await expect(
             service.adjuntar(
               reporte.id,
-              { nombre: 'img5.png', mime: 'image/png', tamano: 67, datos: PNG_1X1_BASE64 },
+              { nombre: 'img5.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
               ACTOR_USER_ID,
             ),
           ).rejects.toThrow(BadRequestException);
@@ -503,6 +502,67 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
       const fail = audits.find((a) => a.result === 'FAIL');
       expect(fail?.error_code).toBe('LIMITE_ADJUNTOS');
+    });
+
+    it('carrera real: 3 adjuntos simultáneos con 2 en el reporte terminan en EXACTAMENTE 4', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      // 2 de base
+      for (let i = 0; i < 2; i++) {
+        await service.adjuntar(reporte.id, { nombre: `base${i}.png`, mime: 'image/png', datos: PNG_1X1_BASE64 }, ACTOR_USER_ID);
+      }
+
+      // 3 asaltos simultáneos: solo 2 de ellos pueden crujir el tope de 4
+      const resultados = await Promise.all(
+        [0, 1, 2].map((i) =>
+          auditContext.run(
+            { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+            () =>
+              service.adjuntar(
+                reporte.id,
+                { nombre: `race${i}.png`, mime: 'image/png', datos: PNG_1X1_BASE64 },
+                ACTOR_USER_ID,
+              ).then(
+                (r) => ({ ok: true as const }),
+                (e: unknown) => ({ ok: false as const, e }),
+              ),
+          ),
+        ),
+      );
+      const exitosos = resultados.filter((r) => r.ok).length;
+      const rechazados = resultados.filter((r) => !r.ok).length;
+      expect(exitosos).toBe(2);
+      expect(rechazados).toBe(1);
+
+      // El conteo NUNCA cruza el tope: exactamente 4 filas reales.
+      expect(await prisma.reportes_adjuntos.count({ where: { reporte_id: reporte.id } })).toBe(4);
+    });
+
+    it('PNG mentiroso con mime de PNG pero contenido ajeno (ADJUNTO_CORRUPTO, FAIL auditado)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      await auditContext.run(
+        { jwtUserId: ACTOR_USER_ID, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'trampa.png', mime: 'image/png', datos: PNG_FALSO_BASE64 },
+              ACTOR_USER_ID,
+            ),
+          ).rejects.toThrow(BadRequestException);
+        },
+      );
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, error_code: 'ADJUNTO_CORRUPTO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
+      expect(await prisma.reportes_adjuntos.count({ where: { reporte_id: reporte.id } })).toBe(0);
     });
   });
 

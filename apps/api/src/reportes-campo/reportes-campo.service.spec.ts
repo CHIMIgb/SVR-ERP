@@ -98,6 +98,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       users: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
       maquinas: {
         findFirst: jest.fn().mockResolvedValue({ id: mockReporte.maquina_id }),
       },
@@ -187,7 +188,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
         llamado: () =>
           service.adjuntar(
             mockReporte.id,
-            { nombre: 'foto.png', mime: 'image/png', tamano: PNG_1X1.length, datos: PNG_1X1 },
+            { nombre: 'foto.png', mime: 'image/png', datos: PNG_1X1 },
             'ate-1',
           ),
       },
@@ -672,7 +673,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
   });
 
   describe('adjuntar (imágenes)', () => {
-    const adjuntoBase = { nombre: 'evidencia.png', mime: 'image/png', tamano: 67, datos: PNG_1X1 };
+    const adjuntoBase = { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1 };
 
     it('adjunta imagen y audita REPORTE_ADJUNTO SUCCESS', async () => {
       const result = await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
