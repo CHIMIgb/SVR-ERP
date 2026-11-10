@@ -171,7 +171,7 @@ export class ReportesCampoService {
   // ────────────────────────────────────────────
   //  DETALLE (reporte + actividades + adjuntos)
   // ────────────────────────────────────────────
-  async findOne(id: string) {
+  async findOne(id: string, userId: string) {
     const reporte = await this.prisma.reportes_campo.findFirst({
       where: { id, eliminado_en: null },
       include: REPORTE_INCLUDE,
@@ -179,6 +179,17 @@ export class ReportesCampoService {
 
     if (!reporte) {
       throw new NotFoundException(`Reporte de campo con id "${id}" no encontrado`);
+    }
+
+    // Acceso directo respeta el mismo ámbito que el listado.
+    if (!(await this.enAmbito(reporte, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ACCESO_DENEGADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
     }
 
     const [actividades, adjuntos, reportadoPor] = await Promise.all([
@@ -333,6 +344,17 @@ export class ReportesCampoService {
         'SOLO_NUEVOS_SE_ACEPTAN',
         BadRequestException,
         `Solo los incidentes Nuevos pueden aceptarse (estado actual: ${ESTADO_LABELS[existente.estado as EstadoIncidente]})`,
+      );
+    }
+
+    // La aceptación es de la torre que atiende: mismo ámbito que el listado.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ASIGNADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
       );
     }
 
@@ -798,6 +820,17 @@ export class ReportesCampoService {
     const estadoActual = existente.estado as EstadoIncidente;
     const permitidos = TRANSICIONES[estadoActual] ?? [];
 
+    // La transición la vive el dueño, el asignado o la torre que atiende.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.ESTATUS_CAMBIADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
     if (!permitidos.includes(dto.estado)) {
       const permitidosLabel = permitidos.map((e) => ESTADO_LABELS[e]).join(', ') || 'ninguno (terminal)';
       return this.fallir(
@@ -904,6 +937,18 @@ export class ReportesCampoService {
       );
     }
 
+    // Señuelo de seguimiento: dueño, asignado, admin, la torre que atiende o el
+    // residente de su equipo — mismo ámbito que el listado.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_COMENTADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
     const nombreAutor = this.nombreActor(existente, userId);
 
     const actividad = await this.prisma.reportes_actividades.create({
@@ -975,6 +1020,17 @@ export class ReportesCampoService {
         'RESIDENTE_SOLO_SEGUIMIENTO',
         ForbiddenException,
         'Los Residentes solo dan seguimiento: las imágenes las agrega la torre que atiende',
+      );
+    }
+
+    // La imagen es evidencia del dueño, del asignado o de la torre que atiende.
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ADJUNTO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
       );
     }
 
@@ -1060,6 +1116,17 @@ export class ReportesCampoService {
       );
     }
 
+    // Eliminar respeta el mismo ámbito que el listado (dueño/asignado/torre/admin/residente).
+    if (!(await this.enAmbito(existente, userId))) {
+      return this.fallir(
+        AuditAction.REPORTE_ELIMINADO,
+        id,
+        'REPORTE_ACCESO_DENEGADO',
+        ForbiddenException,
+        'No tienes acceso a este incidente',
+      );
+    }
+
     await this.prisma.reportes_campo.update({
       where: { id },
       data: { eliminado_en: new Date(), activo: false },
@@ -1130,6 +1197,54 @@ export class ReportesCampoService {
   // ════════════════════════════════════════════
   //  HELPERS PRIVADOS
   // ════════════════════════════════════════════
+
+  /**
+   * Ámbito de un ACCESO DIRECTO por id — las mismas reglas del listado
+   * (aplicarAmbito), aplicadas por método: admin (nivel≥100) pasa; el dueño
+   * del reporte pasa; el asignado pasa; el Residente solo si es reporte de
+   * su equipo (su jefe_user_id); si no, la torre de quien consulta debe
+   * coincidir con la categoría del reporte; sin torre, solo dueño.
+   * Devuelve true si el acceso procede — false lo trata el caller con `fallir`.
+   */
+  private async enAmbito(
+    reporte: { usuario_id: string | null; categoria: CategoriaReporte | null; asignado_a_id: string | null },
+    userId: string,
+  ): Promise<boolean> {
+    if (reporte.usuario_id === userId || reporte.asignado_a_id === userId) return true;
+
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        torre: true,
+        users_roles_users_roles_user_idTousers: {
+          select: { roles: { select: { nivel: true, torre: true, nombre: true } } },
+        },
+      },
+    });
+    const usuarioRoles = user?.users_roles_users_roles_user_idTousers ?? [];
+    if (Math.max(0, ...usuarioRoles.map((ur: { roles: { nivel: number } }) => ur.roles.nivel)) >= 100) {
+      return true; // Administrador: acceso total
+    }
+
+    if (usuarioRoles.some((ur: { roles: { nombre: string } }) => ur.roles.nombre === 'Residente')) {
+      // Residente: los reportes de SUS trabajadores (a su cargo); el propio ya
+      // quedó cubierto por usuario_id arriba.
+      const subordinados = await this.prisma.users.findMany({
+        where: { jefe_user_id: userId, eliminado_en: null },
+        select: { id: true },
+      });
+      return subordinados.some((s: { id: string }) => s.id === reporte.usuario_id);
+    }
+
+    const torre = user?.torre ?? usuarioRoles.filter((ur: { roles: { torre: unknown } }) => ur.roles.torre != null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => b.roles.nivel - a.roles.nivel)[0]?.roles.torre ?? null;
+    if (torre) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return reporte.categoria === (torre as any);
+    }
+    return false; // Trabajador sin torre: solo sus propios reportes
+  }
 
   private async fallir<A extends new (message: string) => any>(
     action: AuditAction,

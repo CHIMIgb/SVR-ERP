@@ -9,7 +9,7 @@
  * Run with: npm run test:integration -- --testPathPattern="reportes-campo"
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException, ConflictException } from '@nestjs/common';
+import { INestApplication, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
@@ -292,7 +292,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
     it('detalle expone reportadoPor (nombre/telefono/rol) del que levanta', async () => {
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
-      const detalle = await service.findOne(reporte.id);
+      const detalle = await service.findOne(reporte.id, ACTOR_USER_ID);
       expect(detalle.reportadoPor).not.toBeNull();
       expect(detalle.reportadoPor!.nombre).toBeTruthy();
     });
@@ -395,7 +395,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
       expect((audits[0].new_value as { actividadId?: string })?.actividadId).toBe(actividad.id);
 
       // el detalle del incidente incluye la bitácora
-      const detalle = await service.findOne(reporte.id);
+      const detalle = await service.findOne(reporte.id, ACTOR_USER_ID);
       expect(detalle.actividades.map((a) => a.id)).toContain(actividad.id);
     });
 
@@ -443,7 +443,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
       expect(audits[0].result).toBe('SUCCESS');
 
-      const detalle = await service.findOne(reporte.id);
+      const detalle = await service.findOne(reporte.id, ACTOR_USER_ID);
       expect(detalle.adjuntos.map((a) => a.id)).toContain(adjunto.id);
     });
 
@@ -600,7 +600,7 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
       expect(row!.categoria).toBe('ADMINISTRATIVO');
 
-      const detalle = await service.findOne(reporte.id);
+      const detalle = await service.findOne(reporte.id, ACTOR_USER_ID);
       expect(detalle.reporte.categoria).toBe('Administrativo');
       expect(detalle.reporte.subcategoria).toBeNull();
     });
@@ -697,6 +697,139 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
       const audits = await findAudits(AuditAction.REPORTE_ELIMINADO, reporte.id);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // ÁMBITO en accesos directos (review PR #17): lo que bloquea el listado
+  // también bloquea findOne/aceptar/eliminar — con FAIL real en registro_auditoria.
+  // ════════════════════════════════════════════════════════════════════
+  describe('ÁMBITO de accesos directos (real DB, registro_auditoria)', () => {
+    /** Usuario demo por email (seed de dev; debe existir en la BD local). */
+    const usuarioDemo = async (email: string) => {
+      const u = await prisma.users.findFirst({
+        where: { email, eliminado_en: null },
+        select: { id: true, email: true },
+      });
+      expect(u).not.toBeNull();
+      return u!;
+    };
+
+    it('técnico fuera del área NO acepta: 403 con FAIL real (error_code REPORTE_ACCESO_DENEGADO)', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID); // categoría DIESEL
+      createdIds.push(reporte.id);
+      const soldador = await usuarioDemo('soldador@svr-constructora.com'); // torre SOLDADOR
+
+      await auditContext.run(
+        { jwtUserId: soldador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        () =>
+          expect(service.aceptar(reporte.id, soldador.id)).rejects.toThrow(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ForbiddenException,
+          ),
+      );
+
+      // FAIL real en registro_auditoria (no mock): result FAIL + error_code.
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, error_code: 'REPORTE_ACCESO_DENEGADO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
+      // el reporte sigue sin responsable: la aceptación no se coló
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.asignado_a_id).toBeNull();
+    });
+
+    it('findOne deniega a otra torre pero an admin ve todo: el GET respeta el árbol', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const soldador = await usuarioDemo('soldador@svr-constructora.com');
+
+      await auditContext.run(
+        { jwtUserId: soldador.id, endpoint: '/api/reportes-campo', method: 'GET' },
+        () => expect(service.findOne(reporte.id, soldador.id)).rejects.toThrow(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ForbiddenException,
+        ),
+      );
+
+      const getFail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, action: AuditAction.REPORTE_ACCESO_DENEGADO },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(getFail).not.toBeNull();
+      expect(getFail!.result).toBe('FAIL');
+      expect(getFail!.error_code).toBe('REPORTE_ACCESO_DENEGADO');
+
+      // admin: acceso total (camino válido real)
+      const detalle = await service.findOne(reporte.id, ACTOR_USER_ID);
+      expect(detalle.reporte.id).toBe(reporte.id);
+    });
+
+    it('residente ve el reporte de SU trabajador; un outside torre no (jefe_user_id real)', async () => {
+      const pedro = await usuarioDemo('pedro.chofer@svr-constructora.com');
+      const residente = await usuarioDemo('residente@svr-constructora.com');
+      const soldador = await usuarioDemo('soldador@svr-constructora.com');
+
+      // el reporte lo levanta Pedro (trabajador del residente)
+      const reporte = await service.create(
+        { ...createDto(), categoria: CategoriaReporte.ADMINISTRATIVO },
+        pedro.id,
+      );
+      createdIds.push(reporte.id);
+
+      // el residente de su equipo accede
+      await expect(service.findOne(reporte.id, residente.id)).resolves.toBeTruthy();
+      // un técnico de otra torre da lo mismo: es otro árbol
+      await auditContext.run(
+        { jwtUserId: soldador.id, endpoint: '/api/reportes-campo', method: 'GET' },
+        () => expect(service.findOne(reporte.id, soldador.id)).rejects.toThrow(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ForbiddenException,
+        ),
+      );
+    });
+
+    it('remove fuera del ámbito: 403 con FAIL real y el reporte NO se elimina', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const soldador = await usuarioDemo('soldador@svr-constructora.com');
+
+      await auditContext.run(
+        { jwtUserId: soldador.id, endpoint: '/api/reportes-campo', method: 'DELETE' },
+        () => expect(service.remove(reporte.id, soldador.id)).rejects.toThrow(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ForbiddenException,
+        ),
+      );
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, action: AuditAction.REPORTE_ELIMINADO, error_code: 'REPORTE_ACCESO_DENEGADO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
+
+      const row = await prisma.reportes_campo.findUnique({ where: { id: reporte.id } });
+      expect(row!.eliminado_en).toBeNull();
+    });
+
+    it('el reporte sigue inmutable: un DELETE sobre registro_auditoria lo rechaza el trigger', async () => {
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+      const soldador = await usuarioDemo('soldador@svr-constructora.com');
+      await auditContext.run(
+        { jwtUserId: soldador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        () => expect(service.aceptar(reporte.id, soldador.id)).rejects.toThrow(),
+      );
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, error_code: 'REPORTE_ACCESO_DENEGADO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      await expect(
+        prisma.$executeRawUnsafe(`DELETE FROM registro_auditoria WHERE event_id = '${fail!.event_id}'`),
+      ).rejects.toThrow();
     });
   });
 });

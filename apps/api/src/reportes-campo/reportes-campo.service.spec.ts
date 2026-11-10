@@ -55,6 +55,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
   beforeEach(async () => {
+    mockAudit.log.mockClear();
     prisma = {
       reportes_campo: {
         findMany: jest.fn().mockResolvedValue([mockReporte]),
@@ -145,9 +146,110 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     });
   });
 
+  describe('ámbito de acceso directo (enAmbito — review PR #17)', () => {
+    /** Helper: configura el usuario que "consulta" con rol/torre concretos. */
+    const usuario = (opts: { nivel?: number; torre?: string | null; nombre?: string }) => {
+      prisma.users.findUnique = jest.fn().mockResolvedValue({
+        torre: opts.torre ?? null,
+        personas_users_persona_idTopersonas: {
+          nombre: 'Nombre', apellido_paterno: '', apellido_materno: '', telefono: '55 5555 5555',
+        },
+        users_roles_users_roles_user_idTousers: [
+          { roles: { nivel: opts.nivel ?? 20, torre: opts.torre ?? null, nombre: opts.nombre ?? 'Test' } },
+        ],
+      });
+    };
+
+    const subordinados = (ids: string[]) => {
+      prisma.users.findMany = jest.fn().mockResolvedValue(ids.map((id) => ({ id })));
+    };
+
+    it('findOne: dueño del reporte accede (guard no interfiere)', async () => {
+      await service.findOne(mockReporte.id, 'user-1');
+      expect(mockAudit.log).not.toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'REPORTE_ACCESO_DENEGADO' }));
+    });
+
+    for (const metodo of [
+      { nombre: 'aceptar', accion: AuditAction.REPORTE_ASIGNADO, llamado: () => service.aceptar(mockReporte.id, 'ate-1') },
+      {
+        nombre: 'cambiarEstado',
+        accion: AuditAction.ESTATUS_CAMBIADO,
+        llamado: () => service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'ate-1'),
+      },
+      {
+        nombre: 'comentar',
+        accion: AuditAction.REPORTE_COMENTADO,
+        llamado: () => service.comentar(mockReporte.id, { texto: 'hola' }, 'ate-1'),
+      },
+      {
+        nombre: 'adjuntar',
+        accion: AuditAction.REPORTE_ADJUNTO,
+        llamado: () =>
+          service.adjuntar(
+            mockReporte.id,
+            { nombre: 'foto.png', mime: 'image/png', tamano: PNG_1X1.length, datos: PNG_1X1 },
+            'ate-1',
+          ),
+      },
+      { nombre: 'remove', accion: AuditAction.REPORTE_ELIMINADO, llamado: () => service.remove(mockReporte.id, 'ate-1') },
+    ]) {
+      it(`${metodo.nombre}: fuera del ámbito (DIESEL ≠ torre del consultante) → 403 + FAIL auditado con error_code`, async () => {
+        usuario({ nivel: 70, torre: 'MECANICO', nombre: 'Técnico Mecanico' });
+        await expect(metodo.llamado()).rejects.toThrow(ForbiddenException);
+        expect(mockAudit.log).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: metodo.accion,
+            entityId: mockReporte.id,
+            result: AuditResult.FAIL,
+            errorCode: 'REPORTE_ACCESO_DENEGADO',
+          }),
+        );
+      });
+
+      it(`${metodo.nombre}: Administrador (nivel 100) pasa sin importar la torre`, async () => {
+        usuario({ nivel: 100, torre: 'DIESEL', nombre: 'Administrador' });
+        await expect(metodo.llamado()).resolves.toBeTruthy();
+        expect(mockAudit.log).not.toHaveBeenCalledWith(
+          expect.objectContaining({ errorCode: 'REPORTE_ACCESO_DENEGADO' }),
+        );
+      });
+    }
+
+    it('findOne: asignado accede aunque su torre no coincida', async () => {
+      usuario({ nivel: 70, torre: 'MECANICO', nombre: 'Técnico Mecanico' });
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, asignado_a_id: 'ate-1' });
+      await expect(service.findOne(mockReporte.id, 'ate-1')).resolves.toBeTruthy();
+    });
+
+    it('asignado pasa el guard en los 5 métodos de mutación (fuera de su torre)', async () => {
+      usuario({ nivel: 70, torre: 'MECANICO' });
+      const ajeno = { ...mockReporte, asignado_a_id: 'ate-1' };
+      prisma.reportes_campo.findFirst.mockResolvedValue(ajeno);
+      await expect(service.cambiarEstado(mockReporte.id, { estado: EstadoIncidente.EN_CURSO }, 'ate-1')).resolves.toBeTruthy();
+      await expect(service.comentar(mockReporte.id, { texto: 'seguimiento' }, 'ate-1')).resolves.toBeTruthy();
+      await expect(service.remove(mockReporte.id, 'ate-1')).resolves.toBeTruthy();
+    });
+
+    it('residente accede solo a reportes de su equipo (jefe_user_id) en findOne', async () => {
+      usuario({ nivel: 90, torre: 'RESIDENTE', nombre: 'Residente' });
+      subordinados(['sub-1']);
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'sub-1' });
+      await expect(service.findOne(mockReporte.id, 'res-1')).resolves.toBeTruthy();
+
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'ajeno-1' });
+      await expect(service.findOne(mockReporte.id, 'res-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('trabajador sin torre: solo sus propios reportes (enAmbito falla para ajenos)', async () => {
+      usuario({ nivel: 20, torre: null, nombre: 'Trabajador' });
+      prisma.reportes_campo.findFirst.mockResolvedValue({ ...mockReporte, usuario_id: 'otro-1' });
+      await expect(service.findOne(mockReporte.id, 'worker-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe('findOne (detalle)', () => {
     it('retorna { reporte, actividades, adjuntos } serializados', async () => {
-      const detalle = await service.findOne(mockReporte.id);
+      const detalle = await service.findOne(mockReporte.id, 'user-1');
       expect(detalle.reporte.id).toBeDefined();
       expect(detalle.reporte.estado).toBe('Nuevo');
       expect(detalle.actividades).toEqual([]);
@@ -159,14 +261,14 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
         ...mockReporte,
         proyectos: { id: 'p1', nombre: 'Escuela Secundaria', calle: 'Av Central 123', colonia: 'Centro', ciudad: 'Tepic' },
       });
-      const detalle = await service.findOne(mockReporte.id);
+      const detalle = await service.findOne(mockReporte.id, 'user-1');
       expect(detalle.reporte.proyecto).toBe('Escuela Secundaria');
       expect(detalle.reporte.proyectoDireccion).toBe('Av Central 123, Centro, Tepic');
     });
 
     it('lanza 404 sin reporte', async () => {
       prisma.reportes_campo.findFirst.mockResolvedValue(null);
-      await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent', 'user-1')).rejects.toThrow(NotFoundException);
     });
   });
 

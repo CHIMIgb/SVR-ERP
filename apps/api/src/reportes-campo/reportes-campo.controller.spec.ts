@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import type { Request } from 'express';
 import { ReportesCampoController } from './reportes-campo.controller';
 import { ReportesCampoService } from './reportes-campo.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -64,7 +65,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('findAll', () => {
     it('delega al service con el usuario (ámbito por torre)', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const result = await controller.findAll({}, req as never);
       expect(result).toHaveProperty('items');
       expect(service.findAll).toHaveBeenCalledWith({}, 'user-1');
@@ -73,7 +74,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('findStats', () => {
     it('retorna stats del nuevo flujo', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const result = await controller.findStats(req as never);
       expect(result.nuevos).toBe(2);
       expect(result.enCurso).toBe(1);
@@ -92,8 +93,8 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('findOne', () => {
     it('retorna detalle con actividades/adjuntos', async () => {
-      const result = await controller.findOne(mockDetalle.reporte.id);
-      expect(service.findOne).toHaveBeenCalledWith(mockDetalle.reporte.id);
+      const result = await controller.findOne(mockDetalle.reporte.id, { user: { id: 'user-1' } } as unknown as Request);
+      expect(service.findOne).toHaveBeenCalledWith(mockDetalle.reporte.id, 'user-1');
       expect(result.reporte.usuario).toBe('Marcos G.');
       expect(result.actividades).toEqual([]);
     });
@@ -110,7 +111,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
         hora: '14:15',
         descripcion: 'Suministro de diésel.',
       };
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const result = await controller.create(dto as never, req as never);
       expect(result).toBeDefined();
       expect(service.create).toHaveBeenCalledWith(dto, 'user-1');
@@ -119,7 +120,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('cambiarEstado', () => {
     it('pasa dto (EN_CURSO|CERRADO) y userId', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const dto = { estado: 'EN_CURSO' as const };
       const result = await controller.cambiarEstado(mockDetalle.reporte.id, dto, req as never);
       expect(result).toBeDefined();
@@ -129,7 +130,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('asignar', () => {
     it('delega dto y userId al service', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const dto = { asignadoA: 'trab-uuid' };
       const result = await controller.asignar(mockDetalle.reporte.id, dto, req as never);
       expect(result).toBeDefined();
@@ -139,7 +140,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('comentar', () => {
     it('pasa texto y userId al service', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const result = await controller.comentar(mockDetalle.reporte.id, { texto: 'avance' }, req as never);
       expect(result.id).toBe('act-1');
       expect(service.comentar).toHaveBeenCalledWith(mockDetalle.reporte.id, { texto: 'avance' }, 'user-1');
@@ -148,7 +149,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('adjuntar', () => {
     it('pasa adjunto y userId al service', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const dto = { nombre: 'e.png', mime: 'image/png', tamano: 67, datos: 'AA' };
       const result = await controller.adjuntar(mockDetalle.reporte.id, dto, req as never);
       expect(result.id).toBe('adj-1');
@@ -158,7 +159,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('update', () => {
     it('pasa dto y userId', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const result = await controller.update(
         mockDetalle.reporte.id,
         { descripcion: 'Corregido' },
@@ -171,7 +172,7 @@ describe('ReportesCampoController (flujo incidentes v2)', () => {
 
   describe('remove', () => {
     it('soft delete pasando userId', async () => {
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' } } as unknown as Request;
       const result = await controller.remove(mockDetalle.reporte.id, req as never);
       expect(result.message).toContain('eliminado');
       expect(service.remove).toHaveBeenCalledWith(mockDetalle.reporte.id, 'user-1');

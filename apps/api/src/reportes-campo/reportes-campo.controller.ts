@@ -85,8 +85,9 @@ export class ReportesCampoController {
    */
   @RequirePermission('operaciones', 'reportes_campo', 'ver')
   @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.service.findOne(id, user.id);
   }
 
   /**
