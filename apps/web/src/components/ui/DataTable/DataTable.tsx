@@ -27,6 +27,12 @@ export interface DataTableProps<T> {
   className?: string;
   /** 'brand' (por defecto): encabezado naranja alternado. 'neutral': encabezado gris claro, alineado como cada columna. */
   headerVariant?: 'brand' | 'neutral';
+  /**
+   * Líneas de la tabla (review PR #17):
+   * - 'bold' (default): filas con línea negra en claro y separadores verticales por celda — la más marcada.
+   * - 'subtle': solo línea horizontal fina entre filas, sin verticales — para tablas densas o de baja jerarquía visual.
+   */
+  lines?: 'bold' | 'subtle';
 }
 
 export function DataTable<T>({
@@ -39,6 +45,7 @@ export function DataTable<T>({
   maxBodyHeight = '400px',
   className,
   headerVariant = 'brand',
+  lines = 'bold',
 }: DataTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showRightShadow, setShowRightShadow] = useState(false);
@@ -87,6 +94,8 @@ export function DataTable<T>({
     );
   }
 
+  const lineas = dataTableClasses.lines[lines];
+
   return (
     <div className={cn(dataTableClasses.container, className)}>
       {/* Scroll horizontal + vertical envuelven UNA SOLA tabla */}
@@ -134,7 +143,7 @@ export function DataTable<T>({
                   tabIndex={onRowClick ? 0 : undefined}
                   onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(item); } } : undefined}
                   className={cn(
-                    dataTableClasses.tr,
+                    lineas.tr,
                     index % 2 === 0 ? dataTableClasses.trEven : dataTableClasses.trOdd,
                     onRowClick && dataTableClasses.trInteractive
                   )}
@@ -143,7 +152,7 @@ export function DataTable<T>({
                     <td
                       key={col.key}
                       className={cn(
-                        dataTableClasses.td,
+                        lineas.td,
                         col.align === 'right' && dataTableClasses.tdRight,
                         col.align === 'center' && dataTableClasses.tdCenter,
                         col.nowrap && 'whitespace-nowrap',

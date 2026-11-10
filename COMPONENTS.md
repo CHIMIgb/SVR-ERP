@@ -3155,6 +3155,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 | `maxBodyHeight` | `string` | `'400px'` | Altura maxima del body con scroll vertical |
 | `className` | `string` | `undefined` | Clases adicionales del container |
 | `headerVariant` | `'brand' \| 'neutral'` | `'brand'` | `brand`: encabezado naranja alternado. `neutral`: encabezado gris claro, alineado como cada columna (vistas limpias de RRHH / Maquinaria) |
+| `lines` | `'bold' \| 'subtle'` | `'bold'` | (review PR #17) Líneas del cuerpo de la tabla. `bold`: línea negra entre filas (en claro) **y** separador vertical por celda — la tabla con rejilla marcada. `subtle`: solo línea fina entre filas, sin verticales — tablas densas o de jerarquía visual baja |
 
 #### Tipo Column<T>
 
@@ -3174,6 +3175,39 @@ interface Column<T> {
 > **`truncate: true`** pasa esa tabla a `table-layout: fixed` (los anchos los mandan
 > los `minWidth` de las cabeceras) y la celda recorta con `text-ellipsis`. Usarlo
 > en columnas de texto largo (Descripción, Direcciones).
+
+#### Líneas de la tabla — `lines` (review PR #17)
+
+Dos niveles de rejilla sobre el cuerpo, con tokens que se invierten solos
+entre claro y oscuro (`.dark`):
+
+| Modo | Filas | Celdas | Para qué |
+|------|-------|--------|----------|
+| `'bold'` (default) | Línea **negra** en claro / `ui-200` en oscuro | Separador vertical **por celda** (negro en claro / `ui-100` en oscuro) | **CRUDs estándar del ERP** — rejilla marcada, lectura por columna fácil (Inventario, Clientes, Reportes…) |
+| `'subtle'` | Línea fina `ui-100` | **Sin** verticales | Tablas densas, de solo lectura, o dentro de un detail-heavy page donde la rejilla grosera compite con el contenido (ej. historiales largos, dashboards de solo lectura) |
+
+**Ejemplo — modo por defecto (se ve como hasta hoy):**
+
+```tsx
+<DataTable<Articulo> columns={columnas} data={articulos} keyExtractor={(a) => a.id} />
+```
+
+**Ejemplo — tabla densa con rejilla más delicada:**
+
+```tsx
+<DataTable<Trabajador>
+  columns={columnas}
+  data={trabajadores}
+  keyExtractor={(t) => t.id}
+  lines="subtle"
+/>
+```
+
+**Cuándo NO usar `lines="subtle"`:**
+- En CRUDs con columnas anchas y contenido desalineado a la derecha — sin
+  verticales pierde la guía por columna ( ⓘ mantener `'bold'` ).
+- En tablas con `truncate` de texto largo — la doble frontera ayuda a ver
+  el corte.
 
 #### Headers Naranja Alternados
 
