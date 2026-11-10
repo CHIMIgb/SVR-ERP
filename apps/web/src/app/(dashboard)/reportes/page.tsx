@@ -856,17 +856,19 @@ export default function ReportesOperacionesPage() {
       header: 'Responsable',
       minWidth: '150px',
       render: (report) => {
-        if (report.cerradoEn) {
+        const esMio = report.asignadoAId != null && report.asignadoAId === user?.id;
+        if (report.cerradoEn || report.asignadoANombre) {
           return (
-            <span className="text-xs font-semibold text-ui-700">
-              {report.asignadoANombre ?? 'Cerrado'}
-            </span>
-          );
-        }
-        if (report.asignadoANombre) {
-          return (
-            <span className="text-xs font-semibold text-ui-700">
-              {report.asignadoANombre}
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-ui-700">
+                {report.asignadoANombre ?? 'Cerrado'}
+              </span>
+              {/* Marcador: este reporte está asignado al usuario logueado */}
+              {esMio && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-primary bg-primary/10 rounded-full px-1.5 py-0.5 whitespace-nowrap">
+                  <UserCheck className="w-3 h-3" /> Tú
+                </span>
+              )}
             </span>
           );
         }
