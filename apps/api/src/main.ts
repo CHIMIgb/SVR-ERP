@@ -20,8 +20,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const port = parseInt(process.env.PORT || '3001', 10);
 
-  // Body grande para adjuntos images en base64 (máx 2 MB por foto + base64 ≈ 2.7 MB)
-  app.use(json({ limit: '15mb' }));
+  // Límites de body por ruta (review PR #17):
+  // - 15 MB SOLO en el endpoint de adjuntos de reportes: la evidencia llega
+  //   como base64 (2 MB por imagen ≈ 2.7 MB en base64).
+  // - 100 KB por defecto para TODA la API (incluye login y el resto).
+  // El específico va primero; el body-parser por defecto ignora requests
+  // ya parseadas — sin doble parseo.
+  app.use('/api/reportes-campo/:id/adjuntos', json({ limit: '15mb' }));
+  app.use(json({ limit: '100kb' }));
 
   // Prefijo global para todos los endpoints
   app.setGlobalPrefix('api');

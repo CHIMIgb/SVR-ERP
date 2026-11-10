@@ -22,6 +22,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message = 'Error interno del servidor';
     let details: string[] = [];
 
+    // Los HttpErrors del body-parser (json) no derivan de HttpException:
+    // 413 = body más grande que el límite de la ruta (100kb por defecto).
+    // denormalizado de https://expressjs.com — ver main.ts de límites.
+    // @ts-expect-error type es propio de body-parser
+    if (exception?.type === 'entity.too.large') {
+      status = HttpStatus.PAYLOAD_TOO_LARGE;
+      code = 'PAYLOAD_TOO_LARGE';
+      message = 'El cuerpo de la petición excede el límite permitido';
+    }
+
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exResponse = exception.getResponse();
