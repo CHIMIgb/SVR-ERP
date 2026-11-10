@@ -1437,7 +1437,7 @@ export default function ReportesOperacionesPage() {
                 <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   Imágenes ({detalle.adjuntos.length}/4)
                 </p>
-                {/* Agregar imagen es de la torre que atiende: el Residente solo seguirí yет does */}
+                {/* Agregar imagen es de las torres que atienden: el Residente solo sigue el incidente */}
                 {puedeEditar && !esResidente && detalle.reporte.estado !== 'Cerrado' && (
                   <label className={adjuntando ? 'opacity-50 pointer-events-none' : ''}>
                     <input

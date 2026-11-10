@@ -67,9 +67,18 @@ BEGIN
 END $$;
 
 -- ── 2. Borrado del flujo anterior: facturación de reportes ──
-ALTER TABLE "reportes_campo" DROP COLUMN IF EXISTS "cliente_id";
-ALTER TABLE "reportes_campo" DROP COLUMN IF EXISTS "proyecto_id";
-ALTER TABLE "reportes_campo" DROP COLUMN IF EXISTS "monto_servicio";
+-- Sólo corren mientras el tipo viejo aún exista (sería la PRIMERA corrida):
+-- en una re-corrida el tipo ya no está y estas columnas pudieron haber sido
+-- re-creadas por migraciones posteriores (20261108200000 re-agrega
+-- proyecto_id) — under ninguna circunstancia se tocan ahí.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'EstadoReporteCampoOld') THEN
+    ALTER TABLE "reportes_campo" DROP COLUMN IF EXISTS "cliente_id";
+    ALTER TABLE "reportes_campo" DROP COLUMN IF EXISTS "proyecto_id";
+    ALTER TABLE "reportes_campo" DROP COLUMN IF EXISTS "monto_servicio";
+  END IF;
+END $$;
 
 -- ── 3. Ubicación GPS opcional ("mi ubicación actual") ──
 ALTER TABLE "reportes_campo" ADD COLUMN IF NOT EXISTS "latitud" DECIMAL(10,7);

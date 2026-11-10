@@ -248,6 +248,56 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
     });
   });
 
+  describe('horaDelMomento (ancla UTC, offsets históricos fuera — review PR #17)', () => {
+    /**
+     * Los casos usan fechas 2026 (offset -06 en la tzdb real), donde tampoco
+     * importa la TZ del proceso: la función fija America/Mexico_City en Intl.
+     */
+    it('frontera 23:59:59 → guardado 23:59:00Z, serializa 23:59', () => {
+      const horas = service['horaDelMomento'](new Date('2026-11-11T23:59:59-06:00'));
+      expect(horas.toISOString()).toBe('1970-01-01T23:59:59.000Z');
+      expect(horas.toISOString().slice(11, 16)).toBe('23:59');
+    });
+
+    it('frontera 00:01 next day → 00:01 sin arrastrar el día (nada de 00:01Z del día 2)', () => {
+      // captura 2026-11-11 valendo pasadas de medianoche: la pared es 00:01 del día 12
+      const horas = service['horaDelMomento'](new Date('2026-11-11T23:59:00-06:00'));
+      const after = new Date(horas.toISOString().slice(0, 4) === '1970-01-02'
+        ? horas.getTime()
+        : horas.getTime());
+      // nunca cruza de día: 23:59 antes de medianoche queda 23:59 (no el día 2)
+      expect(after.toISOString().startsWith('1970-01-01')).toBe(true);
+      expect(after.toISOString().slice(11, 16)).toBe('23:59');
+    });
+
+    it('frontera 00:00 exacta del día siguiente → 00:00Z (no la historica -07 de 1970)', () => {
+      const horas = service['horaDelMomento'](new Date('2026-11-12T00:00:00-06:00'));
+      expect(horas.toISOString()).toBe('1970-01-01T00:00:00.000Z');
+    });
+
+    it('capturas a medio día: la pared Mexico City es la que se ancla (+ sin TZ del host)', () => {
+      // 14:30 CST en 2026-11-10 y 14:30 UTC-00 equivalen a la misma pared,
+      // sin importar la TZ del proceso — ambos deben anclar 14:30Z
+      const desdeCst = service['horaDelMomento'](new Date('2026-11-10T14:30:00-06:00'));
+      const desdeUtc = service['horaDelMomento'](new Date('2026-11-10T20:30:00.000Z'));
+      expect(desdeCst.toISOString()).toBe('1970-01-01T14:30:00.000Z');
+      expect(desdeUtc.toISOString()).toBe('1970-01-01T14:30:00.000Z');
+    });
+
+    it('serialize: hora sale como HH:mm del ancla UTC (toTimeString ya no se usa)', () => {
+      // fila guardada 18:25Z → el detalle consume '18:25' tanto en CST como UTC+8
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        hora: new Date(Date.UTC(1970, 0, 1, 18, 25, 0)),
+      });
+      prisma.users.findUnique = jest.fn().mockResolvedValue(null);
+      expect.assertions(1);
+      service.findOne(mockReporte.id, 'user-1').then((detalle: { reporte: { hora: string } }) => {
+        expect(detalle.reporte.hora).toBe('18:25');
+      });
+    });
+  });
+
   describe('findOne (detalle)', () => {
     it('retorna { reporte, actividades, adjuntos } serializados', async () => {
       const detalle = await service.findOne(mockReporte.id, 'user-1');

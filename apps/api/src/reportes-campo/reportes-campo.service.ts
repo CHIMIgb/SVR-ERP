@@ -1371,12 +1371,26 @@ export class ReportesCampoService {
     return new Date();
   }
 
-  /** Hora con base 1970 local — misma convención que el serialize (hora.toTimeString). */
-  private horaDelMomento(): Date {
-    const d = new Date();
-    return new Date(
-      `1970-01-01T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`,
-    );
+  /**
+   * Hora de la jornada anclada a UTC (misma convención que `trabajadores.horaAUtc`):
+   * la pared del reloj se toma en America/Mexico_City (fijo por TZ en main.ts, pero
+   * anclada EXPLÍCITA en Intl para no depender de la TZ del servidor ni de los
+   * offsets HISTÓRICOS de 1970 en la tz database — el patrón `1970-01-01THH:mm:00`
+   * desfavorecía 1 h) y se guarda como parts UTC: hora → '1970-01-01THH:mm:ssZ'.
+   */
+  private horaDelMomento(fecha: Date = new Date()): Date {
+    const partes = new Intl.DateTimeFormat('es-MX', {
+      timeZone: 'America/Mexico_City',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(fecha);
+    const valor = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value ?? 0);
+    const hh = valor('hour') % 24;
+    const mm = valor('minute');
+    const ss = valor('second');
+    return new Date(Date.UTC(1970, 0, 1, hh, mm, ss));
   }
 
   /**
@@ -1516,7 +1530,7 @@ export class ReportesCampoService {
           : String(reporte.fecha).split('T')[0],
       hora:
         reporte.hora instanceof Date
-          ? reporte.hora.toTimeString().slice(0, 5)
+          ? reporte.hora.toISOString().slice(11, 16)
           : String(reporte.hora).slice(0, 5),
       descripcion: reporte.descripcion,
       estado: ESTADO_LABELS[reporte.estado as EstadoIncidente] ?? reporte.estado,
