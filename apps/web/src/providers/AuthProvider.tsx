@@ -16,7 +16,7 @@ import {
   type ApiResponse,
   type AuthResponse,
 } from "@svr-erp/shared";
-import { authApi, clearTokens, setTokens, initializeAuth, type PinEstadoDTO } from "@/lib/api";
+import { authApi, clearTokens, setTokens, initializeAuth, getAccessToken, type PinEstadoDTO } from "@/lib/api";
 
 interface AuthState {
   user: UserAuth | null;
@@ -235,33 +235,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await logout();
       }
     } catch {
-      await logout();
+      // Error de red: NO cerrar sesión — solo si el refresh ya limpió
+      // los tokens (revocación/expiración) la sesión está muerta
+      if (!getAccessToken()) await logout();
     }
   }, [logout]);
 
   const clearError = useCallback(() => setError(null), []);
 
-  // Inicialización: recuperar usuario de localStorage y restaurar sesión desde refresh token
+  // Inicialización: restaurar sesión desde el refresh token en localStorage.
+  // El setState va dentro de .then (asíncrono) — la regla de React prohíbe
+  // setState síncrono en el cuerpo del effect (cascading renders).
   useEffect(() => {
     const storedUser = getStoredUser();
-    if (storedUser) {
-      setUser(storedUser);
-    }
 
-    // Intentar restaurar el access token desde el refresh token en localStorage
     initializeAuth()
-      .then((hasToken) => {
-        if (hasToken && storedUser) {
-          // Token restaurado: refrescar perfil en segundo plano para validar
-          refreshProfile().catch(() => {});
-        } else if (!hasToken && storedUser) {
-          // Refresh token expirado o inválido: cerrar sesión
+      .then((estado) => {
+        if (estado === 'invalid') {
+          // Refresh token expirado o revocado: cerrar sesión
           clearTokens();
           setUser(null);
+          return;
         }
-      })
-      .catch(() => {
-        // Error de red: mantener usuario cacheado si existe
+        if (storedUser) {
+          setUser(storedUser);
+          if (estado === 'ok') {
+            // Token restaurado: refrescar perfil en segundo plano para validar
+            refreshProfile().catch(() => {});
+          }
+          // 'red' (sin conexión): conservar tokens y usuario cacheado — la app
+          // abre igual; al volver la señal, el interceptor refresca en el 401
+        }
       })
       .finally(() => {
         setIsInitialized(true);

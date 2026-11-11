@@ -90,9 +90,11 @@ function addRefreshSubscriber(callback: (token: string) => void): void {
   refreshSubscribers.push(callback);
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+type EstadoRefresh = 'ok' | 'invalid' | 'red';
+
+async function refreshAccessToken(): Promise<EstadoRefresh> {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+  if (!refreshToken) return 'invalid';
 
   try {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -102,38 +104,46 @@ async function refreshAccessToken(): Promise<string | null> {
     });
 
     if (!response.ok) {
-      throw new Error('Refresh failed');
+      // Token rechazado por el servidor (vencido/revocado): sesión muerta.
+      // Otros errores HTTP (500/503): la sesión puede seguir viva — no borrar.
+      if (response.status === 401 || response.status === 400) {
+        clearTokens();
+        return 'invalid';
+      }
+      return 'red';
     }
 
     const result: ApiResponse<AuthResponse['data']> = await response.json();
     if (!result.success) {
-      throw new Error('Refresh failed');
+      clearTokens();
+      return 'invalid';
     }
 
     setTokens(result.data.accessToken, result.data.refreshToken);
-    return result.data.accessToken;
+    return 'ok';
   } catch {
-    clearTokens();
-    return null;
+    // Error de red (API inalcanzable / offline): NO borrar la sesión —
+    // el refresh se reintentará al volver la señal (petición 401 → interceptor).
+    return 'red';
   }
 }
 
 /**
  * Intenta obtener un access token válido al cargar la app.
  * Si el refresh token existe en localStorage, rota para obtener un access token fresco.
- * Retorna true si se obtuvo un token válido, false si no (sesión expirada).
+ * 'ok' = sesión restaurada; 'invalid' = sesión expirada/revocada; 'red' = sin conexión
+ * (se conservan los tokens y el usuario cacheado; se reintenta al volver la señal).
  */
-export async function initializeAuth(): Promise<boolean> {
+export async function initializeAuth(): Promise<EstadoRefresh> {
   // Si ya tenemos un access token en memoria, la sesión está activa
-  if (inMemoryAccessToken) return true;
+  if (inMemoryAccessToken) return 'ok';
 
   // Si no hay refresh token, no hay sesión que restaurar
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
+  if (!refreshToken) return 'invalid';
 
   // Intentar rotar el refresh token para obtener un access token nuevo
-  const newToken = await refreshAccessToken();
-  return newToken !== null;
+  return refreshAccessToken();
 }
 
 async function request<T>(
@@ -193,21 +203,33 @@ async function request<T>(
     }
 
     isRefreshing = true;
-    const newToken = await refreshAccessToken();
+    const resultado = await refreshAccessToken();
     isRefreshing = false;
 
-    if (newToken) {
-      notifySubscribers(newToken);
-      return request<T>(endpoint, {
-        ...options,
-        headers: {
-          ...((customHeaders as Record<string, string>) || {}),
-          Authorization: `Bearer ${newToken}`,
-        },
-      });
+    if (resultado === 'ok') {
+      const newToken = getAccessToken();
+      if (newToken) {
+        notifySubscribers(newToken);
+        return request<T>(endpoint, {
+          ...options,
+          headers: {
+            ...((customHeaders as Record<string, string>) || {}),
+            Authorization: `Bearer ${newToken}`,
+          },
+        });
+      }
     }
 
-    // Refresh falló: limpiar y dejar que el caller maneje
+    if (resultado === 'red') {
+      // Sin conexión para refrescar: NO limpiar ni redirigir — el caller
+      // muestra su error de conexión y la sesión sigue viva en el dispositivo
+      return {
+        success: false,
+        error: { code: 'API_DOWN', message: 'No hay conexión con el servidor' },
+      };
+    }
+
+    // Refresh inválido (token vencido/revocado): limpiar y dejar que el caller maneje
     window.location.href = '/';
     return {
       success: false,
