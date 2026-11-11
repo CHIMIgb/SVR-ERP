@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Nav inferior por rol (plan §7b): arma las pestañas desde `user.vistas`
@@ -18,7 +18,6 @@ import {
   Fuel,
   Building2,
   Phone,
-  User,
   Wallet,
   LayoutGrid,
 } from "lucide-react";
@@ -35,7 +34,6 @@ export const NAV_MOVIL: Record<string, { etiqueta: string; icono: LucideIcon }> 
   "/m/asistencia": { etiqueta: "Asistencia", icono: ClipboardCheck },
   "/m/reportes": { etiqueta: "Reportes", icono: AlertTriangle },
   "/m/contactos": { etiqueta: "Contactos", icono: Phone },
-  "/m/perfil": { etiqueta: "Perfil", icono: User },
   "/m/obras": { etiqueta: "Obras", icono: Building2 },
   "/m/flota-obras": { etiqueta: "Flota/Obras", icono: Truck },
   "/m/inventario": { etiqueta: "Inventario", icono: Boxes },

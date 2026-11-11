@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Bell } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
@@ -12,7 +12,6 @@ import { estaInstaladaEnDispositivo } from "@/lib/pwa/instalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
-import ThemeToggle from "@/components/layout/ThemeToggle";
 import { LoadingState } from "@/components/ui/LoadingState";
 
 /**
@@ -25,7 +24,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, isInitialized, logout } = useAuth();
+  const { user, isAuthenticated, isInitialized } = useAuth();
   const pendientes = useCola();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
   // true de inicio para no dar destello del modal a quien YA la tiene instalada
@@ -106,6 +105,9 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isInitialized || !isAuthenticated || !pathname) return;
     if (pathname === "/m/pin-cambio") return;
+    // El perfil es de TODOS los roles (petición del cliente 2026-11-11):
+    // se accede desde el header, no es una vista del nav por rol
+    if (pathname === "/m/perfil") return;
     const autorizadas = navDelRol(user).map((p) => p.ruta);
     if (!autorizadas.includes(pathname)) {
       router.replace("/m");
@@ -134,39 +136,33 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
-      {/* Header del shell — mismo look que el Topbar del escritorio */}
+      {/* Header del shell — mismo look que el Topbar del escritorio.
+          El bloque avatar+nombre+rol abre el perfil (todos los roles). */}
       <header className="bg-surface border-b border-ui-200 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-3 sticky top-0 z-30">
-        <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shrink-0 text-sm font-black text-white">
-          {iniciales}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-black truncate leading-tight text-ui-900">
-            {user?.persona?.nombre ?? user?.email}
-          </p>
-          <p className="text-[10px] text-ui-500 font-bold uppercase tracking-widest truncate">
-            {user?.roles?.[0]?.nombre ?? "Sin rol"}
-          </p>
-        </div>
-        <div className="shrink-0 text-ui-600">
-          <ThemeToggle />
-        </div>
+        <button
+          type="button"
+          onClick={() => router.push("/m/perfil")}
+          aria-label="Abrir mi perfil"
+          className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-xl -mx-1 px-1 py-1 hover:bg-ui-100 active:bg-ui-200/60 transition-colors"
+        >
+          <span className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shrink-0 text-sm font-black text-white">
+            {iniciales}
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-black truncate leading-tight text-ui-900">
+              {user?.persona?.nombre ?? user?.email}
+            </span>
+            <span className="block text-[10px] text-ui-500 font-bold uppercase tracking-widest truncate">
+              {user?.roles?.[0]?.nombre ?? "Sin rol"}
+            </span>
+          </span>
+        </button>
         <button
           type="button"
           aria-label="Notificaciones"
           className="w-9 h-9 rounded-xl bg-ui-100 border border-ui-200 flex items-center justify-center text-ui-600 hover:bg-ui-200/60 transition-colors shrink-0 relative"
         >
           <Bell className="w-5 h-5" />
-        </button>
-        <button
-          type="button"
-          onClick={async () => {
-            await logout();
-            router.replace("/");
-          }}
-          aria-label="Cerrar sesión"
-          className="w-9 h-9 rounded-xl bg-error/10 border border-error/30 flex items-center justify-center text-error hover:bg-error/20 transition-colors shrink-0"
-        >
-          <LogOut className="w-5 h-5" />
         </button>
       </header>
 

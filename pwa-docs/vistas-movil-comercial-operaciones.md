@@ -34,7 +34,12 @@ dedicado por rol** (camino B: shell móvil propio), tal como lo describe
 > - **Residentes:** inicio · asistencia · reportes · obras · contactos
 > - **Cobradores:** inicio · asistencia · cobro (punto de venta) · cobro del día
 > - **Técnicos:** inicio · asistencia · reportes · flota · obras *(el diseño las toma como una sola — se hará lo que diga)* · inventario · diesel
-> - **Trabajadores:** inicio · asistencia · reportes · contactos · mi perfil
+> - **Trabajadores:** inicio · asistencia · reportes · contactos
+>
+> **El perfil NO es pestaña del nav inferior** (aclaración del cliente
+> 2026-11-11): se abre tocando el bloque avatar + nombre + rol del HEADER y
+> existe para TODOS los roles. Ahí viven: la información del empleado, el
+> selector de tema claro/oscuro y cerrar sesión (fuera del header).
 >
 > Las tablas de esta sección quedan congeladas contra esa lista (los subtítulos
 > "¿Qué pantalla Figma?" mapean a estas vistas). Implicaciones que introduce:
@@ -440,11 +445,14 @@ raíz (AuthProvider, toasts) y:
 
 | Rol | Pestañas (ruta → vista) |
 |---|---|
-| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` · `/m/perfil` |
+| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` |
 | Residente | `/m` Inicio · `/m/asistencia` (equipo) · `/m/reportes` · `/m/obras` · `/m/contactos` |
 | Técnico (×4) | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/flota-obras` · `/m/inventario` (+ `/m/diesel` solo Técnico-Diesel) |
 | Cobrador | `/m` Inicio · `/m/asistencia` · `/m/pos` · `/m/corte` |
 | Administrador | `/m` Inicio · `/m/reportes` · `/m/finanzas` · `/m/modulos` |
+
+`/m/perfil` no es pestaña: se abre desde el header (avatar + nombre + rol)
+y es común a todos los roles — guard del shell la exenta del RBAC de vistas.
 
 El helper `rol-nav.ts` resuelve qué pestañas corresponden leyendo el rol y
 las vistas del usuario — si el RBAC quita una vista, la pestaña desaparece
@@ -522,10 +530,12 @@ módulos todavía.
    - `cuenta_bloqueada_en` TIMESTAMPTZ NULL.
 2. **RBAC de la PWA (idempotente):**
    - Vistas móviles registradas en la tabla `vistas` con ruta `/m/*`
-     (`/m`, `/m/asistencia`, `/m/reportes`, `/m/contactos`, `/m/perfil`,
+     (`/m`, `/m/asistencia`, `/m/reportes`, `/m/contactos`, `/m/perfil`*,
      `/m/obras`, `/m/flota-obras`, `/m/inventario`, `/m/diesel`, `/m/pos`,
      `/m/corte`, `/m/finanzas`, `/m/modulos`) — así `user.vistas` alimenta
      `rol-nav.ts` SIN mapeos ad hoc, y el escritorio queda con sus vistas.
+     (* `/m/perfil` ya no se lista en el nav: accede todo rol desde el
+     header; el guard del shell la exenta — ver "El perfil NO es pestaña".)
    - **Asistencia universal** (aclaración del cliente): `puedeVer` de
      `/m/asistencia` para Trabajador, Residente, los 4 Técnicos y Cobrador
      (solo ver — la captura es propia; el Residente además la de su equipo
@@ -578,7 +588,7 @@ construcción") y **nada más** — sin lógica de módulos:
 
 | Rol | Vistas placeholder |
 |---|---|
-| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` · `/m/perfil` |
+| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` |
 | Residente | `/m` · `/m/asistencia` · `/m/reportes` · `/m/obras` · `/m/contactos` |
 | Técnicos | `/m` · `/m/asistencia` · `/m/reportes` · `/m/flota-obras` · `/m/inventario` · `/m/diesel` (solo Diesel) |
 | Cobrador | `/m` · `/m/asistencia` · `/m/pos` · `/m/corte` |
