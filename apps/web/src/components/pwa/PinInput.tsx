@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * Input de PIN de 8 casillas (login móvil y cambio de PIN — plan §7b/§8.4).
- * Auto-avanza al escribir, retrocede con Backspace, pega el PIN completo.
- * Enmascarado (nadie ve el PIN — spec §6.7).
+ * NUNCA se ve un carácter: las casillas permanecen vacías (solo el foco las
+ * marca) y el caracter se captura con el evento de teclado (e.key) — el valor
+ * real vive solo en el estado del formulario (spec §6.7: nadie ve PINs).
  * El valor real es SIEMPRE 8 caracteres sin guion; el guion después del 4º
  * dígito es solo visual (como en TRA-0142) y las casillas son fluidas:
- * nunca desbordan su contenedor (review 2026-11-11).
+ * nunca desbordan su contenedor.
  */
 interface PinInputProps {
   value: string;
@@ -31,28 +32,18 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
     onChange(chars.join("").trimEnd());
   };
 
-  const manejarTecla = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
-    if (e.key !== "Backspace") return;
-    e.preventDefault();
+  const borrarCasilla = (i: number) => {
     const chars = value.split("");
     while (chars.length < 8) chars.push("");
-    if (chars[i]) {
-      chars[i] = "";
-      onChange(chars.join("").trimEnd());
-      return; // borra la casilla actual sin retroceder
-    }
-    if (i > 0) {
-      chars[i - 1] = "";
-      onChange(chars.join("").trimEnd());
-      refs.current[i - 1]?.focus();
-    }
+    chars[i] = "";
+    onChange(chars.join("").trimEnd());
   };
 
   return (
     <div
       className="flex items-center justify-center gap-1 sm:gap-1.5 w-full max-w-full"
       role="group"
-      aria-label={ariaLabel}
+      aria-label={`${ariaLabel} (se oculta al escribir)`}
     >
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="contents">
@@ -66,32 +57,55 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
           )}
           <input
             ref={(el) => { refs.current[i] = el; }}
-            type="password"
+            type="text"
             inputMode="text"
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            maxLength={1}
-            aria-label={`${ariaLabel} posición ${i + 1}`}
-            disabled={disabled}
-            value={value[i] ?? ""}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-              if (!raw) return;
-              if (raw.length > 1) {
-                // pegaron un PIN completo: lo distribuye desde esta casilla
-                onChange(raw.slice(0, 8));
-                refs.current[Math.min(8, raw.length) - 1]?.focus();
+            autoComplete="off"
+            // La casilla SIEMPRE vacía: el caracter va al estado por e.key
+            value=""
+            onChange={() => undefined}
+            onKeyDown={(e) => {
+              if (disabled) return;
+              if (e.key === "Backspace") {
+                e.preventDefault();
+                borrarCasilla(i);
+                if (!value[i] && i > 0) refs.current[i - 1]?.focus();
                 return;
               }
-              setChar(i, raw);
-              refs.current[i + 1]?.focus();
+              if (/^[a-zA-Z0-9]$/.test(e.key)) {
+                e.preventDefault();
+                setChar(i, e.key.toUpperCase());
+                refs.current[i + 1]?.focus();
+              }
             }}
-            onKeyDown={(e) => manejarTecla(e, i)}
+            onPaste={(e) => {
+              e.preventDefault();
+              if (disabled) return;
+              const texto = e.clipboardData
+                .getData("text")
+                .replace(/[^A-Za-z0-9]/g, "")
+                .toUpperCase();
+              if (!texto) return;
+              // pega desde esta casilla hasta llenar las 8
+              const chars = texto.split("");
+              let idx = i;
+              for (const c of chars) {
+                if (idx >= 8) break;
+                setChar(idx, c);
+                idx++;
+              }
+              refs.current[Math.min(8, idx)]?.focus();
+            }}
+            disabled={disabled}
+            aria-label={`${ariaLabel} posición ${i + 1}`}
             className={cn(
-              "flex-1 min-w-0 h-12 sm:h-14 aspect-[4/5] text-center text-xl font-black text-white",
+              "flex-1 min-w-0 h-12 sm:h-14 aspect-[4/5] text-center text-xl font-black",
               "bg-white/5 border rounded-md focus:outline-none transition-all",
+              "caret-transparent select-none",
               "disabled:opacity-60",
+              value[i] && "border-primary/50",
               error
                 ? "border-red-500/60 focus:border-red-400"
                 : "border-white/10 focus:border-primary/50 focus:bg-white/10",
