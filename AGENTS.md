@@ -100,7 +100,7 @@ src/
 
 ## PWA móvil (rutas `/m/*` — grupo de rutas `(pwa)`)
 
-La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/m/*` — **NUNCA crear `apps/pwa` aparte ni duplicar sesión/apiClient** (ver plan completo: `docs-planes/vistas-movil-comercial-operaciones.md`, §5b y §6 — la especificación funcional definitiva del cliente: asistencia universal con foto+GPS, login por número de empleado + PIN, offline-first).
+La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/m/*` — **NUNCA crear `apps/pwa` aparte ni duplicar sesión/apiClient** (ver plan completo: `pwa/vistas-movil-comercial-operaciones.md`, §5b y §6 — la especificación funcional definitiva del cliente: asistencia universal con foto+GPS, login por número de empleado + PIN, offline-first).
 
 Reglas duras al construir vistas móviles (aplican igual que las de escritorio, con estos matices):
 

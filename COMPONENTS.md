@@ -4923,7 +4923,7 @@ import type { TimelineCardProps, TimelineMeta, TimelineBadge } from '@/component
 ## 16. Componentes PWA móvil (rutas /m/*)
 
 La PWA vive en `apps/web` como grupo de rutas `(pwa)` con URL `/m/*` (ver
-AGENTS.md → "PWA móvil" y `docs-planes/vistas-movil-comercial-operaciones.md`).
+AGENTS.md → "PWA móvil" y `pwa/vistas-movil-comercial-operaciones.md`).
 Los componentes móviles viven en `src/components/pwa/*` — REUSAN el kit
 `components/ui/*` antes de crear algo nuevo (regla 2 de AGENTS.md).
 
