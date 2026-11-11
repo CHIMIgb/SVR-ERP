@@ -12,8 +12,8 @@ describe('PinService', () => {
   let service: PinService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
-  let mockAudit: { log: jest.Mock };
-  let mockAuth: { crearSesionYTokens: jest.Mock };
+  let mockAudit: { log: jest.Mock; logFailure: jest.Mock };
+  let mockAuth: { crearSesionYTokens: jest.Mock; getProfile: jest.Mock };
 
   const USER_ID = 'u-1';
   const NUM = 'TRA-0142';
@@ -51,12 +51,21 @@ describe('PinService', () => {
       },
       $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
     };
-    mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
+    mockAudit = { log: jest.fn().mockResolvedValue(undefined), logFailure: jest.fn().mockResolvedValue(undefined) };
     mockAuth = {
       crearSesionYTokens: jest.fn().mockResolvedValue({
         accessToken: 'at',
         refreshToken: 'rt',
         session: { id: 's-1', iniciadaEn: new Date(), expiraEn: new Date() },
+      }),
+      // el login-pin ahora devuelve el perfil COMPLETO (UserAuth) — paso 3
+      getProfile: jest.fn().mockResolvedValue({
+        id: USER_ID,
+        email: 't@svr',
+        persona: { nombre: 'Test' },
+        roles: [{ id: 'r1', nombre: 'Trabajador', nivel: 20, esPrincipal: true }],
+        vistas: [],
+        permisos: [],
       }),
     };
 
@@ -93,10 +102,9 @@ describe('PinService', () => {
       expect(prisma.users.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ intentos_pin: 1 }) }),
       );
-      expect(mockAudit.log).toHaveBeenCalledWith(
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.LOGIN_FALLIDO,
-          result: AuditResult.FAIL,
           errorCode: 'PIN_INVALIDO',
         }),
       );
@@ -114,8 +122,8 @@ describe('PinService', () => {
           data: expect.objectContaining({ intentos_pin: 5, cuenta_bloqueada_en: expect.any(Date) }),
         }),
       );
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'CUENTA_BLOQUEADA', result: AuditResult.FAIL }),
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'CUENTA_BLOQUEADA' }),
       );
     });
 
@@ -126,7 +134,7 @@ describe('PinService', () => {
       await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(
         'Cuenta bloqueada por intentos fallidos',
       );
-      expect(mockAudit.log).toHaveBeenCalledWith(
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'CUENTA_BLOQUEADA' }),
       );
     });
@@ -136,7 +144,7 @@ describe('PinService', () => {
         usuario({ pin_temporal_hasta: new Date(Date.now() - 1000) }) as never,
       );
       await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow('expiró');
-      expect(mockAudit.log).toHaveBeenCalledWith(
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'PIN_TEMPORAL_EXPIRADO' }),
       );
     });
@@ -146,7 +154,7 @@ describe('PinService', () => {
       await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(
         'Número de empleado o PIN incorrecto',
       );
-      expect(mockAudit.log).toHaveBeenCalledWith(
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'CREDENCIALES_INVALIDAS' }),
       );
     });
@@ -181,8 +189,8 @@ describe('PinService', () => {
       await expect(
         service.cambiarPin({ pinActual: 'PQ7W2N9K', pinNuevo: 'PQ7W2N9K' }, USER_ID, 's-1'),
       ).rejects.toThrow('PIN actual es incorrecto');
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'PIN_INVALIDO', result: AuditResult.FAIL }),
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'PIN_INVALIDO' }),
       );
       expect(prisma.users.update).not.toHaveBeenCalled();
     });
@@ -191,8 +199,8 @@ describe('PinService', () => {
       await expect(
         service.cambiarPin({ pinActual: PIN_OK, pinNuevo: '12345678' }, USER_ID, 's-1'),
       ).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'PIN_DEBIL', result: AuditResult.FAIL }),
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'PIN_DEBIL' }),
       );
     });
 
@@ -200,8 +208,8 @@ describe('PinService', () => {
       await expect(
         service.cambiarPin({ pinActual: PIN_OK, pinNuevo: PIN_OK }, USER_ID, 's-1'),
       ).rejects.toThrow('últimos 3');
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'PIN_REPETIDO', result: AuditResult.FAIL }),
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'PIN_REPETIDO' }),
       );
     });
   });
@@ -230,8 +238,8 @@ describe('PinService', () => {
     it('usuario inexistente: FAIL USUARIO_NO_ENCONTRADO auditado', async () => {
       prisma.users.findUnique.mockResolvedValue(null);
       await expect(service.reiniciarPin('missing', ACTOR)).rejects.toThrow(NotFoundException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'USUARIO_NO_ENCONTRADO', result: AuditResult.FAIL }),
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'USUARIO_NO_ENCONTRADO' }),
       );
     });
   });
