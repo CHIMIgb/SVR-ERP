@@ -57,7 +57,7 @@ export default function CredencialesAccesoModal({
   return (
     <Modal open onClose={onClose} size="md" persistent>
       <ModalHeader title="Credenciales de acceso" subtitle={credenciales.nombre} onClose={onClose} />
-      <ModalBody>
+      <ModalBody className="space-y-4">
         <div role="alert" className="flex gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50">
           <p className="text-xs text-amber-800">
             Este PIN se muestra <strong>solo esta vez</strong>. Envíalo antes de cerrar; si se pierde, usa
