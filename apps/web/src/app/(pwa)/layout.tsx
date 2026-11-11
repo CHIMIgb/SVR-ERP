@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,6 +10,7 @@ import type { PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { RoleNav } from "@/components/pwa/RoleNav";
+import { navDelRol } from "@/lib/pwa/rol-nav";
 
 /**
  * Shell mínimo de la PWA (paso 3 — plan §7b completo llega con RoleNav).
@@ -18,6 +20,7 @@ import { RoleNav } from "@/components/pwa/RoleNav";
  */
 export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isAuthenticated, isInitialized, logout } = useAuth();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
 
@@ -31,6 +34,18 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       router.replace("/dashboard");
     }
   }, [isInitialized, isAuthenticated, router]);
+
+  // guard de VISTA (RBAC): una ruta /m/* fuera de las vistas del usuario
+  // (URL directa) vuelve al inicio — pin-cambio siempre permitido (es parte
+  // del ciclo de identidad, no una vista)
+  useEffect(() => {
+    if (!isInitialized || !isAuthenticated || !pathname) return;
+    if (pathname === "/m/pin-cambio") return;
+    const autorizadas = navDelRol(user).map((p) => p.ruta);
+    if (!autorizadas.includes(pathname)) {
+      router.replace("/m");
+    }
+  }, [isInitialized, isAuthenticated, pathname, user, router]);
 
   // guard de PIN: temporal/vencido → cambio obligatorio (spec §6.6-7)
   useEffect(() => {
