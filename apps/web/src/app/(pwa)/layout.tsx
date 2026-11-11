@@ -10,6 +10,8 @@ import type { PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { RoleNav } from "@/components/pwa/RoleNav";
+import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
+import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
 
 /**
@@ -23,6 +25,15 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, isAuthenticated, isInitialized, logout } = useAuth();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
+  const pendientes = useCola();
+
+  // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    const parar = iniciarSincronizador();
+    return parar;
+  }, []);
 
   // guard de sesión + guard de ancho (escritorio → dashboard)
   useEffect(() => {
@@ -108,7 +119,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 px-4 py-5 overflow-y-auto scrollbar-none">{children}</main>
 
       {/* Nav inferior por rol (plan §7b) + interruptor a escritorio */}
-      <RoleNav />
+      <RoleNav pendientes={pendientes} />
 
       {/* Aviso a los 25 días (spec §6.6-5): sin mostrar PIN */}
       {pinEstado?.avisar && !pinEstado.vencido && (
