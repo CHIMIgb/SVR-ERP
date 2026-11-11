@@ -628,5 +628,49 @@ describe('AuthService', () => {
 
       expect(perfil).toBeNull();
     });
+
+    it('debe incluir telefono, numero de empleado y jefe directo', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        ...mockUser,
+        numero_empleado: 'EMP-001',
+        personas_users_persona_idTopersonas: {
+          ...mockUser.personas_users_persona_idTopersonas,
+          telefono: '5512345678',
+        },
+        jefe: {
+          email: 'jefe@svr-constructora.com',
+          personas_users_persona_idTopersonas: {
+            nombre: 'Rosa',
+            apellido_paterno: 'Marín',
+            apellido_materno: null,
+            telefono: '5598765432',
+          },
+        },
+      });
+
+      const perfil = await service.getProfile('user-1');
+
+      expect(perfil!.numeroEmpleado).toBe('EMP-001');
+      expect(perfil!.persona.telefono).toBe('5512345678');
+      expect(perfil!.jefe).toEqual({
+        nombre: 'Rosa Marín',
+        email: 'jefe@svr-constructora.com',
+        telefono: '5598765432',
+      });
+    });
+
+    it('debe retornar jefe null si el usuario no tiene jefe asignado', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        ...mockUser,
+        numero_empleado: null,
+        jefe: null,
+      });
+
+      const perfil = await service.getProfile('user-1');
+
+      expect(perfil!.numeroEmpleado).toBeNull();
+      expect(perfil!.jefe).toBeNull();
+      expect(perfil!.persona.telefono).toBeNull();
+    });
   });
 });

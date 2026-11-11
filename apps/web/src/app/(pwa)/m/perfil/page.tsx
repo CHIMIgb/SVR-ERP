@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, Mail, BadgeCheck, Layers } from "lucide-react";
+import { LogOut, Mail, BadgeCheck, Layers, Phone, Hash, UserCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ThemeToggle from "@/components/layout/ThemeToggle";
 
@@ -36,6 +36,33 @@ export default function PerfilMovilPage() {
           </div>
         </div>
 
+        {user?.persona?.telefono && (
+          <div className="flex items-start gap-3">
+            <Phone className="w-5 h-5 text-ui-500 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-ui-500">Teléfono</p>
+              <a
+                href={`tel:${user.persona.telefono}`}
+                className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
+              >
+                {user.persona.telefono}
+              </a>
+            </div>
+          </div>
+        )}
+
+        {user?.numeroEmpleado && (
+          <div className="flex items-start gap-3">
+            <Hash className="w-5 h-5 text-ui-500 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-ui-500">
+                Número de empleado
+              </p>
+              <p className="text-sm font-semibold text-ui-900">{user.numeroEmpleado}</p>
+            </div>
+          </div>
+        )}
+
         {user?.torre && (
           <div className="flex items-start gap-3">
             <Layers className="w-5 h-5 text-ui-500 shrink-0 mt-0.5" />
@@ -55,6 +82,24 @@ export default function PerfilMovilPage() {
             </p>
           </div>
         </div>
+
+        {user?.jefe && (
+          <div className="flex items-start gap-3">
+            <UserCheck className="w-5 h-5 text-ui-500 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-ui-500">Jefe directo</p>
+              <p className="text-sm font-semibold text-ui-900">{user.jefe.nombre}</p>
+              {user.jefe.telefono && (
+                <a
+                  href={`tel:${user.jefe.telefono}`}
+                  className="text-xs font-semibold text-primary underline-offset-2 hover:underline"
+                >
+                  {user.jefe.telefono}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tema claro / oscuro — el mismo toggle del header del escritorio */}

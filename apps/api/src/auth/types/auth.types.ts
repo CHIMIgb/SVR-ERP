@@ -16,11 +16,20 @@ export interface AuthResponse {
     activo: boolean;
     /** Área (torre) asignada — para "misma área" en /reportes. */
     torre?: import('@prisma/client').CategoriaReporte | null;
+    /** Número de empleado (users.numero_empleado) — vista de perfil PWA. */
+    numeroEmpleado?: string | null;
+    /** Jefe directo, si el usuario tiene uno asignado. */
+    jefe?: {
+      nombre: string;
+      email: string;
+      telefono?: string | null;
+    } | null;
     persona: {
       nombre: string;
       apellidoPaterno: string | null;
       apellidoMaterno: string | null;
       correo: string | null;
+      telefono?: string | null;
     };
     roles: {
       id: string;

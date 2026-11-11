@@ -53,6 +53,20 @@ const USER_INCLUDE = {
       },
     },
   },
+  // Jefe directo (auto-relación de users) para la vista de perfil PWA
+  jefe: {
+    select: {
+      email: true,
+      personas_users_persona_idTopersonas: {
+        select: {
+          nombre: true,
+          apellido_paterno: true,
+          apellido_materno: true,
+          telefono: true,
+        },
+      },
+    },
+  },
 } as const;
 
 @Injectable()
@@ -731,18 +745,43 @@ export class AuthService {
         .filter((ur: any) => ur.roles.torre != null)
         .sort((a: any, b: any) => Number(b.es_principal) - Number(a.es_principal))[0]?.roles.torre ?? null;
 
+    const personaRaw = user.personas_users_persona_idTopersonas;
+
+    const jefeRaw = user.jefe as
+      | {
+          email: string;
+          personas_users_persona_idTopersonas: {
+            nombre: string;
+            apellido_paterno: string | null;
+            apellido_materno: string | null;
+            telefono: string | null;
+          } | null;
+        }
+      | null;
+    const jefeNombre = jefeRaw?.personas_users_persona_idTopersonas
+      ? [
+          jefeRaw.personas_users_persona_idTopersonas.nombre,
+          jefeRaw.personas_users_persona_idTopersonas.apellido_paterno,
+          jefeRaw.personas_users_persona_idTopersonas.apellido_materno,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : null;
+
     return {
       id: user.id,
       email: user.email,
       activo: user.activo,
+      // Extras para la vista de perfil (PWA) — null si no aplican
+      numeroEmpleado: user.numero_empleado ?? null,
+      jefe: jefeRaw && jefeNombre ? { nombre: jefeNombre, email: jefeRaw.email, telefono: jefeRaw.personas_users_persona_idTopersonas?.telefono ?? null } : null,
       torre: (user.torre ?? torreDelRol) as import('@prisma/client').CategoriaReporte | null,
       persona: {
-        nombre: user.personas_users_persona_idTopersonas.nombre,
-        apellidoPaterno:
-          user.personas_users_persona_idTopersonas.apellido_paterno,
-        apellidoMaterno:
-          user.personas_users_persona_idTopersonas.apellido_materno,
-        correo: user.personas_users_persona_idTopersonas.correo,
+        nombre: personaRaw.nombre,
+        apellidoPaterno: personaRaw.apellido_paterno,
+        apellidoMaterno: personaRaw.apellido_materno,
+        correo: personaRaw.correo,
+        telefono: personaRaw.telefono ?? null,
       },
       roles,
       vistas,
