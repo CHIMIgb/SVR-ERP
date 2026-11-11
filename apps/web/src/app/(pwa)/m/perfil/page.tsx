@@ -21,7 +21,7 @@ export default function PerfilMovilPage() {
   };
 
   return (
-    <section className="min-h-full max-w-sm mx-auto flex flex-col gap-5">
+    <section className="flex-1 max-w-sm mx-auto w-full flex flex-col gap-5">
       {/* Información del empleado */}
       <div className="bg-surface border border-ui-200 rounded-2xl p-5 flex flex-col gap-4">
         <h2 className="text-xs font-black uppercase tracking-widest text-ui-500">

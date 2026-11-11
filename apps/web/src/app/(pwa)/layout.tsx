@@ -166,8 +166,9 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
         </button>
       </header>
 
-      {/* Contenido con safe-areas */}
-      <main className="flex-1 px-4 py-5 overflow-y-auto scrollbar-none">{children}</main>
+      {/* Contenido con safe-areas — flex column para que las vistas puedan
+          anclar elementos al fondo (ej. cerrar sesión en /m/perfil) */}
+      <main className="flex-1 px-4 py-5 overflow-y-auto scrollbar-none flex flex-col">{children}</main>
 
       {/* Nav inferior por rol (plan §7b) */}
       <RoleNav pendientes={pendientes} />
