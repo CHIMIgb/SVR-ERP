@@ -28,7 +28,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const pendientes = useCola();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
   const [cerrarModal, setCerrarModal] = useState(false);
-  const [promptEvent, setPromptEvent] = useState<{ prompt: () => Promise<void> } | null>(null);
   const [instalada, setInstalada] = useState(false);
 
   // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
@@ -36,11 +35,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     const parar = iniciarSincronizador();
-    const capturar = (e: Event) => {
-      e.preventDefault(); // la barra automática la lanzamos con NUESTRO botón del modal
-      setPromptEvent(e as unknown as { prompt: () => Promise<void> });
-    };
-    window.addEventListener("beforeinstallprompt", capturar);
     const revisar = () =>
       setInstalada(
         window.matchMedia("(display-mode: standalone)").matches ||
@@ -50,7 +44,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     window.addEventListener("appinstalled", revisar);
     return () => {
       parar();
-      window.removeEventListener("beforeinstallprompt", capturar);
       window.removeEventListener("appinstalled", revisar);
     };
   }, []);
@@ -154,8 +147,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       {/* Instalación: modal automático si no está instalada (cada acceso) */}
       {!instalada && !cerrarModal && (
         <ModalInstalar
-          promptEvent={promptEvent}
-          onInstalar={() => promptEvent?.prompt().catch(() => undefined)}
           onCancelar={() => {
             try { sessionStorage.setItem("svr-instalar-oculto", "1"); } catch { /* noop */ }
             setCerrarModal(true);
