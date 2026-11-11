@@ -25,11 +25,11 @@ export function obtenerPrompt(): EventoInstalacion | null {
   return window.__svrPrompt ?? null;
 }
 
-/** ¿La app ya corre instalada (standalone) en ESTA ventana? */
+/** ¿La app ya corre instalada (standalone/fullscreen) en ESTA ventana? */
 export function estaInstalada(): boolean {
   if (typeof window === "undefined") return false;
   return (
-    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   );
 }

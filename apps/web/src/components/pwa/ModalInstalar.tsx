@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { Download } from "lucide-react";
 import { instalarApp } from "@/lib/pwa/instalar";
 
 /**
  * Modal de instalación (petición del cliente 2026-11-11): se muestra en
- * CADA acceso a la PWA cuando la app no está instalada (sin memoria de
- * «oculto»). El botón «Instalar» lanza el DIÁLOGO NATIVO del navegador
- * (beforeinstallprompt capturado por el layout); si Chrome no entregó el
- * evento (enfriamiento tras descartarlo), muestra la salida del menú ⋮
- * dentro del propio modal — nunca un botón silencioso.
+ * CADA acceso a la PWA cuando la app NO está instalada en el dispositivo.
+ * El botón «Instalar» CIERRA el modal de inmediato y lanza el DIÁLOGO
+ * NATIVO si Chrome lo entregó — el modal nunca se queda colgado detrás
+ * (aunque Chrome tenga enfriamiento y no lance el diálogo: la salida
+ * alternativa es el menú ⋮ → «Instalar aplicación»).
  */
 interface ModalInstalarProps {
   /** Cierra el modal (solo esta visita — vuelve en el próximo acceso). */
@@ -18,18 +17,6 @@ interface ModalInstalarProps {
 }
 
 export default function ModalInstalar({ onCerrar }: ModalInstalarProps) {
-  const [sinPrompt, setSinPrompt] = useState(false);
-
-  const instalar = async () => {
-    const lanzado = await instalarApp();
-    if (lanzado) {
-      // el diálogo nativo tomó el control — no dejar el modal colgado detrás
-      onCerrar();
-      return;
-    }
-    setSinPrompt(true);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60">
       <div className="w-full max-w-sm bg-surface rounded-3xl p-6 shadow-2xl border border-ui-200">
@@ -54,20 +41,16 @@ export default function ModalInstalar({ onCerrar }: ModalInstalarProps) {
           </button>
           <button
             type="button"
-            onClick={instalar}
+            onClick={() => {
+              onCerrar();
+              void instalarApp();
+            }}
             className="flex-1 py-3 rounded-xl text-sm font-black text-white bg-primary hover:bg-primary-dark transition-colors flex items-center justify-center gap-2"
           >
             <Download className="w-4 h-4" />
             Instalar
           </button>
         </div>
-
-        {sinPrompt && (
-          <p className="text-[11px] text-ui-400 mt-4 leading-snug">
-            Si «Instalar» no abrió el diálogo: menú del navegador (⋮) → «Instalar
-            aplicación». (Requiere HTTPS con certificado de confianza.)
-          </p>
-        )}
       </div>
     </div>
   );

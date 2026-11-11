@@ -153,7 +153,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
       {scriptCaptura}
       {/* Header del shell — mismo look que el Topbar del escritorio */}
-      <header className="bg-surface border-b border-ui-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
+      <header className="bg-surface border-b border-ui-200 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-3 sticky top-0 z-30">
         <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shrink-0 text-sm font-black text-white">
           {iniciales}
         </div>
