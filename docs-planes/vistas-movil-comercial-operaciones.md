@@ -166,6 +166,83 @@ responsive de las tablas del dashboard:
   las pantallas.
 - El desktop queda intacto para oficina/administración.
 
+## 5b. Organización y estructura — la PWA vive DENTRO de apps/web (no una app aparte)
+
+**Decisión:** la PWA se construye en el MISMO proyecto `apps/web`, como un
+grupo de rutas de Next.js: `src/app/(pwa)/` con todas sus pantallas bajo el
+prefijo de URL `/m/*` (m = móvil). El escritorio sigue en `src/app/(dashboard)/`.
+
+**Árbol de archivos que se creará:**
+
+```
+apps/web/src/
+  app/
+    layout.tsx                 # raíz (proveedores globales: AuthProvider, toasts)
+    page.tsx                   # login/landing + DETECTOR de ancho de pantalla
+    (dashboard)/               # escritorio (hoy) — sin cambios
+      layout.tsx               # shell escritorio (Sidebar + Topbar)
+      <modulos>/page.tsx
+    (pwa)/                     # ⬅ NUEVO: la mini-app móvil
+      layout.tsx               # shell móvil: header (avatar+obra) + nav inferior por rol
+      m/
+        page.tsx               # Inicio del rol
+        reportes/page.tsx      # Reportes (variante por rol)
+        asistencia/page.tsx    # Asistencia (fase de RRHH)
+        contacto/page.tsx      # Contactos / Mi perfil / etc.
+        ...                    # POS, flota-obras, inventario, diesel...
+  components/
+    ui/*                       # kit compartido (Input, Modal, Badge, Skeleton...)
+    pwa/*                      # ⬅ NUEVO: componentes específicos móviles
+                               #    (RoleNav, ReportCard, ActionCard, etc.)
+  lib/
+    api.ts                     # compartido — los móviles consumen el MISMO cliente
+    pwa/
+      dispositivo.ts           # detección/interruptor de ancho (localStorage)
+      rol-nav.ts               # nav inferior por rol (lee user.vistas)
+```
+
+**Por qué NO una app aparte (`apps/pwa`):**
+
+1. **El login y los tokens son UNO solo.** El `AuthProvider`/`useAuth`, el
+   `apiClient` (token en memoria, refresh con cola anti-401, `mensajeErrorApi`)
+   viven en `apps/web` — una app aparte duplicaría esa maquinaria crítica, y
+   dos copias del manejo de tokens = drift garantizado (la rotación, la cola
+   de refresh y la blacklist se arreglan en un solo lugar).
+2. **El kit de UI ya vive acá.** Los móviles reusan `Input/Modal/Badge/
+   Skeleton/Pagination` del kit; un `apps/pwa` tendría que copiar el kit o
+   publicarlo como paquete — innecesario para pantallas que comparten diseño.
+3. **Un solo build, un solo deploy.** Vercel compila `apps/web` una vez y
+   sirve ambas caras (`/` escritorio, `/m/*` móvil). Dos apps = dos deploys,
+   dos variables de entorno (`NEXT_PUBLIC_API_URL` x2) y versiones que se
+   desalinean.
+4. **Capacitor (fase siguiente) envuelve ESTE MISMO build.** El plan de
+   `nueva-info` dice "sin app de Android/iPhone": Capacitor toma el output de
+   la web y lo empaqueta como APK — eso solo funciona si la PWA vive dentro
+   de la misma web. Con `apps/pwa` habría que elegir cuál envolver o
+   duplicar el empaquetado.
+5. **RBAC y `user.vistas` son los mismos.** La nav inferior por rol y el
+   detector leen el mismo perfil que ya entrega `/auth/profile` — un solo
+   lugar que mantener.
+
+**El prefijo `(pwa)` con paréntesis** es un *route group* de Next.js: agrupa
+rutas bajo un layout propio SIN afectar la URL (las pantallas viven en `/m/*`
+gracias a la carpeta `m/`). Así cada cara tiene su layout (escritorio →
+Sidebar/Topbar; móvil → header + nav inferior) compartiendo el layout raíz y
+sus proveedores de sesión.
+
+**Reparto de responsabilidades por archivo:**
+
+| Pieza | Vive en | Comparte con desktop |
+|---|---|---|
+| Sesión/tokens/refresh | `lib/api.ts` + `providers/AuthProvider.tsx` | SÍ (idéntico) |
+| Nav inferior por rol | `(pwa)/layout.tsx` + `lib/pwa/rol-nav.ts` | No (el desktop usa Sidebar) |
+| Detector de pantalla | `page.tsx` (raíz) + `lib/pwa/dispositivo.ts` | No (desktop no detecta nada) |
+| Pantallas móviles | `(pwa)/m/**` | Consumen los MISMOS endpoints de `lib/api.ts` |
+| Componentes visuales | `components/pwa/*` + kit `ui/*` | El kit ui es el mismo; los pwa son exclusivos móviles |
+| Instalable/offline (fase 2) | `public/manifest.json` + service worker | No — solo la cara móvil lo registra |
+
+
+
 **Orden de construcción sugerido:**
 1. **Detector + interruptor (primer entrega):** al abrir la app se mide el ancho
    de pantalla (`matchMedia`, no la marca del dispositivo): **< 768px → cara PWA
