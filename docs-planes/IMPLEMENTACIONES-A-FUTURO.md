@@ -10,6 +10,12 @@
 > Cada estado aquí se verifica contra `schema.prisma` y el código real antes de
 > marcarse pendiente o realizado.
 
+> ⚠️ **PRIORIDAD ACTUAL (2026-11-11):** el plan vigente es
+> **[`PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md`](./PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md)**
+> — correcciones confirmadas por el cliente (doc `docs_dudas/Dudas del SVR-11-11-2026.docx`
+> + respuestas del proveedor GPS) y decisiones de las vistas de Comercial y Operaciones.
+> **Las series P/F de este documento se ejecutan LUEGO** de ese plan.
+
 ---
 
 ## Índice
