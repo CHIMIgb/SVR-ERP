@@ -63,9 +63,20 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
+  // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola.
+  // En DEV no se registra y además se desregistran SWs existentes + se
+  // borran sus cachés: el SW persiste aunque quitemos el registro y su
+  // cache-first sobre los chunks de Turbopack sirve JS viejo → errores de
+  // hidratación (HTML nuevo vs JS viejo) y hot-reload roto.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    if (process.env.NODE_ENV !== "production") {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => registration.unregister());
+      });
+      caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      return;
+    }
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     const parar = iniciarSincronizador();
     return () => {
@@ -114,14 +125,17 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   // cargar la página, ANTES de la hidratación — el script inline debe vivir
   // en el HTML que el SERVER entrega (por eso se renderiza en AMBAS ramas
   // del layout: el return temprano de carga excluyéndolo hizo perder el
-  // evento — ese era el bug del botón «Instalar»). Registra también el SW
-  // al parsear para que Chrome pueda disparar el evento cuanto antes.
+  // evento — ese era el bug del botón «Instalar»). El registro del SW va
+  // SOLO en producción (en dev el SW cache-first de Turbopack sirve JS
+  // viejo → errores de hidratación); NODE_ENV lo decide el bundler.
   const scriptCaptura = (
     <script
       dangerouslySetInnerHTML={{
         __html:
           "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__svrPrompt=e;});" +
-          "if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}" +
+          (process.env.NODE_ENV === "production"
+            ? "if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}"
+            : "") +
           // Barras del sistema de la app INSTALADA: Chrome las pinta con el
           // meta al cargar (el toggle en vivo no lo soporta Chrome Android);
           // el script de tema ya corrió en el head — la clase dark está lista
