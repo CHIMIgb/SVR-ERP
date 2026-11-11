@@ -67,7 +67,10 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
           <input
             ref={(el) => { refs.current[i] = el; }}
             type="password"
-            inputMode="numeric"
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
             maxLength={1}
             aria-label={`${ariaLabel} posición ${i + 1}`}
             disabled={disabled}
