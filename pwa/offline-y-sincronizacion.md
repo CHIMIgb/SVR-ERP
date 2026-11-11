@@ -121,3 +121,35 @@ marca y sigue la cola).
 | `manifest.json` + service worker + iconos | este paso |
 | Pantallas de captura que usan la cola | fases de asistencia/reportes (la infra queda lista) |
 | Background Sync API de Android | fase de asistencia |
+
+## 10. Guía para devs — cómo conectar una pantalla de captura a la cola
+
+La infraestructura corre **automática** en el shell (`(pwa)/layout.tsx`):
+registra el service worker, arranca el sincronizador y mantiene el contador
+de pendientes. Lo ÚNICO que hace una pantalla de captura es **encolar en vez
+de llamar a la API**:
+
+```tsx
+import { encolar, nuevoId } from "@/lib/pwa/offline";
+
+// ANTES (online):                       // DESPUÉS (offline-first):
+await apiClient.post(                    await encolar("/reportes-campo", {
+  "/reportes-campo",                       tipo: "INCIDENTE",
+  { tipo: "INCIDENTE", ... },              numero_empleado: miNumero,
+);                                       pin: "…",
+                                         // el UUID del registro lo genera la cola
+                                       });
+```
+
+- `encolar()` devuelve el elemento con su `id` (UUID del teléfono) — esa
+  identidad viaja como `X-Idempotencia-Key`; el endpoint de destino debe
+  honrarla (dedupe por PK/índice único) para que los reenvíos no dupliquen.
+- El **sincronizador** envía solo (al abrir, al volver la señal, cada 2 min).
+- Para saber cuántos pendientes hay en tu pantalla: `useCola()` (hook
+  reactivo — el mismo que alimenta el badge de la nav).
+- Si tu pantalla muestra la lista de registros: los "pendientes" de la cola
+  se pueden pintar como cards extra (estado local) — la cola expone
+  `pendientes()` con todo el payload.
+- **Regla:** solo CAPTURAS se encolan (asistencia/reportes/comentarios/
+  adjuntos). Acciones que cambian el trabajo de otros o dinero (aceptar,
+  cerrar, cortes) requieren conexión y van directo a la API.
