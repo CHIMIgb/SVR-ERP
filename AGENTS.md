@@ -130,6 +130,14 @@ Reglas duras al construir vistas móviles (aplican igual que las de escritorio, 
 
 The app UI is entirely in **Spanish** (Mexican). All mock data, labels, and user-facing strings are Spanish.
 
+## Regla de oro — código existente
+
+**El código ya creado NO se toca a menos que el usuario lo autorice.** Si un
+cambio requiere tocar código existente, SIEMPRE decir antes **qué se va a
+cambiar y en dónde** (archivos/métodos), y esperar la autorización. Aplica a
+refactors, "mejoras de paso" y limpieza incidental: nada se mueve, renombra
+o elimina sin autorización explícita.
+
 ## Critical Rules
 
 - **ALL COMPONENTS MUST BE RESPONSIVE:** Every UI component (existing and future) MUST be responsive. Use Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`) for layouts, flex direction changes, grid adjustments, and text sizing. Tables must scroll horizontally on mobile. Modals must adapt to small screens. Forms stack on mobile. This is the #1 rule — no exceptions.
