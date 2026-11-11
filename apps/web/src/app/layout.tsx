@@ -18,6 +18,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "SVR ERP — Sistema de Gestión Constructora",
   description: "Plataforma integral de gestión para SVR Constructora",
+  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
