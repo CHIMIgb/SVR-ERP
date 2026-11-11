@@ -27,6 +27,28 @@ dedicado por rol** (camino B: shell móvil propio), tal como lo describe
 
 ## 1. Inventario pantalla por pantalla (mapeo rutas/modulos)
 
+> **✅ ESPECIFICACIÓN DEFINITIVA — confirmada por el cliente (2026-11-11).** La
+> lista de vistas por rol de esta sección queda como LA DEFINITIVA para la PWA:
+>
+> - **Administrativos:** inicio acorde a su rol · reportes de campo · finanzas · módulos
+> - **Residentes:** inicio · asistencia · reportes · obras · contactos
+> - **Cobradores:** inicio · asistencia · cobro (punto de venta) · cobro del día
+> - **Técnicos:** inicio · asistencia · reportes · flota · obras *(el diseño las toma como una sola — se hará lo que diga)* · inventario · diesel
+> - **Trabajadores:** inicio · asistencia · reportes · contactos · mi perfil
+>
+> Las tablas de esta sección quedan congeladas contra esa lista (los subtítulos
+> "¿Qué pantalla Figma?" mapean a estas vistas). Implicaciones que introduce:
+>
+> 1. **Asistencia para Cobradores** — el RBAC web de Cobrador NO incluye la
+>    vista de asistencia: la migración de accesos de la PWA deberá agregarla
+>    (module rrhh/asistencia, solo ver).
+> 2. **Contactos y Mi Perfil son módulos móviles NUEVOS** — sin base hoy
+>    (Contactos: lista estática de teléfonos con `tel:` links; Mi Perfil: reusa
+>    documentos del trabajador). Son las 2 únicas pantallas sin base existente
+>    de bajo costo — el resto reusa módulos del escritorio.
+> 3. **Flota + Obras = UNA pantalla** para Técnicos (búsqueda de máquina/obra/
+>    encargado + ver ubicación exacta) — el diseño las fusiona; se respeta.
+
 ### Trabajador (operadores y choferes) — rol Trabajador (20)
 | Pantalla Figma | Modulo destino | ¿Existe base hoy? | Complejidad |
 |---|---|---|---|
