@@ -102,7 +102,7 @@ export default function PerfilMovilPage() {
       <button
         type="button"
         onClick={cerrarSesion}
-        className="mt-auto w-full min-h-[44px] rounded-2xl bg-error/10 border border-error/30 text-error font-black text-sm flex items-center justify-center gap-2 hover:bg-error/20 active:bg-error/25 transition-colors"
+        className="mt-auto w-full min-h-[44px] rounded-lg bg-error/10 border border-error/30 text-error font-black text-sm flex items-center justify-center gap-2 hover:bg-error/20 active:bg-error/25 transition-colors"
       >
         <LogOut className="w-5 h-5" />
         Cerrar sesión
