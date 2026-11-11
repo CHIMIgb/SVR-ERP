@@ -437,3 +437,19 @@ describe('Inventario Audit (Real DB)', () => {
 ### Frontend (Jest + React Testing Library) — Coming Soon
 
 When frontend tests are implemented, they will use `@testing-library/react` + `jest`.
+
+### DEUDA ACTIVA — Cero tests frontend (regla para todos los agentes)
+
+**Hoy NO existe infra de tests frontend (jest + RTL no configurados).**
+Lo único que funciona de punta a punta es **login y perfil** — **NO se ha
+implementado ninguna vista de la aplicación** (las pantallas PWA son
+placeholders y las de escritorio son mock). Todo es smoke manual.
+
+- **Regla mientras tanto:** toda vista nueva o módulo migrado de la PWA
+  lleva su smoke manual documentado en el registro de
+  `historial-cambios/` (tsc + eslint como único gate automático).
+- **Cuando se configure la infra (jest + @testing-library/react):**
+  toda pantalla nueva de la PWA DEBE llevar tests — los refactors a
+  ciegas son lo primero que muerde con dos desarrolladores en paralelo.
+- **Prioridad: media-alta** — se activa ANTES de que existan 3+
+  pantallas reales (el esqueleto 8/10 decae rápido sin red de seguridad).
