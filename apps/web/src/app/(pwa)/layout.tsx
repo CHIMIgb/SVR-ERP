@@ -7,6 +7,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { RoleNav } from "@/components/pwa/RoleNav";
+import ModalInstalar from "@/components/pwa/ModalInstalar";
+import { estaInstalada } from "@/lib/pwa/instalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
@@ -26,6 +28,38 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isInitialized, logout } = useAuth();
   const pendientes = useCola();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
+  // true de inicio para no dar destello del modal a quien YA la tiene instalada
+  const [instalada, setInstalada] = useState(true);
+
+  // Barras del sistema (status/nav de Android) siguen el tema activo:
+  // Chrome las repinta con el <meta name="theme-color"> dinámico
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const aplicar = () =>
+      meta.setAttribute(
+        "content",
+        document.documentElement.classList.contains("dark") ? "#0f172a" : "#f8fafc",
+      );
+    aplicar();
+    const obs = new MutationObserver(aplicar);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
+  // Modal de instalación en cada acceso (petición del cliente) — se oculta
+  // al instalarse (evento appinstalled) o al pulsar «Ahora no» (esta visita)
+  useEffect(() => {
+    // diferido al próximo tick: el setState síncrono en effect lo prohíbe el lint
+    const revisar = () => setInstalada(estaInstalada());
+    const t = setTimeout(revisar, 0);
+    const yaSeInstalo = () => setInstalada(true);
+    window.addEventListener("appinstalled", yaSeInstalo);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("appinstalled", yaSeInstalo);
+    };
+  }, []);
 
   // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
   useEffect(() => {
@@ -91,6 +125,15 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
+      {/* Captura temprana del evento de instalación: se dispara UNA vez al
+          cargar la página, ANTES de la hidratación — el script inline (corre
+          al parsear el HTML) lo guarda para el botón del modal */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__svrPrompt=e;});",
+        }}
+      />
       {/* Header del shell — mismo look que el Topbar del escritorio */}
       <header className="bg-surface border-b border-ui-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
         <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shrink-0 text-sm font-black text-white">
@@ -146,6 +189,9 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+
+      {/* Instalación: modal propio en cada acceso si no está instalada */}
+      {!instalada && <ModalInstalar onCerrar={() => setInstalada(true)} />}
     </div>
   );
 }

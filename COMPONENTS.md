@@ -4992,5 +4992,34 @@ import PantallaPlaceholder from '@/components/pwa/PantallaPlaceholder';
 />
 ```
 
+### 16.3 ModalInstalar
+
+Modal de instalación de la PWA (petición del cliente 2026-11-11): se
+renderiza en CADA acceso al shell `(pwa)` cuando la app NO está instalada
+(`display-mode: standalone` falso), desde `(pwa)/layout.tsx`. El botón
+«Instalar» lanza el DIÁLOGO NATIVO del navegador (`beforeinstallprompt`,
+capturado temprano por el script inline del layout); si Chrome no entregó
+el evento (enfriamiento tras descartarlo u origen sin confianza), el
+propio modal muestra la salida del menú ⋮ — nunca un botón silencioso.
+
+**Archivos:**
+- `src/components/pwa/ModalInstalar.tsx`
+- `src/lib/pwa/instalar.ts` (helpers: `obtenerPrompt`, `estaInstalada`, `instalarApp`)
+
+**Importacion:**
+```tsx
+import ModalInstalar from '@/components/pwa/ModalInstalar';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `onCerrar` | `() => void` | *(requerido)* | Cierra el modal (solo esta visita; vuelve en el próximo acceso) |
+
+**Cuándo usar:** solo desde `(pwa)/layout.tsx` (ya cableado — no montar
+en otro lado). **Cuándo NO:** en el escritorio (regla de independencia) ni
+dentro de pantallas móviles individuales.
+
 **Cuando USAR:** cualquier ruta `/m/*` de la base aún sin módulo.
 **Cuando NO:** cuando la pantalla ya tiene su módulo real.
