@@ -5023,3 +5023,50 @@ dentro de pantallas móviles individuales.
 
 **Cuando USAR:** cualquier ruta `/m/*` de la base aún sin módulo.
 **Cuando NO:** cuando la pantalla ya tiene su módulo real.
+
+## 17. Componentes de Escritorio (workers)
+
+Componentes de vista del módulo Trabajadores en `src/components/workers/*`
+(mismo patrón que TrabajadorFormModal / LiquidacionModal).
+
+### 17.1 CredencialesAccesoModal
+
+Entrega de credenciales del alta (P14, spec §6.6-2): muestra el
+`numero_empleado` + PIN temporal UNA vez y arma el mensaje de WhatsApp
+(`wa.me` con texto prellenado — sin API, sin costo). El teléfono de 10
+dígitos se envía con prefijo 52 (formato internacional).
+
+**Archivos:**
+- `src/components/workers/CredencialesAccesoModal.tsx`
+
+**Importacion:**
+```tsx
+import CredencialesAccesoModal, { type CredencialesAcceso } from '@/components/workers/CredencialesAccesoModal';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `credenciales` | `CredencialesAcceso` | *(requerido)* | `{ nombre, telefono, numeroEmpleado, pinTemporal, temporalHasta }` |
+| `onClose` | `() => void` | *(requerido)* | Cierra el modal (el PIN se pierde: no hay refetch) |
+
+**Uso:**
+```tsx
+{credenciales && (
+  <CredencialesAccesoModal credenciales={credenciales} onClose={() => setCredenciales(null)} />
+)}
+```
+
+**Comportamiento:**
+- El PIN temporal vive SOLO en el estado de la vista: cerrar el modal lo
+  descarta. Para generar otro se usa "Reiniciar PIN" (P12) en la ficha.
+- Botones: "Copiar mensaje" (clipboard) y "Enviar por WhatsApp" (link
+  externo). El modal es `persistent` (no se cierra con Escape/overlay:
+  obliga a decidir si ya se envió).
+- El backend audita `TRABAJADOR_CREADO` con el numeroEmpleado y la
+  vigencia — NUNCA el PIN en claro (spec §8.9).
+
+**Cuando USAR:** justo después de `POST /trabajadores` cuando la respuesta
+trae `identidad`. **Cuando NO:** en edición (no hay identidad nueva) ni
+para mostrar PINs permanentes (nunca existen en la UI).

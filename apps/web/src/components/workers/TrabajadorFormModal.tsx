@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import {
   trabajadoresApi,
   type CatalogosTrabajadoresDTO,
+  type IdentidadAltaDTO,
   type TrabajadorCreateInput,
   type TrabajadorDTO,
 } from '@/lib/api';
@@ -57,6 +58,9 @@ interface FormState {
   metodoPago: TrabajadorCreateInput['metodoPago'];
   sueldoFiscal: string;
   sueldoEfectivo: string;
+  /** P14: identidad de acceso a la app — solo en el alta. */
+  rolId: string;
+  encargadoId: string;
 }
 
 type Errores = Partial<Record<keyof FormState, string>>;
@@ -79,6 +83,8 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
       metodoPago: 'Mixto',
       sueldoFiscal: '',
       sueldoEfectivo: '',
+      rolId: '',
+      encargadoId: '',
     };
   }
   return {
@@ -93,6 +99,8 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
     metodoPago: t.metodoPago,
     sueldoFiscal: String(t.sueldoFiscal),
     sueldoEfectivo: String(t.sueldoEfectivo),
+    rolId: '',
+    encargadoId: '',
   };
 }
 
@@ -104,7 +112,7 @@ function leerMonto(valor: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function validar(f: FormState): Errores {
+function validar(f: FormState, editando: boolean): Errores {
   const e: Errores = {};
   const nombre = f.nombre.trim();
   if (nombre.length < NOMBRE_MIN || nombre.length > NOMBRE_MAX) {
@@ -140,6 +148,10 @@ function validar(f: FormState): Errores {
   if (f.metodoPago === 'Tarjeta' && efectivo !== null && efectivo > 0) {
     e.sueldoEfectivo = 'Con pago solo por transferencia debe ser 0 (o cambia el esquema a Mixto).';
   }
+  // P14: el alta siempre crea la identidad (numero_empleado + PIN temporal) con el rol elegido.
+  if (!editando && !f.rolId) {
+    e.rolId = 'Elige el rol de acceso a la app del trabajador.';
+  }
   return e;
 }
 
@@ -151,7 +163,7 @@ interface TrabajadorFormModalProps {
   errorCatalogos: string | null;
   onReintentarCatalogos: () => void;
   onClose: () => void;
-  onGuardado: (t: TrabajadorDTO) => void;
+  onGuardado: (t: TrabajadorDTO, identidad?: IdentidadAltaDTO) => void;
 }
 
 export default function TrabajadorFormModal({
@@ -211,14 +223,14 @@ export default function TrabajadorFormModal({
 
   const guardar = async () => {
     if (enviandoRef.current) return;
-    const encontrados = validar(form);
+    const encontrados = validar(form, editando);
     if (Object.values(encontrados).some(Boolean)) {
       setErrores(encontrados);
       showToast('Revisa los campos marcados.', 'error');
       return;
     }
 
-    const base: TrabajadorCreateInput = {
+    const base = {
       nombre: form.nombre.trim(),
       puesto: form.puesto.trim(),
       categoriaPuesto: form.categoriaPuesto,
@@ -233,6 +245,8 @@ export default function TrabajadorFormModal({
     if (!editando) {
       payload = {
         ...base,
+        rolId: form.rolId,
+        ...(form.encargadoId && { encargadoId: form.encargadoId }),
         fechaContratacion: form.fechaContratacion,
         ...(form.proyecto && { proyecto: form.proyecto }),
         ...(conMaquina && form.maquinaId && { maquinaId: form.maquinaId }),
@@ -254,15 +268,23 @@ export default function TrabajadorFormModal({
     enviandoRef.current = true;
     setGuardando(true);
     try {
-      const res = trabajador
-        ? await trabajadoresApi.actualizar(trabajador.id, payload)
-        : await trabajadoresApi.crear(payload as TrabajadorCreateInput);
-      if (!res.success) {
-        showToast(res.error.message, 'error');
-        return;
+      if (trabajador) {
+        const res = await trabajadoresApi.actualizar(trabajador.id, payload);
+        if (!res.success) {
+          showToast(res.error.message, 'error');
+          return;
+        }
+        showToast(`${res.data.nombre} actualizado.`, 'success');
+        onGuardado(res.data);
+      } else {
+        const res = await trabajadoresApi.crear(payload as TrabajadorCreateInput);
+        if (!res.success) {
+          showToast(res.error.message, 'error');
+          return;
+        }
+        showToast(`${res.data.nombre} dado de alta.`, 'success');
+        onGuardado(res.data, res.data.identidad);
       }
-      showToast(`${res.data.nombre} ${editando ? 'actualizado' : 'dado de alta'}.`, 'success');
-      onGuardado(res.data);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'No se pudo guardar el trabajador.', 'error');
     } finally {
@@ -336,6 +358,57 @@ export default function TrabajadorFormModal({
             />
           </ModalField>
         </div>
+
+        {!editando && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <ModalField label="Rol de acceso a la app" required error={errores.rolId}>
+              <select
+                aria-label="Rol de acceso a la app"
+                className={modalSelectClass}
+                value={form.rolId}
+                disabled={!catalogoListo}
+                onChange={(e) => cambiar('rolId', e.target.value)}
+              >
+                {!catalogoListo ? (
+                  <option value="">{catalogosCargando ? 'Cargando roles…' : 'No disponible'}</option>
+                ) : (
+                  <>
+                    <option value="">Elige el rol…</option>
+                    {(catalogos?.roles ?? []).map((r) => (
+                      <option key={r.id} value={r.id}>{r.nombre}</option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </ModalField>
+            <ModalField label="Encargado (Residente)" hint="Opcional: quién lleva su control en obra.">
+              <select
+                aria-label="Encargado Residente"
+                className={modalSelectClass}
+                value={form.encargadoId}
+                disabled={!catalogoListo}
+                onChange={(e) => cambiar('encargadoId', e.target.value)}
+              >
+                {!catalogoListo ? (
+                  <option value="">{catalogosCargando ? 'Cargando residentes…' : 'No disponible'}</option>
+                ) : (
+                  <>
+                    <option value="">Sin encargado</option>
+                    {(catalogos?.residentes ?? []).map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.nombre}{r.numeroEmpleado ? ` (${r.numeroEmpleado})` : ''}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </ModalField>
+            <p className="sm:col-span-2 text-xs text-ui-500">
+              Al guardar se genera su <strong>número de empleado</strong> y un <strong>PIN temporal de 24 h</strong> para
+              entrar a la app móvil; ahí mismo puedes enviarlos por WhatsApp.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <ModalField label="Teléfono" required error={errores.telefono}>

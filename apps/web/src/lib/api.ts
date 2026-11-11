@@ -1145,6 +1145,10 @@ export interface TrabajadorCreateInput {
   sueldoFiscal: number;
   sueldoEfectivo: number;
   metodoPago: 'Tarjeta' | 'Efectivo' | 'Mixto';
+  /** Rol de acceso a la app (P14): el alta crea numero_empleado + PIN temporal. */
+  rolId: string;
+  /** Encargado (Residente) al que reporta — opcional (§6.8). */
+  encargadoId?: string;
   proyecto?: string;
   maquinaId?: string;
   fechaContratacion?: string;
@@ -1152,6 +1156,15 @@ export interface TrabajadorCreateInput {
   licencia?: LicenciaDTO;
   contactoEmergencia?: ContactoEmergenciaDTO;
 }
+
+/** Credenciales del alta (P14, §6.6): el PIN temporal se entrega UNA vez, nunca se vuelve a pedir. */
+export interface IdentidadAltaDTO {
+  numeroEmpleado: string;
+  pinTemporal: string;
+  temporalHasta: string;
+}
+
+export type TrabajadorAltaDTO = TrabajadorDTO & { identidad: IdentidadAltaDTO };
 
 export interface LiquidarInput {
   tipoTerminacion: 'Despido' | 'Renuncia' | 'Convenio';
@@ -1203,9 +1216,24 @@ export interface MaquinaTrabajadoresDTO {
   operadorNombre: string | null;
 }
 
+export interface ResidenteCatalogoDTO {
+  id: string;
+  nombre: string;
+  numeroEmpleado: string | null;
+}
+
+export interface RolCatalogoDTO {
+  id: string;
+  nombre: string;
+}
+
 export interface CatalogosTrabajadoresDTO {
   maquinas: MaquinaTrabajadoresDTO[];
   proyectos: ProyectoCatalogoDTO[];
+  /** Encargados (Residente) para el alta P14. */
+  residentes: ResidenteCatalogoDTO[];
+  /** Roles de acceso para el alta P14. */
+  roles: RolCatalogoDTO[];
 }
 
 export const trabajadoresApi = {
@@ -1226,7 +1254,7 @@ export const trabajadoresApi = {
   /** Máquinas y proyectos con el permiso de RRHH (rrhh.trabajadores.ver). */
   catalogos: () => apiClient.get<CatalogosTrabajadoresDTO>('/trabajadores/catalogos'),
 
-  crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorDTO>('/trabajadores', data),
+  crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorAltaDTO>('/trabajadores', data),
 
   actualizar: (id: string, data: Partial<TrabajadorCreateInput> & { estado?: string }) =>
     apiClient.patch<TrabajadorDTO>(`/trabajadores/${id}`, data),

@@ -21,6 +21,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { LoadingState } from '@/components/ui/LoadingState';
 import TrabajadorFormModal, { CATEGORIAS_PUESTO, llevaMaquina } from '@/components/workers/TrabajadorFormModal';
+import CredencialesAccesoModal, { type CredencialesAcceso } from '@/components/workers/CredencialesAccesoModal';
 import BitacorasRentaModal, { ESTADO_COBRO_BADGE } from '@/components/workers/BitacorasRentaModal';
 import LiquidacionModal from '@/components/workers/LiquidacionModal';
 
@@ -124,6 +125,8 @@ export default function TrabajadoresPage() {
   // ── Modales ──
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TrabajadorDTO | null>(null);
+  // P14 §6.6-2: credenciales del alta — el PIN temporal vive aquí y se muestra una sola vez.
+  const [credenciales, setCredenciales] = useState<CredencialesAcceso | null>(null);
   const [bitacorasDe, setBitacorasDe] = useState<TrabajadorDTO | null>(null);
   const [abriendoBitacorasId, setAbriendoBitacorasId] = useState<string | null>(null);
   const abriendoBitacorasRef = useRef(false);
@@ -590,11 +593,24 @@ export default function TrabajadoresPage() {
           errorCatalogos={errorCatalogos}
           onReintentarCatalogos={reintentarCatalogos}
           onClose={() => setFormOpen(false)}
-          onGuardado={() => {
+          onGuardado={(t, identidad) => {
             setFormOpen(false);
             recargarTodo();
+            if (identidad) {
+              setCredenciales({
+                nombre: t.nombre,
+                telefono: t.telefono,
+                numeroEmpleado: identidad.numeroEmpleado,
+                pinTemporal: identidad.pinTemporal,
+                temporalHasta: identidad.temporalHasta,
+              });
+            }
           }}
         />
+      )}
+
+      {credenciales && (
+        <CredencialesAccesoModal credenciales={credenciales} onClose={() => setCredenciales(null)} />
       )}
 
       {bitacorasDe && (
