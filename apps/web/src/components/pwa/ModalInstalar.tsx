@@ -22,7 +22,12 @@ export default function ModalInstalar({ onCerrar }: ModalInstalarProps) {
 
   const instalar = async () => {
     const lanzado = await instalarApp();
-    if (!lanzado) setSinPrompt(true);
+    if (lanzado) {
+      // el diálogo nativo tomó el control — no dejar el modal colgado detrás
+      onCerrar();
+      return;
+    }
+    setSinPrompt(true);
   };
 
   return (
