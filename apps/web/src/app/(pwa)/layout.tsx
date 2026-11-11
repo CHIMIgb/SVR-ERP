@@ -7,7 +7,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { RoleNav } from "@/components/pwa/RoleNav";
-import ModalInstalar from "@/components/pwa/ModalInstalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
@@ -27,24 +26,14 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isInitialized, logout } = useAuth();
   const pendientes = useCola();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
-  const [cerrarModal, setCerrarModal] = useState(false);
-  const [instalada, setInstalada] = useState(false);
 
   // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     const parar = iniciarSincronizador();
-    const revisar = () =>
-      setInstalada(
-        window.matchMedia("(display-mode: standalone)").matches ||
-          (navigator as Navigator & { standalone?: boolean }).standalone === true,
-      );
-    revisar();
-    window.addEventListener("appinstalled", revisar);
     return () => {
       parar();
-      window.removeEventListener("appinstalled", revisar);
     };
   }, []);
 
@@ -144,16 +133,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       {/* Nav inferior por rol (plan §7b) */}
       <RoleNav pendientes={pendientes} />
 
-      {/* Instalación: modal automático si no está instalada (cada acceso) */}
-      {!instalada && !cerrarModal && (
-        <ModalInstalar
-          onCancelar={() => {
-            try { sessionStorage.setItem("svr-instalar-oculto", "1"); } catch { /* noop */ }
-            setCerrarModal(true);
-          }}
-          origen={typeof window === "undefined" ? undefined : window.location.origin}
-        />
-      )}
 
       {/* Aviso a los 25 días (spec §6.6-5): sin mostrar PIN */}
       {pinEstado?.avisar && !pinEstado.vencido && (

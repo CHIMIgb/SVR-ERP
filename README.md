@@ -621,6 +621,22 @@ cd C:\Users\chimi\AppData\Local\mkcert
 #    (Configuración → Seguridad → Instalar certificado → CA) — raíz: rootCA.pem de ESTA carpeta
 ```
 
+**El paso 3 es OBLIGATORIO** (es lo que explica el «No se puede instalar
+esta app» del menú): Chrome solo considera instalable la PWA si el
+certificado del sitio es de CONFIANZA — aceptar el aviso de certificado con
+"Avanzado → Ir a" NO cuenta.
+
+Después de instalar el CA en el teléfono: **cierra Chrome por completo**
+(botón recientes → deslizar Chrome fuera) y reabre → el candado/ajuste de
+la barra deja de marcar error → menú ⋮ → «Instalar y crear acceso directo»
+→ **Instalar** disponible → la PWA se abre SIN barra de URL, con el ícono
+del casco en el cajón de apps.
+
+Si la opción «Instalar un certificado» no aparece en tu Configuración:
+usa la búsqueda de Ajustes con la palabra **certificado**, o el camino
+común: Configuración → Seguridad y privacidad → Más ajustes de seguridad →
+Cifrado y credenciales → Instalar un certificado → Certificado CA.
+
 Uso diario (terminal normal):
 
 ```powershell
