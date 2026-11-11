@@ -38,6 +38,18 @@ export default function RootLayout({
         {/* Script normal (no next/script): next/script con beforeInteractive inline
             se encola y corre después del primer pintado, lo que daba un destello claro. */}
         <script id="tema-inicial" dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA_INICIAL }} />
+        {/* Captura global del evento de instalación de la PWA: el evento se
+            dispara UNA vez por carga de página y el usuario puede aterrizar
+            primero en el login — por eso se captura en CUALQUIER página.
+            Listener PASIVO (solo guarda el evento; no cambia nada visible del
+            escritorio). El registro del SW vive en el shell (pwa), solo en
+            producción. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__svrPrompt=e;});",
+          }}
+        />
       </head>
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} antialiased`}
