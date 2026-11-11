@@ -119,7 +119,12 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       dangerouslySetInnerHTML={{
         __html:
           "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__svrPrompt=e;});" +
-          "if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}",
+          "if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}" +
+          // Barras del sistema de la app INSTALADA: Chrome las pinta con el
+          // meta al cargar (el toggle en vivo no lo soporta Chrome Android);
+          // el script de tema ya corrió en el head — la clase dark está lista
+          "var m=document.head.querySelector('meta[name=\"theme-color\"]');" +
+          "if(m){m.setAttribute('content',document.documentElement.classList.contains('dark')?'#0f172a':'#f8fafc');}",
       }}
     />
   );
