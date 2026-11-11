@@ -4917,3 +4917,80 @@ import type { TimelineCardProps, TimelineMeta, TimelineBadge } from '@/component
 - Para datos tabulares con muchas columnas → usar DataTable
 - Para metricas/resumen → usar StatsCard
 - Para contenido sin cronologia → usar Card directamente
+
+---
+
+## 16. Componentes PWA móvil (rutas /m/*)
+
+La PWA vive en `apps/web` como grupo de rutas `(pwa)` con URL `/m/*` (ver
+AGENTS.md → "PWA móvil" y `docs-planes/vistas-movil-comercial-operaciones.md`).
+Los componentes móviles viven en `src/components/pwa/*` — REUSAN el kit
+`components/ui/*` antes de crear algo nuevo (regla 2 de AGENTS.md).
+
+### 16.1 PinInput
+
+Input de PIN de 8 casillas para login móvil y cambio de PIN (spec §6.5).
+
+**Archivos:**
+- `src/components/pwa/PinInput.tsx`
+
+**Importacion:**
+```tsx
+import { PinInput } from '@/components/pwa/PinInput';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | *(requerido)* | PIN actual (string de hasta 8 chars) |
+| `onChange` | `(pin: string) => void` | *(requerido)* | Callback con el PIN actualizado |
+| `disabled` | `boolean` | `false` | Deshabilita durante la petición |
+| `error` | `boolean` | `false` | Bordes rojos (fallo de validación/login) |
+| `ariaLabel` | `string` | `'PIN'` | Accesible por casilla ("PIN posición N") |
+
+**Uso:**
+```tsx
+<PinInput value={pin} onChange={setPin} error={!!fieldErrors.pin} />
+```
+
+**Comportamiento:**
+- Enmascarado (type=password) — nadie ve el PIN en pantalla (spec §6.7).
+- Auto-avanza a la casilla siguiente al escribir; Backspace borra la casilla
+  actual y retrocede si está vacía; pegar un PIN completo lo distribuye.
+- Normaliza a MAYÚSCULAS (el PIN no distingue mayúsculas — spec §6.5).
+
+**Cuando USAR:** login móvil, cambio de PIN. **Cuando NO:** nada del escritorio.
+
+### 16.2 PantallaPlaceholder
+
+Placeholder de pantalla de la base de la PWA (plan §8.5): solo título +
+subtítulo + ícono opcional. Las pantallas reales lo reemplazan por módulo.
+
+**Archivos:**
+- `src/components/pwa/PantallaPlaceholder.tsx`
+
+**Importacion:**
+```tsx
+import PantallaPlaceholder from '@/components/pwa/PantallaPlaceholder';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `titulo` | `string` | *(requerido)* | Nombre de la pantalla |
+| `subtitulo` | `string` | `undefined` | Texto "en construcción" |
+| `icono` | `ReactNode` | `undefined` | Ícono lucide en un recuadro suave |
+
+**Uso:**
+```tsx
+<PantallaPlaceholder
+  titulo="Inicio"
+  subtitulo="Tu pantalla de inicio llegará con el dashboard móvil del rol"
+  icono={<Home className="w-10 h-10" />}
+/>
+```
+
+**Cuando USAR:** cualquier ruta `/m/*` de la base aún sin módulo.
+**Cuando NO:** cuando la pantalla ya tiene su módulo real.

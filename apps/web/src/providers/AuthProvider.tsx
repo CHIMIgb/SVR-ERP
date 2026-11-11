@@ -16,7 +16,7 @@ import {
   type ApiResponse,
   type AuthResponse,
 } from "@svr-erp/shared";
-import { authApi, clearTokens, setTokens, initializeAuth } from "@/lib/api";
+import { authApi, clearTokens, setTokens, initializeAuth, type PinEstadoDTO } from "@/lib/api";
 
 interface AuthState {
   user: UserAuth | null;
@@ -28,6 +28,8 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; message?: string }>;
+  /** Login móvil: número de empleado + PIN (plan §8.2). */
+  loginPin: (credentials: { numeroEmpleado: string; pin: string }) => Promise<{ success: boolean; message?: string; requiereCambio?: boolean }>;
   register: (credentials: RegisterCredentials) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -141,6 +143,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [handleAuthResponse],
   );
 
+  const loginPin = useCallback(
+    async (credentials: { numeroEmpleado: string; pin: string }): Promise<{ success: boolean; message?: string; requiereCambio?: boolean }> => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await authApi.loginPin(credentials);
+        const success = handleAuthResponse(response);
+
+        if (!success) {
+          const detalles = response.success ? undefined : response.error.details;
+          if (Array.isArray(detalles) && detalles.length) {
+            const message = detalles.map(String).join(' ');
+            setError(message);
+            return { success: false, message };
+          }
+          const backendMessage = response.success ? undefined : response.error.message;
+          const message = backendMessage || 'Credenciales incorrectas';
+          setError(message);
+          return { success: false, message };
+        }
+
+        // el estado del PIN llega en la respuesta (temporal/vencido → obligar cambio)
+        const pinEstado = ((response as unknown as { data: { pinEstado: PinEstadoDTO } }).data.pinEstado);
+        return { success: true, requiereCambio: pinEstado?.requiereCambio };
+      } catch {
+        setError("No se pudo conectar con el servidor. Verifica tu conexión.");
+        return { success: false, message: 'No se pudo conectar con el servidor' };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [handleAuthResponse],
+  );
+
   const register = useCallback(
     async (
       credentials: RegisterCredentials,
@@ -239,6 +276,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isInitialized,
       error,
       login,
+      loginPin,
       register,
       logout,
       refreshProfile,
@@ -251,6 +289,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isInitialized,
       error,
       login,
+      loginPin,
       register,
       logout,
       refreshProfile,

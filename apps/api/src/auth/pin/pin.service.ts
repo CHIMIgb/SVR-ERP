@@ -120,6 +120,8 @@ export class PinService {
       userAgent,
     );
 
+    const profile = await this.authService.getProfile(user.id);
+
     await this.auditService.log({
       action: AuditAction.LOGIN_EXITOSO,
       entityType: 'sessions',
@@ -140,7 +142,7 @@ export class PinService {
     return {
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, numeroEmpleado: user.numero_empleado },
+      user: profile,
       session: { id: session.id, iniciadaEn: session.iniciadaEn.toISOString(), expiraEn: session.expiraEn.toISOString() },
       pinEstado: estado,
     };

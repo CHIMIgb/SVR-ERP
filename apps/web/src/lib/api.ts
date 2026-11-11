@@ -252,6 +252,32 @@ export const apiClient = {
     request<T>(endpoint, { ...options, method: 'DELETE' }),
 };
 
+// ── Ciclo PIN de la PWA (plan §8.2) ──
+export interface LoginPinCredentials {
+  numeroEmpleado: string;
+  pin: string;
+}
+
+export interface PinEstadoDTO {
+  temporalActivo: boolean;
+  temporalHasta: string | null;
+  pinCambiadoEn: string | null;
+  diasDesdeCambio: number | null;
+  diasRestantes: number | null;
+  avisar: boolean;
+  vencido: boolean;
+  bloqueada: boolean;
+  requiereCambio: boolean;
+}
+
+export interface LoginPinResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: UserAuth;
+  session: { id: string; iniciadaEn: string; expiraEn: string };
+  pinEstado: PinEstadoDTO;
+}
+
 export const authApi = {
   login: (credentials: LoginCredentials) =>
     apiClient.post<AuthResponse['data']>('/auth/login', credentials, {
@@ -271,6 +297,16 @@ export const authApi = {
   logout: () => apiClient.post<void>('/auth/logout', {}),
 
   profile: () => apiClient.get<UserAuth>('/auth/profile'),
+
+  loginPin: (credentials: LoginPinCredentials) =>
+    apiClient.post<LoginPinResponse>('/auth/login-pin', credentials, {
+      skipAuth: true,
+    }),
+
+  pinEstado: () => apiClient.get<PinEstadoDTO>('/auth/pin/estado'),
+
+  pinCambio: (data: { pinActual: string; pinNuevo: string }) =>
+    apiClient.post<{ message: string }>('/auth/pin/cambio', data),
 };
 
 // setTokens, clearTokens, getAccessToken, getRefreshToken, initializeAuth
