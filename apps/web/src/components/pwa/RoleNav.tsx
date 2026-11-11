@@ -18,11 +18,11 @@ export function RoleNav({ pendientes = 0 }: { pendientes?: number }) {
 
   return (
     <nav
-      className="sticky bottom-0 z-30 bg-ui-900/70 backdrop-blur border-t border-white/10 px-2 pt-1"
+      className="sticky bottom-0 z-30 bg-surface border-t border-ui-200 px-2 pt-1"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {pendientes > 0 && (
-        <p className="text-center text-[10px] font-bold text-amber-300 py-1">
+        <p className="text-center text-[10px] font-bold text-warning py-1">
           {pendientes} pendiente(s) por enviar
         </p>
       )}
@@ -38,8 +38,8 @@ export function RoleNav({ pendientes = 0 }: { pendientes?: number }) {
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl transition-colors",
                   activa
-                    ? "bg-primary/15 text-primary"
-                    : "text-slate-400 hover:text-white hover:bg-white/5",
+                    ? "bg-primary/10 text-primary"
+                    : "text-ui-500 hover:text-ui-700 hover:bg-ui-50",
                 )}
               >
                 <Icono className="w-5 h-5 shrink-0" />

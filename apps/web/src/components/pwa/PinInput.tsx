@@ -34,8 +34,8 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
       key={i}
       className={cn(
         "relative flex-1 min-w-0 h-12 sm:h-14 rounded-md border transition-all",
-        "bg-white/5",
-        foco ? "border-primary/60" : "border-white/10",
+        "bg-surface",
+        foco ? "border-primary/60" : "border-ui-200",
         error
           ? "border-red-500/60"
           : limpio[i]
@@ -46,7 +46,7 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
       {limpio[i] && (
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center pointer-events-none text-white text-2xl font-black"
+          className="absolute inset-0 flex items-center justify-center pointer-events-none text-2xl font-black text-ui-900"
         >
           •
         </span>
@@ -84,7 +84,7 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
       {/* Casillas decorativas (pointer-events-none: los toques van al input) */}
       <div className="flex items-center justify-center gap-1 sm:gap-1.5 w-full pointer-events-none" aria-hidden>
         {Array.from({ length: 4 }).map((_, i) => casilla(i))}
-        <span className="text-xl font-black text-slate-500 select-none shrink-0 px-0.5">-</span>
+        <span className="text-xl font-black text-ui-400 select-none shrink-0 px-0.5">-</span>
         {Array.from({ length: 4 }).map((_, k) => casilla(k + 4))}
       </div>
     </div>

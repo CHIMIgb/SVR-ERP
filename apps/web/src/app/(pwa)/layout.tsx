@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { Bell, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useTheme } from "@/hooks/useTheme";
-import { authApi } from "@/lib/api";
+import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
-import { CLAVE_TEMA } from "@/lib/tema";
 import { RoleNav } from "@/components/pwa/RoleNav";
+import BannerInstalar from "@/components/pwa/BannerInstalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
@@ -17,18 +15,18 @@ import ThemeToggle from "@/components/layout/ThemeToggle";
 import { LoadingState } from "@/components/ui/LoadingState";
 
 /**
- * Shell mínimo de la PWA (paso 3 — plan §7b completo llega con RoleNav).
- * Guards: sesión (sin user → login) y PIN (temporal/vencido → cambio obligatorio).
- * Si el ancho es de escritorio → manda al dashboard (el usuario puede
- * volver con el interruptor cuando exista nav).
+ * Shell de la PWA — 100% theme-aware con los tokens del escritorio
+ * (bg-canvas/bg-surface/text-ui-* se invierten solos entre claro y oscuro).
+ * Guards: sesión, ancho (escritorio → dashboard), PIN y vista (RBAC).
  * Tema: si el usuario nunca eligió, la PWA sigue el modo del TELÉFONO
- * ('system') — el escritorio conserva su default claro (decisión 2026-11-11).
+ * ('system') — el escritorio conserva su default claro.
  */
 export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, isInitialized, setPreferencia } = useThemeYAuth();
+  const { user, isAuthenticated, isInitialized, logout } = useAuth();
   const pendientes = useCola();
+  const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
 
   // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
   useEffect(() => {
@@ -37,14 +35,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     const parar = iniciarSincronizador();
     return parar;
   }, []);
-
-  // Tema de la PWA: primera vez en el móvil → seguir al teléfono ('system')
-  useEffect(() => {
-    if (!isInitialized || !isAuthenticated) return;
-    let guardada: string | null = null;
-    try { guardada = localStorage.getItem(CLAVE_TEMA); } catch { /* modo privado */ }
-    if (!guardada) setPreferencia("system");
-  }, [isInitialized, isAuthenticated, setPreferencia]);
 
   // guard de sesión + guard de ancho (escritorio → dashboard)
   useEffect(() => {
@@ -64,6 +54,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       .pinEstado()
       .then((res) => {
         if (res.success && res.data) {
+          setPinEstado(res.data);
           if (res.data.requiereCambio) router.replace("/m/pin-cambio");
         }
       })
@@ -84,7 +75,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
   if (!isInitialized || !isAuthenticated) {
     return (
-      <main className="min-h-screen bg-secondary flex items-center justify-center p-6">
+      <main className="min-h-screen bg-canvas flex items-center justify-center p-6">
         <LoadingState size="lg" />
       </main>
     );
@@ -98,31 +89,40 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     .join("");
 
   return (
-    <div className="min-h-screen bg-secondary text-white flex flex-col">
-      {/* Header del shell — avatar + nombre + rol + tema + notificaciones */}
-      <header className="bg-ui-900/60 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
+    <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
+      {/* Header del shell — mismo look que el Topbar del escritorio */}
+      <header className="bg-surface border-b border-ui-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
         <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shrink-0 text-sm font-black text-white">
           {iniciales}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-black truncate leading-tight">
+          <p className="text-sm font-black truncate leading-tight text-ui-900">
             {user?.persona?.nombre ?? user?.email}
           </p>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">
+          <p className="text-[10px] text-ui-500 font-bold uppercase tracking-widest truncate">
             {user?.roles?.[0]?.nombre ?? "Sin rol"}
           </p>
         </div>
-        {/* Tema: default = el modo del teléfono ('system'), tocable */}
-        <div className="shrink-0 [&>button]:w-9 [&>button]:h-9 [&>button]:bg-white/5 [&>button]:border [&>button]:border-white/10 [&>button]:text-slate-300 [&>button:hover]:bg-white/10">
+        <div className="shrink-0 text-ui-600">
           <ThemeToggle />
         </div>
-        {/* Notificaciones (fase F1) — el cierre de sesión va en Módulos */}
         <button
           type="button"
           aria-label="Notificaciones"
-          className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-300 hover:bg-white/10 transition-colors shrink-0 relative"
+          className="w-9 h-9 rounded-xl bg-ui-100 border border-ui-200 flex items-center justify-center text-ui-600 hover:bg-ui-200/60 transition-colors shrink-0 relative"
         >
           <Bell className="w-5 h-5" />
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            await logout();
+            router.replace("/");
+          }}
+          aria-label="Cerrar sesión"
+          className="w-9 h-9 rounded-xl bg-error/10 border border-error/30 flex items-center justify-center text-error hover:bg-error/20 transition-colors shrink-0"
+        >
+          <LogOut className="w-5 h-5" />
         </button>
       </header>
 
@@ -131,14 +131,22 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
       {/* Nav inferior por rol (plan §7b) */}
       <RoleNav pendientes={pendientes} />
+
+      {/* Aviso de instalación: si no está instalada, aparece en cada acceso */}
+      <BannerInstalar />
+
+      {/* Aviso a los 25 días (spec §6.6-5): sin mostrar PIN */}
+      {pinEstado?.avisar && !pinEstado.vencido && (
+        <div className="px-4 pb-6">
+          <div className="bg-warning/10 border border-warning/30 rounded-2xl p-4 text-sm text-ui-900 flex items-start gap-3">
+            <span className="text-lg leading-none">⏳</span>
+            <p>
+              Tu PIN vence en <strong>{pinEstado.diasRestantes} día(s)</strong>.
+              Cámbialo pronto desde esta pantalla cuando esté disponible.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-/** Atajo: useTheme + useAuth juntos (solo para los guards de este layout). */
-function useThemeYAuth() {
-  const tema = useTheme();
-  const auth = useAuth();
-  return { ...auth, setPreferencia: tema.setPreferencia };
-}
-

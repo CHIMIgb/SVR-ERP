@@ -18,8 +18,8 @@ export default function PantallaPlaceholder({ titulo, subtitulo, icono }: Pantal
           {icono}
         </div>
       )}
-      <h1 className="text-2xl font-black text-white">{titulo}</h1>
-      {subtitulo && <p className="text-sm text-slate-400 max-w-xs">{subtitulo}</p>}
+      <h1 className="text-2xl font-black text-ui-900">{titulo}</h1>
+      {subtitulo && <p className="text-sm text-ui-500 max-w-xs">{subtitulo}</p>}
     </section>
   );
 }

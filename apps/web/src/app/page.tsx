@@ -7,6 +7,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { useAuth } from "@/hooks/useAuth";
 import { PinInput } from "@/components/pwa/PinInput";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
+import { useTheme } from "@/hooks/useTheme";
+import { CLAVE_TEMA } from "@/lib/tema";
 
 /**
  * Login dual (plan §8.4 — una sola pantalla):
@@ -17,6 +19,7 @@ import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 export default function LoginPage() {
   const router = useRouter();
   const { login, loginPin, isAuthenticated, isInitialized, isLoading, error, clearError } = useAuth();
+  const { setPreferencia } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [numeroEmpleado, setNumeroEmpleado] = useState("");
@@ -43,6 +46,13 @@ export default function LoginPage() {
 
   const destinoTrasLogin = (requiereCambio?: boolean) => {
     if (vistaEfectiva() === "movil") {
+      // Tema de la PWA: primera vez en el móvil → seguir al TELÉFONO
+      // ('system') — el escritorio conserva su default claro. Se aplica en
+      // el login (event handler: no aplica la regla de setState en effects)
+      // y solo si el usuario NUNCA eligió tema.
+      let guardada: string | null = null;
+      try { guardada = localStorage.getItem(CLAVE_TEMA); } catch { /* privado */ }
+      if (!guardada) setPreferencia("system");
       router.replace(requiereCambio ? "/m/pin-cambio" : "/m");
       return;
     }
