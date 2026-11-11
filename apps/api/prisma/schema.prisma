@@ -1951,6 +1951,13 @@ model users {
   telefono_verificado                                                            Boolean                       @default(false)
   factor_doble_habilitado                                                        Boolean                       @default(false)
   ultimo_login                                                                   DateTime?                     @db.Timestamptz()
+  numero_empleado                                                                String?
+  pin_hash                                                                       String?
+  pin_temporal_hasta                                                             DateTime?                     @db.Timestamptz()
+  pin_cambiado_en                                                                DateTime?                     @db.Timestamptz()
+  pin_historial                                                                  Json                          @default("[]")
+  intentos_pin                                                                   Int                           @default(0)
+  cuenta_bloqueada_en                                                            DateTime?                     @db.Timestamptz()
   preferencias                                                                   Json                          @default("{}")
   activo                                                                         Boolean                       @default(true)
   creado_en                                                                      DateTime                      @default(now()) @db.Timestamptz()
@@ -2066,6 +2073,8 @@ model users {
   ordenes_compra_ordenes_compra_creado_porTousers                                ordenes_compra[]              @relation("ordenes_compra_creado_porTousers")
   ordenes_compra_ordenes_compra_actualizado_porTousers                           ordenes_compra[]              @relation("ordenes_compra_actualizado_porTousers")
   pagos_proveedor_pagos_proveedor_creado_porTousers                              pagos_proveedor[]             @relation("pagos_proveedor_creado_porTousers")
+
+  @@unique([numero_empleado])
 }
 
 model users_roles {
