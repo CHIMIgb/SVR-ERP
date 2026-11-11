@@ -258,6 +258,15 @@ import { cn } from '@/lib/utils';
 - Auditoría: `creado_en`, `actualizado_en`, `creado_por`, `actualizado_por`
 - `npx prisma migrate dev` para migraciones, `npx prisma generate` para el cliente
 
+- **Convención de idioma en la BD** (no renombrar lo existente): las tablas de
+  DOMINIO/negocio van en español (`reportes_campo`, `registros_asistencia`,
+  `trabajadores`…) y las de AUTH/infraestructura en inglés por convención
+  histórica (`users`, `sessions`, `refresh_tokens`, `token_blacklist`). Los
+  campos nuevos de una tabla SIGUEN LA LENGUA DE SUS VECINOS en esa tabla
+  (ej. `numero_empleado` junto a campos en español; `pin_hash` junto a
+  `token_hash`). PROHIBIDO renombrar tablas/columnas legadas en masa — es
+  deuda cosmética sin beneficio funcional.
+
 ### RBAC (Role-Based Access Control)
 
 Sistema de control de acceso completo. **Las permisos controlan acceso a módulos/acciones. Las vistas controlan acceso a rutas del sidebar.**
