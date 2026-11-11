@@ -17,7 +17,8 @@ describe('CreateTrabajadorDto', () => {
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto',
     fechaContratacion: '2024-03-01',
-    rolId: '3f8a7c2e-1b4d-4a9e-8c6f-2d5e7a9b1c3d',
+    // ID estilo seed (versión 0): IsUUID lo rechazaba; el regex laxo debe aceptarlo.
+    rolId: 'e0000000-0000-0000-0000-0000000000a5',
   };
 
   it('should fail with invalid rolId (P14: el alta siempre crea la identidad)', async () => {

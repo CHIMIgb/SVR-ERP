@@ -6,7 +6,6 @@ import {
   IsDateString,
   IsBoolean,
   IsInt,
-  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -22,6 +21,12 @@ export const CATEGORIAS_LICENCIA = ['DC3', 'Licencia Federal', 'Certificado Téc
 
 /** Tope de las columnas Decimal(12,2) de sueldo: un monto mayor daba 500 al guardar. */
 export const MONTO_MAXIMO = 9_999_999_999;
+
+/**
+ * El seed de la BD usa IDs con formato UUID pero dígito de versión 0 (ej. e0000000-0000-0000-0000-0000000000a5),
+ * que `IsUUID` de class-validator rechaza. Regex laxo = mismo criterio del tipo @db.Uuid de la BD.
+ */
+export const UUID_LAXO = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 /** Tope de las columnas Decimal(10,2) (tarifa de hora extra y descuentos de la semana). */
 export const MONTO_MAXIMO_10_2 = 99_999_999;
 /** Una semana tiene 168 h: más horas extra que eso no son posibles (la columna es Decimal(6,2)). */
@@ -167,12 +172,12 @@ export class CreateTrabajadorDto {
   conceptoDescuento?: string;
 
   /** Rol de acceso a la app (§6.6): el administrativo elige el rol y el sistema crea el usuario con PIN temporal. */
-  @IsUUID(undefined, { message: 'rolId debe ser un UUID válido (rol de acceso a la app)' })
+  @Matches(UUID_LAXO, { message: 'rolId debe ser un UUID válido (rol de acceso a la app)' })
   rolId!: string;
 
   /** Encargado (Residente) al que reporta — opcional (§6.8: el Residente ve a su equipo). */
   @IsOptional()
-  @IsUUID(undefined, { message: 'encargadoId debe ser un UUID válido' })
+  @Matches(UUID_LAXO, { message: 'encargadoId debe ser un UUID válido' })
   encargadoId?: string;
 
   @IsOptional()
