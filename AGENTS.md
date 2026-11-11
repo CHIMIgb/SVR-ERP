@@ -98,6 +98,14 @@ src/
 `src/lib/data.ts` is the single source of truth for all types and mock data. **28 files import from it.** Treat it carefully — any change can cascade re-compilations. Types are organized by domain but live in this one file.
 
 
+## Regla de oro — escritorio y PWA son INDEPENDIENTES
+
+**Lo que se haga para ESCRITORIO se queda en el escritorio; lo que se haga
+para la PWA se queda en la PWA. En el frontend son aplicaciones
+independientes: ninguna afecta a la otra.** Un cambio de escritorio no debe
+arrastrar la PWA ni viceversa (excepción: piezas de sesión/API compartidas,
+que viven en su propio archivo).
+
 ## PWA móvil (rutas `/m/*` — grupo de rutas `(pwa)`)
 
 La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/m/*` — **NUNCA crear `apps/pwa` aparte ni duplicar sesión/apiClient** (ver plan completo: `pwa/vistas-movil-comercial-operaciones.md`, §5b y §6 — la especificación funcional definitiva del cliente: asistencia universal con foto+GPS, login por número de empleado + PIN, offline-first).
