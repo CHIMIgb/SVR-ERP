@@ -1,10 +1,12 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { esFechaFutura } from '../common/validacion';
 import { TOPE_CATALOGO_MAQUINAS } from '../modules/maquinas/maquinas.service';
+import { generarPinTemporal } from '../auth/pin/pin.validator';
 
 /** Tope del catálogo de proyectos para los selects (datos maestros). */
 const TOPE_CATALOGO_PROYECTOS = 500;
@@ -86,6 +88,36 @@ const TRABAJADOR_INCLUDE = {
     include: { proyectos: { select: { nombre: true } } },
   },
 } as const;
+
+/** Credenciales del alta (§6.6-1/2): se entregan UNA VEZ en la respuesta del POST. */
+export interface IdentidadAltaResponse {
+  numeroEmpleado: string;
+  /** PIN temporal en claro — SOLO aquí: nunca se guarda en claro ni va a la auditoría. */
+  pinTemporal: string;
+  temporalHasta: string;
+}
+
+const SALT_ROUNDS = 12;
+const PIN_TEMPORAL_HORAS = 24;
+/** Email técnico del alta: el login PWA es por numero_empleado + PIN (§6.4); el email solo debe ser único. */
+const DOMINIO_EMAIL_PWA = 'pwa.svr-constructora.com';
+
+/** Prefijo del numero_empleado por rol (§6.4: ADM-01, RES-014, TEC-007, COB-003, TRA-0142). */
+const PREFIJO_ROL: Record<string, string> = {
+  ADMINISTRADOR: 'ADM',
+  RESIDENTE: 'RES',
+  TECNICO: 'TEC',
+  COBRANZA: 'COB',
+  COBRADOR: 'COB',
+  TRABAJADOR: 'TRA',
+};
+
+function prefijoDeRol(nombre: string): string {
+  const base = nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  if (PREFIJO_ROL[base]) return PREFIJO_ROL[base];
+  const letras = base.replace(/[^A-Z]/g, '');
+  return (letras.slice(0, 3) || 'USR');
+}
 
 const ENTITY_TYPE = 'trabajadores';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -221,7 +253,7 @@ export class TrabajadoresService {
    * Las máquinas traen su operador actual para avisar antes de reasignarla.
    */
   async catalogos() {
-    const [maquinas, proyectos] = await Promise.all([
+    const [maquinas, proyectos, residentes, roles] = await Promise.all([
       this.prisma.maquinas.findMany({
         where: { eliminado_en: null, codigo: { not: null } },
         select: { codigo: true, nombre: true, operador_id: true, trabajadores: { select: { nombre: true } } },
@@ -231,6 +263,24 @@ export class TrabajadoresService {
       // Catálogos para los selects (datos maestros): con tope, igual que el de máquinas.
       this.prisma.proyectos.findMany({
         where: { eliminado_en: null, activo: true },
+        select: { id: true, nombre: true },
+        orderBy: { nombre: 'asc' },
+        take: TOPE_CATALOGO_PROYECTOS,
+      }),
+      // Encargados del alta P14 (§6.8): users activos con rol Residente.
+      this.prisma.users.findMany({
+        where: {
+          activo: true,
+          eliminado_en: null,
+          users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { nombre: 'Residente', activo: true } } },
+        },
+        select: { id: true, numero_empleado: true, personas_users_persona_idTopersonas: { select: { nombre: true } } },
+        orderBy: { personas_users_persona_idTopersonas: { nombre: 'asc' } },
+        take: TOPE_CATALOGO_PROYECTOS,
+      }),
+      // Rol de acceso del alta (§6.6): tabla pequeña, con tope igual que los demás catálogos.
+      this.prisma.roles.findMany({
+        where: { activo: true, eliminado_en: null },
         select: { id: true, nombre: true },
         orderBy: { nombre: 'asc' },
         take: TOPE_CATALOGO_PROYECTOS,
@@ -245,10 +295,16 @@ export class TrabajadoresService {
         operadorNombre: m.trabajadores?.nombre ?? null,
       })),
       proyectos,
+      residentes: residentes.map((r) => ({
+        id: r.id,
+        nombre: r.personas_users_persona_idTopersonas.nombre,
+        numeroEmpleado: r.numero_empleado,
+      })),
+      roles,
     };
   }
 
-  async create(dto: CreateTrabajadorDto, userId: string): Promise<TrabajadorResponse> {
+  async create(dto: CreateTrabajadorDto, userId: string): Promise<TrabajadorResponse & { identidad?: IdentidadAltaResponse }> {
     if (esFechaFutura(dto.fechaContratacion)) {
       return this.fallir(
         AuditAction.TRABAJADOR_CREADO,
@@ -259,6 +315,47 @@ export class TrabajadoresService {
       );
     }
     await this.exigirMetodoPagoCoherente(AuditAction.TRABAJADOR_CREADO, null, dto.metodoPago, dto.sueldoFiscal, dto.sueldoEfectivo);
+
+    // Identidad PWA (§6.6-1): el alta SIEMPRE crea persona + user con PIN temporal de 24 h.
+    const rol = await this.prisma.roles.findUnique({ where: { id: dto.rolId } });
+    if (!rol || !rol.activo || rol.eliminado_en) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_CREADO,
+        null,
+        'ROL_INVALIDO',
+        BadRequestException,
+        'Elige un rol de acceso válido para el trabajador',
+      );
+    }
+
+    let encargadoId: string | undefined;
+    if (dto.encargadoId) {
+      const encargado = await this.prisma.users.findFirst({
+        where: {
+          id: dto.encargadoId,
+          activo: true,
+          eliminado_en: null,
+          users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { nombre: 'Residente', activo: true } } },
+        },
+        select: { id: true },
+      });
+      if (!encargado) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_CREADO,
+          null,
+          'ENCARGADO_INVALIDO',
+          BadRequestException,
+          'El encargado debe ser un Residente activo',
+        );
+      }
+      encargadoId = encargado.id;
+    }
+
+    const pinTemporal = generarPinTemporal();
+    const pinHash = await bcrypt.hash(pinTemporal, SALT_ROUNDS);
+    const temporalHasta = new Date(Date.now() + PIN_TEMPORAL_HORAS * 60 * 60 * 1000);
+    // Contraseña inutilizable: nadie la conoce (el login PWA es numero_empleado + PIN).
+    const passwordPlaceholder = await bcrypt.hash(randomUUID(), SALT_ROUNDS);
 
     const categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
 
@@ -303,8 +400,14 @@ export class TrabajadoresService {
 
     const trabajadorId = randomUUID();
     const now = new Date();
+    const prefijo = prefijoDeRol(rol.nombre);
 
-    const creado = await this.prisma.$transaction(async (tx) => {
+    const crearAlta = async (tx: Prisma.TransactionClient, prefijoRol: string) => {
+      // Consecutivo por prefijo (§6.4): el índice único de numero_empleado es la verdad;
+      // si dos altas en paralelo calculan el mismo número, la transacción reintenta.
+      const consecutivo = await tx.users.count({ where: { numero_empleado: { startsWith: `${prefijoRol}-` } } });
+      numero = `${prefijoRol}-${String(consecutivo + 1).padStart(3, '0')}`;
+
       const nuevo = await tx.trabajadores.create({
         data: {
           id: trabajadorId,
@@ -373,8 +476,73 @@ export class TrabajadoresService {
         });
       }
 
+      // Identidad PWA (§6.4-6.6): persona + user con numero_empleado consecutivo,
+      // PIN temporal de 24 h (ya hasheado) y el rol que eligió el administrativo.
+      const personaId = randomUUID();
+      const nuevoUserId = randomUUID();
+      await tx.personas.create({
+        data: {
+          id: personaId,
+          nombre: dto.nombre.trim(),
+          telefono: dto.telefono.trim(),
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: now,
+        },
+      });
+      await tx.users.create({
+        data: {
+          id: nuevoUserId,
+          persona_id: personaId,
+          // Email técnico (único por diseño); el login PWA es por numero_empleado + PIN.
+          email: `${numero.toLowerCase()}@${DOMINIO_EMAIL_PWA}`,
+          password_hash: passwordPlaceholder,
+          numero_empleado: numero,
+          pin_hash: pinHash,
+          pin_temporal_hasta: temporalHasta,
+          pin_cambiado_en: now,
+          jefe_user_id: encargadoId,
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: now,
+        },
+      });
+      await tx.users_roles.create({
+        data: { id: randomUUID(), user_id: nuevoUserId, rol_id: rol.id, es_principal: true, asignado_por: userId },
+      });
+
       return tx.trabajadores.findUniqueOrThrow({ where: { id: trabajadorId }, include: TRABAJADOR_INCLUDE });
-    });
+    };
+
+    // Alta con reintento: un choque de consecutivo (P2002 del unique) recorre la transacción completa.
+    let creado: Awaited<ReturnType<typeof crearAlta>> | null = null;
+    let numero = '';
+    let chocoConsecutivo = false;
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        creado = await this.prisma.$transaction((tx) => crearAlta(tx, prefijo));
+        chocoConsecutivo = false;
+        break;
+      } catch (e) {
+        chocoConsecutivo = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+        if (!chocoConsecutivo) throw e;
+      }
+    }
+    if (creado === null || chocoConsecutivo) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_CREADO,
+        null,
+        'NUMERO_EMPLEADO_DUPLICADO',
+        ConflictException,
+        'No se pudo generar el número de empleado: reintenta el alta',
+      );
+    }
+
+    const identidad: IdentidadAltaResponse = {
+      numeroEmpleado: numero,
+      pinTemporal,
+      temporalHasta: temporalHasta.toISOString(),
+    };
 
     const maquina = maquinaId
       ? await this.prisma.maquinas.findUnique({ where: { id: maquinaId }, select: { id: true, codigo: true, nombre: true, operador_id: true } })
@@ -390,13 +558,14 @@ export class TrabajadoresService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: serialized,
+      // El PIN temporal en claro NUNCA va a la auditoría (§8.9): solo el número y su vigencia.
+      newValue: { ...serialized, identidad: { numeroEmpleado: numero, temporalHasta: identidad.temporalHasta } },
       ...(operadorDesplazadoId && {
         metadata: { maquinaReasignada: dto.maquinaId, operadorDesplazadoId },
       }),
     });
 
-    return serialized;
+    return { ...serialized, identidad };
   }
 
   async update(id: string, dto: UpdateTrabajadorDto, userId: string): Promise<TrabajadorResponse> {

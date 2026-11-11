@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsBoolean,
   IsInt,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -164,6 +165,15 @@ export class CreateTrabajadorDto {
   @IsString()
   @MaxLength(200)
   conceptoDescuento?: string;
+
+  /** Rol de acceso a la app (§6.6): el administrativo elige el rol y el sistema crea el usuario con PIN temporal. */
+  @IsUUID(undefined, { message: 'rolId debe ser un UUID válido (rol de acceso a la app)' })
+  rolId!: string;
+
+  /** Encargado (Residente) al que reporta — opcional (§6.8: el Residente ve a su equipo). */
+  @IsOptional()
+  @IsUUID(undefined, { message: 'encargadoId debe ser un UUID válido' })
+  encargadoId?: string;
 
   @IsOptional()
   @ValidateNested()

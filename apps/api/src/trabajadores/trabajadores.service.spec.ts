@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { TrabajadoresService } from './trabajadores.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -72,6 +73,18 @@ describe('TrabajadoresService', () => {
       },
       licencias_trabajador: { create: jest.fn(), upsert: jest.fn() },
       contactos_emergencia: { create: jest.fn(), upsert: jest.fn() },
+      roles: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'rol-uuid-1', nombre: 'Trabajador', activo: true, eliminado_en: null }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      personas: { create: jest.fn().mockResolvedValue({}) },
+      users: {
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      users_roles: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation((fn) => fn(prisma)),
     };
 
@@ -102,6 +115,7 @@ describe('TrabajadoresService', () => {
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto' as const,
     fechaContratacion: '2024-03-01',
+    rolId: 'rol-uuid-1',
     ...overrides,
   });
 
@@ -186,6 +200,63 @@ describe('TrabajadoresService', () => {
       await expect(service.create(createDto({ proyecto: 'No existe' }), 'user-1')).rejects.toThrow(NotFoundException);
       expect(prisma.trabajadores.create).not.toHaveBeenCalled();
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'PROYECTO_NO_ENCONTRADO' }));
+    });
+  });
+
+  describe('identidad PWA del alta (P14, spec §6.6)', () => {
+    it('crea persona + user con numero_empleado consecutivo, PIN temporal de 24 h y el rol elegido', async () => {
+      prisma.users.count.mockResolvedValue(141); // 141 existentes con prefijo TRA → el siguiente es TRA-142
+      prisma.users.findFirst.mockResolvedValue({ id: 'res-user-1' }); // encargado Residente válido
+      const result = await service.create(createDto({ encargadoId: 'res-user-1' }), 'user-1');
+
+      const usersData = prisma.users.create.mock.calls[0][0].data;
+      expect(usersData.numero_empleado).toBe('TRA-142');
+      expect(usersData.jefe_user_id).toBe('res-user-1');
+      expect(usersData.pin_hash).toMatch(/^\$2[aby]\$/); // bcrypt, nunca el PIN en claro
+      const venceEn = usersData.pin_temporal_hasta.getTime() - Date.now();
+      expect(venceEn).toBeGreaterThan(23.9 * 60 * 60 * 1000);
+      expect(venceEn).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+      expect(prisma.personas.create).toHaveBeenCalled();
+      expect(prisma.users_roles.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ rol_id: 'rol-uuid-1', es_principal: true }),
+      });
+      // el PIN en claro se entrega UNA vez en la respuesta y NUNCA va a la auditoría
+      expect(result.identidad?.numeroEmpleado).toBe('TRA-142');
+      expect(result.identidad?.pinTemporal).toMatch(/^[A-Z2-9]{8}$/);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.not.objectContaining({ pinTemporal: expect.anything() }),
+        }),
+      );
+    });
+
+    it('rechaza un rol inexistente o inactivo (ROL_INVALIDO) sin crear nada', async () => {
+      prisma.roles.findUnique.mockResolvedValue(null);
+      await expect(service.create(createDto(), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.trabajadores.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'ROL_INVALIDO' }));
+    });
+
+    it('rechaza un encargado que no es Residente activo (ENCARGADO_INVALIDO)', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await expect(service.create(createDto({ encargadoId: 'no-residente' }), 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.trabajadores.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'ENCARGADO_INVALIDO' }));
+    });
+
+    it('ante P2002 del unique reevalúa el consecutivo y reintenta (carrera de dos altas)', async () => {
+      const P2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      prisma.users.create
+        .mockRejectedValueOnce(P2002)
+        .mockResolvedValueOnce({});
+      prisma.users.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+
+      const result = await service.create(createDto(), 'user-1');
+      expect(result.identidad?.numeroEmpleado).toBe('TRA-002');
+      expect(prisma.users.create).toHaveBeenCalledTimes(2);
     });
   });
 

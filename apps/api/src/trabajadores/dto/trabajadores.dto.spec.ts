@@ -17,7 +17,14 @@ describe('CreateTrabajadorDto', () => {
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto',
     fechaContratacion: '2024-03-01',
+    rolId: '3f8a7c2e-1b4d-4a9e-8c6f-2d5e7a9b1c3d',
   };
+
+  it('should fail with invalid rolId (P14: el alta siempre crea la identidad)', async () => {
+    const dto = plainToInstance(CreateTrabajadorDto, { ...base, rolId: 'no-uuid' });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('rolId');
+  });
 
   it('should pass with valid data', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, base);

@@ -29,6 +29,12 @@ describe('Trabajadores Audit (Real DB)', () => {
   const clienteId = randomUUID();
   const proyectoA = { id: randomUUID(), nombre: `Proyecto IT A ${TEST_ID}` };
   const proyectoB = { id: randomUUID(), nombre: `Proyecto IT B ${TEST_ID}` };
+  // Identidad P14: rol de prueba con prefijo propio + numeros de empleado creados por el alta.
+  let rolTestId = '';
+  let rolResidenteId = '';
+  let rolResidenteCreadoPorTest = false;
+  let encargadoResidenteId = '';
+  const createdPersonaIds: string[] = [];
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -68,6 +74,45 @@ describe('Trabajadores Audit (Real DB)', () => {
         },
       });
     }
+
+    // Rol de acceso de prueba: nombre con prefijo ZZ → numero_empleado con prefijo ZZR (fácil de limpiar).
+    const rolTest = await prisma.roles.create({
+      data: { id: randomUUID(), nombre: `ZZRolP14 ${TEST_ID}`, actualizado_en: new Date() },
+    });
+    rolTestId = rolTest.id;
+
+    // Encargado Residente: el spec §6.8 liga el alta con su encargado. Se usa el rol 'Residente'
+    // real si existe; si no, se crea uno de prueba y se borra al final.
+    const residente = await prisma.roles.findFirst({ where: { nombre: 'Residente' } });
+    if (residente) {
+      rolResidenteId = residente.id;
+    } else {
+      const creado = await prisma.roles.create({
+        data: { id: randomUUID(), nombre: 'Residente', actualizado_en: new Date() },
+      });
+      rolResidenteId = creado.id;
+      rolResidenteCreadoPorTest = true;
+    }
+
+    // Encargado de prueba (user con rol Residente): liga el alta §6.8.
+    const personaResidente = await prisma.personas.create({
+      data: { id: randomUUID(), nombre: `Residente IT ${TEST_ID}`, actualizado_en: new Date() },
+    });
+    createdPersonaIds.push(personaResidente.id);
+    const userResidente = await prisma.users.create({
+      data: {
+        id: randomUUID(),
+        persona_id: personaResidente.id,
+        email: `residente-${TEST_ID}@integration.mx`,
+        password_hash: '$2b$12$integrationplaceholder',
+        numero_empleado: `RES-${TEST_ID.slice(0, 4).toUpperCase()}`,
+        actualizado_en: new Date(),
+      },
+    });
+    await prisma.users_roles.create({
+      data: { id: randomUUID(), user_id: userResidente.id, rol_id: rolResidenteId, es_principal: true },
+    });
+    encargadoResidenteId = userResidente.id;
   });
 
   afterAll(async () => {
@@ -86,6 +131,26 @@ describe('Trabajadores Audit (Real DB)', () => {
     await prisma.proyectos.deleteMany({ where: { id: { in: [proyectoA.id, proyectoB.id] } } });
     await prisma.clientes.deleteMany({ where: { id: clienteId } });
 
+    // Identidad P14: users del alta llevan numero ZZR- (prefijo del rol de prueba de esta suite);
+    // users_roles y sessions van en cascada. Luego sus personas (los usuarios del test de encargado
+    // ya se borraron en su test).
+    await prisma.users.deleteMany({ where: { numero_empleado: { startsWith: 'ZZR-' } } });
+    // El encargado residente de prueba lleva numero RES-…: se borra antes de sus personas.
+    if (encargadoResidenteId) {
+      await prisma.users.deleteMany({ where: { id: encargadoResidenteId } });
+    }
+    if (createdPersonaIds.length > 0) {
+      await prisma.personas.deleteMany({ where: { id: { in: createdPersonaIds } } });
+    }
+    await prisma.roles.deleteMany({ where: { id: rolTestId } });
+    if (rolResidenteCreadoPorTest && rolResidenteId) {
+      // Solo se borra si lo creó esta suite (si existía, es del seed y se queda).
+      const sinUsuarios = await prisma.users.count({
+        where: { users_roles_users_roles_user_idTousers: { some: { rol_id: rolResidenteId } } },
+      });
+      if (sinUsuarios === 0) await prisma.roles.deleteMany({ where: { id: rolResidenteId } });
+    }
+
     await prisma.$disconnect();
     await app.close();
   });
@@ -100,6 +165,7 @@ describe('Trabajadores Audit (Real DB)', () => {
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto' as const,
     fechaContratacion: '2024-03-01',
+    rolId: rolTestId,
     ...overrides,
   });
 
@@ -134,6 +200,93 @@ describe('Trabajadores Audit (Real DB)', () => {
 
       expect(trabajador.licenciaODC3?.folio).toBe(`FOL-${TEST_ID}`);
       expect(trabajador.contactoEmergencia?.nombre).toBe('María López');
+    });
+  });
+
+  describe('identidad PWA del alta (P14, spec §6.6)', () => {
+    const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+
+    it('debe crear persona + user con numero_empleado, PIN temporal de 24 h, rol y encargado', async () => {
+      const trabajador = await service.create(
+        createDto({ nombre: `Con identidad ${TEST_ID}`, encargadoId: encargadoResidenteId }),
+        ACTOR_USER_ID,
+      );
+      createdTrabajadorIds.push(trabajador.id);
+
+      expect(trabajador.identidad).toBeDefined();
+      const numero = trabajador.identidad!.numeroEmpleado;
+      expect(numero).toMatch(/^ZZR-\d{3}$/);
+
+      const user = await prisma.users.findFirst({
+        where: { numero_empleado: numero },
+        include: { users_roles_users_roles_user_idTousers: true },
+      });
+      expect(user).not.toBeNull();
+      // PIN temporal vigente ~24 h (nunca en claro: solo el hash).
+      const vence = user!.pin_temporal_hasta!.getTime() - Date.now();
+      expect(vence).toBeGreaterThan(23.9 * 60 * 60 * 1000);
+      expect(user!.jefe_user_id).toBe(encargadoResidenteId);
+      expect(user!.users_roles_users_roles_user_idTousers.some((r) => r.rol_id === rolTestId)).toBe(true);
+
+      // Auditoría: SUCCESS con el número, NUNCA el PIN en claro (§8.9).
+      const audits = await findAudits(AuditAction.TRABAJADOR_CREADO, trabajador.id);
+      expect(audits[0].result).toBe('SUCCESS');
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect((newValue?.identidad as Record<string, unknown> | undefined)?.numeroEmpleado).toBe(numero);
+      expect(JSON.stringify(newValue)).not.toContain(trabajador.identidad!.pinTemporal);
+    });
+
+    it('dos altas en paralelo del mismo rol: números distintos (el unique cierra la carrera)', async () => {
+      const [a, b] = await Promise.all([
+        service.create(createDto({ nombre: `Carrera A ${TEST_ID}` }), ACTOR_USER_ID),
+        service.create(createDto({ nombre: `Carrera B ${TEST_ID}` }), ACTOR_USER_ID),
+      ]);
+      createdTrabajadorIds.push(a.id, b.id);
+
+      const na = a.identidad!.numeroEmpleado;
+      const nb = b.identidad!.numeroEmpleado;
+      expect(na).not.toBe(nb);
+      const filas = await prisma.users.findMany({ where: { numero_empleado: { in: [na, nb] } } });
+      expect(filas).toHaveLength(2);
+    });
+
+    it('debe rechazar un rol inexistente y auditar ROL_INVALIDO', async () => {
+      await expect(service.create(createDto({ rolId: randomUUID() }), ACTOR_USER_ID)).rejects.toThrow(BadRequestException);
+      const audits = await findAudits(AuditAction.TRABAJADOR_CREADO, PLACEHOLDER);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('ROL_INVALIDO');
+    });
+
+    it('debe rechazar un encargado que no es Residente y auditar ENCARGADO_INVALIDO', async () => {
+      const persona = await prisma.personas.create({
+        data: { id: randomUUID(), nombre: `No Residente ${TEST_ID}`, actualizado_en: new Date() },
+      });
+      const user = await prisma.users.create({
+        data: {
+          id: randomUUID(),
+          persona_id: persona.id,
+          email: `nores-${TEST_ID}@integration.mx`,
+          password_hash: 'x',
+          actualizado_en: new Date(),
+        },
+      });
+
+      try {
+        await expect(service.create(createDto({ encargadoId: user.id }), ACTOR_USER_ID)).rejects.toThrow(BadRequestException);
+        const audits = await findAudits(AuditAction.TRABAJADOR_CREADO, PLACEHOLDER);
+        expect(audits[0].result).toBe('FAIL');
+        expect(audits[0].error_code).toBe('ENCARGADO_INVALIDO');
+      } finally {
+        await prisma.users.delete({ where: { id: user.id } });
+        await prisma.personas.delete({ where: { id: persona.id } });
+      }
+    });
+
+    it('catalogos debe traer los roles y a los Residentes como encargados', async () => {
+      const cat = await service.catalogos();
+      expect(cat.roles.some((r) => r.id === rolTestId)).toBe(true);
+      expect(cat.residentes.some((r) => r.id === encargadoResidenteId)).toBe(true);
+      expect(cat.residentes[0]).toHaveProperty('nombre');
     });
   });
 
