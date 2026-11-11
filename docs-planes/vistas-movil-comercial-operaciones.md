@@ -39,9 +39,15 @@ dedicado por rol** (camino B: shell móvil propio), tal como lo describe
 > Las tablas de esta sección quedan congeladas contra esa lista (los subtítulos
 > "¿Qué pantalla Figma?" mapean a estas vistas). Implicaciones que introduce:
 >
-> 1. **Asistencia para Cobradores** — el RBAC web de Cobrador NO incluye la
->    vista de asistencia: la migración de accesos de la PWA deberá agregarla
->    (module rrhh/asistencia, solo ver).
+> 1. **La asistencia es UNIVERSAL** — aclaración del cliente (2026-11-11):
+>    TODOS los trabajadores la toman sin importar el rol (cobradores,
+>    técnicos, residentes y trabajadores marcan su propia asistencia con
+>    foto+GPS). Solo los Residentes tienen ADICIONALMENTE la vista del equipo
+>    (quién asistió de su gente). Implicación de RBAC: en el escritorio el
+>    módulo `rrhh/asistencia` solo lo ve Encargado de RRHH y Administrador —
+>    la migración de accesos de la PWA deberá agregar la vista de asistencia
+>    (propia, con foto+GPS) a **todos** los roles de trabajadores: Trabajador,
+>    Residente, los 4 Técnicos y Cobrador.
 > 2. **Contactos y Mi Perfil son módulos móviles NUEVOS** — sin base hoy
 >    (Contactos: lista estática de teléfonos con `tel:` links; Mi Perfil: reusa
 >    documentos del trabajador). Son las 2 únicas pantallas sin base existente
