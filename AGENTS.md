@@ -115,6 +115,7 @@ Reglas duras al construir vistas móviles (aplican igual que las de escritorio, 
 9. La asistencia es **universal** (todos los roles marcan la propia con foto+GPS; solo Residentes ven además la de su equipo) — la migración de accesos de la PWA la agrega a todos los roles de trabajadores.
 10. `npx tsc --noEmit` + eslint después de cada cambio (mismo gate que desktop). Tests: al existir infra frontend, cada pantalla nueva lleva tests; mientras tanto, smoke manual documentado en el registro del commit.
 11. Login móvil por **número de empleado + PIN** (spec §6.4-6.5): es FASE de backend propia — las pantallas de sesión móvil no se construyen sobre email+password ni duplican el AuthProvider.
+12. **La PWA consume la MISMA API ya construida** — PROHIBIDO crear endpoints duplicados "versión móvil" de algo que ya existe (un recurso, un endpoint, consumido por desktop y PWA por igual). Endpoints NUEVOS solo cuando el flujo móvil lo exija y no exista equivalente (ej. login-pin, reinicio/desbloqueo de PIN, estado de PIN — ver plan §8.2), cada uno con los 4 estándares del repo.
 
 ## Known Gotchas
 

@@ -604,6 +604,39 @@ componente nuevo de la base.
    (número+PIN), instalable desde el navegador, offline captura y sincroniza
    al volver señal, `tsc`+eslint+tests verdes.
 
+
+### 8.8 RBAC de la PWA — brechas exactas (verificado contra la BD, 2026-11-11)
+
+Estado ACTUAL de `role_vistas` (puedeVer) de los roles de trabajadores:
+
+| Rol | Tiene hoy | FALTA para la PWA (spec §6.3) |
+|---|---|---|
+| Trabajador | dashboard · reportes | **asistencia** (universal) · **contactos** (vista nueva) · **perfil** (vista nueva) |
+| Residente | dashboard · reportes | **asistencia** (universal) · **obras (proyectos)** · **contactos** (vista nueva) |
+| Técnicos (×4) | dashboard · reportes | **asistencia** (universal) · **flota (maquinaria/GPS)** · **inventario** · **diesel (combustible)** |
+| Cobrador | dashboard · reportes · **ventas** · **ventas/corte** · criba | **asistencia** (universal) — POS y corte YA los tiene (migración 20261108190000) |
+| Administrador | todo (nivel 100) | nada — role_vistas ya completo |
+
+Conclusiones:
+1. **La gestión de permisos NO es suficiente tal cual** — faltan concesiones
+   concretas que la migración RBAC de la base (§8.1-2) debe aplicar:
+   - Asistencia universal: 7 roles (Trabajador, Residente, 4 Técnicos,
+     Cobrador) con `puedeVer` de la vista móvil de asistencia.
+   - Proyectos (obras) para Residente.
+   - Maquinaria + combustible + inventario para los 4 Técnicos.
+   - Vistas NUEVAS a registrar antes de conceder: `/m/contactos` y
+     `/m/perfil` (no existen en la tabla `vistas`).
+2. **No hay que tocar permisos de recursos** (module/recurso/accion): los
+   endpoints que la PWA consume ya validan por RBAC lo que el escritorio
+   usa — las vistas móviles solo necesitan `puedeVer` de la vista
+   correspondiente; la lógica fina (crear reporte, cobrar) ya vive en los
+   permisos existentes de cada módulo.
+3. **El rol nace de la BD, no del prefijo** (spec §6.4): `rol-nav.ts` lee
+   `user.vistas` — al conceder vía migración, la nav inferior de cada rol
+   se arma sola.
+4. La lista de concesiones se aplicará con el patrón idempotente del repo
+   (role_vistas por NOT EXISTS) en la migración de la base (§8.1-2).
+
 ### 8.7 Notas de la base
 
 - El desktop NO cambia en esta base (su login email+password sigue) — solo el
