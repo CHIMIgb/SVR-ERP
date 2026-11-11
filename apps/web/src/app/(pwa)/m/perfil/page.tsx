@@ -107,10 +107,10 @@ export default function PerfilMovilPage() {
         <div>
           <p className="text-sm font-black text-ui-900">Tema</p>
           <p className="text-xs text-ui-500 font-medium">
-            Claro, oscuro o el del teléfono
+            Claro u oscuro — el primer día sigue al teléfono
           </p>
         </div>
-        <ThemeToggle />
+        <ThemeToggle conSistema={false} />
       </div>
 
       {/* Cerrar sesión — siempre pegado abajo (mt-auto dentro de min-h-full) */}

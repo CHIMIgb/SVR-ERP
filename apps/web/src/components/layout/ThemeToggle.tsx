@@ -14,14 +14,17 @@ const OPCIONES: { valor: PreferenciaTema; etiqueta: string; Icono: LucideIcon }[
 /**
  * Selector de tema de la barra superior.
  * Escritorio: tres botones (claro / oscuro / sistema).
- * Celular: un solo botón que rota entre las tres opciones, para no saturar la barra.
+ * Celular: un solo botón que rota entre las opciones, para no saturar la barra.
+ * En la PWA se usa `conSistema={false}`: solo claro y oscuro — el tema del
+ * teléfono es el DEFAULT, no una opción que el usuario pueda elegir.
  */
-export default function ThemeToggle() {
+export default function ThemeToggle({ conSistema = true }: { conSistema?: boolean }) {
   const { preferencia, setPreferencia } = useTheme();
 
-  const indiceActual = Math.max(0, OPCIONES.findIndex((o) => o.valor === preferencia));
-  const actual = OPCIONES[indiceActual];
-  const siguiente = OPCIONES[(indiceActual + 1) % OPCIONES.length];
+  const opciones = conSistema ? OPCIONES : OPCIONES.filter((o) => o.valor !== "system");
+  const indiceActual = Math.max(0, opciones.findIndex((o) => o.valor === preferencia));
+  const actual = opciones[indiceActual];
+  const siguiente = opciones[(indiceActual + 1) % opciones.length];
 
   return (
     <>
@@ -30,7 +33,7 @@ export default function ThemeToggle() {
         aria-label="Tema de la interfaz"
         className="hidden sm:flex items-center gap-0.5 p-1 rounded-xl bg-ui-100 border border-ui-200"
       >
-        {OPCIONES.map(({ valor, etiqueta, Icono }) => {
+        {opciones.map(({ valor, etiqueta, Icono }) => {
           const activo = preferencia === valor;
           return (
             <button
