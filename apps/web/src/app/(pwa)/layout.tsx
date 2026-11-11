@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, LogOut } from "lucide-react";
+import { Bell, Download, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { RoleNav } from "@/components/pwa/RoleNav";
-import BannerInstalar from "@/components/pwa/BannerInstalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
@@ -27,13 +26,35 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isInitialized, logout } = useAuth();
   const pendientes = useCola();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
+  // Instalación: el navegador entrega beforeinstallprompt (solo HTTPS) y el
+  // botón del header lanza el diálogo NATIVO (Install/Cancel). Si la app
+  // corre instalada (standalone), el botón desaparece.
+  const [promptEvent, setPromptEvent] = useState<{ prompt: () => Promise<void> } | null>(null);
+  const [instalada, setInstalada] = useState(false);
 
   // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     const parar = iniciarSincronizador();
-    return parar;
+    const capturar = (e: Event) => {
+      e.preventDefault(); // evita la barra automática: la lanzamos con NUESTRO botón
+      setPromptEvent(e as unknown as { prompt: () => Promise<void> });
+    };
+    window.addEventListener("beforeinstallprompt", capturar);
+    // ¿ya instalada? (abierta en standalone)
+    const revisar = () =>
+      setInstalada(
+        window.matchMedia("(display-mode: standalone)").matches ||
+          (navigator as Navigator & { standalone?: boolean }).standalone === true,
+      );
+    revisar();
+    window.addEventListener("appinstalled", revisar);
+    return () => {
+      parar();
+      window.removeEventListener("beforeinstallprompt", capturar);
+      window.removeEventListener("appinstalled", revisar);
+    };
   }, []);
 
   // guard de sesión + guard de ancho (escritorio → dashboard)
@@ -106,6 +127,24 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
         <div className="shrink-0 text-ui-600">
           <ThemeToggle />
         </div>
+        {!instalada && (
+          <button
+            type="button"
+            aria-label="Instalar aplicación"
+            onClick={async () => {
+              if (promptEvent) {
+                await promptEvent.prompt(); // diálogo NATIVO del navegador
+                setPromptEvent(null);
+                return;
+              }
+              // sin prompt (HTTP en dev): instrucción del menú
+              window.alert("Para instalar: menú del navegador (⋮) → «Instalar aplicación»");
+            }}
+            className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors shrink-0"
+          >
+            <Download className="w-5 h-5" />
+          </button>
+        )}
         <button
           type="button"
           aria-label="Notificaciones"
@@ -132,8 +171,6 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       {/* Nav inferior por rol (plan §7b) */}
       <RoleNav pendientes={pendientes} />
 
-      {/* Aviso de instalación: si no está instalada, aparece en cada acceso */}
-      <BannerInstalar />
 
       {/* Aviso a los 25 días (spec §6.6-5): sin mostrar PIN */}
       {pinEstado?.avisar && !pinEstado.vencido && (
