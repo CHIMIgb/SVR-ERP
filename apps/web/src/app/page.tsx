@@ -146,7 +146,7 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <h2 className="text-2xl font-bold text-white mb-2">Tu jornada empieza</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">Bienvenido a SVR</h2>
               <p className="text-slate-400 text-sm mb-8 font-medium">
                 Ingresa tu número de empleado y tu PIN.
               </p>

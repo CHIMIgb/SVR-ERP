@@ -31,20 +31,11 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   // true de inicio para no dar destello del modal a quien YA la tiene instalada
   const [instalada, setInstalada] = useState(true);
 
-  // Barras del sistema (status/nav de Android) siguen el tema activo:
-  // Chrome las repinta con el <meta name="theme-color"> dinámico
+  // Barras del sistema SIEMPRE en modo claro (petición del cliente 2026-11-11):
+  // el status bar no cambia con el tema — valor fijo, sin observer
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (!meta) return;
-    const aplicar = () =>
-      meta.setAttribute(
-        "content",
-        document.documentElement.classList.contains("dark") ? "#0f172a" : "#f8fafc",
-      );
-    aplicar();
-    const obs = new MutationObserver(aplicar);
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
+    if (meta) meta.setAttribute("content", "#f8fafc");
   }, []);
 
   // Modal de instalación en cada acceso (petición del cliente) — se oculta
