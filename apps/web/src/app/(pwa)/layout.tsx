@@ -8,7 +8,7 @@ import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { RoleNav } from "@/components/pwa/RoleNav";
 import ModalInstalar from "@/components/pwa/ModalInstalar";
-import { estaInstalada } from "@/lib/pwa/instalar";
+import { estaInstaladaEnDispositivo } from "@/lib/pwa/instalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
@@ -48,15 +48,17 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Modal de instalación en cada acceso (petición del cliente) — se oculta
-  // al instalarse (evento appinstalled) o al pulsar «Ahora no» (esta visita)
+  // si la app está instalada EN EL DISPOSITIVO (la pestaña de Chrome no es
+  // standalone aunque ya esté instalada) o al instalarse (appinstalled)
   useEffect(() => {
-    // diferido al próximo tick: el setState síncrono en effect lo prohíbe el lint
-    const revisar = () => setInstalada(estaInstalada());
-    const t = setTimeout(revisar, 0);
+    let vivo = true;
+    estaInstaladaEnDispositivo().then((si) => {
+      if (vivo) setInstalada(si);
+    });
     const yaSeInstalo = () => setInstalada(true);
     window.addEventListener("appinstalled", yaSeInstalo);
     return () => {
-      clearTimeout(t);
+      vivo = false;
       window.removeEventListener("appinstalled", yaSeInstalo);
     };
   }, []);

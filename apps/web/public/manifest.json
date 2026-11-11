@@ -22,5 +22,12 @@
       "purpose": "any maskable"
     }
   ],
-  "id": "/m"
+  "id": "/m",
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "/manifest.json",
+      "id": "/m"
+    }
+  ]
 }

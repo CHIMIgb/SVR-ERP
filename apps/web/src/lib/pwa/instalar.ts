@@ -25,13 +25,34 @@ export function obtenerPrompt(): EventoInstalacion | null {
   return window.__svrPrompt ?? null;
 }
 
-/** ¿La app ya corre instalada (standalone)? */
+/** ¿La app ya corre instalada (standalone) en ESTA ventana? */
 export function estaInstalada(): boolean {
   if (typeof window === "undefined") return false;
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   );
+}
+
+/**
+ * ¿Está instalada en el DISPOSITIVO? La pestaña de Chrome no es standalone
+ * aunque la app ya esté instalada — para eso está getInstalledRelatedApps
+ * (Chrome Android 84+, requiere related_applications en el manifest).
+ * Sin esta detección el modal salía siempre en la pestaña y Chrome ni
+ * siquiera dispara beforeinstallprompt para una app ya instalada.
+ */
+export async function estaInstaladaEnDispositivo(): Promise<boolean> {
+  if (estaInstalada()) return true;
+  const navegador = navigator as Navigator & {
+    getInstalledRelatedApps?: () => Promise<Array<{ platform: string }>>;
+  };
+  if (!navegador.getInstalledRelatedApps) return false;
+  try {
+    const apps = await navegador.getInstalledRelatedApps();
+    return apps.some((app) => app.platform === "webapp");
+  } catch {
+    return false;
+  }
 }
 
 /**
