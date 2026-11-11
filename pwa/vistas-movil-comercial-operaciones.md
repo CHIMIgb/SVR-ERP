@@ -699,17 +699,22 @@ Pendiente menor, decisión al construir la mesa de ayuda.
 | ¿Margen sin internet con PIN vencido? | **3-4 días** (constante `PIN_GRACE_OFFLINE_DIAS` — se activa con la fase de captura offline de asistencia) |
 | ¿Qué datos se guardan en el SVR? | **Ya existen todos:** rol (`users_roles`), fecha del último cambio de PIN (`pin_cambiado_en`), estado de sesión (`sessions.activa/revocado_en/motivo_revocado`) y número de intentos (`intentos_pin`) |
 
-**§8.10 Pendientes de usuario/seguridad para construir DESPUÉS** (junto con el
-alta ampliada de Trabajadores, que ya está en §8.2):
+**§8.10 Pendientes de usuario/seguridad para construir DESPUÉS** — ahora
+registrados en `docs-planes/IMPLEMENTACIONES-A-FUTURO.md` con número:
 
-1. **Alta ampliada** (§8.2): número + PIN temporal 24 h + botón `wa.me` + en
-   el formulario pedir **encargado y obra** del trabajador (caso Residente).
-2. **Cierre masivo de sesiones standalone** (administrativo): endpoint + botón
-   en Trabajadores del escritorio (sin cambiar PIN).
-3. **"Mis sesiones" propio:** listar/cerrar otras sesiones desde la PWA
-   (opcional; el cambio de PIN ya las cierra).
-4. **Bloqueo instantáneo opcional:** verificar `cuenta_bloqueada_en` en
-   `JwtStrategy` (cierra el ≤15 min de token vigente tras bloqueo).
+1. **Alta ampliada** → **P14** de IMPLEMENTACIONES-A-FUTURO (en la ALTA
+   EXISTENTE de Trabajadores del escritorio: número + PIN temporal 24 h +
+   botón `wa.me` + encargado/obra en el formulario + acciones de mesa de
+   ayuda conectadas a P12).
+2. **Cierre masivo de sesiones standalone** (administrativo) → **P12** (panel
+   de gestión de identidad: por usuario, sin cambiar PIN).
+3. **"Mis sesiones" propio en la PWA** (opcional) → también vive en **P12**
+   (ver sesiones activas del propio usuario desde el móvil).
+4. **Bloqueo instantáneo opcional** → se decide al construir **P12**
+   (verificar `cuenta_bloqueada_en` en `JwtStrategy`).
 5. Upgrade futuro de hash: **bcryptjs → argon2** vía lazy-rehash o forzando
+   el cambio de PIN (los PINs rotan a 30 días — trivial comparado con
+   passwords). Sin P-number: decisión técnica cuando se quiera.
+6. **Sweeper de `token_blacklist`** → **P13** de IMPLEMENTACIONES-A-FUTURO.
    el cambio de PIN (los PINs rotan a 30 días — trivial comparado con
    passwords).

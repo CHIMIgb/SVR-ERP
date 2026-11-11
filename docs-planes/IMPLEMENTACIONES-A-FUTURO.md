@@ -448,6 +448,85 @@ tabla). Relación con lo ya documentado: subcategorías por torre en
 
 ---
 
+### P11 — Asignación de equipos: trabajadores ↔ residentes (UI + endpoint)
+
+**Qué se construye** (formaliza el punto de trabajo de P10, que hoy es solo SQL):
+- **Vista nueva** (módulo Sistema/Trabajadores, escritorio): lista de usuarios
+  con rol **Residente** y, por cada uno, su equipo (trabajadores con
+  `jefe_user_id` = ese residente). Acciones: **asignar** un trabajador a un
+  residente (select de residentes), **re-asignar** (cambia el jefe) y
+  **des-asignar** (jefe NULL → fallback de solo-sus-propios-reportes).
+- **Endpoint:** `POST/PATCH /usuarios/:id/jefe` (admin/RRHH, con auditoría
+  SUCCESS/FAIL: `JEFE_ASIGNADO` / `SIN_PERMISO`).
+- **Efecto inmediato en la PWA:** el scope de /reportes y la vista de
+  asistencia del equipo del Residente se recalculan solos (usan
+  `jefe_user_id` — nada por recodificar).
+- **Relación con la PWA:** `pwa/vistas-movil-comercial-operaciones.md` §8.10-1
+  (el alta ampliada también asigna encargado — esta vista lo GESTIONA después).
+
+### P12 — Panel "Gestión de identidad" (usuarios + roles + permisos + áreas + sesiones, todo junto)
+
+**Qué se construye** (la vista 360 que pide el cliente — hoy están en 4
+pantallas separadas: Usuarios, Roles, Configuración, Trabajadores):
+- **Una vista** que por cada usuario muestra EN UNA FILA/DETALLE: su
+  **rol(es)**, sus **vistas** con flags, sus **permisos** por módulo, su
+  **área (torre)**, su **número de empleado**, su **jefe** (P11), su
+  **estado de PIN** (cambiado hace N días / temporal activo / cuenta
+  bloqueada) y sus **sesiones activas** (dispositivo, IP, última actividad).
+- **Acciones de mesa de ayuda integradas ahí** (spec PWA §6.7):
+  **desbloquear** cuenta · **reiniciar PIN** (temporal 24 h) · **cerrar
+  todas las sesiones** del trabajador. Relación: `pwa/...§8.9` (las 2
+  acciones parciales — cierre masivo standalone y bloqueo instantáneo —
+  viven aquí).
+- **Relación visible de unos con otros:** cambiar el rol de la fila muestra
+  al instante qué vistas/permisos hereda (preview antes de guardar) — el
+  "ver la relación de unos a otros" que pide el cliente.
+- **BD:** no pide columnas nuevas — todo ya existe (users, users_roles,
+  role_vistas, sessions, refresh_tokens, campos de PIN del paso 1 de la
+  PWA). Es una vista de LECTURA + acciones.
+
+### P13 — Sweeper de `token_blacklist` (limpieza de filas vencidas)
+
+**Qué se construye:** tarea programada (cron de la API o job del hosting) que
+borra de `token_blacklist` las filas cuya `expira` ya pasó (los tokens ahí
+listados ya no son válidos por firma/fecha — borrarlos es seguro). La tabla
+crece 1 fila por logout/rotación; hoy es cosmético, con miles de usuarios
+diarios deja de serlo. Propuesto en la revisión del PR #17 (P11 de esa
+conversación).
+
+### P14 — Alta ampliada de Trabajadores con identidad PWA (número + PIN temporal + WhatsApp + encargado/obra)
+
+**Qué se construye — en la VISTA/ALTA QUE YA EXISTE de Trabajadores**
+(escritorio), no en una nueva: el spec del cliente (PWA §6.6-1/2) dice "el
+administrativo registra al trabajador **en Trabajadores**, elige el rol…" —
+el alta de siempre se AMPLÍA con la identidad móvil:
+
+- **Al crear el trabajador** (el administrativo elige el rol), el sistema
+  genera y guarda:
+  - `users.numero_empleado` (prefijo por rol + consecutivo, transacción
+    anti-carrera: ADM-01, RES-014, TEC-007, COB-003, TRA-0142…)
+  - `users.pin_hash` de un **PIN temporal de 24 h** (sin caracteres
+    confusos 0/O/1/l/I, sin repetidos — regla estricta §8.3 del plan PWA)
+  - `pin_temporal_hasta` (24 h) + `pin_cambiado_en`
+- **Campos nuevos en el formulario del alta:** encargado (select de
+  residentes → `jefe_user_id`) y obra (según P10/variante pendiente de
+  confirmar) — el caso Residente (PWA §6.8) necesita esa liga.
+- **Botón "Enviar por WhatsApp"** (`wa.me` con el número de la persona,
+  mensaje prellenado: nombre, número de empleado, PIN temporal y enlace a la
+  PWA — **sin API y sin costo**, spec §6.6-2). El PIN temporal se muestra UNA
+  VEZ en esa pantalla (nunca vuelve a verse — spec §6.7).
+- **Acciones de mesa de ayuda** conectadas a P12 (desbloquear/reiniciar/
+  cerrar sesiones desde la misma ficha del trabajador).
+- **Relación con la PWA:** `pwa/vistas-movil-comercial-operaciones.md`
+  §8.2 (endpoint ampliado), §8.9/§8.10 (auditoría de §6.7/§6.8 y
+  pendientes) — este item CIERRE el ciclo §6.6-1/2 que quedó pendiente.
+
+**Auditoría:** todas las acciones auditan SUCCESS/FAIL con los 4 estándares
+(`TRABAJADOR_CREADO` ya existe; acciones de PIN: `PIN_REINICIADO`/
+`CUENTA_DESBLOQUEADA` — ya en el enum desde el paso 2 de la PWA).
+
+---
+
 ### P8 — Metas de progreso del proyecto con fechas límite (idea del cliente)
 
 **Objetivo:** el progreso del proyecto deja de ser un número manual capturado a mano.
