@@ -10,7 +10,77 @@
 
 ---
 
-## 1. Alcance y método
+## 0. NUEVO — Vistas admin de Sistema (exclusivas de admin, solo escritorio)
+
+> Agregado 2026-11-11: dos vistas nuevas del **módulo Sistema**, construidas en la
+> **aplicación de escritorio** — **la PWA queda en pausa** (nada nuevo en `/m/*`).
+> Son solo visibles para admin (módulo `sistema`). Corresponden a lo ya planeado
+> como **P11 y P12** en `IMPLEMENTACIONES-A-FUTURO.md` (§P11/§P12), que se concretan
+> aquí con alcance definido.
+
+### 0.1 Vista A — "Equipo del residente" (asignar / cambiar / quitar trabajadores)
+
+Corresponde a **P11** (asignación trabajadores ↔ residentes, que hoy solo es SQL).
+
+- **Qué muestra:** lista de usuarios con rol **Residente** y, por cada uno, su
+  equipo (trabajadores con `jefe_user_id` = ese residente).
+- **Acciones:** **asignar** un trabajador a un residente, **cambiar** de residente
+  (re-asignar) y **quitar** (jefe NULL → fallback de solo-sus-propios-reportes).
+- **Endpoint:** `POST/PATCH /usuarios/:id/jefe` con auditoría
+  `SUCCESS/FAIL` (`JEFE_ASIGNADO` / `SIN_PERMISO`) — patron `fallir()`.
+- **Efecto:** el scope de `/reportes` y la asistencia de equipo del Residente en la
+  PWA se recalculan solos (leen `jefe_user_id` — nada por recodificar).
+- **RBAC:** permisos existentes del módulo sistema (o un par nuevo
+  `sistema.usuarios.asignar` — se define al construir).
+- **Relación con el alta P14:** el alta en `/trabajadores` ya liga encargado
+  opcional; esta vista es donde se **gestiona después**.
+
+### 0.2 Vista B — "Usuarios y roles" (roles + áreas + identidad de acceso)
+
+Corresponde a **P12** (panel "Gestión de identidad" 360).
+
+- **Qué muestra por usuario (fila/detalle):** su **rol(es)**, su **área (torre —
+  viene del rol, `roles.torre`)**, su **número de empleado**, su **estado de PIN**
+  (cambiado hace N días / temporal vigente / cuenta bloqueada) y sus **sesiones
+  activas** (dispositivo, IP, última actividad).
+- **Acciones:** **asignar/cambiar/quitar roles** (con preview de vistas y permisos
+  que hereda antes de guardar), **desbloquear cuenta**, **reiniciar PIN** (temporal
+  24 h, entrega una vez), **cerrar todas sus sesiones**. Los endpoints de mesa de
+  ayuda **ya existen (P12)**: `POST /auth/pin/reinicio`, `/auth/pin/desbloqueo`,
+  `GET /auth/pin/estado` — la vista los consume; falta exponer `pinReinicio`/
+  `pinDesbloqueo` en `authApi` de `lib/api.ts`.
+- **BD:** no pide columnas nuevas — todo ya existe (users, users_roles,
+  role_vistas, sessions, campos de PIN). Es una vista de lectura + acciones con
+  auditoría en cada mutación.
+- **RBAC:** los permisos ya existen en el seed — `sistema.usuarios.*` (ver, editar,
+  asignar_rol, eliminar).
+
+### 0.3 Análisis: ¿tercera vista de "gestión de usuarios"?
+
+**Recomendación: NO crearla aparte — se absorbe en la Vista B.** Razones:
+
+1. La gestión de usuarios (crear/desactivar cuentas, ver quién es quién) usa
+   **exactamente la misma lista y la misma fila** que la Vista B: es un solo dominio
+   (identidad/acceso). Partirlo en dos pantallas duplica y obliga a navegar entre
+   ellas para la misma persona.
+2. El doc ya la diseñó así: P12 es el panel "identidad 360" (usuarios + roles +
+   permisos + áreas + PIN + sesiones **todo junto**) — el cliente lo pidió como un
+   panel que "ve la relación de unos con otros".
+3. La vista `/trabajadores` (RRHH) se queda como está: gestiona el perfil
+   **laboral** (sueldos, liquidación, proyectos, máquina). La Vista B gestiona el
+   perfil de **acceso** (roles, áreas, PIN, sesiones). El `numero_empleado` conecta
+   ambas mitades de la misma persona.
+
+Único caso que justificaría algo extra (y cabe **dentro** de la Vista B, no como
+vista nueva): crear un usuario **sin trabajador** (cuentas administrativas/office
+con email+password, como `admin@svr...` hoy). El alta de `/trabajadores` siempre
+crea identidad; los usuarios de oficina sin expediente laboral se darían de alta
+desde la Vista B con un modal (email + rol). Decisión de alcance: se agrega si el
+cliente lo confirma.
+
+---
+
+
 
 Barrido pregunta por pregunta de las dos fuentes, clasificando cada punto según la
 vista donde vive. Vistas mapeadas:
@@ -21,6 +91,10 @@ vista donde vive. Vistas mapeadas:
 
 Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuesta (bloquea
 diseño) · ❌ sin impacto.
+
+> **Nota de vigencia:** el análisis de las 15 vistas (§1–§8) sigue en pie, pero
+> **arranca primero la Fase 0** (§0 arriba): las dos vistas admin de Sistema en
+> escritorio, con la **PWA en pausa**.
 
 ---
 
