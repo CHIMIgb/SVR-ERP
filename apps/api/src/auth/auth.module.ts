@@ -4,6 +4,8 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { IntentosLoginService } from './intentos-login.service';
+import { PinController } from './pin/pin.controller';
+import { PinService } from './pin/pin.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { BloqueoModule } from '../bloqueo/bloqueo.module';
@@ -24,10 +26,11 @@ const ACCESS_TOKEN_EXPIRY_SECONDS = parseInt(
     BloqueoModule,
     AuditModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, PinController],
   providers: [
     AuthService,
     IntentosLoginService,
+    PinService,
     JwtStrategy,
     JwtRefreshStrategy,
   ],

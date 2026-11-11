@@ -240,7 +240,64 @@ export class AuthService {
       userAgent,
     });
 
-    // 5. Crear sesión
+    // 5-7. Crear sesión + tokens (maquinaria compartida con login-pin)
+    const { accessToken, refreshToken, session } = await this.crearSesionYTokens(
+      user,
+      ip,
+      userAgent,
+    );
+
+    // 8. Actualizar último login
+    await this.prisma.users.update({
+      where: { id: user.id },
+      data: { ultimo_login: new Date(), actualizado_en: new Date() },
+    });
+
+    this.logger.log(
+      `Login exitoso: ${user.email} desde IP ${ip || 'desconocida'}`,
+    );
+
+    await this.auditService.log({
+      action: AuditAction.LOGIN_EXITOSO,
+      entityType: 'sessions',
+      entityId: session.id,
+      result: AuditResult.SUCCESS,
+      actorUserId: user.id,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      sessionId: session.id,
+      ipAddress: ip,
+      userAgent,
+      newValue: { sessionId: session.id, userId: user.id, email: user.email },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: this.buildUserProfile(user),
+      session: {
+        id: session.id,
+        iniciadaEn: session.iniciadaEn.toISOString(),
+        expiraEn: session.expiraEn.toISOString(),
+      },
+    };
+  }
+
+
+  /**
+   * Maquinaria compartida de sesión: crea la sesión, guarda el refresh token
+   * hasheado y firma el par de tokens. La usan login (email+password) y
+   * login-pin (número+PIN) — UNA sola copia de esta lógica crítica.
+   */
+  async crearSesionYTokens(
+    user: { id: string; email: string },
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    session: { id: string; iniciadaEn: Date; expiraEn: Date };
+  }> {
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
 
@@ -298,38 +355,14 @@ export class AuthService {
       secret: process.env.JWT_REFRESH_SECRET,
     });
 
-    // 8. Actualizar último login
-    await this.prisma.users.update({
-      where: { id: user.id },
-      data: { ultimo_login: new Date(), actualizado_en: new Date() },
-    });
-
-    this.logger.log(
-      `Login exitoso: ${user.email} desde IP ${ip || 'desconocida'}`,
-    );
-
-    await this.auditService.log({
-      action: AuditAction.LOGIN_EXITOSO,
-      entityType: 'sessions',
-      entityId: session.id,
-      result: AuditResult.SUCCESS,
-      actorUserId: user.id,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      sessionId: session.id,
-      ipAddress: ip,
-      userAgent,
-      newValue: { sessionId: session.id, userId: user.id, email: user.email },
-    });
 
     return {
       accessToken,
       refreshToken,
-      user: this.buildUserProfile(user),
       session: {
         id: session.id,
-        iniciadaEn: session.iniciada_en.toISOString(),
-        expiraEn: session.expira_en.toISOString(),
+        iniciadaEn: session.iniciada_en,
+        expiraEn: session.expira_en,
       },
     };
   }
