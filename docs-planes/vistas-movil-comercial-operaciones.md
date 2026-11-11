@@ -131,8 +131,8 @@ como "/m/*"** — pedra instalar:
    asistencia exige HTTPS).
 3. **Endpoints que faltan por levantar:** fotos de asistencia (payload image),
    **Presionar** (nudge a la torre del reporte), contactos personales.
-4. **Offline:** la guía de nueva-info exige captura sin señal — fuera del scope
-   de esta phase.
+4. **Offline:** YA ES ALCANCE DE LA BASE — ver §7c (cola + sincronizador) y
+   §8 (plan de la base); esta sección queda como foto histórica.
 
 ---
 
@@ -499,3 +499,119 @@ app). No es una fase posterior: la infraestructura se coloca desde el paso 1.
   si la cola crece demasiado.
 - ¿Se encolan ventas del POS? (propuesta: NO — dinero requiere conexión;
   validar con el cliente).
+
+## 8. Plan de la BASE de la PWA (identidad número+PIN + shell + vistas placeholder)
+
+Alcance de "la base" (lo primero que se construye, según §6.4-6.8 y §7a-7c):
+**identidad por número de empleado + PIN, shell con nav por rol, detector,
+instalable, y las vistas de cada rol VACÍAS (solo título)** — sin lógica de
+módulos todavía.
+
+### 8.1 Migraciones de base de datos (en orden)
+
+1. **`users` — identidad PWA:**
+   - `numero_empleado` TEXT UNIQUE (formato `PREF-NNN`: ADM/RES/TEC/COB/TRA +
+     consecutivo por prefijo; el alta lo genera con transacción y unique para
+     evitar carrera de consecutivos).
+   - `pin_hash` TEXT (hash del PIN actual; nunca en claro).
+   - `pin_temporal_hasta` TIMESTAMPTZ NULL (temporal de 24 h del alta/reinicio).
+   - `pin_cambiado_en` TIMESTAMPTZ (vence a los 30 días; aviso a los 25).
+   - `pin_historial` JSONB (hashes de los últimos 3 PINs — para la regla
+     "distinto de los últimos 3").
+   - `intentos_pin` INT DEFAULT 0 (bloqueo por cuenta, spec §6.7).
+   - `cuenta_bloqueada_en` TIMESTAMPTZ NULL.
+2. **RBAC de la PWA (idempotente):**
+   - Vistas móviles registradas en la tabla `vistas` con ruta `/m/*`
+     (`/m`, `/m/asistencia`, `/m/reportes`, `/m/contactos`, `/m/perfil`,
+     `/m/obras`, `/m/flota-obras`, `/m/inventario`, `/m/diesel`, `/m/pos`,
+     `/m/corte`, `/m/finanzas`, `/m/modulos`) — así `user.vistas` alimenta
+     `rol-nav.ts` SIN mapeos ad hoc, y el escritorio queda con sus vistas.
+   - **Asistencia universal** (aclaración del cliente): `puedeVer` de
+     `/m/asistencia` para Trabajador, Residente, los 4 Técnicos y Cobrador
+     (solo ver — la captura es propia; el Residente además la de su equipo
+     con los permisos ya existentes de asistencia).
+3. Migración `seed`-style idempotente (patrón del repo: `ON CONFLICT DO NOTHING`
+   / `IF NOT EXISTS`).
+
+### 8.2 Endpoints nuevos (cada uno con los 4 estándares: JWT → blacklist →
+auditoría SUCCESS → FAIL con error_code)
+
+| Endpoint | Qué hace | Notas |
+|---|---|---|
+| `POST /auth/login-pin` | número de empleado + PIN → par de tokens | Reutiliza el bloqueo escalonado existente (`bloqueoService`); a los 5 intentos bloquea la cuenta (`intentos_pin`), no solo la IP |
+| `POST /auth/pin/cambio` | PIN actual + nuevo (x2) | Re-autenticación con el PIN actual; cierra las OTRAS sesiones (revoca sus refresh en `sessions/refresh_tokens` — maquinaria existente); reinicia `pin_cambiado_en`; valida reglas §8.3; FAIL auditado: `PIN_INVALIDO`, `PIN_REPETIDO`, `PIN_SECUENCIA`, `PIN_CONTIENE_EMPLEADO` |
+| `POST /auth/pin/reinicio` | admin/RRHH reinicia con clic | Genera temporal 24 h (sin caracteres confusos 0/O/1/l/I); FAIL: `SIN_PERMISO_MESA_AYUDA` |
+| `POST /auth/pin/desbloqueo` | mesa de ayuda desbloquea cuenta | FAIL: `SIN_PERMISO_MESA_AYUDA` |
+| `GET /auth/pin/estado` | estado para la app: `pin_cambiado_en`, `cuenta_bloqueada` | Alimenta el aviso a los 25 días y el bloqueo de navegación si venció |
+| `POST /trabajadores` (ampliado) | el alta genera `numero_empleado` + PIN temporal + responde los datos para el botón "Enviar por WhatsApp" | Sin API: el frontend arma el link `wa.me` con el mensaje prellenado |
+
+### 8.3 Validación del PIN (algoritmo único, server-side; el móvil solo adelanta hints)
+
+Un PIN es válido si:
+1. 8 caracteres de [A-Za-z0-9], **case-insensitive** (se normaliza a mayúsculas
+   antes de evaluar y hashear).
+2. Al menos 1 letra y 1 número.
+3. Sin 3+ caracteres consecutivos repetidos (ej. `AAA`, `7777`).
+4. Sin secuencias de 3+ (asc/desc en letras o números: `ABC`, `123`, `CBA`, `987`).
+5. No contiene su número de empleado (ni el prefijo+consecutivo con o sin guion).
+6. Distinto de los últimos 3 (`pin_historial`).
+7. Hash con **argon2id** (recomendado por el spec; si se evita la dependencia
+   nativa, bcryptjs con coste ≥ 10 — decisión por confirmar, §6.9-adjacente).
+
+### 8.4 Login dual (una sola pantalla, dos modos)
+
+- El login sigue siendo UNA pantalla (§7a). Detecta el contexto:
+  - **Vista móvil** (`vistaEfectiva() === 'movil'`) → modo número de empleado
+    + PIN (8 casillas).
+  - **Vista escritorio** → modo email + password (como hoy).
+- Tras autenticar, `AuthProvider` enruta a la cara correspondiente y revisa
+  `GET /auth/pin/estado`: si el PIN es temporal o venció → **obliga** a la
+  pantalla de cambio antes de navegar (spec §6.6-3 y §6.6-7). Sin internet
+  con PIN vencido: margen de 3-4 días (constante `PIN_GRACE_OFFLINE_DIAS`,
+  pendiente de fijar con el cliente — §6.9-2).
+
+### 8.5 Vistas placeholder de la base (solo título)
+
+Cada ruta del §7b se crea con su PageHeader móvil (título + subtítulo "en
+construcción") y **nada más** — sin lógica de módulos:
+
+| Rol | Vistas placeholder |
+|---|---|
+| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` · `/m/perfil` |
+| Residente | `/m` · `/m/asistencia` · `/m/reportes` · `/m/obras` · `/m/contactos` |
+| Técnicos | `/m` · `/m/asistencia` · `/m/reportes` · `/m/flota-obras` · `/m/inventario` · `/m/diesel` (solo Diesel) |
+| Cobrador | `/m` · `/m/asistencia` · `/m/pos` · `/m/corte` |
+| Administrador | `/m` · `/m/reportes` · `/m/finanzas` · `/m/modulos` |
+
+Un solo componente reutilizable `components/pwa/PantallaPlaceholder.tsx`
+(título + ícono + subtítulo), documentado en `COMPONENTS.md` — el único
+componente nuevo de la base.
+
+### 8.6 Orden de construcción de la BASE (pasos)
+
+1. **Migraciones** (§8.1) + `prisma generate` + resolve local.
+2. **Endpoints de PIN** (§8.2) con tests unitarios (cada método: válido +
+   FAIL auditado) + integration real (bloqueo por cuenta, cambio con cierre
+   de sesiones, reinicio temporal, historial de últimos 3) + smoke REST.
+3. **Login dual** (§8.4) + pantallas: cambio de PIN (obligatorio si temporal/
+   vencido) y estado del aviso a los 25 días.
+4. **Shell + nav por rol + detector + interruptor** (§7a/7b) — ya detallados.
+5. **Vistas placeholder** (§8.5) + `PantallaPlaceholder` documentado.
+6. **Offline + instalable** (§7c): cola, sincronizador, manifest + SW mínimo.
+7. **RBAC de vistas móviles** (§8.1-2) — la nav lee `user.vistas` y las
+   pantallas se filtran solas.
+8. **Verificación final de la base:** smoke por rol con los 8 usuarios demo
+   (número+PIN), instalable desde el navegador, offline captura y sincroniza
+   al volver señal, `tsc`+eslint+tests verdes.
+
+### 8.7 Notas de la base
+
+- El desktop NO cambia en esta base (su login email+password sigue) — solo el
+  alta de Trabajadores gana el número/PIN/WhatsApp.
+- Los 8 usuarios demo del seed ganan su `numero_empleado` (ADM-01 admin,
+  RES-014... a designar) — el seed idempotente los renumera.
+- La mesa de ayuda "no tiene vista aparte": sus acciones (desbloquear,
+  reiniciar) viven en el escritorio (Usuarios/Trabajadores) con permisos de
+  sistema.
+- §3 de este documento queda superseded por §7c (offline ya es alcance de la
+  base) — no se borra por trazabilidad, pero se lee con esa nota.
