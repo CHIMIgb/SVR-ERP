@@ -108,11 +108,30 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isInitialized, isAuthenticated, pathname, user, router]);
 
+  // Captura temprana del evento de instalación: se dispara UNA vez al
+  // cargar la página, ANTES de la hidratación — el script inline debe vivir
+  // en el HTML que el SERVER entrega (por eso se renderiza en AMBAS ramas
+  // del layout: el return temprano de carga excluyéndolo hizo perder el
+  // evento — ese era el bug del botón «Instalar»). Registra también el SW
+  // al parsear para que Chrome pueda disparar el evento cuanto antes.
+  const scriptCaptura = (
+    <script
+      dangerouslySetInnerHTML={{
+        __html:
+          "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__svrPrompt=e;});" +
+          "if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}",
+      }}
+    />
+  );
+
   if (!isInitialized || !isAuthenticated) {
     return (
-      <main className="min-h-screen bg-canvas flex items-center justify-center p-6">
-        <LoadingState size="lg" />
-      </main>
+      <>
+        {scriptCaptura}
+        <main className="min-h-screen bg-canvas flex items-center justify-center p-6">
+          <LoadingState size="lg" />
+        </main>
+      </>
     );
   }
 
@@ -125,15 +144,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
-      {/* Captura temprana del evento de instalación: se dispara UNA vez al
-          cargar la página, ANTES de la hidratación — el script inline (corre
-          al parsear el HTML) lo guarda para el botón del modal */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html:
-            "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__svrPrompt=e;});",
-        }}
-      />
+      {scriptCaptura}
       {/* Header del shell — mismo look que el Topbar del escritorio */}
       <header className="bg-surface border-b border-ui-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
         <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shrink-0 text-sm font-black text-white">
