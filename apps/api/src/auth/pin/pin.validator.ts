@@ -15,9 +15,9 @@ export function normalizarPin(pin: string): string {
   return (pin ?? '').trim().toUpperCase();
 }
 
-/** ¿Contiene 3+ caracteres consecutivos idénticos? (ej. AAA, 7777) */
+/** ¿Algún carácter repetido en todo el PIN? (estricta — decisión del cliente) */
 function tieneRepeticiones(pin: string): boolean {
-  return /(.)\1{2,}/.test(pin);
+  return new Set(pin).size !== pin.length;
 }
 
 /** ¿Contiene secuencias ascendentes o descendentes de 3+? (ABC, 123, CBA, 987) */
@@ -89,7 +89,7 @@ export async function validarPinNuevo(
 
 /**
  * Genera un PIN TEMPORAL de 24 horas: sin caracteres confusos (0/O, 1/l/I),
- * con al menos 1 letra y 1 número, sin repeticiones de 3+ ni secuencias.
+ * con al menos 1 letra y 1 número, SIN caracteres repetidos y sin secuencias.
  */
 export function generarPinTemporal(): string {
   const alfabeto = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sin 0,O,1,l,I
@@ -103,6 +103,7 @@ export function generarPinTemporal(): string {
     if (tieneLetra && tieneNumero && !tieneRepeticiones(pin) && !tieneSecuencias(pin)) {
       return pin;
     }
+    // (tieneRepeticiones ya es estricta: Set(pin).size !== pin.length)
   }
 }
 

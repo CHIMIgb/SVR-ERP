@@ -30,9 +30,10 @@ describe('validarPinNuevo (reglas §8.3)', () => {
     expect((await validarPinNuevo('12345678', NUM, [])).errorCode).toBe('PIN_DEBIL');
   });
 
-  it('rechaza 3+ repetidos (PIN_SECUENCIA)', async () => {
+  it('rechaza CUALQUIER caracter repetido (estricta, PIN_SECUENCIA)', async () => {
     expect((await validarPinNuevo('HV4AAAK9', NUM, [])).errorCode).toBe('PIN_SECUENCIA');
     expect((await validarPinNuevo('HV7777R7', NUM, [])).errorCode).toBe('PIN_SECUENCIA');
+    expect((await validarPinNuevo('HV4K5R7H', NUM, [])).errorCode).toBe('PIN_SECUENCIA'); // H repetida no consecutiva
   });
 
   it('rechaza secuencias asc/desc de 3+ (PIN_SECUENCIA)', async () => {

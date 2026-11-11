@@ -551,7 +551,8 @@ Un PIN es válido si:
 1. 8 caracteres de [A-Za-z0-9], **case-insensitive** (se normaliza a mayúsculas
    antes de evaluar y hashear).
 2. Al menos 1 letra y 1 número.
-3. Sin 3+ caracteres consecutivos repetidos (ej. `AAA`, `7777`).
+3. **SIN caracteres repetidos** en todo el PIN (estricta — decisión del
+   cliente 2026-11-11; ni consecutivos ni separados: `HV4K5R7H` se rechaza).
 4. Sin secuencias de 3+ (asc/desc en letras o números: `ABC`, `123`, `CBA`, `987`).
 5. No contiene su número de empleado (ni el prefijo+consecutivo con o sin guion).
 6. Distinto de los últimos 3 (`pin_historial`).
@@ -638,6 +639,18 @@ Conclusiones:
    (role_vistas por NOT EXISTS) en la migración de la base (§8.1-2).
 
 ### 8.7 Notas de la base
+
+**Respuestas del cliente (2026-11-11) a §6.9:**
+- **Caducidad del PIN del Administrador: los mismos 30 días** — SOLO en la
+  PWA (la app móvil de admin abre reportes/finanzas/módulos, misma superficie
+  de riesgo que cualquier PIN; el escritorio con email+password queda
+  intocado). Uniformidad = mismo aviso a los 25 días y misma regla de
+  bloqueo, sin excepciones por rol en el código.
+- **Margen sin internet con PIN vencido: 3-4 días** (constante
+  `PIN_GRACE_OFFLINE_DIAS` en el front cuando llegue la fase de captura
+  offline de asistencia).
+- **Regla de repeticiones: ESTRICTA** — ningún carácter repetido en todo el
+  PIN (`new Set(pin).size === 8`), implementado en `validarPinNuevo`.
 
 - El desktop NO cambia en esta base (su login email+password sigue) — solo el
   alta de Trabajadores gana el número/PIN/WhatsApp.
