@@ -92,15 +92,23 @@ function addRefreshSubscriber(callback: (token: string) => void): void {
 
 type EstadoRefresh = 'ok' | 'invalid' | 'red';
 
-async function refreshAccessToken(): Promise<EstadoRefresh> {
+/** Si la API no responde en 8s la tratamos como sin conexión (no sesión muerta). */
+const REFRESH_TIMEOUT_MS = 8000;
+
+let refreshEnCurso: Promise<EstadoRefresh> | null = null;
+
+async function ejecutarRefresh(): Promise<EstadoRefresh> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return 'invalid';
 
+  const control = new AbortController();
+  const temporizador = setTimeout(() => control.abort(), REFRESH_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken } satisfies RefreshCredentials),
+      signal: control.signal,
     });
 
     if (!response.ok) {
@@ -122,10 +130,24 @@ async function refreshAccessToken(): Promise<EstadoRefresh> {
     setTokens(result.data.accessToken, result.data.refreshToken);
     return 'ok';
   } catch {
-    // Error de red (API inalcanzable / offline): NO borrar la sesión —
-    // el refresh se reintentará al volver la señal (petición 401 → interceptor).
+    // Timeout del AbortController o error de red (API inalcanzable / offline):
+    // NO borrar la sesión — el refresh se reintentará al volver la señal.
     return 'red';
+  } finally {
+    clearTimeout(temporizador);
   }
+}
+
+function refreshAccessToken(): Promise<EstadoRefresh> {
+  // UN solo refresh en vuelo: StrictMode (dev) monta el provider dos veces y
+  // el interceptor puede recibir varios 401 a la vez — el refresh token es de
+  // un solo uso, así que los concurrentes COMPARTEN la misma promesa.
+  if (!refreshEnCurso) {
+    refreshEnCurso = ejecutarRefresh().finally(() => {
+      refreshEnCurso = null;
+    });
+  }
+  return refreshEnCurso;
 }
 
 /**
