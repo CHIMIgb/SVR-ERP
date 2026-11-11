@@ -1,4 +1,4 @@
-import { IsString, Matches, MinLength, MaxLength, IsUUID } from 'class-validator';
+import { IsString, Matches, MinLength, MaxLength } from 'class-validator';
 
 /** POST /auth/login-pin — número de empleado + PIN (spec §6.4-6.5). */
 export class LoginPinDto {
@@ -29,12 +29,16 @@ export class PinCambioDto {
 
 /** POST /auth/pin/reinicio — mesa de ayuda reinicia con temporal de 24 h. */
 export class PinReinicioDto {
-  @IsUUID()
+  @Matches(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, {
+    message: 'userId debe ser un UUID',
+  })
   userId!: string;
 }
 
 /** POST /auth/pin/desbloqueo — mesa de ayuda desbloquea la cuenta. */
 export class PinDesbloqueoDto {
-  @IsUUID()
+  @Matches(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, {
+    message: 'userId debe ser un UUID',
+  })
   userId!: string;
 }
