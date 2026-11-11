@@ -53,7 +53,9 @@ export default function LoginPage() {
   const validate = (): { email?: string; password?: string; numero?: string; pin?: string } => {
     if (modo === "pin") {
       const errors: { numero?: string; pin?: string } = {};
-      if (!/^(ADM|RES|TEC|COB|TRA)-\d{1,6}$/i.test(numeroEmpleado.trim())) {
+      if (numeroEmpleado.trim().length > 8) {
+        errors.numero = "Máximo 8 caracteres (ej. TRA-0142)";
+      } else if (!/^(ADM|RES|TEC|COB|TRA)-\d{1,6}$/i.test(numeroEmpleado.trim())) {
         errors.numero = "Formato: PREF-NNN (ej. TRA-0142)";
       }
       if (pin.length !== 8) {
@@ -228,6 +230,7 @@ export default function LoginPage() {
                       type="text"
                       autoComplete="username"
                       inputMode="text"
+                      maxLength={8}
                       placeholder="TRA-0142"
                       value={numeroEmpleado}
                       onChange={(e) => {
