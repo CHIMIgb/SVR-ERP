@@ -87,7 +87,7 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
             onKeyDown={(e) => manejarTecla(e, i)}
             className={cn(
               "flex-1 min-w-0 h-12 sm:h-14 aspect-[4/5] text-center text-xl font-black text-white",
-              "bg-white/5 border rounded-xl focus:outline-none transition-all",
+              "bg-white/5 border rounded-md focus:outline-none transition-all",
               "disabled:opacity-60",
               error
                 ? "border-red-500/60 focus:border-red-400"

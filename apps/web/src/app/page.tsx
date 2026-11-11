@@ -167,8 +167,8 @@ export default function LoginPage() {
                       disabled={isLoading}
                       aria-invalid={!!fieldErrors.email}
                       className={fieldErrors.email
-                        ? "w-full bg-white/5 border border-red-500/60 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
-                        : "w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
+                        ? "w-full bg-white/5 border border-red-500/60 rounded-md py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
+                        : "w-full bg-white/5 border border-white/10 rounded-md py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
                     />
                   </div>
                   {fieldErrors.email && (
@@ -192,8 +192,8 @@ export default function LoginPage() {
                       disabled={isLoading}
                       aria-invalid={!!fieldErrors.password}
                       className={fieldErrors.password
-                        ? "w-full bg-white/5 border border-red-500/60 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
-                        : "w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
+                        ? "w-full bg-white/5 border border-red-500/60 rounded-md py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
+                        : "w-full bg-white/5 border border-white/10 rounded-md py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
                     />
                   </div>
                   {fieldErrors.password && (
@@ -237,8 +237,8 @@ export default function LoginPage() {
                       disabled={isLoading}
                       aria-invalid={!!fieldErrors.numero}
                       className={fieldErrors.numero
-                        ? "w-full bg-white/5 border border-red-500/60 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
-                        : "w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
+                        ? "w-full bg-white/5 border border-red-500/60 rounded-md py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400 focus:bg-white/10 transition-all disabled:opacity-60"
+                        : "w-full bg-white/5 border border-white/10 rounded-md py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:bg-white/10 transition-all disabled:opacity-60"}
                     />
                   </div>
                   {fieldErrors.numero && (
