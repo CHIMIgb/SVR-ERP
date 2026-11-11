@@ -525,6 +525,41 @@ el alta de siempre se AMPLÍA con la identidad móvil:
 (`TRABAJADOR_CREADO` ya existe; acciones de PIN: `PIN_REINICIADO`/
 `CUENTA_DESBLOQUEADA` — ya en el enum desde el paso 2 de la PWA).
 
+### P15 — Depurar la tabla `obras`: todo se consolida en `proyectos` (decisión del cliente 2026-11-11)
+
+**Decisión del cliente:** la tabla `obras` **NO se usará** — el sistema
+trabajará únicamente con la tabla `proyectos`. Las dos tablas se solapan
+(obra = proyecto con otro nombre) y mantener ambas duplica datos y lógica.
+
+**Inventario de lo que toca `obras` hoy (a migrar/reencaminar a
+`proyectos`):**
+- **Esquema:** tabla `obras` + FK `obra_id` en `reportes_campo`,
+  `bitacoras_operacion` (y relaciones en `proyectos`/users creadas por
+  autogeneración).
+- **API:** endpoints/catálogo `/catalogos/obras`, el uso de `obra_id`/
+  `obra_texto` en **asistencia** (radio de obra por marcador), **bitácora**,
+  **bitacoras-renta**, **nomina** (horas por obra) y **reportes-campo**
+  (`obra_texto` es NOT NULL en reportes — migrar a texto libre o a
+  `proyecto_id`).
+- **Web:** vista/catálogo de obras (el catálogo de selects del escritorio),
+  la vista PWA `/m/obras` y `/m/flota-obras` ya leen PROYECTOS (sin
+  cambio).
+
+**Plan de migración (cuando se ejecute):**
+1. Mapear cada fila de `obras` a su equivalente en `proyectos` (o crear los
+   faltantes) — la FK `reportes_campo.obra_id` se re-apunta a
+   `proyectos.id`.
+2. Migrar las columnas `obra_id`/`obra_texto` de los otros módulos a
+   `proyecto_id` (`ON DELETE SET NULL`), y `obra_texto` (NOT NULL) queda
+   como texto histórico o columna derivada del proyecto — decisión al
+   ejecutar.
+3. Soltar FKs/índices/columnas y al final `DROP TABLE obras` + limpiar el
+   catálogo `/catalogos/obras` y sus usos en el front.
+4. Los catálogos de selects (`/catalogos/proyectos` ya existe) alimentan
+   todos los formularios.
+**⚠️ Esto es una migración destructiva** — requiere dump de respaldo y
+revisión de cada módulo afectado; NO se ejecuta en la base de la PWA.
+
 ---
 
 ### P8 — Metas de progreso del proyecto con fechas límite (idea del cliente)
