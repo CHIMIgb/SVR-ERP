@@ -5,9 +5,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Input de PIN de 8 casillas (login móvil y cambio de PIN — plan §7b/§8.4).
- * NUNCA se ve un carácter: las casillas permanecen vacías (solo el foco las
- * marca) y el caracter se captura con el evento de teclado (e.key) — el valor
- * real vive solo en el estado del formulario (spec §6.7: nadie ve PINs).
+ * Al escribir solo se ve un PUNTO BLANCO por dígito (jamás el caracter real:
+ * la casilla queda vacía y el caracter se captura con e.key — spec §6.7).
  * El valor real es SIEMPRE 8 caracteres sin guion; el guion después del 4º
  * dígito es solo visual (como en TRA-0142) y las casillas son fluidas:
  * nunca desbordan su contenedor.
@@ -46,11 +45,11 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
       aria-label={`${ariaLabel} (se oculta al escribir)`}
     >
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="contents">
+        <div key={i} className="relative flex-1 min-w-0">
           {i === 4 && (
             <span
               aria-hidden
-              className="text-xl font-black text-slate-500 select-none shrink-0 px-0.5"
+              className="absolute -right-1 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 text-xl font-black text-slate-500 select-none"
             >
               -
             </span>
@@ -89,9 +88,8 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
                 .toUpperCase();
               if (!texto) return;
               // pega desde esta casilla hasta llenar las 8
-              const chars = texto.split("");
               let idx = i;
-              for (const c of chars) {
+              for (const c of texto.split("")) {
                 if (idx >= 8) break;
                 setChar(idx, c);
                 idx++;
@@ -101,16 +99,24 @@ export function PinInput({ value, onChange, disabled, error, ariaLabel = "PIN" }
             disabled={disabled}
             aria-label={`${ariaLabel} posición ${i + 1}`}
             className={cn(
-              "flex-1 min-w-0 h-12 sm:h-14 aspect-[4/5] text-center text-xl font-black",
+              "w-full h-12 sm:h-14 aspect-[4/5] text-center text-xl font-black",
               "bg-white/5 border rounded-md focus:outline-none transition-all",
               "caret-transparent select-none",
               "disabled:opacity-60",
-              value[i] && "border-primary/50",
               error
                 ? "border-red-500/60 focus:border-red-400"
                 : "border-white/10 focus:border-primary/50 focus:bg-white/10",
             )}
           />
+          {/* El punto blanco: lo ÚNICO que se ve del dígito capturado */}
+          {value[i] && (
+            <span
+              aria-hidden
+              className="absolute inset-0 flex items-center justify-center pointer-events-none text-white text-2xl font-black"
+            >
+              •
+            </span>
+          )}
         </div>
       ))}
     </div>
