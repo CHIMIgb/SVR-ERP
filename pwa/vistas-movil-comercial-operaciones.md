@@ -661,3 +661,55 @@ Conclusiones:
   sistema.
 - §3 de este documento queda superseded por §7c (offline ya es alcance de la
   base) — no se borra por trazabilidad, pero se lee con esa nota.
+
+### 8.9 Auditoría de seguridad y casos especiales (spec §6.7 y §6.8) — verificado 2026-11-11
+
+**§6.7 Seguridad:**
+
+| Regla del spec | Estado | Evidencia |
+|---|---|---|
+| **Nadie ve PINs** — el sistema nunca muestra un PIN existente | ✅ | No existe ningún GET que devuelva `pin_hash`/PIN. Única excepción por diseño: el temporal NUEVO del reinicio se entrega UNA VEZ al ejecutante (equivalente a la entrega del alta por WhatsApp — es un PIN que aún no existía, no uno "existente") |
+| **Bloqueo: 5 intentos fallidos + mesa de ayuda desbloquea** | ✅ | `login-pin` bloquea la cuenta a los 5 (`intentos_pin`/`cuenta_bloqueada_en`) — integration real probada; `POST /auth/pin/desbloqueo` con permiso `sistema.usuarios.editar` |
+| **Reautenticar: cambiar PIN pide el actual** | ✅ | `pin/cambio` exige `pinActual` verificado con bcrypt |
+| **Cierre de sesiones: el administrativo cierra TODAS las sesiones de un trabajador** | ⚠️ PARCIAL — el reinicio de PIN ya cierra todas, pero falta la acción **standalone** (cerrar sesiones sin cambiar PIN) + su botón en Trabajadores del escritorio | Pendiente en §8.9-pendientes |
+| **Reautenticar también para cerrar otras sesiones (propio)** | ⚠️ PARCIAL — cerrar las OTRAS sesiones existe dentro del cambio de PIN; falta la acción propia independiente | Pendiente en §8.9-pendientes |
+| **Bajas: al desactivar al usuario, deja de entrar** | ✅ | `JwtStrategy` rechaza **en cada request** a usuarios con `activo=false` o `eliminado_en` (verificado en el código) + ambos logins lo rechazan |
+| **Cifrado argon2 o bcrypt** | ✅ | bcryptjs cost 12 (decisión del cliente 2026-11-11 — cero dependencia nativa). **Ruta de actualización a argon2 documentada:** lazy-rehash por login o forzar cambio de PIN (los PINs rotan a 30 días — más fácil que con passwords) |
+
+**Nota pequeña encontrada:** una cuenta BLOQUEADA por PIN puede seguir usando
+su access token vigente (máx 15 min) hasta que expire — el login-pin ya no le
+da tokens nuevos. Si se quiere cierre instantáneo, `JwtStrategy` puede
+verificar también `cuenta_bloqueada_en` (una consulta más por request).
+Pendiente menor, decisión al construir la mesa de ayuda.
+
+**§6.8 Casos especiales:**
+
+| Caso | Estado |
+|---|---|
+| **Olvidó el PIN:** reinicio con clic + temporal 24 h → vuelve al paso 3 (primer ingreso obliga a crear PIN) | ✅ implementado (reinicio + guard de `requiereCambio`) |
+| **Cambio de teléfono:** número + PIN desde cualquier dispositivo | ✅ el login-pin es independiente del dispositivo (sesiones por dispositivo en `sessions`) |
+| **Teléfono compartido:** cada quien cierra SU sesión | ✅ botón de cerrar sesión en el shell móvil + escritorio (el listado "mis sesiones" es mejoramiento posterior) |
+| **Residente: alta liga a cada trabajador con su obra y su encargado** | ⚠️ la BD ya lo soporta (`users.jefe_user_id` + el scope lo usa) — el FORMULARIO del alta (escritorio) debe pedir encargado/obra: pendiente junto con el alta ampliada |
+
+**§6.9 Pendiente de decidir — cerrado 2026-11-11:**
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿30 días aplica igual al administrador? | **SÍ — mismos 30 días, SOLO en la PWA** (el escritorio email+password queda intocado). Uniformidad sin excepciones por rol |
+| ¿Margen sin internet con PIN vencido? | **3-4 días** (constante `PIN_GRACE_OFFLINE_DIAS` — se activa con la fase de captura offline de asistencia) |
+| ¿Qué datos se guardan en el SVR? | **Ya existen todos:** rol (`users_roles`), fecha del último cambio de PIN (`pin_cambiado_en`), estado de sesión (`sessions.activa/revocado_en/motivo_revocado`) y número de intentos (`intentos_pin`) |
+
+**§8.10 Pendientes de usuario/seguridad para construir DESPUÉS** (junto con el
+alta ampliada de Trabajadores, que ya está en §8.2):
+
+1. **Alta ampliada** (§8.2): número + PIN temporal 24 h + botón `wa.me` + en
+   el formulario pedir **encargado y obra** del trabajador (caso Residente).
+2. **Cierre masivo de sesiones standalone** (administrativo): endpoint + botón
+   en Trabajadores del escritorio (sin cambiar PIN).
+3. **"Mis sesiones" propio:** listar/cerrar otras sesiones desde la PWA
+   (opcional; el cambio de PIN ya las cierra).
+4. **Bloqueo instantáneo opcional:** verificar `cuenta_bloqueada_en` en
+   `JwtStrategy` (cierra el ≤15 min de token vigente tras bloqueo).
+5. Upgrade futuro de hash: **bcryptjs → argon2** vía lazy-rehash o forzando
+   el cambio de PIN (los PINs rotan a 30 días — trivial comparado con
+   passwords).
