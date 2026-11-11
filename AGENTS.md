@@ -97,6 +97,25 @@ src/
 
 `src/lib/data.ts` is the single source of truth for all types and mock data. **28 files import from it.** Treat it carefully — any change can cascade re-compilations. Types are organized by domain but live in this one file.
 
+
+## PWA móvil (rutas `/m/*` — grupo de rutas `(pwa)`)
+
+La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/m/*` — **NUNCA crear `apps/pwa` aparte ni duplicar sesión/apiClient** (ver plan completo: `docs-planes/vistas-movil-comercial-operaciones.md`, §5b y §6 — la especificación funcional definitiva del cliente: asistencia universal con foto+GPS, login por número de empleado + PIN, offline-first).
+
+Reglas duras al construir vistas móviles (aplican igual que las de escritorio, con estos matices):
+
+1. **Diseño "acción primero"** (spec del cliente): tarjetas grandes con 2-3 datos y UNA acción principal por pantalla. PROHIBIDO apretar tablas del desktop en el teléfono — cada módulo móvil es una vista nueva, no un responsive.
+2. **REUSA el kit existente primero** (`src/components/ui/*`: Input, Modal/FormModal, Badge, Skeleton, Button, StatsCard, EmptyState, Pagination…). Solo crea componentes NUEVOS en `src/components/pwa/*` cuando no exista equivalente — y **documéntalos en `COMPONENTS.md`** (props, import/uso, cuándo usar / cuándo no) igual que los del kit. No negociable.
+3. **Navegación inferior por rol** construida desde `user.vistas` (`lib/pwa/rol-nav.ts`) — PROHIBIDO hardcodear el menú por rol dentro de cada pantalla.
+4. **Objetivos táctiles ≥ 44px de alto** en botones/acciones (dedos con guantes) y respeto de safe-areas (`env(safe-area-inset-*)`) en header/nav inferior.
+5. Sin CSS inline (regla global), tokens `@theme` de `globals.css`, clases de componente en `*.styles.ts` — las mismas reglas de estilos del desktop aplican.
+6. Texto 100% español es-MX; errores de API con `mensajeErrorApi` (helper único).
+7. **Offline-first es FASE propia** (cola local + envío al volver señal, spec §6.2): las pantallas no inventan almacenamiento local ad hoc — se usa el patrón acordado del plan cuando esa fase arranque.
+8. El detector/interruptor móvil↔escritorio vive en `lib/pwa/dispositivo.ts` (umbral `<768px → /m/*`, interruptor recordado en `localStorage`) — las pantallas NO implementan detección propia.
+9. La asistencia es **universal** (todos los roles marcan la propia con foto+GPS; solo Residentes ven además la de su equipo) — la migración de accesos de la PWA la agrega a todos los roles de trabajadores.
+10. `npx tsc --noEmit` + eslint después de cada cambio (mismo gate que desktop). Tests: al existir infra frontend, cada pantalla nueva lleva tests; mientras tanto, smoke manual documentado en el registro del commit.
+11. Login móvil por **número de empleado + PIN** (spec §6.4-6.5): es FASE de backend propia — las pantallas de sesión móvil no se construyen sobre email+password ni duplican el AuthProvider.
+
 ## Known Gotchas
 
 - **Turbopack panics** occur on navigation between pages. This is a known issue with the current architecture (monolithic data file + all-client components). Do not attempt to "fix" Turbopack — the architecture needs refactoring.

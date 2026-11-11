@@ -272,3 +272,104 @@ en la pratica.
 
 **Requisito no negociable:** HTTPS (la cámara y el GPS del teléfono no funcionan
 sin él). Offline (guía nueva-info) queda como fase siguiente.
+
+## 6. Especificación funcional del móvil (definitiva — nueva-info, transcrita 2026-11-11)
+
+Documento de referencia del cliente. ESTA sección manda sobre cualquier
+interpretación de las capturas de Figma (§0-§1). Sin app de tiendas: PWA
+instalable con HTTPS.
+
+### 6.1 Objetivo
+Los trabajadores de SVR registran su asistencia (con foto obligatoria) y
+reportan problemas desde el teléfono. Cada persona ve solo la vista de su rol,
+y todo funciona también sin internet.
+
+### 6.2 Tecnología
+- PWA (se abre desde el navegador y se instala), con HTTPS.
+- Sin internet: lo registrado se guarda en el teléfono y se envía solo al
+  volver la señal. En Android sale en segundo plano. En iPhone se envía al
+  abrir la app otra vez.
+
+### 6.3 Roles y vistas (coincide con §1 — definitiva)
+| Rol | Qué ve |
+|---|---|
+| Trabajador (operadores y choferes) | Inicio, Asistencia, Reportar problema, Contactos, Perfil con documentos |
+| Residente | Asistencia propia y de su equipo, reportes de sus trabajadores para presionar, obras con ubicación, contactos |
+| Técnico (mecánico, soldador, mantenimiento, diésel) | Asistencia, reportes de su torre de solución, flota y obras con ubicación, inventario, y diésel para el repartidor |
+| Cobrador de criba | Asistencia, punto de venta, cobro y corte del día |
+| Administrador | El SVR completo en el teléfono: dashboard, reportes, finanzas y módulos |
+
+La mesa de ayuda no tiene vista aparte, porque trabaja en el SVR.
+
+### 6.4 Usuario — número de empleado
+- Formato con prefijo por rol: ADM-01, RES-014, TEC-007, COB-003, TRA-0142.
+- Un solo número por persona. Si cambia de puesto, solo cambia el rol.
+- El rol real lo valida siempre el servidor, no el prefijo.
+
+### 6.5 PIN
+- Formato: 8 caracteres entre letras y números (ej. HV4K5R7M), con al menos
+  1 letra y 1 número, sin distinguir mayúsculas de minúsculas.
+- Reglas: sin repeticiones ni secuencias, sin el número de empleado, y
+  distinto de los últimos 3.
+- Temporal: lo genera el sistema, sin caracteres que se confunden (0/O, 1/l/I),
+  y vale 24 horas.
+- Caducidad: el PIN se cambia cada 30 días, para todos los roles.
+
+### 6.6 Ciclo completo
+1. **Alta:** el administrativo registra al trabajador en Trabajadores, elige
+   el rol y el sistema crea el usuario con un PIN temporal.
+2. **Entrega:** el botón "Enviar por WhatsApp" abre WhatsApp con el mensaje
+   escrito (usuario, PIN temporal y enlace), sin API y sin costo.
+3. **Primer ingreso:** abre el enlace, instala la PWA y entra con el temporal.
+   La app lo obliga a crear su propio PIN.
+4. **Uso diario:** la sesión queda guardada en el teléfono. Registra
+   asistencia y reportes aunque no haya señal.
+5. **Aviso:** a los 25 días la app avisa que el PIN vence (sin mostrar PIN).
+6. **Cambio:** escribe su PIN actual y luego el nuevo dos veces. Se cierran
+   sus otras sesiones y vuelven a contar 30 días.
+7. **Si vence:** con internet, la app no lo deja continuar hasta cambiarlo.
+   Sin internet tiene 3-4 días de margen para seguir registrando asistencia.
+
+### 6.7 Seguridad
+- Nadie ve PINs: el sistema nunca muestra un PIN existente; cada quien elige
+  el suyo.
+- Bloqueo: 5 intentos fallidos bloquean la cuenta; la desbloquea la mesa de
+  ayuda.
+- Reautenticar: cambiar PIN o cerrar otras sesiones pide el PIN actual.
+- Cierre de sesiones: el administrativo puede cerrar todas las sesiones de
+  un trabajador si sospecha algo.
+- Bajas: al desactivar al usuario, deja de entrar.
+- Cifrado: los PIN se guardan cifrados (argon2 o bcrypt).
+
+### 6.8 Casos especiales
+- Olvidó el PIN: el administrativo o la mesa de ayuda lo reinicia con un
+  clic, con un temporal de 24 horas (vuelve al paso 3 del ciclo).
+- Cambio de teléfono: inicia sesión con su número y PIN, sin tocar el alta.
+- Teléfono compartido: se evita; si pasa, cada quien cierra su sesión y
+  entra con la suya.
+- Residente: solo ve sus obras y sus trabajadores — el alta liga cada
+  trabajador con su obra y su encargado.
+
+### 6.9 Pendiente de decidir (preguntas al cliente)
+1. ¿El plazo de 30 días aplica igual al administrador, o más corto?
+2. ¿El margen de días sin internet: 3 o 4?
+3. Los datos que se guardan en el SVR sobre PIN/sesión: rol, fecha del
+   último cambio de PIN, estado de sesión y número de intentos (definir
+   columnas exactas).
+
+### 6.10 Implicaciones de backend que esta especificación introduce
+Nada de esto existe hoy (el login del escritorio sigue siendo email+password):
+1. `users.numero_empleado` (prefijo por rol + consecutivo) — el alta en
+   Trabajadores lo genera.
+2. **Login por número + PIN** (endpoint nuevo o variante de `/auth/login`)
+   con PIN temporal vs propio y su expiración de 24 h.
+3. Campos de PIN: `pin_hash` (argon2id preferido — bcryptjs existe pero
+   argon2 es el estándar del spec), `pin_temporal_hasta`, `pin_cambiado_en`,
+   `pin_historial` (últimos 3).
+4. Sesiones ya existen (tabla `sessions` + `refresh_tokens` con
+   `revocado_en`/`motivo_revocado`) — el cierre masivo por trabajador y el
+   cierre de otras sesiones usan la misma maquinaria.
+5. Bloqueo por intentos: `bloqueoService` ya existe (5 intentos) —
+   reutilizar; falta el desbloqueo por mesa de ayuda.
+6. Entrega por WhatsApp: sin API — link `wa.me` con mensaje prellenado desde
+   el alta.
