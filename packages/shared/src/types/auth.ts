@@ -17,6 +17,8 @@ export interface VistaAuth {
   ruta: string;
   icono?: string | null;
   orden: number;
+  /** false = vista exclusiva de la PWA (no aparece en el sidebar del escritorio). */
+  es_menu?: boolean;
   puedeVer: boolean;
   puedeCrear: boolean;
   puedeEditar: boolean;
