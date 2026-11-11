@@ -244,7 +244,7 @@ sus proveedores de sesión.
 
 
 **Orden de construcción sugerido:**
-1. **Detector + interruptor (primer entrega):** al abrir la app se mide el ancho
+1. **Detector + interruptor + infra offline (primer entrega):** al abrir la app se mide el ancho
    de pantalla (`matchMedia`, no la marca del dispositivo): **< 768px → cara PWA
    (`/m/*`)**, **≥ 768px → dashboard de escritorio**; con un interruptor
    **"Ver versión de escritorio / versión móvil"** en la PWA que se recuerda en
@@ -255,8 +255,7 @@ sus proveedores de sesión.
    (las 3 variantes de rol — es lo que ya vive).
 3. POS del cobrador y Corte del día (existen).
 4. Flota y obras, Inventario y Diésel del repartidor (operaciones).
-5. Asistencia (foto+GPS+zona) como fase aparte de RRHH — es la pantalla más
-   repetida del diseño pero pertenece a otro módulo.
+5. Asistencia (foto+GPS+zona) — pantalla más repetida del diseño; su módulo es RRHH, y desde su primer pantalla usa la infraestructura offline del §7c.
 6. Contactos, Perfil-documentación, Obras-mapa y dashboards Inicio.
 
 **Cómo inicia cada quien sin esa unidad de especial:** el link de WhatsApp /
@@ -271,7 +270,7 @@ Redirección con micro-specific de miliseconds a la pantalla de login — invisi
 en la pratica.
 
 **Requisito no negociable:** HTTPS (la cámara y el GPS del teléfono no funcionan
-sin él). Offline (guía nueva-info) queda como fase siguiente.
+sin él). Offline NO es fase posterior: la infraestructura (cola + sincronizador + manifest) se coloca desde el paso 1 — §7c.
 
 ## 6. Especificación funcional del móvil (definitiva — nueva-info, transcrita 2026-11-11)
 
@@ -373,3 +372,130 @@ Nada de esto existe hoy (el login del escritorio sigue siendo email+password):
    reutilizar; falta el desbloqueo por mesa de ayuda.
 6. Entrega por WhatsApp: sin API — link `wa.me` con mensaje prellenado desde
    el alta.
+
+## 7a. Detector e interruptor de versión (técnicamente)
+
+**Principio:** cada layout se defiende a sí mismo — el shell móvil (`(pwa)`)
+redirige a escritorio si el ancho ≥ 768px y viceversa; el override manual del
+usuario manda sobre el ancho. Así ninguna pantalla implementa detección propia
+(regla 8 de AGENTS.md).
+
+**Dónde vive:** `lib/pwa/dispositivo.ts` — única fuente de verdad:
+
+```ts
+export type VistaForzada = 'movil' | 'escritorio' | null;
+const CLAVE = 'svr_vista';          // localStorage
+export function vistaForzada(): VistaForzada;          // lee override
+export function forzarVista(v: VistaForzada): void;    // escribe/borra override
+export function esAnchoMovil(): boolean;               // matchMedia('(max-width: 767px)')
+export function vistaEfectiva(): 'movil' | 'escritorio'; // override ?? ancho
+```
+
+**Flujo de decisión (en orden):**
+1. ¿Hay override en `localStorage` (`svr_vista`)? → ese manda.
+2. Si no: `matchMedia('(max-width: 767px)')` → `<768px` = móvil.
+3. Los layouts aplican la consecuencia:
+   - `(pwa)/layout.tsx`: si `vistaEfectiva() === 'escritorio'` → `router.replace('/')` (dashboard).
+   - `(dashboard)/layout.tsx`: si `vistaEfectiva() === 'movil'` → `router.replace('/m')`.
+4. El **interruptor** vive en el footer del shell móvil y en el sidebar del
+   escritorio ("Ver versión de escritorio / móvil") → `forzarVista(...)` +
+   `router.replace(...)` a la otra cara. Se recuerda hasta que el usuario lo
+   vuelva a tocar (`forzarVista(null)` = volver a automático).
+
+**Matices que evitan bugs clásicos:**
+- `matchMedia` se lee **en `useEffect`** (nunca en render de servidor): evita
+  mismatch de hidratación; mientras decide, la pantalla muestra su skeleton
+  (regla de loaders del repo).
+- El **login es UNA sola pantalla** (responsable, mínima): no hay login móvil
+  aparte. Tras autenticar, `AuthProvider` enruta según `vistaEfectiva()`:
+  móvil → `/m`, escritorio → `/dashboard`.
+- La redirección usa `router.replace` (sin dejar el dashboard en el historial
+  del back button del teléfono).
+- **Capacitor (fase siguiente):** dentro del APK el viewport siempre es el del
+  teléfono — el override del usuario se ignora (la app nativa es móvil).
+
+## 7b. Shell móvil y navegación por rol
+
+**`(pwa)/layout.tsx`** es `'use client'`, hereda los proveedores del layout
+raíz (AuthProvider, toasts) y:
+
+1. **Exige sesión:** sin `user` → redirect al login (una sola pantalla
+   compartida con desktop).
+2. **Header superior:** avatar con iniciales, nombre (de la persona) y rol;
+   la obra activa aparece cuando exista (llega con la fase de asistencia —
+   la obra del marcador del día). Botón de cerrar sesión accesible.
+3. **Nav inferior por rol** (`components/pwa/RoleNav` + `lib/pwa/rol-nav.ts`):
+   - Fuente: `user.vistas` (lo que ya entrega `/auth/profile`) filtrado por
+     `puedeVer` — **prohibido hardcodear el menú en cada pantalla**.
+   - Mapa de rutas móviles ↔ vistas (cada pestaña es una ruta real `/m/...`
+     — el back button del teléfono funciona siempre).
+   - Máximo 5 pestañas (el spec §6.3 no supera 5 en ningún rol); íconos
+     individuales de `lucide-react`; pestaña activa por `usePathname()`.
+   - Táctiles ≥ 44px, padding de safe-area (`env(safe-area-inset-bottom)`),
+     badge "N sin enviar" cuando la cola offline tenga pendientes (§7c).
+4. **Contenido:** `{children}` en un contenedor con scroll propio y
+   `scrollbar-none`.
+
+**Nav por rol (según spec §6.3):**
+
+| Rol | Pestañas (ruta → vista) |
+|---|---|
+| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` · `/m/perfil` |
+| Residente | `/m` Inicio · `/m/asistencia` (equipo) · `/m/reportes` · `/m/obras` · `/m/contactos` |
+| Técnico (×4) | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/flota-obras` · `/m/inventario` (+ `/m/diesel` solo Técnico-Diesel) |
+| Cobrador | `/m` Inicio · `/m/asistencia` · `/m/pos` · `/m/corte` |
+| Administrador | `/m` Inicio · `/m/reportes` · `/m/finanzas` · `/m/modulos` |
+
+El helper `rol-nav.ts` resuelve qué pestañas corresponden leyendo el rol y
+las vistas del usuario — si el RBAC quita una vista, la pestaña desaparece
+sin tocar código.
+
+## 7c. Offline desde el día 1 — captura local y sincronización
+
+**Principio (aclaración del cliente):** desde la primera pantalla de captura,
+la app funciona sin internet. Lo registrado se guarda en el teléfono y se
+envía solo al volver la señal (Android: segundo plano; iPhone: al abrir la
+app). No es una fase posterior: la infraestructura se coloca desde el paso 1.
+
+**Arquitectura (3 piezas en `lib/pwa/`):**
+
+1. **Cola local (outbox) — `offline.ts`:**
+   - IndexedDB (vía `idb`/Dexie) — NO localStorage (fotos grandes y
+     estructuras).
+   - Cada elemento: `{ id, entidad, payload, creado_en, intentos, estado }`
+     con `id = UUID v4 generado EN EL TELÉFONO`.
+   - **Idempotencia por diseño:** las tablas nuevas de la PWA usan esa UUID
+     como PK (los reportes ya son UUID; asistencia igual) → re-envíos
+     deduplicados por PK/índices únicos del servidor, nunca filas dobles.
+   - Las fotos van como blob WebP ya convertidas (el flujo actual de
+     `convertirAWebp` se reusa — la conversión es local, sin red).
+2. **Sincronizador — `sincronizador.ts`:**
+   - Corre: al abrir la app · al evento `online` · periódico en Android
+     (Background Sync API cuando el SO lo permita; iPhone: al abrir).
+   - Orden FIFO respetando dependencias (el reporte antes que su adjunto).
+   - Reintento con backoff; elemento en error se marca (no bloquea la cola).
+   - El badge "N sin enviar" del shell (§7b) cuenta los pendientes.
+3. **Pantallas conectadas a la cola:**
+   - Toda pantalla de CAPTURA escribe a la cola primero (asistencia, nuevo
+     reporte, comentario, adjunto) y muestra su estado local (enviado/
+     pendiente).
+   - Las acciones INTERACTIVAS no se encolan: aceptar, cerrar, asignar,
+     cerrar corte — piden conexión (son del servidor y cambian estado de
+     otros). Regla: **offline = capturar; online = coordinar**.
+   - El POS (dinero) NO se encola — ventas requiere conexión (decisión a
+     validar con el cliente; el spec §6.6 habla de asistencia y reportes).
+
+**Instalable desde el día 1:**
+- `public/manifest.json` (nombre, iconos 192/512, `display: standalone`,
+  `start_url: /m`, theme color) + service worker mínimo (caché del shell) —
+  la cola vive en IndexedDB, no en el SW.
+- Requisito firme: **HTTPS** (cámara/GPS/instalación).
+
+**Decisiones abiertas que este diseño arrastra (a §6.9):**
+- ¿La cola se conserva al cerrar sesión? (propuesta: SÍ — es del dispositivo;
+  con cierre masivo por admin los envíos fallarán hasta re-login y ahí se
+  re-envían).
+- Cuota/purga: elementos entregados se borran tras N días; el teléfono avisa
+  si la cola crece demasiado.
+- ¿Se encolan ventas del POS? (propuesta: NO — dinero requiere conexión;
+  validar con el cliente).

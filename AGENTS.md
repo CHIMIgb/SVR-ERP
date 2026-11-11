@@ -110,7 +110,7 @@ Reglas duras al construir vistas móviles (aplican igual que las de escritorio, 
 4. **Objetivos táctiles ≥ 44px de alto** en botones/acciones (dedos con guantes) y respeto de safe-areas (`env(safe-area-inset-*)`) en header/nav inferior.
 5. Sin CSS inline (regla global), tokens `@theme` de `globals.css`, clases de componente en `*.styles.ts` — las mismas reglas de estilos del desktop aplican.
 6. Texto 100% español es-MX; errores de API con `mensajeErrorApi` (helper único).
-7. **Offline-first es FASE propia** (cola local + envío al volver señal, spec §6.2): las pantallas no inventan almacenamiento local ad hoc — se usa el patrón acordado del plan cuando esa fase arranque.
+7. **Offline-first DESDE EL DÍA 1** (aclaración del cliente, spec §6.2/§7c): toda pantalla de CAPTURA escribe primero en la cola local (`lib/pwa/offline.ts`, IndexedDB, idempotente por UUID del teléfono) y el sincronizador (`lib/pwa/sincronizador.ts`) envía al volver señal; las acciones interactivas (aceptar/cerrar/cortes) requieren conexión. Las pantallas no inventan almacenamiento ad hoc — usan ese patrón.
 8. El detector/interruptor móvil↔escritorio vive en `lib/pwa/dispositivo.ts` (umbral `<768px → /m/*`, interruptor recordado en `localStorage`) — las pantallas NO implementan detección propia.
 9. La asistencia es **universal** (todos los roles marcan la propia con foto+GPS; solo Residentes ven además la de su equipo) — la migración de accesos de la PWA la agrega a todos los roles de trabajadores.
 10. `npx tsc --noEmit` + eslint después de cada cambio (mismo gate que desktop). Tests: al existir infra frontend, cada pantalla nueva lleva tests; mientras tanto, smoke manual documentado en el registro del commit.
