@@ -36,10 +36,10 @@ export default function PerfilMovilPage() {
   };
 
   return (
-    <section className="max-w-sm mx-auto flex flex-col gap-5">
+    <section className="min-h-full max-w-sm mx-auto flex flex-col gap-5">
       {/* Encabezado con la identidad */}
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shrink-0 text-xl font-black text-white">
+        <div className="w-16 h-16 bg-primary rounded-lg flex items-center justify-center shrink-0 text-xl font-black text-white">
           {iniciales}
         </div>
         <div className="min-w-0">
@@ -98,11 +98,11 @@ export default function PerfilMovilPage() {
         <ThemeToggle />
       </div>
 
-      {/* Cerrar sesión */}
+      {/* Cerrar sesión — siempre pegado abajo (mt-auto dentro de min-h-full) */}
       <button
         type="button"
         onClick={cerrarSesion}
-        className="w-full min-h-[44px] rounded-2xl bg-error/10 border border-error/30 text-error font-black text-sm flex items-center justify-center gap-2 hover:bg-error/20 active:bg-error/25 transition-colors"
+        className="mt-auto w-full min-h-[44px] rounded-2xl bg-error/10 border border-error/30 text-error font-black text-sm flex items-center justify-center gap-2 hover:bg-error/20 active:bg-error/25 transition-colors"
       >
         <LogOut className="w-5 h-5" />
         Cerrar sesión
