@@ -15,21 +15,6 @@ export default function PerfilMovilPage() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const nombreCompleto = [
-    user?.persona?.nombre,
-    user?.persona?.apellidoPaterno,
-    user?.persona?.apellidoMaterno,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const iniciales = (nombreCompleto || user?.email || "S")
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("");
-
   const cerrarSesion = async () => {
     await logout();
     router.replace("/");
@@ -37,21 +22,6 @@ export default function PerfilMovilPage() {
 
   return (
     <section className="min-h-full max-w-sm mx-auto flex flex-col gap-5">
-      {/* Encabezado con la identidad */}
-      <div className="flex items-center gap-4">
-        <div className="w-16 h-16 bg-primary rounded-lg flex items-center justify-center shrink-0 text-xl font-black text-white">
-          {iniciales}
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-xl font-black leading-tight text-ui-900 truncate">
-            {nombreCompleto || user?.email}
-          </h1>
-          <p className="text-xs text-ui-500 font-bold uppercase tracking-widest truncate">
-            {user?.roles?.[0]?.nombre ?? "Sin rol"}
-          </p>
-        </div>
-      </div>
-
       {/* Información del empleado */}
       <div className="bg-surface border border-ui-200 rounded-2xl p-5 flex flex-col gap-4">
         <h2 className="text-xs font-black uppercase tracking-widest text-ui-500">
