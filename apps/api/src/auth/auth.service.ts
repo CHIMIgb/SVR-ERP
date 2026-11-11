@@ -669,6 +669,7 @@ export class AuthService {
         ruta: string;
         icono: string | null;
         orden: number;
+        es_menu: boolean;
         puedeVer: boolean;
         puedeCrear: boolean;
         puedeEditar: boolean;
@@ -687,6 +688,7 @@ export class AuthService {
             ruta: rv.vistas.ruta,
             icono: rv.vistas.icono,
             orden: rv.vistas.orden,
+            es_menu: rv.vistas.es_menu,
             puedeVer: rv.puede_ver,
             puedeCrear: rv.puede_crear,
             puedeEditar: rv.puede_editar,
