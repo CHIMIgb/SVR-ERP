@@ -2,11 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { navDelRol } from "@/lib/pwa/rol-nav";
-import { forzarVista } from "@/lib/pwa/dispositivo";
 
 /**
  * Nav inferior por rol del shell móvil (plan §7b).
@@ -30,7 +28,8 @@ export function RoleNav({ pendientes = 0 }: { pendientes?: number }) {
       )}
       <ul className="flex items-stretch justify-around gap-1">
         {pestañas.map((p) => {
-          const activa = pathname === p.ruta || pathname.startsWith(p.ruta + "/");
+          // "/m" (Inicio) solo es activa en su ruta EXACTA — si no, se marca en todas
+  const activa = p.ruta === "/m" ? pathname === "/m" : pathname === p.ruta || pathname.startsWith(p.ruta + "/");
           const Icono = p.icono;
           return (
             <li key={p.ruta} className="flex-1 min-w-0">
@@ -52,18 +51,6 @@ export function RoleNav({ pendientes = 0 }: { pendientes?: number }) {
           );
         })}
       </ul>
-      {/* Interruptor manual (plan §7a): se recuerda en localStorage */}
-      <button
-        type="button"
-        onClick={() => {
-          forzarVista("escritorio");
-          window.location.href = "/dashboard";
-        }}
-        className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-colors"
-      >
-        <Monitor className="w-3 h-3" />
-        Ver versión de escritorio
-      </button>
     </nav>
   );
 }

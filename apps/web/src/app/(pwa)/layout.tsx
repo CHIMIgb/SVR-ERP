@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { Bell } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { authApi } from "@/lib/api";
 import type { PinEstadoDTO } from "@/lib/api";
@@ -23,7 +23,7 @@ import { navDelRol } from "@/lib/pwa/rol-nav";
 export default function PwaLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, isInitialized, logout } = useAuth();
+  const { user, isAuthenticated, isInitialized } = useAuth();
   const [pinEstado, setPinEstado] = useState<PinEstadoDTO | null>(null);
   const pendientes = useCola();
 
@@ -102,16 +102,13 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
             {user?.roles?.[0]?.nombre ?? "Sin rol"}
           </p>
         </div>
+        {/* Notificaciones (fase F1) — el cierre de sesión va en Módulos */}
         <button
           type="button"
-          onClick={async () => {
-            await logout();
-            router.replace("/");
-          }}
-          aria-label="Cerrar sesión"
-          className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-300 hover:bg-red-500/20 transition-colors shrink-0"
+          aria-label="Notificaciones"
+          className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-300 hover:bg-white/10 transition-colors shrink-0 relative"
         >
-          <LogOut className="w-5 h-5" />
+          <Bell className="w-5 h-5" />
         </button>
       </header>
 
