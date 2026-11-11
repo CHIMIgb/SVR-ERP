@@ -8,6 +8,7 @@ import { authApi } from "@/lib/api";
 import type { PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { RoleNav } from "@/components/pwa/RoleNav";
 
 /**
  * Shell mínimo de la PWA (paso 3 — plan §7b completo llega con RoleNav).
@@ -88,8 +89,11 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
         </button>
       </header>
 
-      {/* Contenido con safe-areas (la nav inferior llega en el paso 4) */}
-      <main className="flex-1 px-4 py-5 pb-8">{children}</main>
+      {/* Contenido con safe-areas */}
+      <main className="flex-1 px-4 py-5 overflow-y-auto scrollbar-none">{children}</main>
+
+      {/* Nav inferior por rol (plan §7b) + interruptor a escritorio */}
+      <RoleNav />
 
       {/* Aviso a los 25 días (spec §6.6-5): sin mostrar PIN */}
       {pinEstado?.avisar && !pinEstado.vencido && (

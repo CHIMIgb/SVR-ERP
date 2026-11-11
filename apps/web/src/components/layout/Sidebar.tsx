@@ -3,7 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { forzarVista } from "@/lib/pwa/dispositivo";
 import {
+  Monitor,
   LayoutDashboard,
   Users,
   Clock,
@@ -238,6 +240,17 @@ function SidebarContent() {
 
       {/* Footer */}
       <div className="p-3 border-t border-white/5">
+        <button
+          onClick={() => {
+            forzarVista("movil");
+            window.location.href = "/m";
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 text-xs font-semibold hover:bg-white/5 hover:text-slate-200 active:scale-[0.98] transition-all"
+          title="Abrir la versi\u00f3n m\u00f3vil (PWA)"
+        >
+          <Monitor className="w-4 h-4" />
+          Versi\u00f3n m\u00f3vil
+        </button>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 active:scale-[0.98] transition-all"

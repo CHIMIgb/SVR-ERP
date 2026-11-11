@@ -579,3 +579,24 @@ Ver documentación completa en [COMPONENTS.md](./COMPONENTS.md).
 ## Datos
 
 Las páginas usan datos mock de `apps/web/src/lib/mock-data/`. Los tipos están en `packages/shared/src/types/`. El backend está implementado en `apps/api/` con autenticación JWT, RBAC y acceso a PostgreSQL.
+
+### PWA móvil (números de empleado + PIN dev)
+
+La PWA (rutas `/m/*`) entra con **número de empleado + PIN** (no con email).
+El seed de desarrollo asigna números y un PIN común:
+
+| Email | Número | PIN dev |
+|-------|--------|---------|
+| `admin@svr-constructora.com` | `ADM-01` | `SVR26DEM` |
+| `residente@svr-constructora.com` | `RES-014` | `SVR26DEM` |
+| `tecnico@svr-constructora.com` | `TEC-007` | `SVR26DEM` |
+| `soldador@svr-constructora.com` | `TEC-008` | `SVR26DEM` |
+| `diesel@svr-constructora.com` | `TEC-009` | `SVR26DEM` |
+| `mantenimiento@svr-constructora.com` | `TEC-010` | `SVR26DEM` |
+| `cobrador@svr-constructora.com` | `COB-003` | `SVR26DEM` |
+| `trabajador@svr-constructora.com` | `TRA-0142` | `SVR26DEM` |
+
+> El PIN `SVR26DEM` es SOLO para dev (el seed lo asigna; cumple las reglas
+> §6.5). En producción cada quien elige el suyo en el primer ingreso.
+> La mesa de ayuda (`rrhh@`) no tiene vista móvil — trabaja en el SVR
+> (desbloqueo/reinicio desde el escritorio).
