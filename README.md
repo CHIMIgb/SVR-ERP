@@ -600,3 +600,37 @@ El seed de desarrollo asigna números y un PIN común:
 > §6.5). En producción cada quien elige el suyo en el primer ingreso.
 > La mesa de ayuda (`rrhh@`) no tiene vista móvil — trabaja en el SVR
 > (desbloqueo/reinicio desde el escritorio).
+
+### PWA en HTTPS (probar instalación, cámara y GPS desde el teléfono)
+
+La instalación de la PWA, la cámara y el GPS **exigen HTTPS con certificado
+confiable** — el HTTP del desarrollo no sirve, y un certificado autofirmado
+aceptado con "Avanzado → Ir a" TAMPOCO cuenta (Chrome no lo considera
+confiable y bloquea la instalación).
+
+Setup de una sola vez (terminal como **Administrador** la primera vez):
+
+```powershell
+# 1. La CA de mkcert ya quedó instalada en tu PC al aceptar el aviso (mkcert -install)
+cd C:\Users\chimi\AppData\Local\mkcert
+
+# 2. Genera el cert para tu IP de LAN + localhost
+.\mkcert-v1.4.4-windows-amd64.exe -cert-file C:\Users\chimi\Documents\Github\SVR-ERP\apps\web\cert.pem -key-file C:\Users\chimi\Documents\Github\SVR-ERP\apps\web\key.pem 192.168.0.104 localhost
+
+# 3. Copia el CA raíz a tu teléfono e instálalo como certificado CA
+#    (Configuración → Seguridad → Instalar certificado → CA) — raíz: rootCA.pem de ESTA carpeta
+```
+
+Uso diario (terminal normal):
+
+```powershell
+cd apps\web
+npm run dev:https:ip
+```
+
+Luego en el teléfono: `https://192.168.0.104:3000` → candado limpio → el
+botón de instalación del header lanza el diálogo nativo → la PWA queda
+instalada con el ícono SVR, cámara y GPS activos.
+
+> `(dev:https)` sin `:ip` solo sirve para `localhost` — el cert de Next
+> no cubre la IP de tu LAN.

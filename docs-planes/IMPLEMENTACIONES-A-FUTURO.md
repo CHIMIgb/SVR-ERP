@@ -436,11 +436,10 @@ tabla). Relación con lo ya documentado: subcategorías por torre en
 - **No hay UI ni endpoint para asignar el jefe** — hoy es solo SQL (`UPDATE users
   SET jefe_user_id = …`). Cuando se construya el **panel de usuarios**, la misma
   columna se expone ahí con un select de residentes para cada trabajador.
-- **El vínculo es usuario↔usuario**: no va por la tabla `trabajadores` ni por
-  `trabajadores_proyectos` (worker↔proyecto). Si el negocio prefiere asignar
-  trabajadores **por proyecto** al residente (y que el residente herede los
-  reportes de todos los de esa obra), es la variante B: `proyectos.residente_id`
-  + scope por `trabajadores_proyectos` — pendiente de confirmar con el cliente.
+- **CONFIRMADO por el cliente (2026-11-11): el vínculo es usuario↔usuario
+  (asignación POR USUARIO, no por proyecto)** — y un residente puede tener
+  como empleados a **múltiples usuarios de CUALQUIER rol** (no solo
+  trabajadores). La variante B (por proyecto) queda descartada.
 - **Fallback ya implementado:** cualquier trabajador **sin jefe asignado** solo ve
   sus propios reportes (nadie más los ve, salvo Admin).
 - El mismo mecanismo (`jefe_user_id`) sirve para cualquier rol con subordinados
