@@ -31,6 +31,11 @@ export default function CredencialesAccesoModal({
 }) {
   const { showToast } = useToast();
 
+  // Enlace que recibe el trabajador (PR #18 #10): la dirección pública de la app
+  // la da NEXT_PUBLIC_APP_URL — si RRHH entra por localhost, window.location.origin
+  // no abriría en el teléfono. Sin la variable, cae al origen actual.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+
   const mensaje = [
     `Hola ${credenciales.nombre}, ya tienes acceso a la app SVR:`,
     '',
@@ -38,7 +43,7 @@ export default function CredencialesAccesoModal({
     `PIN temporal: ${credenciales.pinTemporal} (vence en 24 h)`,
     '',
     'Entra aquí y crea tu propio PIN:',
-    window.location.origin,
+    appUrl,
   ].join('\n');
 
   // wa.me pide el número en formato internacional: 10 dígitos mexicanos → antepone 52.
