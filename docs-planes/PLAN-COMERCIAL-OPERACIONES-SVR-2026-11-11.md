@@ -49,6 +49,13 @@ Corresponde a **P12** (panel "Gestión de identidad" 360).
   ayuda **ya existen (P12)**: `POST /auth/pin/reinicio`, `/auth/pin/desbloqueo`,
   `GET /auth/pin/estado` — la vista los consume; falta exponer `pinReinicio`/
   `pinDesbloqueo` en `authApi` de `lib/api.ts`.
+- **Escenario "se le venció el PIN" (decisión del SVR):** el PIN vence a los
+  30 días y el server **bloquea todo** hasta el cambio (claim `rpc`, PR #18 #4) —
+  el trabajador pierde el acceso a la app, contacta al **administrador**, y este
+  desde esta vista le **genera un PIN temporal de 24 h** y se lo entrega por
+  WhatsApp; al entrar, la app lo obliga a crear su PIN propio. El reinicio
+  también cubre el temporal perdido (quien cerró el modal sin enviarlo). El
+  temporal se muestra **una sola vez** — si se pierde, el admin genera otro.
 - **BD:** no pide columnas nuevas — todo ya existe (users, users_roles,
   role_vistas, sessions, campos de PIN). Es una vista de lectura + acciones con
   auditoría en cada mutación.
