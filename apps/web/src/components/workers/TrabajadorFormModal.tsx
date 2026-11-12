@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useRef, useState } from 'react';
 import {
   trabajadoresApi,
   type CatalogosTrabajadoresDTO,
   type IdentidadAltaDTO,
+  type TrabajadorAccesoInput,
   type TrabajadorCreateInput,
   type TrabajadorDTO,
 } from '@/lib/api';
@@ -61,6 +62,8 @@ interface FormState {
   /** P14: identidad de acceso a la app — solo en el alta. */
   rolId: string;
   encargadoId: string;
+  /** PR #18 #8: dar acceso a la app a un trabajador sin cuenta (solo edición). */
+  darAcceso: boolean;
 }
 
 type Errores = Partial<Record<keyof FormState, string>>;
@@ -85,6 +88,7 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
       sueldoEfectivo: '',
       rolId: '',
       encargadoId: '',
+      darAcceso: false,
     };
   }
   return {
@@ -99,8 +103,10 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
     metodoPago: t.metodoPago,
     sueldoFiscal: String(t.sueldoFiscal),
     sueldoEfectivo: String(t.sueldoEfectivo),
-    rolId: '',
-    encargadoId: '',
+    // PR #18 #8: acceso a la app precargado de la cuenta existente
+    rolId: t.rolAccesoId ?? '',
+    encargadoId: t.encargadoUserId ?? '',
+    darAcceso: false,
   };
 }
 
@@ -112,7 +118,7 @@ function leerMonto(valor: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function validar(f: FormState, editando: boolean): Errores {
+function validar(f: FormState, editando: boolean, pideAcceso: boolean): Errores {
   const e: Errores = {};
   const nombre = f.nombre.trim();
   if (nombre.length < NOMBRE_MIN || nombre.length > NOMBRE_MAX) {
@@ -149,7 +155,8 @@ function validar(f: FormState, editando: boolean): Errores {
     e.sueldoEfectivo = 'Con pago solo por transferencia debe ser 0 (o cambia el esquema a Mixto).';
   }
   // P14: el alta siempre crea la identidad (numero_empleado + PIN temporal) con el rol elegido.
-  if (!editando && !f.rolId) {
+  // PR #18 #8: en edición también es requerido si hay cuenta o se pide dar acceso.
+  if (pideAcceso && !f.rolId) {
     e.rolId = 'Elige el rol de acceso a la app del trabajador.';
   }
   return e;
@@ -221,9 +228,13 @@ export default function TrabajadorFormModal({
     form.proyecto && catalogoListo && !proyectos.some((p) => p.nombre === form.proyecto);
   const otrosProyectos = trabajador ? trabajador.proyectos.length - 1 : 0;
 
+  // Acceso a la app (PR #18 #8): la sección se muestra en el alta y en la edición.
+  const teniaAcceso = !!trabajador?.usuarioId;
+  const pideAcceso = !editando || teniaAcceso || form.darAcceso;
+
   const guardar = async () => {
     if (enviandoRef.current) return;
-    const encontrados = validar(form, editando);
+    const encontrados = validar(form, editando, pideAcceso);
     if (Object.values(encontrados).some(Boolean)) {
       setErrores(encontrados);
       showToast('Revisa los campos marcados.', 'error');
@@ -241,7 +252,7 @@ export default function TrabajadorFormModal({
       metodoPago: form.metodoPago,
     };
 
-    let payload: Partial<TrabajadorCreateInput>;
+    let payload: Partial<TrabajadorCreateInput> & { acceso?: TrabajadorAccesoInput };
     if (!editando) {
       payload = {
         ...base,
@@ -263,6 +274,15 @@ export default function TrabajadorFormModal({
       } else if (catalogoListo && !dadoDeBaja && form.maquinaId !== original.maquinaId) {
         payload.maquinaId = form.maquinaId;
       }
+      // Acceso a la app (PR #18 #8): solo si cambió algo respecto al original.
+      const rolCambio = teniaAcceso && form.rolId !== original.rolId;
+      const jefeCambio = form.encargadoId !== original.encargadoId;
+      if (form.darAcceso && !teniaAcceso) {
+        // sin cuenta: crea la identidad completa (temporal de 24 h)
+        payload.acceso = { rolId: form.rolId, ...(form.encargadoId && { encargadoId: form.encargadoId }) };
+      } else if (teniaAcceso && (rolCambio || jefeCambio) && form.rolId) {
+        payload.acceso = { rolId: form.rolId, ...(jefeCambio && { encargadoId: form.encargadoId }) };
+      }
     }
 
     enviandoRef.current = true;
@@ -275,7 +295,8 @@ export default function TrabajadorFormModal({
           return;
         }
         showToast(`${res.data.nombre} actualizado.`, 'success');
-        onGuardado(res.data);
+        // PR #18 #8: si se otorgó acceso nuevo, el temporal viaja en la respuesta
+        onGuardado(res.data, res.data.identidad);
       } else {
         const res = await trabajadoresApi.crear(payload as TrabajadorCreateInput);
         if (!res.success) {
@@ -359,56 +380,80 @@ export default function TrabajadorFormModal({
           </ModalField>
         </div>
 
-        {!editando && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ModalField label="Rol de acceso a la app" required error={errores.rolId}>
-              <select
-                aria-label="Rol de acceso a la app"
-                className={modalSelectClass}
-                value={form.rolId}
-                disabled={!catalogoListo}
-                onChange={(e) => cambiar('rolId', e.target.value)}
-              >
-                {!catalogoListo ? (
-                  <option value="">{catalogosCargando ? 'Cargando roles…' : 'No disponible'}</option>
-                ) : (
-                  <>
-                    <option value="">Elige el rol…</option>
-                    {(catalogos?.roles ?? []).map((r) => (
-                      <option key={r.id} value={r.id}>{r.nombre}</option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </ModalField>
-            <ModalField label="Encargado (Residente)" hint="Opcional: quién lleva su control en obra.">
-              <select
-                aria-label="Encargado Residente"
-                className={modalSelectClass}
-                value={form.encargadoId}
-                disabled={!catalogoListo}
-                onChange={(e) => cambiar('encargadoId', e.target.value)}
-              >
-                {!catalogoListo ? (
-                  <option value="">{catalogosCargando ? 'Cargando residentes…' : 'No disponible'}</option>
-                ) : (
-                  <>
-                    <option value="">Sin encargado</option>
-                    {(catalogos?.residentes ?? []).map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.nombre}{r.numeroEmpleado ? ` (${r.numeroEmpleado})` : ''}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </ModalField>
-            <p className="sm:col-span-2 text-xs text-ui-500">
-              Al guardar se genera su <strong>número de empleado</strong> y un <strong>PIN temporal de 24 h</strong> para
-              entrar a la app móvil; ahí mismo puedes enviarlos por WhatsApp.
-            </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {editando && !teniaAcceso && (
+              <label className="sm:col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-ui-300 text-primary focus:ring-primary/40"
+                  checked={form.darAcceso}
+                  onChange={(e) => cambiar('darAcceso', e.target.checked)}
+                />
+                <span className="text-sm text-ui-800">
+                  Dar acceso a la app móvil <span className="text-xs text-ui-500">(crea su número de empleado y PIN temporal)</span>
+                </span>
+              </label>
+            )}
+            {editando && teniaAcceso && (
+              <p className="sm:col-span-2 text-xs text-ui-500">
+                Cuenta de acceso: <strong>{trabajador!.numeroEmpleado}</strong>
+                {trabajador!.rolAccesoNombre ? ` · rol actual: ${trabajador!.rolAccesoNombre}` : ''}. Los
+                cambios de rol o encargado se aplican al guardar.
+              </p>
+            )}
+            {pideAcceso && (
+              <>
+                <ModalField label="Rol de acceso a la app" required={pideAcceso} error={errores.rolId}>
+                  <select
+                    aria-label="Rol de acceso a la app"
+                    className={modalSelectClass}
+                    value={form.rolId}
+                    disabled={!catalogoListo}
+                    onChange={(e) => cambiar('rolId', e.target.value)}
+                  >
+                    {!catalogoListo ? (
+                      <option value="">{catalogosCargando ? 'Cargando roles…' : 'No disponible'}</option>
+                    ) : (
+                      <>
+                        <option value="">Elige el rol…</option>
+                        {(catalogos?.roles ?? []).map((r) => (
+                          <option key={r.id} value={r.id}>{r.nombre}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </ModalField>
+                <ModalField label="Encargado (Residente)" hint="Opcional: quién lleva su control en obra.">
+                  <select
+                    aria-label="Encargado Residente"
+                    className={modalSelectClass}
+                    value={form.encargadoId}
+                    disabled={!catalogoListo}
+                    onChange={(e) => cambiar('encargadoId', e.target.value)}
+                  >
+                    {!catalogoListo ? (
+                      <option value="">{catalogosCargando ? 'Cargando residentes…' : 'No disponible'}</option>
+                    ) : (
+                      <>
+                        <option value="">Sin encargado</option>
+                        {(catalogos?.residentes ?? []).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.nombre}{r.numeroEmpleado ? ` (${r.numeroEmpleado})` : ''}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </ModalField>
+                {!editando || form.darAcceso ? (
+                  <p className="sm:col-span-2 text-xs text-ui-500">
+                    Al guardar se genera su <strong>número de empleado</strong> y un <strong>PIN temporal de 24 h</strong> para
+                    entrar a la app móvil; ahí mismo puedes enviarlos por WhatsApp.
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
-        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <ModalField label="Teléfono" required error={errores.telefono}>

@@ -1141,6 +1141,15 @@ export interface TrabajadorDTO {
   /** Cuenta de acceso P14 (solo en el listado): para la acción "Reiniciar PIN" (PR #18 #6). */
   usuarioId?: string;
   numeroEmpleado?: string;
+  rolAccesoId?: string;
+  rolAccesoNombre?: string;
+  encargadoUserId?: string | null;
+}
+
+/** Acceso a la app desde la edición (PR #18 #8): '' en encargadoId quita al jefe. */
+export interface TrabajadorAccesoInput {
+  rolId: string;
+  encargadoId?: string;
 }
 
 export interface TrabajadorCreateInput {
@@ -1263,8 +1272,8 @@ export const trabajadoresApi = {
 
   crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorAltaDTO>('/trabajadores', data),
 
-  actualizar: (id: string, data: Partial<TrabajadorCreateInput> & { estado?: string }) =>
-    apiClient.patch<TrabajadorDTO>(`/trabajadores/${id}`, data),
+  actualizar: (id: string, data: Partial<TrabajadorCreateInput> & { estado?: string; acceso?: TrabajadorAccesoInput }) =>
+    apiClient.patch<TrabajadorDTO & { identidad?: IdentidadAltaDTO }>(`/trabajadores/${id}`, data),
 
   eliminar: (id: string) => apiClient.delete<{ message: string }>(`/trabajadores/${id}`),
 

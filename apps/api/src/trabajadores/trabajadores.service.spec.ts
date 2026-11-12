@@ -80,13 +80,18 @@ describe('TrabajadoresService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       personas: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]) },
+      users_roles: {
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
       users: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({}),
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
       },
-      users_roles: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation((fn) => fn(prisma)),
     };
 
@@ -135,12 +140,20 @@ describe('TrabajadoresService', () => {
         {
           nombre: 'Juan Pérez',
           telefono: '55 1234 5678',
-          users_users_persona_idTopersonas: { id: 'user-vinculado', numero_empleado: 'TRA-142', activo: true, eliminado_en: null },
+          users_users_persona_idTopersonas: {
+            id: 'user-vinculado',
+            numero_empleado: 'TRA-142',
+            activo: true,
+            eliminado_en: null,
+            jefe_user_id: null,
+            users_roles_users_roles_user_idTousers: [{ roles: { id: 'rol-uuid-1', nombre: 'Trabajador' } }],
+          },
         },
       ]);
       const result = await service.findAll({});
       expect(result.items[0].usuarioId).toBe('user-vinculado');
       expect(result.items[0].numeroEmpleado).toBe('TRA-142');
+      expect(result.items[0].rolAccesoId).toBe('rol-uuid-1');
     });
 
     it('sin persona vinculada: la fila viene sin usuarioId (trabajador sin acceso a la app)', async () => {
@@ -410,6 +423,126 @@ describe('TrabajadoresService', () => {
       await expect(service.update('trab-uuid-1', { proyecto: 'No existe' }, 'user-1')).rejects.toThrow(NotFoundException);
       expect(prisma.trabajadores.update).not.toHaveBeenCalled();
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'PROYECTO_NO_ENCONTRADO' }));
+    });
+  });
+
+  describe('acceso a la app desde la edición (PR #18 #8)', () => {
+    const vinculo = (over: Record<string, unknown> = {}) => ({
+      usuarioId: 'user-vinculado',
+      numeroEmpleado: 'TRA-142',
+      rolId: 'rol-uuid-1',
+      rolNombre: 'Trabajador',
+      encargadoUserId: null,
+      ...over,
+    });
+
+    it('cuenta existente: cambia el rol principal y audita ROL_ASIGNADO con anterior/nuevo', async () => {
+      prisma.personas.findMany.mockResolvedValue([
+        {
+          nombre: mockTrabajador.nombre,
+          telefono: mockTrabajador.telefono,
+          users_users_persona_idTopersonas: {
+            id: 'user-vinculado',
+            numero_empleado: 'TRA-142',
+            activo: true,
+            eliminado_en: null,
+            jefe_user_id: null,
+            users_roles_users_roles_user_idTousers: [{ roles: { id: 'rol-uuid-1', nombre: 'Trabajador' } }],
+          },
+        },
+      ]);
+      prisma.roles.findFirst.mockResolvedValue({ id: 'rol-nuevo', nombre: 'Cobrador' }); // rol asignable
+      prisma.users_roles.findFirst.mockResolvedValue({ id: 'ur-principal', rol_id: 'rol-uuid-1' }); // fila principal actual
+
+      await service.update('trab-uuid-1', { acceso: { rolId: 'rol-nuevo' } }, 'user-1');
+
+      expect(prisma.users_roles.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { rol_id: 'rol-nuevo', asignado_por: 'user-1' } }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'ROL_ASIGNADO',
+          entityId: 'user-vinculado',
+          previousValue: { rolId: 'rol-uuid-1' },
+          newValue: { rolId: 'rol-nuevo', rolNombre: 'Cobrador' },
+        }),
+      );
+    });
+
+    it('cuenta existente: cambia el jefe y solo toca jefe si el campo viene (PR #18 #8)', async () => {
+      prisma.personas.findMany.mockResolvedValue([
+        {
+          nombre: mockTrabajador.nombre,
+          telefono: mockTrabajador.telefono,
+          users_users_persona_idTopersonas: {
+            id: 'user-vinculado',
+            numero_empleado: 'TRA-142',
+            activo: true,
+            eliminado_en: null,
+            jefe_user_id: null,
+            users_roles_users_roles_user_idTousers: [],
+          },
+        },
+      ]);
+      prisma.users_roles.findFirst.mockResolvedValue(null); // sin fila principal → la crea
+      prisma.users.findFirst.mockResolvedValue({ id: 'res-user-1' }); // encargado Residente válido
+
+      await service.update('trab-uuid-1', { acceso: { rolId: 'rol-uuid-1', encargadoId: 'res-user-1' } }, 'user-1');
+      expect(prisma.users.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-vinculado' },
+          data: expect.objectContaining({ jefe_user_id: 'res-user-1' }),
+        }),
+      );
+
+      // sin encargado en el DTO: no toca el jefe
+      prisma.users.update.mockClear();
+      await service.update('trab-uuid-1', { acceso: { rolId: 'rol-uuid-1' } }, 'user-1');
+      expect(prisma.users.update).not.toHaveBeenCalled();
+    });
+
+    it('sin cuenta: crea la identidad (persona + user + temporal) y la devuelve en la respuesta', async () => {
+      // sin persona vinculada → no hay cuenta
+      const result = await service.update('trab-uuid-1', { acceso: { rolId: 'rol-uuid-1' } }, 'user-1');
+      expect(result.identidad).toBeDefined();
+      expect(result.identidad?.numeroEmpleado).toMatch(/^TRA-\d+$/);
+      expect(result.identidad?.pinTemporal).toMatch(/^[A-Z2-9]{8}$/);
+      expect(prisma.personas.create).toHaveBeenCalled();
+      expect(prisma.users.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            numero_empleado: expect.any(String),
+            pin_hash: expect.stringMatching(/^\$2[aby]\$/),
+          }),
+        }),
+      );
+      // el temporal en claro NUNCA va a la auditoría (§8.9)
+      expect(JSON.stringify(mockAudit.log.mock.calls)).not.toContain(result.identidad!.pinTemporal);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'USUARIO_CREADO', result: 'SUCCESS' }),
+      );
+    });
+
+    it('rol no asignable (ej. Administrador): 403/400 ACCESO_ROL_INVALIDO auditado, sin crear nada', async () => {
+      prisma.roles.findFirst.mockResolvedValue(null); // el filtro asignable no lo incluye
+      await expect(
+        service.update('trab-uuid-1', { acceso: { rolId: 'rol-admin' } }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'FAIL', errorCode: 'ACCESO_ROL_INVALIDO' }),
+      );
+      expect(prisma.personas.create).not.toHaveBeenCalled();
+      expect(prisma.users.create).not.toHaveBeenCalled();
+    });
+
+    it('encargado que no es Residente: ENCARGADO_INVALIDO auditado', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await expect(
+        service.update('trab-uuid-1', { acceso: { rolId: 'rol-uuid-1', encargadoId: 'no-residente' } }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'FAIL', errorCode: 'ENCARGADO_INVALIDO' }),
+      );
     });
   });
 

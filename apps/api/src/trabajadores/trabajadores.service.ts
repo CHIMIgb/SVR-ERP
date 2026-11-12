@@ -40,6 +40,12 @@ export interface TrabajadorResponse {
   tarifaHoraExtra?: number;
   descuentosSemana?: number;
   conceptoDescuento?: string;
+  /** Cuenta de acceso P14 (listado/edición de acceso — PR #18 #6/#8). */
+  usuarioId?: string;
+  numeroEmpleado?: string;
+  rolAccesoId?: string;
+  rolAccesoNombre?: string;
+  encargadoUserId?: string | null;
 }
 
 const CATEGORIA_DB_A_UI: Record<string, string> = {
@@ -194,13 +200,31 @@ export class TrabajadoresService {
 
   /**
    * Vínculo trabajador ↔ cuenta de acceso (P14): el alta une por persona
-   * (mismo nombre y teléfono) — no hay FK. Solo lo consume el listado:
-   * el botón "Reiniciar PIN" vive en la fila (review PR #18 #6).
+   * (mismo nombre y teléfono) — no hay FK. Trae también el rol principal y
+   * el jefe, para la edición de acceso (PR #18 #6/#8).
    */
   private async vinculosAcceso(
     items: { nombre: string; telefono: string }[],
-  ): Promise<Map<string, { usuarioId: string; numeroEmpleado: string | null }>> {
-    const vacio = new Map<string, { usuarioId: string; numeroEmpleado: string | null }>();
+  ): Promise<
+    Map<
+      string,
+      {
+        usuarioId: string;
+        numeroEmpleado: string | null;
+        rolId: string | null;
+        rolNombre: string | null;
+        encargadoUserId: string | null;
+      }
+    >
+  > {
+    type Vinculo = {
+      usuarioId: string;
+      numeroEmpleado: string | null;
+      rolId: string | null;
+      rolNombre: string | null;
+      encargadoUserId: string | null;
+    };
+    const vacio = new Map<string, Vinculo>();
     if (items.length === 0) return vacio;
     const personas = await this.prisma.personas.findMany({
       where: { OR: items.map((t) => ({ nombre: t.nombre, telefono: t.telefono })) },
@@ -208,15 +232,33 @@ export class TrabajadoresService {
         nombre: true,
         telefono: true,
         users_users_persona_idTopersonas: {
-          select: { id: true, numero_empleado: true, activo: true, eliminado_en: true },
+          select: {
+            id: true,
+            numero_empleado: true,
+            activo: true,
+            eliminado_en: true,
+            jefe_user_id: true,
+            users_roles_users_roles_user_idTousers: {
+              where: { activo: true, es_principal: true },
+              select: { roles: { select: { id: true, nombre: true } } },
+              take: 1,
+            },
+          },
         },
       },
     });
-    const mapa = new Map<string, { usuarioId: string; numeroEmpleado: string | null }>();
+    const mapa = new Map<string, Vinculo>();
     for (const p of personas) {
       const u = p.users_users_persona_idTopersonas;
       if (u && u.activo && !u.eliminado_en) {
-        mapa.set(`${p.nombre}|${p.telefono}`, { usuarioId: u.id, numeroEmpleado: u.numero_empleado });
+        const ur = u.users_roles_users_roles_user_idTousers?.[0];
+        mapa.set(`${p.nombre}|${p.telefono}`, {
+          usuarioId: u.id,
+          numeroEmpleado: u.numero_empleado,
+          rolId: ur?.roles.id ?? null,
+          rolNombre: ur?.roles.nombre ?? null,
+          encargadoUserId: u.jefe_user_id,
+        });
       }
     }
     return mapa;
@@ -639,7 +681,7 @@ export class TrabajadoresService {
     return { ...serialized, identidad };
   }
 
-  async update(id: string, dto: UpdateTrabajadorDto, userId: string): Promise<TrabajadorResponse> {
+  async update(id: string, dto: UpdateTrabajadorDto, userId: string): Promise<TrabajadorResponse & { identidad?: IdentidadAltaResponse }> {
     const existente = await this.prisma.trabajadores.findFirst({
       where: { id, eliminado_en: null },
       include: TRABAJADOR_INCLUDE,
@@ -696,6 +738,52 @@ export class TrabajadoresService {
         BadRequestException,
         'La fecha de ingreso no puede ser futura',
       );
+    }
+
+    // ── Acceso a la app (PR #18 #8): ajusta el rol/jefe de la cuenta existente
+    //    o —si el trabajador no tiene— crea la identidad completa con temporal.
+    let accesoRol: { id: string; nombre: string } | undefined;
+    let accesoEncargado: string | null | undefined; // null = quitar jefe; undefined = no tocar
+    if (dto.acceso) {
+      const rol = await this.prisma.roles.findFirst({
+        where: { id: dto.acceso.rolId, ...ROLES_ASIGNABLES_WHERE },
+        select: { id: true, nombre: true },
+      });
+      if (!rol) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_ACTUALIZADO,
+          id,
+          'ACCESO_ROL_INVALIDO',
+          BadRequestException,
+          'El rol de acceso a la app no es válido o no es asignable',
+        );
+      }
+      accesoRol = rol;
+      if (dto.acceso.encargadoId !== undefined) {
+        if (dto.acceso.encargadoId === '') {
+          accesoEncargado = null;
+        } else {
+          const encargado = await this.prisma.users.findFirst({
+            where: {
+              id: dto.acceso.encargadoId,
+              activo: true,
+              eliminado_en: null,
+              users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { nombre: 'Residente', activo: true } } },
+            },
+            select: { id: true },
+          });
+          if (!encargado) {
+            return this.fallir(
+              AuditAction.TRABAJADOR_ACTUALIZADO,
+              id,
+              'ENCARGADO_INVALIDO',
+              BadRequestException,
+              'El encargado debe ser un Residente activo',
+            );
+          }
+          accesoEncargado = encargado.id;
+        }
+      }
     }
 
     const maquinaAnterior = await this.prisma.maquinas.findFirst({
@@ -759,8 +847,18 @@ export class TrabajadoresService {
 
     const now = new Date();
 
-    const actualizado = await this.prisma.$transaction(async (tx) => {
-      await tx.trabajadores.update({
+    // Vínculo con la cuenta de acceso: se resuelve con los valores FINALES
+    // (el PATCH puede cambiar nombre/teléfono en la misma petición).
+    const nombreFinal = (dto.nombre ?? existente.nombre).trim();
+    const telefonoFinal = (dto.telefono ?? existente.telefono).trim();
+    const vinculoAcceso = accesoRol
+      ? (await this.vinculosAcceso([{ nombre: nombreFinal, telefono: telefonoFinal }])).get(
+          `${nombreFinal}|${telefonoFinal}`,
+        )
+      : undefined;
+    let rolPrevioId: string | null = null;
+
+    const actualizado = await this.prisma.$transaction(async (tx) => {      await tx.trabajadores.update({
         where: { id },
         data: {
           ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
@@ -871,6 +969,33 @@ export class TrabajadoresService {
         });
       }
 
+      // Acceso a la app (PR #18 #8): ajusta el rol principal y el jefe de la cuenta existente.
+      if (dto.acceso && accesoRol && vinculoAcceso?.usuarioId) {
+        const ur = await tx.users_roles.findFirst({
+          where: { user_id: vinculoAcceso.usuarioId, es_principal: true },
+          select: { id: true, rol_id: true },
+        });
+        if (ur) {
+          rolPrevioId = ur.rol_id;
+          if (ur.rol_id !== accesoRol.id) {
+            await tx.users_roles.update({
+              where: { id: ur.id },
+              data: { rol_id: accesoRol.id, asignado_por: userId },
+            });
+          }
+        } else {
+          await tx.users_roles.create({
+            data: { id: randomUUID(), user_id: vinculoAcceso.usuarioId, rol_id: accesoRol.id, es_principal: true, asignado_por: userId },
+          });
+        }
+        if (accesoEncargado !== undefined) {
+          await tx.users.update({
+            where: { id: vinculoAcceso.usuarioId },
+            data: { jefe_user_id: accesoEncargado, actualizado_en: now },
+          });
+        }
+      }
+
       return tx.trabajadores.findUniqueOrThrow({ where: { id }, include: TRABAJADOR_INCLUDE });
     });
 
@@ -881,7 +1006,62 @@ export class TrabajadoresService {
           ? await this.prisma.maquinas.findUnique({ where: { id: nuevaMaquinaId }, select: { id: true, codigo: true, nombre: true, operador_id: true } })
           : null;
 
-    const serialized = this.toResponse(actualizado, maquinaFinal ?? undefined);
+    // Si hubo cambio de acceso, re-resuelve el vínculo DESPUÉS de la transacción:
+    // la respuesta debe reflejar el rol/jefe NUEVOS (y en el otorgamiento, la cuenta nueva).
+    let vinculoRespuesta = vinculoAcceso;
+    if (dto.acceso && accesoRol) {
+      vinculoRespuesta =
+        (await this.vinculosAcceso([{ nombre: nombreFinal, telefono: telefonoFinal }])).get(
+          `${nombreFinal}|${telefonoFinal}`,
+        ) ?? undefined;
+    }
+
+    const serialized = this.toResponse(actualizado, maquinaFinal ?? undefined, vinculoRespuesta);
+
+    // ── Acceso a la app (PR #18 #8) ──
+    let identidadNueva: IdentidadAltaResponse | undefined;
+    if (dto.acceso && accesoRol) {
+      if (vinculoAcceso?.usuarioId) {
+        // rol principal modificado: audita ROL_ASIGNADO con el rol anterior/nuevo
+        if (rolPrevioId && rolPrevioId !== accesoRol.id) {
+          await this.auditService.log({
+            action: AuditAction.ROL_ASIGNADO,
+            entityType: 'users',
+            entityId: vinculoAcceso.usuarioId,
+            result: AuditResult.SUCCESS,
+            actorUserId: userId,
+            actorType: 'USER',
+            actorRole: 'autenticado',
+            previousValue: { rolId: rolPrevioId },
+            newValue: { rolId: accesoRol.id, rolNombre: accesoRol.nombre },
+          });
+        }
+      } else {
+        // trabajador sin cuenta: la identidad se crea ahora (temporal de 24 h en la respuesta)
+        identidadNueva = await this.otorgarCuentaAcceso(
+          id,
+          nombreFinal,
+          telefonoFinal,
+          accesoRol,
+          accesoEncargado ?? null,
+          userId,
+        );
+      }
+    }
+
+    const meta: Record<string, unknown> = {};
+    if (operadorDesplazadoId) {
+      meta.maquinaReasignada = dto.maquinaId;
+      meta.operadorDesplazadoId = operadorDesplazadoId;
+    }
+    if (dto.acceso && accesoRol) {
+      meta.acceso = {
+        rolId: accesoRol.id,
+        rolNombre: accesoRol.nombre,
+        jefe: accesoEncargado === null ? 'sin_jefe' : (accesoEncargado ?? 'sin_cambio'),
+        cuentaNueva: !vinculoAcceso?.usuarioId,
+      };
+    }
 
     await this.auditService.log({
       action: AuditAction.TRABAJADOR_ACTUALIZADO,
@@ -892,13 +1072,153 @@ export class TrabajadoresService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: this.toResponse(existente, maquinaAnterior ?? undefined),
-      newValue: serialized,
-      ...(operadorDesplazadoId && {
-        metadata: { maquinaReasignada: dto.maquinaId, operadorDesplazadoId },
-      }),
+      newValue: { ...serialized, ...(identidadNueva && { identidad: { numeroEmpleado: identidadNueva.numeroEmpleado, temporalHasta: identidadNueva.temporalHasta } }) },
+      ...(Object.keys(meta).length > 0 && { metadata: meta }),
     });
 
-    return serialized;
+    return { ...serialized, ...(identidadNueva && { identidad: identidadNueva }) };
+  }
+
+  /**
+   * Crea la identidad P14 de un trabajador SIN cuenta (PR #18 #8): persona +
+   * user con numero_empleado (sufijo máximo, índice único cierra la carrera
+   * con reintento), PIN temporal de 24 h y el rol elegido. Igual que el alta,
+   * el temporal NUNCA va a la auditoría — solo el número y su vigencia.
+   */
+  private async otorgarCuentaAcceso(
+    trabajadorId: string,
+    nombre: string,
+    telefono: string,
+    rol: { id: string; nombre: string },
+    encargadoId: string | null,
+    creadoPor: string,
+  ): Promise<IdentidadAltaResponse> {
+    const prefijoRol = prefijoDeRol(rol.nombre);
+    const passwordPlaceholder = await bcrypt.hash(randomUUID(), SALT_ROUNDS);
+
+    let creada: Awaited<ReturnType<typeof this.crearFilaCuentaAcceso>> | null = null;
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        creada = await this.prisma.$transaction((tx) =>
+          this.crearFilaCuentaAcceso(tx, {
+            trabajadorId,
+            nombre,
+            telefono,
+            rolId: rol.id,
+            prefijoRol,
+            encargadoId,
+            passwordPlaceholder,
+            creadoPor,
+          }),
+        );
+        break;
+      } catch (e) {
+        const chocoConsecutivo = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+        if (!chocoConsecutivo || intento === 2) {
+          return this.fallir(
+            AuditAction.TRABAJADOR_ACTUALIZADO,
+            trabajadorId,
+            'NUMERO_EMPLEADO_DUPLICADO',
+            ConflictException,
+            'No se pudo generar el número de empleado: reintenta',
+          );
+        }
+      }
+    }
+    if (!creada) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_ACTUALIZADO,
+        trabajadorId,
+        'NUMERO_EMPLEADO_DUPLICADO',
+        ConflictException,
+        'No se pudo generar el número de empleado: reintenta el alta',
+      );
+    }
+
+    // Auditoría DESPUÉS del commit (nunca dentro de la transacción).
+    await this.auditService.log({
+      action: AuditAction.USUARIO_CREADO,
+      entityType: 'users',
+      entityId: creada.usuarioId,
+      result: AuditResult.SUCCESS,
+      actorUserId: creadoPor,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      metadata: { numeroEmpleado: creada.numero, trabajadorId, rolId: rol.id, modo: 'acceso-pwa' },
+    });
+
+    return {
+      numeroEmpleado: creada.numero,
+      pinTemporal: creada.pinTemporal,
+      temporalHasta: creada.temporalHasta.toISOString(),
+    };
+  }
+
+  /** Filas de identidad (persona + user + rol) dentro de una transacción. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async crearFilaCuentaAcceso(
+    tx: Prisma.TransactionClient,
+    args: {
+      trabajadorId: string;
+      nombre: string;
+      telefono: string;
+      rolId: string;
+      prefijoRol: string;
+      encargadoId: string | null;
+      passwordPlaceholder: string;
+      creadoPor: string;
+    },
+  ): Promise<{ usuarioId: string; numero: string; pinTemporal: string; temporalHasta: Date }> {
+    // Consecutivo por prefijo con SUFIJO MÁXIMO (no conteo — review PR #18 #9).
+    const existentes = await tx.users.findMany({
+      where: { numero_empleado: { startsWith: `${args.prefijoRol}-` } },
+      select: { numero_empleado: true },
+    });
+    const maxSufijo = existentes.reduce((max, u) => {
+      const sufijo = parseInt((u.numero_empleado ?? '').slice(args.prefijoRol.length + 1), 10);
+      return Number.isFinite(sufijo) && sufijo > max ? sufijo : max;
+    }, 0);
+    const numero = `${args.prefijoRol}-${String(maxSufijo + 1).padStart(3, '0')}`;
+
+    const pinTemporal = generarPinTemporal();
+    const pinHash = await bcrypt.hash(pinTemporal, SALT_ROUNDS);
+    const temporalHasta = new Date(Date.now() + PIN_TEMPORAL_HORAS * 60 * 60 * 1000);
+    const now = new Date();
+    const personaId = randomUUID();
+    const usuarioId = randomUUID();
+
+    await tx.personas.create({
+      data: {
+        id: personaId,
+        nombre: args.nombre,
+        telefono: args.telefono,
+        creado_por: args.creadoPor,
+        actualizado_por: args.creadoPor,
+        actualizado_en: now,
+      },
+    });
+    await tx.users.create({
+      data: {
+        id: usuarioId,
+        persona_id: personaId,
+        // Email técnico (único por diseño); el login PWA es por numero_empleado + PIN.
+        email: `${numero.toLowerCase()}@${DOMINIO_EMAIL_PWA}`,
+        password_hash: args.passwordPlaceholder,
+        numero_empleado: numero,
+        pin_hash: pinHash,
+        pin_temporal_hasta: temporalHasta,
+        pin_cambiado_en: now,
+        jefe_user_id: args.encargadoId ?? undefined,
+        creado_por: args.creadoPor,
+        actualizado_por: args.creadoPor,
+        actualizado_en: now,
+      },
+    });
+    await tx.users_roles.create({
+      data: { id: randomUUID(), user_id: usuarioId, rol_id: args.rolId, es_principal: true, asignado_por: args.creadoPor },
+    });
+
+    return { usuarioId, numero, pinTemporal, temporalHasta };
   }
 
   async remove(id: string, userId: string): Promise<{ message: string }> {
@@ -1108,7 +1428,13 @@ export class TrabajadoresService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     t: any,
     maquina?: { id: string; codigo: string | null; nombre: string } | null,
-    vinculo?: { usuarioId: string; numeroEmpleado: string | null },
+    vinculo?: {
+      usuarioId: string;
+      numeroEmpleado: string | null;
+      rolId: string | null;
+      rolNombre: string | null;
+      encargadoUserId: string | null;
+    },
   ) {
     return {
       id: t.id,
@@ -1149,9 +1475,12 @@ export class TrabajadoresService {
       tarifaHoraExtra: t.tarifa_hora_extra != null ? Number(t.tarifa_hora_extra) : undefined,
       descuentosSemana: t.descuentos_semana != null ? Number(t.descuentos_semana) : undefined,
       conceptoDescuento: t.concepto_descuento ?? undefined,
-      // Cuenta de acceso P14 (solo en el listado — el botón "Reiniciar PIN" vive en la fila)
+      // Cuenta de acceso P14 (solo en el listado — acciones "Reiniciar PIN" y edición de acceso)
       usuarioId: vinculo?.usuarioId,
       numeroEmpleado: vinculo?.numeroEmpleado ?? undefined,
+      rolAccesoId: vinculo?.rolId ?? undefined,
+      rolAccesoNombre: vinculo?.rolNombre ?? undefined,
+      encargadoUserId: vinculo?.encargadoUserId ?? undefined,
     };
   }
 }

@@ -81,6 +81,26 @@ export class ContactoEmergenciaDto {
   parentesco!: string;
 }
 
+/**
+ * Acceso a la app desde la EDICIÓN (PR #18 #8): ajusta el rol/jefe de la
+ * cuenta existente o —si el trabajador no tiene— crea la identidad completa
+ * (numero_empleado + PIN temporal de 24 h). El rol debe ser asignable
+ * (lo vuelve a validar el servicio, igual que el alta).
+ */
+export class AccesoPwaDto {
+  @Transform(recortar)
+  @IsString()
+  @Matches(UUID_LAXO, { message: 'rolId debe ser un id de rol válido' })
+  rolId!: string;
+
+  /** '' quita al encargado; ausente = no tocar el jefe actual. */
+  @IsOptional()
+  @Transform(recortar)
+  @IsString()
+  @MaxLength(50)
+  encargadoId?: string;
+}
+
 export class CreateTrabajadorDto {
   @Transform(recortar)
   @IsString()

@@ -491,4 +491,75 @@ describe('Trabajadores Audit (Real DB)', () => {
       expect(audits[0].result).toBe('SUCCESS');
     });
   });
+
+  describe('edición de acceso a la app (PR #18 #8)', () => {
+    it('cambia el rol principal de la cuenta y audita ROL_ASIGNADO', async () => {
+      const rolB = await prisma.roles.create({
+        data: { id: randomUUID(), nombre: `ZZRolB ${TEST_ID}`, actualizado_en: new Date() },
+      });
+      try {
+        const dto = createDto({ nombre: `Cambio rol ${TEST_ID}` });
+        const trabajador = await service.create(dto, ACTOR_USER_ID);
+        createdTrabajadorIds.push(trabajador.id);
+        const userRow = await prisma.users.findFirst({ where: { numero_empleado: trabajador.identidad!.numeroEmpleado } });
+        expect(userRow).not.toBeNull();
+
+        const actualizado = await service.update(trabajador.id, { acceso: { rolId: rolB.id } }, ACTOR_USER_ID);
+        expect(actualizado.rolAccesoId).toBe(rolB.id);
+
+        const ur = await prisma.users_roles.findMany({ where: { user_id: userRow!.id, activo: true } });
+        expect(ur).toHaveLength(1);
+        expect(ur[0].rol_id).toBe(rolB.id);
+
+        const audit = await prisma.registro_auditoria.findFirst({
+          where: { action: AuditAction.ROL_ASIGNADO, entity_id: userRow!.id },
+          orderBy: { timestamp: 'desc' },
+        });
+        expect(audit).not.toBeNull();
+        expect(audit!.result).toBe('SUCCESS');
+      } finally {
+        await prisma.roles.deleteMany({ where: { id: rolB.id } });
+      }
+    });
+
+    it('otorga acceso a un trabajador SIN cuenta: crea persona+user con temporal, NUNCA en claro en la auditoría', async () => {
+      const categoria = await prisma.categorias_puesto.create({
+        data: { id: randomUUID(), nombre: `TestCategoria-${TEST_ID}`, actualizado_en: new Date() },
+      });
+      const sinCuenta = await prisma.trabajadores.create({
+        data: {
+          id: randomUUID(),
+          nombre: `Sin cuenta ${TEST_ID}`,
+          puesto: 'Albañil',
+          estado: 'ACTIVO',
+          telefono: '55 0000 0001',
+          entrada: new Date('1970-01-01T07:00:00.000Z'),
+          avatar: 'SC',
+          sueldo_fiscal: 100,
+          sueldo_efectivo: 200,
+          metodo_pago: 'MIXTO',
+          fecha_contratacion: new Date('2024-01-01'),
+          vacaciones_dias: 6,
+          categoria_puesto_id: categoria.id,
+          creado_por: ACTOR_USER_ID,
+          actualizado_en: new Date(),
+        },
+      });
+      createdTrabajadorIds.push(sinCuenta.id);
+      const res = await service.update(sinCuenta.id, { acceso: { rolId: rolTestId } }, ACTOR_USER_ID);
+      expect(res.identidad).toBeDefined();
+      expect(res.identidad!.pinTemporal).toMatch(/^[A-Z2-9]{8}$/);
+
+      const userRow = await prisma.users.findFirst({ where: { numero_empleado: res.identidad!.numeroEmpleado } });
+      expect(userRow).not.toBeNull();
+      createdPersonaIds.push(userRow!.persona_id); // lo limpia el afterAll (tras borrar users)
+
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.USUARIO_CREADO, entity_id: userRow!.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+      expect(JSON.stringify(audit!.new_value)).not.toContain(res.identidad!.pinTemporal);
+    });
+  });
 });
