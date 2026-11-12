@@ -229,6 +229,40 @@ residente, etc.); "Misma área" para ellos cae en oficina (Administrativo).
 app (permisos + vistas del menú); el **puesto** decide **quién es** la persona
 laboralmente y **a qué torre (área) pertenece** para /reportes.
 
+```
+                       ┌──────────────────────────────┐
+                       │      ADMINISTRADOR (100)      │  ← rol del SISTEMA:
+                       │   (dueño del ERP, ve todo)    │    no sale en el alta
+                       └──────────────┬───────────────┘
+                                      │ gestiona todos los roles
+        ROL DE NEGOCIO      PUESTO (categorias_puesto)   TORRE DE /reportes
+        ─────────────────   ──────────────────────────   ───────────────────
+        RESIDENTE (90)  ──►  Ingeniero ─────────────────►  RESIDENTE
+                             (encargado de obra/personal)   · ve a su equipo,
+                                                              da seguimiento
+        ADMINISTRATIVO (80)►  RRHH ─────────────────────►  ADMINISTRATIVO
+                             ├ Administrativo ──────────►  (oficina: administra
+                             │                              el flujo de reportes)
+        TÉCNICO (70)  ─────►  ├ Mecánico ───────────────►  MECANICO
+                             ├ Técnico Diésel ──────────►  DIESEL
+                             ├ Soldador ─────────────────►  SOLDADOR
+                             └ Mantenimiento ────────────►  MANTENIMIENTO
+                             (las 4 TORRES técnicas: cada reporte
+                              lo atiende su especialidad)
+        COBRADOR (60)  ───►  Cobrador de criba/POS ─────►  ADMINISTRATIVO
+        TRABAJADOR (20) ──►  Operador / Chofer / … ─────►  (sin torre: levanta
+                                                            el reporte y lo
+                                                            ENVÍA a la torre
+                                                            que corresponde)
+```
+
+La torre del puesto se guarda en `categorias_puesto.torre` y se escribe en
+`users.torre` al dar de alta o editar el puesto; el número de empleado toma su
+prefijo del rol (`ADM-`, `RES-`, `TEC-`, `COB-`, `TRA-`) independientemente del
+puesto. Los roles viejos (Encargado de RRHH, Tecnico Mecanico/Soldador/Diesel/
+Mantenimiento) quedaron desactivados por la migración
+`20261112000000_roles_5_puestos_torre`.
+
 | Rol (nivel) | Para quién | Puestos del catálogo (con torre) |
 |-------------|-----------|----------------------------------|
 | **Administrador** (100, sistema) | El dueño/administrador del ERP — no se asigna desde el alta de trabajadores | — |
@@ -237,13 +271,6 @@ laboralmente y **a qué torre (área) pertenece** para /reportes.
 | **Técnico** (70) | Las 4 torres técnicas | Mecánico → **Mecanico**, Técnico Diésel → **Diesel**, Soldador → **Soldador**, Mantenimiento → **Mantenimiento** |
 | **Cobrador** (60) | Cobranza de criba y punto de venta | (sin puesto con torre → Administrativo) |
 | **Trabajador** (20) | Personal de campo sin área: operadores, choferes… | Operador → *(sin torre)*, Chofer → *(sin torre)* |
-
-La torre del puesto se guarda en `categorias_puesto.torre` y se escribe en
-`users.torre` al dar de alta o editar el puesto; el número de empleado toma su
-prefijo del rol (`ADM-`, `RES-`, `TEC-`, `COB-`, `TRA-`) independientemente del
-puesto. Los roles viejos (Encargado de RRHH, Tecnico Mecanico/Soldador/Diesel/
-Mantenimiento) quedaron desactivados por la migración
-`20261112000000_roles_5_puestos_torre`.
 
 **⚠️ Vigilancia de permisos (regla para agregar el permiso #107 y siguientes):**
 los permisos son granulares por `(modulo, recurso, accion)` — a día de hoy hay

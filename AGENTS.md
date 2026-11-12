@@ -287,6 +287,29 @@ import { cn } from '@/lib/utils';
 
 Sistema de control de acceso completo. **Las permisos controlan acceso a módulos/acciones. Las vistas controlan acceso a rutas del sidebar.**
 
+#### Modelo organizacional vigente (desde `20261112000000_roles_5_puestos_torre`)
+
+**5 roles de negocio + 1 de sistema.** El rol decide qué puede hacer; el
+**puesto** (`categorias_puesto`, con columna `torre`) decide quién es y a qué
+área pertenece para /reportes — la torre del puesto se escribe en `users.torre`
+(alta/edición del puesto) y `users.torre` tiene precedencia sobre `roles.torre`
+en todo `/reportes`. Roles consolidados: **Administrativo** (absorbió Encargado
+de RRHH) y **Técnico** (absorbió Tecnico Mecanico/Soldador/Diesel/Mantenimiento
+— viejos roles desactivados). El detalle completo (roles, puestos, torres y
+gráfica) está en el README, sección "Estructura organizacional".
+
+#### ⚠️ Vigilancia de permisos (regla dura al agregar el permiso #107 y siguientes)
+
+Los permisos son granulares por `(modulo, recurso, accion)` — hoy 106, sin
+duplicados. Al agregar uno NUEVO o al construir la Vista B de usuarios/roles:
+1. **Verificar duplicados** antes de insertar: no debe existir un permiso que
+   haga lo mismo en otro recurso del mismo módulo (invisible al inicio; con
+   dos devs se multiplica).
+2. Agregarlo al seed de RBAC y al rol correspondiente **en el mismo cambio**
+   (nunca "el seed después").
+3. Un endpoint nuevo usa **SU permiso propio** — no "pedir prestado" el de
+   otra vista, que es como nacen los duplicados.
+
 #### Modelos principales
 | Modelo | Descripción |
 |--------|-------------|
