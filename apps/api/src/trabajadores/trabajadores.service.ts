@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
@@ -121,6 +121,19 @@ function prefijoDeRol(nombre: string): string {
 
 const ENTITY_TYPE = 'trabajadores';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Roles asignables desde el alta P14 (§6.6): activos, sin borrar y SIN
+ * permisos del módulo sistema (con lo cual Administrador queda fuera —
+ * review PR #18 #2: una cuenta con solo rrhh.trabajadores.crear no puede
+ * fabricar un administrador con acceso total). Data-driven: si mañana se
+ * crea otro rol con permisos de sistema, también queda excluido.
+ */
+const ROLES_ASIGNABLES_WHERE = {
+  activo: true,
+  eliminado_en: null,
+  role_permissions: { none: { permissions: { modulo: 'sistema' } } },
+} as const;
 
 @Injectable()
 export class TrabajadoresService {
@@ -279,8 +292,9 @@ export class TrabajadoresService {
         take: TOPE_CATALOGO_PROYECTOS,
       }),
       // Rol de acceso del alta (§6.6): tabla pequeña, con tope igual que los demás catálogos.
+      // Solo roles ASIGNABLES: sin Administrador ni roles con permisos de sistema.
       this.prisma.roles.findMany({
-        where: { activo: true, eliminado_en: null },
+        where: ROLES_ASIGNABLES_WHERE,
         select: { id: true, nombre: true },
         orderBy: { nombre: 'asc' },
         take: TOPE_CATALOGO_PROYECTOS,
@@ -325,6 +339,18 @@ export class TrabajadoresService {
         'ROL_INVALIDO',
         BadRequestException,
         'Elige un rol de acceso válido para el trabajador',
+      );
+    }
+    // El rol existe pero no es asignable (Administrador o con permisos de sistema):
+    // una cuenta RRHH no puede fabricar un administrador con acceso total (PR #18 #2).
+    const asignable = await this.prisma.roles.findFirst({ where: { id: rol.id, ...ROLES_ASIGNABLES_WHERE } });
+    if (!asignable) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_CREADO,
+        null,
+        'ROL_NO_ASIGNABLE',
+        ForbiddenException,
+        'El rol seleccionado no puede asignarse desde el alta de trabajadores',
       );
     }
 

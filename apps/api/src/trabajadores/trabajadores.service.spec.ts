@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TrabajadoresService } from './trabajadores.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -75,6 +75,8 @@ describe('TrabajadoresService', () => {
       contactos_emergencia: { create: jest.fn(), upsert: jest.fn() },
       roles: {
         findUnique: jest.fn().mockResolvedValue({ id: 'rol-uuid-1', nombre: 'Trabajador', activo: true, eliminado_en: null }),
+        // El rol mock pasa el filtro asignable (sin permisos de sistema).
+        findFirst: jest.fn().mockResolvedValue({ id: 'rol-uuid-1', nombre: 'Trabajador' }),
         findMany: jest.fn().mockResolvedValue([]),
       },
       personas: { create: jest.fn().mockResolvedValue({}) },
@@ -237,6 +239,17 @@ describe('TrabajadoresService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'ROL_INVALIDO' }));
     });
 
+    it('rechaza un rol con permisos de sistema (ej. Administrador) con 403 y audita ROL_NO_ASIGNABLE', async () => {
+      prisma.roles.findUnique.mockResolvedValue({ id: 'rol-admin', nombre: 'Administrador', activo: true, eliminado_en: null });
+      prisma.roles.findFirst.mockResolvedValue(null); // el filtro asignable no lo incluye
+      await expect(service.create(createDto({ rolId: 'rol-admin' }), 'user-1')).rejects.toThrow(ForbiddenException);
+      expect(prisma.trabajadores.create).not.toHaveBeenCalled();
+      expect(prisma.users.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'FAIL', errorCode: 'ROL_NO_ASIGNABLE', severity: 'WARNING' }),
+      );
+    });
+
     it('rechaza un encargado que no es Residente activo (ENCARGADO_INVALIDO)', async () => {
       prisma.users.findFirst.mockResolvedValue(null);
       await expect(service.create(createDto({ encargadoId: 'no-residente' }), 'user-1')).rejects.toThrow(BadRequestException);
@@ -277,6 +290,16 @@ describe('TrabajadoresService', () => {
       expect(result.proyectos).toEqual([{ id: 'proy-1', nombre: 'Torre Norte' }]);
       expect(prisma.proyectos.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { eliminado_en: null, activo: true } }),
+      );
+      // Roles asignables: sin Administrador ni roles con permisos de sistema (PR #18 #2).
+      expect(prisma.roles.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            activo: true,
+            eliminado_en: null,
+            role_permissions: { none: { permissions: { modulo: 'sistema' } } },
+          }),
+        }),
       );
     });
   });

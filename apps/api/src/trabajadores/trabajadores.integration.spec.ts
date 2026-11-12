@@ -8,7 +8,7 @@
  * Requires: PostgreSQL running con la DB configurada en apps/api/.env.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, INestApplication, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, INestApplication, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -257,6 +257,21 @@ describe('Trabajadores Audit (Real DB)', () => {
       expect(audits[0].error_code).toBe('ROL_INVALIDO');
     });
 
+    it('debe rechazar el rol Administrador con 403 y auditar ROL_NO_ASIGNABLE (PR #18 #2)', async () => {
+      const admin = await prisma.roles.findFirst({ where: { nombre: 'Administrador' } });
+      expect(admin).not.toBeNull(); // el seed lo trae
+      const usuariosAdminAntes = await prisma.users_roles.count({ where: { rol_id: admin!.id } });
+
+      await expect(service.create(createDto({ rolId: admin!.id }), ACTOR_USER_ID)).rejects.toThrow(ForbiddenException);
+
+      // Nada creado: ni users con ese rol nuevo ni trabajador.
+      const usuariosAdminDespues = await prisma.users_roles.count({ where: { rol_id: admin!.id } });
+      expect(usuariosAdminDespues).toBe(usuariosAdminAntes);
+      const audits = await findAudits(AuditAction.TRABAJADOR_CREADO, PLACEHOLDER);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('ROL_NO_ASIGNABLE');
+    });
+
     it('debe rechazar un encargado que no es Residente y auditar ENCARGADO_INVALIDO', async () => {
       const persona = await prisma.personas.create({
         data: { id: randomUUID(), nombre: `No Residente ${TEST_ID}`, actualizado_en: new Date() },
@@ -285,6 +300,9 @@ describe('Trabajadores Audit (Real DB)', () => {
     it('catalogos debe traer los roles y a los Residentes como encargados', async () => {
       const cat = await service.catalogos();
       expect(cat.roles.some((r) => r.id === rolTestId)).toBe(true);
+      // Administrador (permisos de sistema) NO es asignable desde el alta (PR #18 #2).
+      const admin = await prisma.roles.findFirst({ where: { nombre: 'Administrador' } });
+      expect(cat.roles.some((r) => r.id === admin!.id)).toBe(false);
       expect(cat.residentes.some((r) => r.id === encargadoResidenteId)).toBe(true);
       expect(cat.residentes[0]).toHaveProperty('nombre');
     });
