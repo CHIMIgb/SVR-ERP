@@ -79,7 +79,7 @@ describe('TrabajadoresService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'rol-uuid-1', nombre: 'Trabajador' }),
         findMany: jest.fn().mockResolvedValue([]),
       },
-      personas: { create: jest.fn().mockResolvedValue({}) },
+      personas: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]) },
       users: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({}),
@@ -128,6 +128,24 @@ describe('TrabajadoresService', () => {
       expect(result).toHaveProperty('pagination');
       expect(result.items[0].nombre).toBe('Juan Pérez');
       expect(result.items[0].categoriaPuesto).toBe('Operador');
+    });
+
+    it('incluye el vínculo con la cuenta de acceso (usuarioId/numeroEmpleado) para "Reiniciar PIN" (PR #18 #6)', async () => {
+      prisma.personas.findMany.mockResolvedValue([
+        {
+          nombre: 'Juan Pérez',
+          telefono: '55 1234 5678',
+          users_users_persona_idTopersonas: { id: 'user-vinculado', numero_empleado: 'TRA-142', activo: true, eliminado_en: null },
+        },
+      ]);
+      const result = await service.findAll({});
+      expect(result.items[0].usuarioId).toBe('user-vinculado');
+      expect(result.items[0].numeroEmpleado).toBe('TRA-142');
+    });
+
+    it('sin persona vinculada: la fila viene sin usuarioId (trabajador sin acceso a la app)', async () => {
+      const result = await service.findAll({});
+      expect(result.items[0].usuarioId).toBeUndefined();
     });
   });
 

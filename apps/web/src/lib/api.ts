@@ -349,6 +349,10 @@ export const authApi = {
 
   pinEstado: () => apiClient.get<PinEstadoDTO>('/auth/pin/estado'),
 
+  /** Mesa de ayuda (Vista B / ficha de trabajadores): temporal de 24 h, se muestra UNA vez. */
+  pinReinicio: (userId: string) =>
+    apiClient.post<{ message: string; pinTemporal: string }>('/auth/pin/reinicio', { userId }),
+
   pinCambio: (data: { pinActual: string; pinNuevo: string }) =>
     apiClient.post<{ message: string }>('/auth/pin/cambio', data),
 };
@@ -1134,6 +1138,9 @@ export interface TrabajadorDTO {
   tarifaHoraExtra?: number;
   descuentosSemana?: number;
   conceptoDescuento?: string;
+  /** Cuenta de acceso P14 (solo en el listado): para la acción "Reiniciar PIN" (PR #18 #6). */
+  usuarioId?: string;
+  numeroEmpleado?: string;
 }
 
 export interface TrabajadorCreateInput {

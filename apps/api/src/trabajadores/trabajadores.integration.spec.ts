@@ -201,6 +201,18 @@ describe('Trabajadores Audit (Real DB)', () => {
       expect(trabajador.licenciaODC3?.folio).toBe(`FOL-${TEST_ID}`);
       expect(trabajador.contactoEmergencia?.nombre).toBe('María López');
     });
+
+    it('el listado expone el vínculo con la cuenta de acceso (usuarioId/numeroEmpleado, PR #18 #6)', async () => {
+      const dto = createDto();
+      const trabajador = await service.create(dto, ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      const lista = await service.findAll({ search: dto.nombre, limit: 10 });
+      const fila = lista.items.find((i) => i.id === trabajador.id);
+      expect(fila).toBeDefined();
+      expect(fila!.usuarioId).toBeDefined();
+      expect(fila!.numeroEmpleado).toMatch(/^(ADM|RES|TEC|COB|TRA|ZZR|USR)-\d+$/);
+    });
   });
 
   describe('identidad PWA del alta (P14, spec §6.6)', () => {

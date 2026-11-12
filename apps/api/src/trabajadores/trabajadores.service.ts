@@ -192,6 +192,36 @@ export class TrabajadoresService {
     }
   }
 
+  /**
+   * Vínculo trabajador ↔ cuenta de acceso (P14): el alta une por persona
+   * (mismo nombre y teléfono) — no hay FK. Solo lo consume el listado:
+   * el botón "Reiniciar PIN" vive en la fila (review PR #18 #6).
+   */
+  private async vinculosAcceso(
+    items: { nombre: string; telefono: string }[],
+  ): Promise<Map<string, { usuarioId: string; numeroEmpleado: string | null }>> {
+    const vacio = new Map<string, { usuarioId: string; numeroEmpleado: string | null }>();
+    if (items.length === 0) return vacio;
+    const personas = await this.prisma.personas.findMany({
+      where: { OR: items.map((t) => ({ nombre: t.nombre, telefono: t.telefono })) },
+      select: {
+        nombre: true,
+        telefono: true,
+        users_users_persona_idTopersonas: {
+          select: { id: true, numero_empleado: true, activo: true, eliminado_en: true },
+        },
+      },
+    });
+    const mapa = new Map<string, { usuarioId: string; numeroEmpleado: string | null }>();
+    for (const p of personas) {
+      const u = p.users_users_persona_idTopersonas;
+      if (u && u.activo && !u.eliminado_en) {
+        mapa.set(`${p.nombre}|${p.telefono}`, { usuarioId: u.id, numeroEmpleado: u.numero_empleado });
+      }
+    }
+    return mapa;
+  }
+
   async findAll(query: QueryTrabajadoresDto) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 12, 100);
@@ -231,8 +261,13 @@ export class TrabajadoresService {
     });
     const maquinaPorOperador = new Map(maquinas.map((m) => [m.operador_id as string, m]));
 
+    // Vínculo con la cuenta de acceso (usuarioId/numeroEmpleado) para la acción "Reiniciar PIN".
+    const vinculos = await this.vinculosAcceso(items);
+
     return {
-      items: items.map((item) => this.toResponse(item, maquinaPorOperador.get(item.id))),
+      items: items.map((item) =>
+        this.toResponse(item, maquinaPorOperador.get(item.id), vinculos.get(`${item.nombre}|${item.telefono}`)),
+      ),
       pagination: {
         page,
         limit,
@@ -1069,7 +1104,12 @@ export class TrabajadoresService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private toResponse(t: any, maquina?: { id: string; codigo: string | null; nombre: string } | null) {
+  private toResponse(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    t: any,
+    maquina?: { id: string; codigo: string | null; nombre: string } | null,
+    vinculo?: { usuarioId: string; numeroEmpleado: string | null },
+  ) {
     return {
       id: t.id,
       nombre: t.nombre,
@@ -1109,6 +1149,9 @@ export class TrabajadoresService {
       tarifaHoraExtra: t.tarifa_hora_extra != null ? Number(t.tarifa_hora_extra) : undefined,
       descuentosSemana: t.descuentos_semana != null ? Number(t.descuentos_semana) : undefined,
       conceptoDescuento: t.concepto_descuento ?? undefined,
+      // Cuenta de acceso P14 (solo en el listado — el botón "Reiniciar PIN" vive en la fila)
+      usuarioId: vinculo?.usuarioId,
+      numeroEmpleado: vinculo?.numeroEmpleado ?? undefined,
     };
   }
 }
