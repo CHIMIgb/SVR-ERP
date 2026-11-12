@@ -108,8 +108,6 @@ La sección con más correspondencia del documento:
 | O11 | ¿Componentes y vida útil? ¿historial de operadores por máquina? (§5) | ⚠️ Sin respuesta | Si dicen no, se cortan módulos ya maquetados |
 | O12 | **Horómetro = registro del operador, interno; cobro solo por bitácora de renta**; la lectura sí actualiza la ficha (§6) | ✅ | Horómetro no-facturable, con actualización de ficha |
 | O13 | **Solo camiones tienen GPS hoy; maquinaria se monitorea con horómetro manual** (§4 + proveedor) | ✅ | GPS real por IMEI solo para camiones; horómetro manual para el resto |
-| O14 | **Solo GERENCIA puede corregir o borrar una lectura de horómetro** (§6) | ✅ | Permisos del horómetro: corrección/eliminación exclusiva de gerencia |
-| O15 | ¿El estado de la máquina debe impedir que se despache o facture? (§5) | ⚠️ El cliente respondió "NO ENTIENDO LA PREGUNTA" — reformular | Gate de despacho/factura por estado de máquina |
 
 ### 3.2 /inventario
 | # | Punto | Estado | Implicación |
@@ -162,8 +160,8 @@ finiquito — viven en el doc fuera-de-alcance)*
 
 | Fase | Qué | Dependencia |
 |---|---|---|
-| **F1 — Fixes y reglas confirmadas de las 15 vistas** | Error 3 (checklist luces/alarmas en `/operaciones`), horómetro interno (O12 + O14), operador de lista obligatoria (O6), patio (O5), foto de máquina (O8), firma residente obligatoria (Fa2), cobro solo por bitácora (C1), multi-obra sin fricción (Pr2) | Ninguna — arrancable ya |
-| **F2 — Preguntas de seguimiento** | Enviar al cliente: F1, F2, Fa1, O1, O3, O11, O15, I2, Cl2, P4 + el tabulador/tarifas de renta del §5 | Ninguna — puede ir en paralelo |
+| **F1 — Fixes y reglas confirmadas de las 15 vistas** | Error 3 (checklist luces/alarmas en `/operaciones`), horómetro interno (O12), operador de lista obligatoria (O6), patio (O5), foto de máquina (O8), firma residente obligatoria (Fa2), cobro solo por bitácora (C1), multi-obra sin fricción (Pr2) | Ninguna — arrancable ya |
+| **F2 — Preguntas de seguimiento** | Enviar al cliente: F1, F2, Fa1, O1, O3, O11, I2, Cl2, P4 + el tabulador/tarifas de renta del §5 | Ninguna — puede ir en paralelo |
 | **F3 — Cotizaciones/ventas según docs-svr** | Plantilla de cotización (condiciones de los Word), motor de retiros para `/ventas`, corte de `/ventas/corte`, estados de cuenta para `/cobranza` | Respuestas de docs-svr §5 del análisis (folio, precio, serie) |
 
 *(las fases de GPS (F3–F5 originales), Nómina/Asistencia (F6), Finiquitos (F7)
