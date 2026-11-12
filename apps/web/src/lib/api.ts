@@ -1248,8 +1248,10 @@ export interface CatalogosTrabajadoresDTO {
   proyectos: ProyectoCatalogoDTO[];
   /** Encargados (Residente) para el alta P14. */
   residentes: ResidenteCatalogoDTO[];
-  /** Roles de acceso para el alta P14. */
+  /** Roles de acceso (edición de acceso P14). */
   roles: RolCatalogoDTO[];
+  /** Mapeo puesto → rol (decisión del SVR): el rol del alta sale del puesto; rolNombre null = sin cuenta. */
+  puestos: { nombre: string; rolId: string | null; rolNombre: string | null }[];
 }
 
 export const trabajadoresApi = {

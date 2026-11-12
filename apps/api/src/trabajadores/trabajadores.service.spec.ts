@@ -55,6 +55,7 @@ describe('TrabajadoresService', () => {
       },
       categorias_puesto: {
         findUnique: jest.fn().mockResolvedValue(mockCategoria),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue(mockCategoria),
       },
       maquinas: {
@@ -270,7 +271,7 @@ describe('TrabajadoresService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'ROL_INVALIDO' }));
     });
 
-    it('rechaza un rol con permisos de sistema (ej. Administrador) con 403 y audita ROL_NO_ASIGNABLE', async () => {
+    it('rol no asignable (ej. Administrador): 403 y audita ROL_NO_ASIGNABLE', async () => {
       prisma.roles.findUnique.mockResolvedValue({ id: 'rol-admin', nombre: 'Administrador', activo: true, eliminado_en: null });
       prisma.roles.findFirst.mockResolvedValue(null); // el filtro asignable no lo incluye
       await expect(service.create(createDto({ rolId: 'rol-admin' }), 'user-1')).rejects.toThrow(ForbiddenException);
@@ -326,6 +327,68 @@ describe('TrabajadoresService', () => {
 
       const result = await service.create(createDto(), 'user-1');
       expect(result.identidad?.numeroEmpleado).toBe('TRA-143');
+    });
+
+    it('SIN rolId: el rol sale del PUESTO (categorias_puesto.rol_id — decisión del SVR)', async () => {
+      const dto = createDto();
+      delete (dto as { rolId?: string }).rolId;
+      prisma.categorias_puesto.findUnique.mockResolvedValue({
+        id: 'cat-uuid-1',
+        nombre: 'Mecanico',
+        torre: 'MECANICO',
+        rol_id: 'rol-puesto',
+      });
+      prisma.roles.findFirst.mockResolvedValue({ id: 'rol-puesto', nombre: 'Tecnico' }); // asignable
+
+      const result = await service.create(dto, 'user-1');
+      // el rol validado fue el DEL PUESTO, no un override
+      expect(prisma.roles.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'rol-puesto' }) }),
+      );
+      expect(result.identidad?.numeroEmpleado).toMatch(/^TEC-\d+$/);
+      expect(prisma.users_roles.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ rol_id: 'rol-puesto', es_principal: true }),
+      });
+    });
+
+    it('puesto "Otro" (sin rol): SIN cuenta — ni persona, ni user, ni numero; la respuesta va sin identidad', async () => {
+      const dto = createDto();
+      delete (dto as { rolId?: string }).rolId;
+      prisma.categorias_puesto.findUnique.mockResolvedValue({
+        id: 'cat-otro',
+        nombre: 'Otro',
+        torre: null,
+        rol_id: null,
+      });
+
+      const result = await service.create(dto, 'user-1');
+      expect(result.identidad).toBeUndefined();
+      expect(prisma.personas.create).not.toHaveBeenCalled();
+      expect(prisma.users.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'TRABAJADOR_CREADO',
+          result: 'SUCCESS',
+          newValue: expect.objectContaining({ acceso: 'sin_cuenta' }),
+        }),
+      );
+    });
+
+    it('sin rol: el encargado del alta se ignora (el jefe vive en la cuenta)', async () => {
+      const dto = createDto();
+      delete (dto as { rolId?: string }).rolId;
+      delete (dto as { encargadoId?: string }).encargadoId;
+      const dtoConEncargado = { ...dto, encargadoId: 'res-user-1' };
+      prisma.categorias_puesto.findUnique.mockResolvedValue({
+        id: 'cat-otro',
+        nombre: 'Otro',
+        torre: null,
+        rol_id: null,
+      });
+
+      await service.create(dtoConEncargado as typeof dto, 'user-1');
+      // la validación del encargado (users.findFirst por rol Residente) no corre
+      expect(prisma.users.findFirst).not.toHaveBeenCalled();
     });
   });
 

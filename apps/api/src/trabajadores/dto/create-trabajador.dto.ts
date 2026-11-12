@@ -28,6 +28,7 @@ export const CATEGORIAS_PUESTO = [
   'Ingeniero',
   'RRHH',
   'Administrativo',
+  'Otro',
 ] as const;
 export const CATEGORIAS_LICENCIA = ['DC3', 'Licencia Federal', 'Certificado Técnico', 'Cédula Profesional', 'Otro'] as const;
 
@@ -203,11 +204,16 @@ export class CreateTrabajadorDto {
   @MaxLength(200)
   conceptoDescuento?: string;
 
-  /** Rol de acceso a la app (§6.6): el administrativo elige el rol y el sistema crea el usuario con PIN temporal. */
+  /**
+   * Rol de acceso a la app — OPCIONAL (decisión del SVR 12-nov): el rol sale
+   * del PUESTO (categorias_puesto.rol_id); "Otro" no lleva cuenta. Si viene
+   * explícito actúa como override.
+   */
+  @IsOptional()
   @Matches(UUID_LAXO, { message: 'rolId debe ser un UUID válido (rol de acceso a la app)' })
-  rolId!: string;
+  rolId?: string;
 
-  /** Encargado (Residente) al que reporta — opcional (§6.8: el Residente ve a su equipo). */
+  /** Encargado (Residente) al que reporta — solo aplica si el alta crea cuenta (§6.8). */
   @IsOptional()
   @Matches(UUID_LAXO, { message: 'encargadoId debe ser un UUID válido' })
   encargadoId?: string;

@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 
 // Modelo de 5 roles (decisión SVR): los PUESTOS van aquí — cada uno con su
-// torre en la BD (categorias_puesto.torre alimenta users.torre de /reportes).
+// torre y su rol en la BD (categorias_puesto alimenta users.torre y el acceso
+// del alta). "Otro" = perfil laboral SIN acceso a la app.
 export const CATEGORIAS_PUESTO = [
   { value: 'Operador', label: 'Operador de maquinaria' },
   { value: 'Chofer', label: 'Chofer' },
@@ -27,6 +28,7 @@ export const CATEGORIAS_PUESTO = [
   { value: 'Ingeniero', label: 'Ingeniero o encargado' },
   { value: 'RRHH', label: 'RRHH' },
   { value: 'Administrativo', label: 'Administrativo' },
+  { value: 'Otro', label: 'Otro (sin acceso a la app)' },
 ] as const;
 
 const METODOS_PAGO: { value: TrabajadorCreateInput['metodoPago']; label: string }[] = [
@@ -234,9 +236,12 @@ export default function TrabajadorFormModal({
     form.proyecto && catalogoListo && !proyectos.some((p) => p.nombre === form.proyecto);
   const otrosProyectos = trabajador ? trabajador.proyectos.length - 1 : 0;
 
-  // Acceso a la app (PR #18 #8): la sección se muestra en el alta y en la edición.
+  // Acceso a la app (PR #18 #8 + decisión del SVR): en el ALTA el rol sale del
+  // puesto (sin select); en la EDICIÓN se exige rol solo si hay cuenta o se
+  // marca "dar acceso".
   const teniaAcceso = !!trabajador?.usuarioId;
-  const pideAcceso = !editando || teniaAcceso || form.darAcceso;
+  const pideAcceso = editando && (teniaAcceso || form.darAcceso);
+  const puestoElegido = catalogos?.puestos?.find((p) => p.nombre === form.categoriaPuesto);
 
   const guardar = async () => {
     if (enviandoRef.current) return;
@@ -260,9 +265,10 @@ export default function TrabajadorFormModal({
 
     let payload: Partial<TrabajadorCreateInput> & { acceso?: TrabajadorAccesoInput };
     if (!editando) {
+      // El ROL sale del PUESTO (decisión del SVR): el server lo resuelve de
+      // categorias_puesto.rol_id — "Otro" no lleva cuenta.
       payload = {
         ...base,
-        rolId: form.rolId,
         ...(form.encargadoId && { encargadoId: form.encargadoId }),
         fechaContratacion: form.fechaContratacion,
         ...(form.proyecto && { proyecto: form.proyecto }),
@@ -408,8 +414,7 @@ export default function TrabajadorFormModal({
               </p>
             )}
             {pideAcceso && (
-              <>
-                <ModalField label="Rol de acceso a la app" required={pideAcceso} error={errores.rolId}>
+              <ModalField label="Rol de acceso a la app" required={pideAcceso} error={errores.rolId}>
                   <select
                     aria-label="Rol de acceso a la app"
                     className={modalSelectClass}
@@ -428,8 +433,9 @@ export default function TrabajadorFormModal({
                       </>
                     )}
                   </select>
-                </ModalField>
-                <ModalField label="Encargado (Residente)" hint="Opcional: quién lleva su control en obra.">
+              </ModalField>
+            )}
+            <ModalField label="Encargado (Residente)" hint="Opcional: quién lleva su control en obra.">
                   <select
                     aria-label="Encargado Residente"
                     className={modalSelectClass}
@@ -450,16 +456,23 @@ export default function TrabajadorFormModal({
                       </>
                     )}
                   </select>
-                </ModalField>
-                {!editando || form.darAcceso ? (
-                  <p className="sm:col-span-2 text-xs text-ui-500">
-                    Al guardar se genera su <strong>número de empleado</strong> y un <strong>PIN temporal de 24 h</strong> para
-                    entrar a la app móvil; ahí mismo puedes enviarlos por WhatsApp.
-                  </p>
-                ) : null}
-              </>
+            </ModalField>
+            {/* Alta: el ROL sale del PUESTO (decisión del SVR) — nota derivada del catálogo */}
+            {!editando && puestoElegido && (
+              puestoElegido.rolNombre ? (
+                <p className="sm:col-span-2 text-xs text-ui-500">
+                  Tendrá acceso a la app móvil como <strong>{puestoElegido.rolNombre}</strong>: al guardar se genera
+                  su <strong>número de empleado</strong> y un <strong>PIN temporal de 24 h</strong>; ahí mismo puedes
+                  enviarlos por WhatsApp.
+                </p>
+              ) : (
+                <p className="sm:col-span-2 text-xs text-ui-500">
+                  Este puesto <strong>no incluye acceso a la app móvil</strong> (sin usuario ni PIN). Se lo puedes
+                  dar después desde su ficha.
+                </p>
+              )
             )}
-          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <ModalField label="Teléfono" required error={errores.telefono}>

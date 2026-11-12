@@ -42,6 +42,7 @@ const FILTRO_CATEGORIAS = [
   { value: 'Ingeniero', label: 'Ingenieros' },
   { value: 'RRHH', label: 'RRHH' },
   { value: 'Administrativo', label: 'Administrativos' },
+  { value: 'Otro', label: 'Otro' },
 ];
 
 const FILTRO_ESTADOS = [

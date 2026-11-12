@@ -592,5 +592,44 @@ describe('Trabajadores Audit (Real DB)', () => {
       });
       expect(userRow!.torre).toBe('DIESEL'); // la torre nueva del puesto
     });
+
+    it('alta SIN rolId: el rol sale del puesto (Mecanico → Técnico, numero TEC-, PR decisión SVR)', async () => {
+      const dto = createDto({ nombre: `Alta por puesto ${TEST_ID}`, categoriaPuesto: 'Mecanico' });
+      delete (dto as { rolId?: string }).rolId;
+
+      const trabajador = await service.create(dto, ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      expect(trabajador.identidad!.numeroEmpleado).toMatch(/^TEC-\d+$/); // rol Técnico del puesto
+      const userRow = await prisma.users.findFirst({
+        where: { numero_empleado: trabajador.identidad!.numeroEmpleado },
+        include: { users_roles_users_roles_user_idTousers: true },
+      });
+      expect(userRow).not.toBeNull();
+      expect(userRow!.torre).toBe('MECANICO');
+      const rolAsignado = userRow!.users_roles_users_roles_user_idTousers[0];
+      const rolTecnico = await prisma.roles.findFirst({ where: { nombre: 'Tecnico' } });
+      expect(rolAsignado.rol_id).toBe(rolTecnico!.id);
+    });
+
+    it('alta con puesto "Otro": SIN cuenta — ni persona ni user ni numero', async () => {
+      const dto = createDto({ nombre: `Sin app ${TEST_ID}`, categoriaPuesto: 'Otro' });
+      delete (dto as { rolId?: string }).rolId;
+
+      const trabajador = await service.create(dto, ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      expect(trabajador.identidad).toBeUndefined();
+      const conPersona = await prisma.personas.findFirst({
+        where: { nombre: dto.nombre, telefono: '55 0000 0000' },
+      });
+      expect(conPersona).toBeNull(); // sin persona (solo existía para el user del alta)
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.TRABAJADOR_CREADO, entity_id: trabajador.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit!.result).toBe('SUCCESS');
+      expect(JSON.stringify(audit!.new_value)).toContain('sin_cuenta');
+    });
   });
 });

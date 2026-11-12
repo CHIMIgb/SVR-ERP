@@ -231,6 +231,9 @@ model categorias_puesto {
   salario_base_sugerido Decimal?               @db.Decimal(12, 2)
   /** Área (torre) que atiende este puesto — alimenta users.torre para /reportes (PR #18, modelo de 5 roles). */
   torre                 CategoriaReporte?
+  /** Rol que recibe la cuenta de acceso cuando el alta lleva este puesto (NULL = sin acceso, ej. "Otro"). */
+  rol_id                String?                @db.Uuid
+  rol                   roles?                 @relation("puestos_rol", fields: [rol_id], references: [id], onDelete: SetNull)
   activo                Boolean                @default(true)
   creado_en             DateTime               @default(now()) @db.Timestamptz()
   actualizado_en        DateTime               @db.Timestamptz()
@@ -1576,6 +1579,7 @@ model roles {
   users_roles_actualizado_porTousers users?             @relation("roles_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_roles_actualizado_por")
   users_roles_creado_porTousers      users?             @relation("roles_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_roles_creado_por")
   users_roles                        users_roles[]
+  puestos_rol                        categorias_puesto[]  @relation("puestos_rol")
 }
 
 model sessions {
