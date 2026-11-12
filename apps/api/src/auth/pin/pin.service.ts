@@ -213,10 +213,45 @@ export class PinService {
       throw new UnauthorizedException();
     }
 
+    // Cuenta bloqueada activa (PR #18, mediano): también protege pin/cambio —
+    // si no, quedaba como vía de fuerza bruta del PIN actual mientras bloqueada.
+    if (
+      user.cuenta_bloqueada_en &&
+      Date.now() - user.cuenta_bloqueada_en.getTime() < PIN_BLOQUEO_MINUTOS * 60_000
+    ) {
+      await this.fallirCambio(user.id, 'CUENTA_BLOQUEADA', ip, userAgent);
+      throw new UnauthorizedException(
+        'Cuenta bloqueada por intentos fallidos. Espera unos minutos o contacta a la mesa de ayuda',
+      );
+    }
+
     const actualOk = await bcrypt.compare(normalizarPin(dto.pinActual), user.pin_hash);
     if (!actualOk) {
+      // Contador ATÓMICO igual que loginPin (PR #18, mediano): los fallos del
+      // PIN actual TAMBIÉN cuentan hacia el bloqueo temporal.
+      let nuevosIntentos: number;
+      try {
+        const r = await this.prisma.users.update({
+          where: { id: user.id, intentos_pin: { lt: MAX_INTENTOS_PIN } },
+          data: { intentos_pin: { increment: 1 } },
+        });
+        nuevosIntentos = r.intentos_pin;
+      } catch {
+        nuevosIntentos = MAX_INTENTOS_PIN; // ya al tope
+      }
+      const bloquear = nuevosIntentos >= MAX_INTENTOS_PIN;
+      if (bloquear) {
+        await this.prisma.users.update({
+          where: { id: user.id },
+          data: { intentos_pin: MAX_INTENTOS_PIN, cuenta_bloqueada_en: new Date() },
+        });
+      }
       await this.fallirCambio(user.id, 'PIN_INVALIDO', ip, userAgent);
-      throw new BadRequestException('El PIN actual es incorrecto');
+      throw new BadRequestException(
+        bloquear
+          ? 'El PIN actual es incorrecto. Tu cuenta se bloqueó por 5 intentos fallidos'
+          : 'El PIN actual es incorrecto',
+      );
     }
 
     const hashesAnteriores = [

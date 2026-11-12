@@ -250,14 +250,47 @@ describe('PinService', () => {
       );
     });
 
-    it('PIN actual incorrecto: PIN_INVALIDO + FAIL auditado, sin cambios', async () => {
+    it('PIN actual incorrecto: PIN_INVALIDO + FAIL auditado, cuenta el fallo (PR #18, mediano)', async () => {
+      prisma.users.update.mockResolvedValueOnce({ intentos_pin: 1 } as never);
       await expect(
         service.cambiarPin({ pinActual: 'PQ7W2N9K', pinNuevo: 'PQ7W2N9K' }, USER_ID, 's-1'),
-      ).rejects.toThrow('PIN actual es incorrecto');
+      ).rejects.toThrow('El PIN actual es incorrecto');
       expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'PIN_INVALIDO' }),
       );
-      expect(prisma.users.update).not.toHaveBeenCalled();
+      // el fallo del PIN actual TAMBIÉN incrementa el contador (atómico)
+      expect(prisma.users.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ intentos_pin: { lt: 5 } }),
+          data: expect.objectContaining({ intentos_pin: { increment: 1 } }),
+        }),
+      );
+    });
+
+    it('PIN actual incorrecto ×5: bloquea la cuenta temporalmente (PR #18, mediano)', async () => {
+      prisma.users.update
+        .mockResolvedValueOnce({ intentos_pin: 5 } as never) // el incremento llega al tope
+        .mockResolvedValue(usuario() as never);
+      await expect(
+        service.cambiarPin({ pinActual: 'PQ7W2N9K', pinNuevo: 'PQ7W2N9K' }, USER_ID, 's-1'),
+      ).rejects.toThrow('se bloqueó por 5 intentos fallidos');
+      expect(prisma.users.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ intentos_pin: 5, cuenta_bloqueada_en: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('cuenta bloqueada activa: rechaza el cambio antes de validar (PR #18, mediano)', async () => {
+      prisma.users.findUnique.mockResolvedValue(
+        usuario({ cuenta_bloqueada_en: new Date() }) as never,
+      );
+      await expect(
+        service.cambiarPin({ pinActual: PIN_OK, pinNuevo: 'PQ7W2N9K' }, USER_ID, 's-1'),
+      ).rejects.toThrow('Cuenta bloqueada por intentos fallidos');
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'CUENTA_BLOQUEADA' }),
+      );
     });
 
     it('PIN nuevo débil (solo números): PIN_DEBIL + FAIL auditado', async () => {
