@@ -1,0 +1,18 @@
+PROVEEDORES EXTERNOS 01.xlsx
+Vistas: /proveedores, /finanzas
+
+DUDAS:
+1. ¿Qué es exactamente una "conciliación"? ¿Es que cada semana ustedes le
+   mandan al proveedor lo que compraron, él lo confirma, y ustedes le abonan
+   una parte?
+2. ¿Quién hace la conciliación y cada cuándo? (vimos conciliaciones #1 a #7
+   semanales)
+3. El "SALDO A FAVOR": ¿es cuando ustedes le pagaron de más al proveedor?
+4. ¿Después de conciliar una semana, todavía se puede corregir una compra que
+   quedó mal, o ya está cerrada?
+5. ¿Los abonos a cuenta se hacen si el dinero alcanza, o hay un mínimo que se
+   paga siempre?
+
+SUGERENCIAS DE MEJORA:
+- Que el sistema lleve el número de conciliación (#1, #2...) con su fecha y
+  lo que se abonó en cada una — hoy se saca a mano y es fácil perder el hilo.

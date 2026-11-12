@@ -1,0 +1,15 @@
+LISTA DE PRECIOS.xlsx
+Vistas: /cotizaciones, /ventas
+
+DUDAS:
+1. ¿Los precios son fijos para todos los clientes, o hay clientes con precio
+   especial?
+2. ¿Qué significa cada columna: el precio de 7m, 14m3 y 30m3 es por viaje
+   completo y el de m3 por unidad? ¿Cuándo se usa cada uno?
+3. ¿Con qué frecuencia cambian los precios? ¿Quién los autoriza?
+4. Hay dos listas (DESEMBOCADA y PLAYA GRANDE): ¿cada obra/destino tiene su
+   propia lista de precios? ¿Cuántos destinos hay?
+
+SUGERENCIAS DE MEJORA:
+- Que la lista de precios viva en el sistema y las cotizaciones/ventas la
+  tomen de ahí (hoy la copian a mano en las cotizaciones de Word).

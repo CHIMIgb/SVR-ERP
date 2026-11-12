@@ -1,0 +1,17 @@
+PROYECTO AILIN 2026 PROGRAMA EMPRESA.xlsx
+Vistas: /proyectos, /operaciones (solo lo que toca las vistas)
+
+DUDAS (lo de servicios/placas de maquinaria es de otro módulo — no va aquí):
+1. ¿Cada proyecto lleva su plantilla de trabajadores fija, o la gente cambia
+   de proyecto? ¿Quién arma la plantilla?
+2. ¿El horario de entrada/salida es de cada proyecto o es el mismo para toda
+   la empresa? (vimos horarios por persona en la plantilla)
+3. ¿El proyecto ES el cliente, o un cliente puede tener varios proyectos?
+4. ¿Los datos de esta plantilla (RFC, domicilio, horario) hay que capturarlos
+   siempre al abrir un proyecto nuevo, o solo algunos?
+5. ¿Este expediente se usa para algo más: cobrarle al cliente, pagar nomina
+   del proyecto, o solo es control interno?
+
+SUGERENCIAS DE MEJORA:
+- Que el proyecto traiga su plantilla de gente asignada desde el sistema —
+  hoy es un Excel aparte por proyecto.

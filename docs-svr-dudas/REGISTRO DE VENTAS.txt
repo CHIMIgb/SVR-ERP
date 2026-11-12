@@ -1,0 +1,23 @@
+REGISTRO DE VENTAS.xlsx
+Vistas: /ventas, /ventas/corte, /finanzas
+
+DUDAS:
+1. El efectivo de las ventas: ¿se entrega a oficina el mismo día o puede
+   quedarse en obra/stand unos días? (vimos "ENTREGADO 14/10/2026" a varios
+   días de la venta)
+2. ¿Quién entrega el efectivo y quién lo recibe en oficina? ¿Se firma algo?
+3. ¿Qué significa "NO HUBO EFECTIVO" — ese día no vendieron de contado, o no
+   hubo corte?
+4. NUEVO (lo que nos dijeron): ¿qué clientes pagan hoy con el crédito que les
+   dan? ¿Cómo se lo asignan: cuánto crédito, por cuánto tiempo, y quién lo
+   autoriza?
+5. NUEVO: ¿qué pasa cuando un cliente quiere comprar con crédito y ya lo
+   rebasó? ¿Se le niega la venta, o se le deja y luego se cobra?
+6. ¿Todas las ventas son de material por banco (cribado, base), o el punto de
+   venta también vende otras cosas?
+
+SUGERENCIAS DE MEJORA:
+- Una "entrega de efectivo" con folio y firma por cada corte — hoy el
+  "ENTREGADO [fecha]" es una nota suelta en el Excel.
+- Que el crédito del cliente viva en el sistema (cuánto se le permite, cuánto
+  lleva gastado) — así el punto de venta puede avisar si se pasa.

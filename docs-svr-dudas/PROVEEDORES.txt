@@ -1,0 +1,15 @@
+PROVEEDORES.xlsx
+Vistas: /proveedores, /finanzas
+
+DUDAS:
+1. ¿Todos los proveedores llevan estado de cuenta así (lo que deben, lo
+   abonado, lo restante), o solo la refaccionaria?
+2. ¿Los proveedores también les dan crédito? ¿En qué situaciones se usa: todo
+   se compra a crédito y se va abonando, o hay cosas que se pagan de contado?
+3. ¿Quién decide a qué proveedor se le paga primero cuando hay poco dinero?
+4. Las notas "PAGADAS", "PENDIENTE DE PAGO", "FIRMO PACO": ¿qué significan
+   exactamente y quién las anota?
+
+SUGERENCIAS DE MEJORA:
+- Un estado de cuenta por proveedor generado por el sistema (hoy es un Excel
+  a mano por proveedor).

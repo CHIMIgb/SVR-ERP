@@ -1,0 +1,18 @@
+CONTROL DE GASTOS.xlsx
+Vistas: /finanzas, /ventas/corte (borde)
+
+DUDAS (solo lo que toca Comercial):
+1. ¿Quién lleva la caja chica y con cuánto se le resurte? (vimos "CAJA DEL 8
+   AL 15 DE NOV $3000")
+2. ¿Qué es el "SOBRE DE AILYN"? ¿Es efectivo de la representante legal para
+   gastos del proyecto?
+3. "GASTOS SOLVENTADOS POR OFICINA": ¿la oficina paga un gasto de obra y luego
+   se le reembolsa? ¿Cómo se hace ese reembolso hoy?
+4. ¿Los gastos sin factura se les piden después, o se quedan así?
+5. ¿Cada gasto va amarrado a una obra/proyecto, o son gastos generales de la
+   empresa?
+
+SUGERENCIAS DE MEJORA:
+- Registrar cada gasto con su obra y responsable desde el sistema — así el
+  corte de caja y los gastos por obra salen solos (hoy se sacan a mano del
+  Excel).

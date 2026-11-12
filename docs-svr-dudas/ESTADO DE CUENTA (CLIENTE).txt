@@ -1,0 +1,21 @@
+ESTADO DE CUENTA SOLO MATERIAL.xlsx y MATERIAL Y FLETE.xlsx
+Vistas: /cobranza, /clientes, /facturas
+
+DUDAS:
+1. ¿Cada cuándo se entrega el estado de cuenta al cliente (semanal, mensual)?
+2. ¿Cómo se le entrega: impreso, WhatsApp, correo? ¿El cliente firma o confirma
+   que lo recibió?
+3. ¿Qué hace falta para que un cliente reciba el formato de "MATERIAL Y FLETE"
+   en vez del de "SOLO MATERIAL"?
+4. ¿El cliente paga todo junto al final del periodo, o va abonando por semana?
+5. ¿Qué pasa si el cliente dice que un viaje del estado de cuenta no fue suyo?
+   ¿Cómo se corrige?
+6. ¿Todos los clientes de material llevan estado de cuenta, o solo los que
+   compran a crédito?
+7. Para facturar un viaje, ¿qué es lo que manda: el cliente, la obra o el
+   proyecto? (vimos que un cliente puede tener varias obras)
+
+SUGERENCIAS DE MEJORA:
+- Que el sistema genere el estado de cuenta solo (ya tiene todos los viajes)
+  y deje registro de que el cliente lo recibió — hoy es un Excel a mano.
+- Que los folios repetidos se rechacen solos al generar el estado de cuenta.

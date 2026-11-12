@@ -1,0 +1,22 @@
+COTIZACION 37 (folio impreso 47) y COTIZACION 50 (Word)
+Vistas: /cotizaciones, /facturas
+
+DUDAS:
+1. El archivo se llama "COTIZACION 37" pero dentro dice "Cotización 47".
+   ¿Qué numeración usan de verdad y de dónde sale?
+2. ¿La cotización pasa por alguna revisión interna antes de enviarse al
+   cliente, o el representante legal la manda directo?
+3. Cuando el cliente acepta la cotización, ¿qué sigue: se convierte en trabajo
+   directo, se factura, o se hace otra cosa?
+4. La vigencia dice 8 días: ¿si el cliente acepta después de los 8 días hay
+   que hacer otra cotización, o se respeta el precio?
+5. ¿Las cotizaciones son solo de servicios de equipo (vibro, traslados, pipa),
+   o también de materiales (piedra, grava)? ¿O cada quien cotiza lo suyo?
+6. ¿Qué significa "anticipar una semana antes" — el cliente avisa con una
+   semana de anticipación para reservar el equipo?
+
+SUGERENCIAS DE MEJORA:
+- Numeración automática de cotizaciones (hoy el folio se pone a mano y no
+  coincide con el nombre del archivo).
+- Que las condiciones fijas (sin IVA, vigencia, turno de 8 horas, anticipar 1
+  semana) queden escritas de fábrica y no se tecleen cada vez.

@@ -1,0 +1,34 @@
+INDEX — Dudas para el SVR por documento (carpeta docs-svr-dudas)
+Fecha: 2026-11-12
+
+Todas las dudas son SOLO de los módulos Comercial y Operaciones:
+  Operaciones: /reportes, /operaciones, /criba, /inventario, /proyectos
+  Comercial:   /clientes, /cotizaciones, /finanzas, /proveedores, /ventas,
+               /cobranza, /ventas/corte, /facturas
+
+Un archivo por documento de /docs-svr (los dos ESTADO DE CUENTA se juntaron
+en uno porque son el mismo proceso en dos formatos; las dos COTIZACIONES
+también, porque son la misma plantilla):
+
+  PRODUCTIVIDAD.txt ................ bitácora de retiros (la más importante)
+  ESTADO DE CUENTA (CLIENTE).txt ... estados de cuenta al cliente (2 formatos)
+  LISTA DE PRECIOS.txt ............. tabulador de precios
+  COTIZACIONES (WORD).txt .......... las 2 cotizaciones de Word
+  NOMINA.txt ....................... solo lo de operadores (apodo = quién)
+  CONTROL DE GASTOS.txt ............ caja chica / solventados por oficina
+  PROVEEDORES.txt .................. estado de cuenta de proveedor
+  PROVEEDORES EXTERNOS 01.txt ...... conciliaciones semanales
+  PROYECTO AILIN .......txt ........ plantilla del proyecto (solo vistas)
+  REGISTRO DE VENTAS.txt ........... corte diario + crédito en el POS (nuevo)
+
+Temas nuevos que el cliente nos dijo (2026-11-12) y ya están en las dudas:
+  - Estados de cuenta de clientes y proveedores (Cobertura: ESTADO DE CUENTA,
+    PROVEEDORES, EXTERNOS 01).
+  - Pagos a proveedores (PROVEEDORES, EXTERNOS 01).
+  - Crédito para pagar en el punto de venta (REGISTRO DE VENTAS, preguntas 4 y 5).
+
+Preguntas clave que NO salieron de los Excel sino del análisis del plan:
+  - ¿El gasto de camión se le carga a la obra? (PRODUCTIVIDAD, pregunta 8)
+  - ¿Para facturar manda el cliente, la obra o el proyecto? (ESTADO DE CUENTA,
+    pregunta 7)
+  - ¿Los proveedores también tienen crédito? (PROVEEDORES, pregunta 2)

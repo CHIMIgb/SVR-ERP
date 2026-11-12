@@ -1,0 +1,13 @@
+NOMINA.xlsx
+Vistas: /operaciones (solo lo relativo a operadores)
+
+DUDAS (solo lo que toca Operaciones — lo demás es de nómina/RRHH):
+1. En la nómina usan apodos (PELON, SIRI, SATANAS, PIOLO...) y en el proyecto
+   usan nombres completos. ¿Hay una lista de quién es quién? La necesitamos
+   para que al asignar un operador no haya confusiones ni duplicados.
+2. ¿Todos los operadores de camiones/maquinaria están en la nómina, o hay
+   operadores externos que no van en ella?
+
+SUGERENCIAS DE MEJORA:
+- Un solo nombre por persona (nombre completo con su apodo de operador como
+  sobrenombre) — así las nóminas y los despachos hablan de la misma persona.

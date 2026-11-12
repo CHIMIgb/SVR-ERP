@@ -1,0 +1,29 @@
+PRODUCTIVIDAD.xlsx (bitácora de retiros / viajes de camiones)
+Vistas: /operaciones, /ventas, /cobranza, /facturas, /proyectos
+
+DUDAS:
+1. Vimos folios repetidos el mismo día con precios distintos (ej. folio 59515
+   dos veces, $3,600 y $4,399). ¿El folio es el ticket de la báscula y puede
+   repetirse, o fue error de captura?
+2. El mismo material y el mismo día tienen precios distintos ($35, $150, $192,
+   $450 por m³). ¿El precio se negocia con cada cliente/obra, o sale de la
+   lista de precios? ¿Quién decide el precio de cada viaje?
+3. ¿Qué significa la columna ESTATUS (vimos "ORIGINAL", "COPIA" y viajes en $0)?
+   ¿Un viaje en $0 es un viaje cancelado o se cobra aparte?
+4. ¿Quién captura el folio y cuándo: la oficina cuando llega el ticket, o el
+   operador en el momento?
+5. ¿El viaje siempre va amarrado a una obra/cliente? ¿Un camión puede servir a
+   dos obras el mismo día?
+6. ¿Cada camión va siempre con el mismo operador, o rotan?
+7. El gasto de la semana por camión (diésel, insumos, operativo): ¿quién lo
+   anota y de dónde salen esos números?
+8. ¿Esos gastos (diésel, insumos, operativo) se le cargan a la obra que se
+   atendió, o se llevan por camión aparte? (nos interesa saber cómo sacan la
+   utilidad real)
+9. ¿Tienen tanque o pipa propia de diésel en obra, o se compra en gasolinera?
+
+SUGERENCIAS DE MEJORA:
+- Un folio único por viaje (el sistema avisa si se repite, en vez de buscarlo a
+  ojo como hacen hoy con el formato condicional).
+- Que el precio salga de la lista de precios y solo se pueda cambiar con
+  permiso, así nadie teclea precios a mano.
