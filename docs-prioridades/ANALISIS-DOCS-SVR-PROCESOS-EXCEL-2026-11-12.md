@@ -173,3 +173,82 @@ apodo↔persona) son detalle fino de cada vista.
 con las series de `IMPLEMENTACIONES-A-FUTURO.md` empezando por las que este
 análisis ya desbloqueó (P2, P7, C3, §9/§10). Detalle del enlace en §7/§8 de
 ese plan.
+
+---
+
+## 9. Requisitos nuevos del cliente (2026-11-12) — estados de cuenta, pagos a proveedores y crédito en el POS
+
+> Información adicional que dio el SVR en lenguaje directo (no viene de un
+> Excel): confirma y amplía los procesos que los 4 Excel de `docs-svr/`
+> demuestran. Se documenta aquí como requisito formal.
+
+**Textual del cliente:**
+1. "Se pueden ver los estados de cuenta de los clientes y proveedores."
+2. "También se les paga a los proveedores."
+3. "Algunos para pagar usan un crédito que ellos les dan para el punto de
+   venta — más que nada la opción de pagar con su crédito."
+
+### 9.1 Estados de cuenta de clientes y proveedores (requisito 1)
+
+**Qué significa:** dos estados de cuenta, uno por cada lado del dinero:
+
+| Lado | Excel que lo demuestra | Contenido |
+|---|---|---|
+| Cliente (CxC) | ESTADO DE CUENTA SOLO MATERIAL / MATERIAL Y FLETE | Retiros acumulados por folio con subtotal — lo que el cliente debe |
+| Proveedor (CxP) | PROVEEDORES.xlsx / PROVEEDORES EXTERNOS 01.xlsx | `SUBTOTAL · ABONE · RESTAN` y conciliaciones semanales #1–7 con saldo a favor |
+
+**Estado verificado en código (2026-11-12):** el de **proveedor existe
+parcialmente** (`estadosCuenta` en `/proveedores` + abonos; falta el envoltorio
+de conciliación semanal #1–7). El de **cliente por retiros NO existe** —
+`lib/api.ts` solo expone estado de cuenta para proveedores; el consolidado de
+`/clientes` (6.7 ✅) muestra tabs pero no el formato entregable de los Excel.
+
+**A dónde cae:** F3 del plan comercial + Cl3 (formatos SOLO MATERIAL /
+MATERIAL Y FLETE) + §9/§10 de IMPLEMENTACIONES (lado proveedor).
+
+### 9.2 Pagos a proveedores (requisito 2)
+
+**Qué significa:** los abonos parciales — `ABONE 4,355 → RESTAN 3,440`
+(PROVEEDORES.xlsx) y `ABONO A CUENTA` con fecha por conciliación (EXTERNOS 01).
+
+**Estado verificado:** ✅ **ya construido** — abonos atómicos a CxP con egreso
+en `/finanzas` (ciclo de dinero + Fase 7). Solo falta el envoltorio semanal de
+conciliación (brecha #4).
+
+**A dónde cae:** ya funciona; el detalle semanal va con P4 + §9/§10.
+
+### 9.3 Crédito para pagar en el punto de venta (requisito 3) — NUEVO, sin Excel
+
+**Qué significa (el dato más importante de esta entrega):** el crédito lo otorga
+**SVR al cliente** ("un crédito que **ellos les dan**"). El cliente con crédito
+disponible compra material en el POS **sin efectivo** — la venta se le suma a
+su cuenta — y el estado de cuenta de §9.1 es el comprobante de ese crédito
+acumulado. Esto cierra el círculo: **crédito otorgado → venta a crédito en POS →
+CxC → estado de cuenta al cliente → cobranza**.
+
+**Estado verificado en schema (2026-11-12):**
+- `clientes` **NO tiene campos de crédito** — sin `limite_credito`, sin `dias
+  de crédito`, sin saldo disponible. Es schema nuevo obligatorio.
+- La venta POS **no genera CxC** (C3 de IMPLEMENTACIONES, verificado: el
+  service de ventas no crea entidad de deuda) — y el POS tampoco ofrece
+  "crédito" como método de pago contra el disponible del cliente.
+
+**Lo que exige este requisito (orden sugerido):**
+1. **Schema:** campos de crédito en `clientes` (`limite_credito`, `dias de
+   crédito` o plazo — negociar con el cliente cuál usa hoy, probablemente
+   manual en el Excel que no nos pasaron) + derivado de "disponible" =
+   límite − suma de CxC abiertas.
+2. **C3:** la venta a crédito del POS → factura/CxC del cliente (transacción,
+   idempotencia ya existe en el POS).
+3. **POS (`/ventas`):** método de pago **CRÉDITO** que valide disponible
+   contra el límite (rechazar si excede, auditar FAIL) — cliente conocido, no
+   "Público en general".
+4. **Estado de cuenta del cliente** (§9.1) que refleje el consumo del crédito.
+
+**A dónde cae:** **C3 de IMPLEMENTACIONES** (se construye junto con el motor
+de retiros de F3, según el hilo) + F3/Cl3 para el estado de cuenta.
+
+> ⚠️ **Pregunta nueva al cliente** (sumar a la F2 del plan): ¿cómo asignan hoy
+> el crédito (monto y plazo por cliente), quién lo aprueba y qué pasa cuando
+> un cliente lo rebasa — rechazo en el POS o cobro forzado? No viene en los
+> Excel.
