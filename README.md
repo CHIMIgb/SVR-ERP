@@ -170,15 +170,15 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 | **Contraseña** | `admin123` |
 | **Rol** | Administrador (nivel 100) |
 
-#### Encargado de RRHH (solo módulo Recursos Humanos)
+#### Administrativo de RRHH (módulo Recursos Humanos)
 
 | Campo | Valor |
 |-------|-------|
 | **Email** | `rrhh@svr-constructora.com` |
 | **Contraseña** | `rrhh123` |
-| **Rol** | Encargado de RRHH (nivel 30) |
+| **Rol** | Administrativo (nivel 80) — con los permisos de RRHH absorbidos |
 | **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
-| **No tiene acceso** | Maquinaria, Operaciones, Comercial, Sistema, Configuración |
+| **No tiene acceso** | Maquinaria, Comercial, Sistema, Configuración |
 
 #### Roles de plantilla (5 — /reportes y dashboard)
 
@@ -193,34 +193,67 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 |-------|------------|-------------|--------------|--------------------|
 | `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
 | `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |
-| `tecnico@svr-constructora.com` | `tecnico123` | Tecnico Mecanico (70) | Mecanico | ver, crear, editar |
-| `soldador@svr-constructora.com` | `tecnico123` | Tecnico Soldador (70) | Soldador | ver, crear, editar |
-| `diesel@svr-constructora.com` | `tecnico123` | Tecnico Diesel (70) | Diesel | ver, crear, editar |
-| `mantenimiento@svr-constructora.com` | `tecnico123` | Tecnico Mantenimiento (70) | Mantenimiento | ver, crear, editar |
+| `tecnico@svr-constructora.com` | `tecnico123` | Técnico (70) | Mecanico | ver, crear, editar |
+| `soldador@svr-constructora.com` | `tecnico123` | Técnico (70) | Soldador | ver, crear, editar |
+| `diesel@svr-constructora.com` | `tecnico123` | Técnico (70) | Diesel | ver, crear, editar |
+| `mantenimiento@svr-constructora.com` | `tecnico123` | Técnico (70) | Mantenimiento | ver, crear, editar |
 | `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | ver, crear (también /criba, /ventas y /ventas/corte) |
 | `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
 
 > Cada usuario hereda su **área (torre)** → el alta "Misma área" de /reportes
-> envía el incidente a esa torre automáticamente (y sus subcategorías). La torre
-> vive en `users.torre` (toma precedencia) o en `roles.torre` — se ajusta por SQL
-> o con el futuro panel de usuarios.
+> envía el incidente a esa torre automáticamente (y sus subcategorías). La
+> torre **vive en el PUESTO** (`categorias_puesto.torre`) y se escribe en
+> `users.torre` al dar de alta o editar el puesto — `users.torre` tiene
+> precedencia sobre cualquier otra fuente. El rol ya no la define.
 
 ### Áreas del sistema (torres de /reportes)
 
 Las **6 áreas** del alta "Área (a la que se envía)" y qué abarca cada una (guía del cliente):
 
-| Área (torre) | Quiénes pertenecen / qué abarca | Rol de plantilla |
-|--------------|----------------------------------|------------------|
-| **Administrativo** | **Administradores, jefes y personas en oficina** + el cobrador de criba y punto de venta (solo es 1) | Administrador · Administrativo · Cobrador |
-| **Residente** | **Ingenieros encargados de obra y de personal** — ven los reportes que levantan sus trabajadores y dan seguimiento | Residente |
-| **Mecanico** | **Técnicos** mecánicos de flota | Técnico Mecánico |
-| **Soldador** | **Técnicos** soldadores | Tecnico Soldador |
+| Área (torre) | Quiénes pertenecen / qué abarca | Puestos que la llevan |
+|--------------|----------------------------------|----------------------|
+| **Administrativo** | **Administradores, jefes y personas en oficina** + el cobrador de criba y punto de venta (solo es 1) | RRHH, Administrativo, Cobrador |
+| **Residente** | **Ingenieros encargados de obra y de personal** — ven los reportes que levantan sus trabajadores y dan seguimiento | Ingeniero |
+| **Mecanico** | **Técnicos** mecánicos de flota | Mecánico |
+| **Soldador** | **Técnicos** soldadores | Soldador |
 | **Diesel** | **Técnicos** de diésel (suministro/reparto — los piperos históricos) | Técnico Diésel |
-| **Mantenimiento** | **Técnicos** de mantenimiento general | Tecnico Mantenimiento |
+| **Mantenimiento** | **Técnicos** de mantenimiento general | Mantenimiento |
 
 **Trabajadores** (operadores, choferes y demás personal de campo) no tienen área
 propia: levantan el reporte y lo **envían a la torre que corresponde** (mecánico,
 residente, etc.); "Misma área" para ellos cae en oficina (Administrativo).
+
+### Estructura organizacional (roles, puestos y torres)
+
+**5 roles de negocio + 1 de sistema.** El rol decide **qué puede hacer** en la
+app (permisos + vistas del menú); el **puesto** decide **quién es** la persona
+laboralmente y **a qué torre (área) pertenece** para /reportes.
+
+| Rol (nivel) | Para quién | Puestos del catálogo (con torre) |
+|-------------|-----------|----------------------------------|
+| **Administrador** (100, sistema) | El dueño/administrador del ERP — no se asigna desde el alta de trabajadores | — |
+| **Residente** (90) | Ingenieros encargados de obra y de personal | Ingeniero → **Residente** |
+| **Administrativo** (80) | Personal de oficina (incluye RRHH, cuyos permisos absorbió) | RRHH → **Administrativo**, Administrativo → **Administrativo** |
+| **Técnico** (70) | Las 4 torres técnicas | Mecánico → **Mecanico**, Técnico Diésel → **Diesel**, Soldador → **Soldador**, Mantenimiento → **Mantenimiento** |
+| **Cobrador** (60) | Cobranza de criba y punto de venta | (sin puesto con torre → Administrativo) |
+| **Trabajador** (20) | Personal de campo sin área: operadores, choferes… | Operador → *(sin torre)*, Chofer → *(sin torre)* |
+
+La torre del puesto se guarda en `categorias_puesto.torre` y se escribe en
+`users.torre` al dar de alta o editar el puesto; el número de empleado toma su
+prefijo del rol (`ADM-`, `RES-`, `TEC-`, `COB-`, `TRA-`) independientemente del
+puesto. Los roles viejos (Encargado de RRHH, Tecnico Mecanico/Soldador/Diesel/
+Mantenimiento) quedaron desactivados por la migración
+`20261112000000_roles_5_puestos_torre`.
+
+**⚠️ Vigilancia de permisos (regla para agregar el permiso #107 y siguientes):**
+los permisos son granulares por `(modulo, recurso, accion)` — a día de hoy hay
+106 y funcionan porque no hay duplicados. Al agregar uno NUEVO (o al construir
+la Vista B de usuarios/roles):
+1. Verificar que no exista ya un permiso que haga lo mismo en otro recurso del
+   mismo módulo (la duplicación empieza invisible y con dos devs se multiplica).
+2. Agregarlo al seed de RBAC y al rol correspondiente **en el mismo cambio**.
+3. Un endpoint nuevo usa SU permiso propio — no "pedir prestado" el de otra
+   vista para no crear el duplicado.
 
 **Endpoints de autenticación:**
 
