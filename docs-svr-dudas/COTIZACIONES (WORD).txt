@@ -1,22 +1,26 @@
 COTIZACION 37 (folio impreso 47) y COTIZACION 50 (Word)
-Vistas: /cotizaciones, /facturas
+Estas cartas son su plantilla de cotización: fecha, cliente, tabla de
+conceptos con cantidad y monto, condiciones fijas (sin IVA, vigencia 8 días,
+turno de 8 horas, anticipar una semana) y firma. En la aplicación la
+cotización de /cotizaciones seguirá este mismo formato y el folio saldrá
+automático (hoy el folio se pone a mano y ni siquiera coincide con el nombre
+del archivo: se llama "COTIZACION 37" y dice 47).
 
 DUDAS:
-1. El archivo se llama "COTIZACION 37" pero dentro dice "Cotización 47".
-   ¿Qué numeración usan de verdad y de dónde sale?
-2. ¿La cotización pasa por alguna revisión interna antes de enviarse al
+1. ¿La cotización la revisa alguien internamente antes de mandársela al
    cliente, o el representante legal la manda directo?
-3. Cuando el cliente acepta la cotización, ¿qué sigue: se convierte en trabajo
-   directo, se factura, o se hace otra cosa?
-4. La vigencia dice 8 días: ¿si el cliente acepta después de los 8 días hay
-   que hacer otra cotización, o se respeta el precio?
-5. ¿Las cotizaciones son solo de servicios de equipo (vibro, traslados, pipa),
-   o también de materiales (piedra, grava)? ¿O cada quien cotiza lo suyo?
-6. ¿Qué significa "anticipar una semana antes" — el cliente avisa con una
-   semana de anticipación para reservar el equipo?
+2. Cuando el cliente acepta la cotización, ¿qué sigue: ya se hace el trabajo,
+   se factura, o hay otro paso antes?
+3. La vigencia dice 8 días: ¿si el cliente acepta después de los 8 días hay
+   que volver a cotizar, o se respeta el precio?
+4. ¿Cotizan materiales (piedra, grava) y servicios de equipo (vibro,
+   traslados, pipa) en la misma cotización, o por separado?
+5. "Anticipar una semana antes": ¿el cliente avisa con una semana para
+   reservar el equipo? ¿Qué pasa si pide con menos tiempo?
 
-SUGERENCIAS DE MEJORA:
-- Numeración automática de cotizaciones (hoy el folio se pone a mano y no
-  coincide con el nombre del archivo).
-- Que las condiciones fijas (sin IVA, vigencia, turno de 8 horas, anticipar 1
-  semana) queden escritas de fábrica y no se tecleen cada vez.
+SUGERENCIAS DE MEJORA (lo que la app hará distinto):
+- Folio automático y único por cotización — ya no se pone a mano.
+- Las condiciones fijas (sin IVA, vigencia 8 días, turno de 8 horas,
+  anticipar 1 semana) van precargadas — ya no se teclean cada vez.
+- La tabla de conceptos con cantidad y monto se llena con partidas reales
+  (hoy se escribe a mano en el Word).

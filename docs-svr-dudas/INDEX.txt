@@ -1,34 +1,40 @@
 INDEX — Dudas para el SVR por documento (carpeta docs-svr-dudas)
-Fecha: 2026-11-12
+Fecha: 2026-11-12 (versión aterrizada: cada duda sale de algo visto en el
+documento y apunta a cómo lo implementará la aplicación)
 
 Todas las dudas son SOLO de los módulos Comercial y Operaciones:
   Operaciones: /reportes, /operaciones, /criba, /inventario, /proyectos
   Comercial:   /clientes, /cotizaciones, /finanzas, /proveedores, /ventas,
                /cobranza, /ventas/corte, /facturas
 
-Un archivo por documento de /docs-svr (los dos ESTADO DE CUENTA se juntaron
-en uno porque son el mismo proceso en dos formatos; las dos COTIZACIONES
-también, porque son la misma plantilla):
+Cada archivo abre con: qué es el documento, qué se vio en él, y qué hará la
+aplicación con eso. Al final de cada uno van las SUGERENCIAS DE MEJORA (lo
+que la app hará distinto a hoy).
 
-  PRODUCTIVIDAD.txt ................ bitácora de retiros (la más importante)
-  ESTADO DE CUENTA (CLIENTE).txt ... estados de cuenta al cliente (2 formatos)
-  LISTA DE PRECIOS.txt ............. tabulador de precios
-  COTIZACIONES (WORD).txt .......... las 2 cotizaciones de Word
-  NOMINA.txt ....................... solo lo de operadores (apodo = quién)
-  CONTROL DE GASTOS.txt ............ caja chica / solventados por oficina
-  PROVEEDORES.txt .................. estado de cuenta de proveedor
-  PROVEEDORES EXTERNOS 01.txt ...... conciliaciones semanales
-  PROYECTO AILIN .......txt ........ plantilla del proyecto (solo vistas)
-  REGISTRO DE VENTAS.txt ........... corte diario + crédito en el POS (nuevo)
+  PRODUCTIVIDAD.txt ................ folios únicos, precio fijo o variable,
+                                     ESTATUS, captura, gasto a obra
+  ESTADO DE CUENTA (CLIENTE).txt ... frecuencia/entrega, material vs flete,
+                                     disputas, qué manda para facturar
+  LISTA DE PRECIOS.txt ............. listas por destino, presentaciones,
+                                     quién cambia precios
+  COTIZACIONES (WORD).txt .......... revisión interna, qué sigue al aceptar,
+                                     vigencia, folio automático (sugerencia)
+  NOMINA.txt ....................... apodo = una sola persona (sugerencia:
+                                     nombre completo en todo el sistema)
+  CONTROL DE GASTOS.txt ............ caja chica, sobre de AILYN, solventados,
+                                     gasto amarrado a obra
+  PROVEEDORES.txt .................. estado de cuenta por proveedor +
+                                     ¿proveedores con crédito? (nuevo)
+  PROVEEDORES EXTERNOS 01.txt ...... conciliación semanal, saldo a favor,
+                                     corrección post-conciliación
+  PROYECTO AILIN .......txt ........ plantilla por proyecto, proyecto vs
+                                     cliente, uso del expediente
+  REGISTRO DE VENTAS.txt ........... entrega de efectivo, NO HUBO EFECTIVO +
+                                     crédito en el POS (nuevo: asignación y
+                                     rebase)
 
-Temas nuevos que el cliente nos dijo (2026-11-12) y ya están en las dudas:
-  - Estados de cuenta de clientes y proveedores (Cobertura: ESTADO DE CUENTA,
-    PROVEEDORES, EXTERNOS 01).
-  - Pagos a proveedores (PROVEEDORES, EXTERNOS 01).
-  - Crédito para pagar en el punto de venta (REGISTRO DE VENTAS, preguntas 4 y 5).
-
-Preguntas clave que NO salieron de los Excel sino del análisis del plan:
-  - ¿El gasto de camión se le carga a la obra? (PRODUCTIVIDAD, pregunta 8)
-  - ¿Para facturar manda el cliente, la obra o el proyecto? (ESTADO DE CUENTA,
-    pregunta 7)
-  - ¿Los proveedores también tienen crédito? (PROVEEDORES, pregunta 2)
+REGLAS QUE LA APP YA ADOPTA (están en las sugerencias, no se preguntan):
+  - Folios de retiro ÚNICOS (los duplicados de hoy no ocurrirán).
+  - Nombre completo de la persona en todo el sistema (apodo como sobrenombre).
+  - Folio de cotización automático (el 37/47 a mano desaparece).
+  - Precios desde la lista de precios, no tecleados a mano.

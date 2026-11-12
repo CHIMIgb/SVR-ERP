@@ -1,15 +1,20 @@
 PROVEEDORES.xlsx
-Vistas: /proveedores, /finanzas
+Este Excel es el estado de cuenta con un proveedor: lo que compraron
+(SUBTOTAL), lo que le han abonado (ABONE) y lo que falta (RESTAN — vimos
+$7,795 abonado $4,355 y restan $3,440), con notas a mano como "PAGADAS",
+"PENDIENTE DE PAGO" y "FIRMO PACO". En la aplicación /proveedores llevará
+esto mismo por cada proveedor, generado solo.
 
 DUDAS:
-1. ¿Todos los proveedores llevan estado de cuenta así (lo que deben, lo
-   abonado, lo restante), o solo la refaccionaria?
-2. ¿Los proveedores también les dan crédito? ¿En qué situaciones se usa: todo
-   se compra a crédito y se va abonando, o hay cosas que se pagan de contado?
-3. ¿Quién decide a qué proveedor se le paga primero cuando hay poco dinero?
-4. Las notas "PAGADAS", "PENDIENTE DE PAGO", "FIRMO PACO": ¿qué significan
-   exactamente y quién las anota?
+1. ¿Todos los proveedores llevan estado de cuenta así, o solo algunos?
+2. NUEVO: ¿los proveedores también les dan crédito? ¿En qué situaciones se
+   usa: todo se compra a crédito y se va abonando, o hay compras de contado?
+3. ¿Quién decide a qué proveedor se le paga primero cuando no alcanza para
+   todos?
+4. Las notas de pago ("PAGADAS", "PENDIENTE DE PAGO", "FIRMO PACO"): ¿quién
+   las anota y qué significa cada una? (en la app esto serán estados claros
+   por compra, no notas sueltas)
 
-SUGERENCIAS DE MEJORA:
-- Un estado de cuenta por proveedor generado por el sistema (hoy es un Excel
-  a mano por proveedor).
+SUGERENCIAS DE MEJORA (lo que la app hará distinto):
+- Estado de cuenta automático por proveedor con abonos fechados — hoy es un
+  Excel a mano por proveedor.
