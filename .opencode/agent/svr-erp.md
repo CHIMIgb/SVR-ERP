@@ -323,3 +323,4 @@ duplicados. Al agregar uno NUEVO o al construir la Vista B:
 - Procesos node huérfanos ocupando el puerto 3000: matarlos antes de arrancar.
 - Turbopack/CD: `.next`, `dist`, `*.tsbuildinfo` nunca van al PR.
 - Localización: TODO texto de UI en español — incluso errores de validación (class-validator con mensajes personalizados en español).
+- **Despliegue con proxy (⚠️ día del despliegue):** el bloqueo por IP usa `req.ip` — sin `trust proxy` es la IP directa de la conexión (hoy, en LAN, la real ✓). Con nginx: `app.set('trust proxy', 1)` en `main.ts` (SOLO el primer salto) y nginx SIEMPRE pisa `X-Forwarded-For` con `$remote_addr` — sin trust proxy todos comparten la IP del proxy (un mal actor bloquea a la oficina entera); con trust proxy abierto, un atacante suplanta `X-Forwarded-For` y rota IPs falsas para esquivar el bloqueo por IP. Detalle: README "Despliegue con servidor".

@@ -267,6 +267,17 @@ import { cn } from '@/lib/utils';
 - Config de Prisma en `apps/api/prisma.config.ts` (defineConfig), NO en `schema.prisma`
 - URL de BD en `apps/api/.env`
 
+### Despliegue con proxy — trust proxy y el bloqueo por IP (⚠️ regla del día del despliegue)
+
+El bloqueo por IP de la autenticación usa `req.ip`, que **sin `trust proxy`
+es la IP directa de la conexión** (en LAN: la real de cada dispositivo ✓). El
+día que exista servidor detrás de nginx: `app.set('trust proxy', 1)` en
+`apps/api/src/main.ts` (SOLO el primer salto) y nginx SIEMPRE pisa
+`X-Forwarded-For` con `$remote_addr` — sin eso, todos comparten la IP del
+proxy (un mal actor bloquea a la oficina entera); con trust proxy abierto, un
+atacante suplanta `X-Forwarded-For` y rota IPs falsas para esquivar el
+bloqueo por IP. Detalle completo: README "Despliegue con servidor".
+
 ### Prisma ORM
 - Schema: `apps/api/prisma/schema.prisma` (~2,015 líneas)
 - UUIDs para PKs (`@db.Uuid`), snake_case en columnas (`@map`)

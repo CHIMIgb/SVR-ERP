@@ -440,6 +440,29 @@ npx prisma db pull
 npx prisma generate
 ```
 
+### Despliegue con servidor — trust proxy y el bloqueo por IP (⚠️ día del despliegue)
+
+El bloqueo por IP de la autenticación (10 fallos/15 min → 60 min de bloqueo)
+usa `req.ip`, que **sin configurar `trust proxy` es la IP directa de la
+conexión** — hoy, en red local, la IP real de cada dispositivo. Al montar el
+servidor detrás de un proxy (nginx, etc.) hay dos errores que NO cometer:
+
+1. **Sin `trust proxy`:** todos los usuarios compartirían la IP del proxy —
+   un mal actor bloquearía a la oficina completa con el bloqueo por IP.
+2. **`trust proxy` abierto sin control:** un atacante puede **suplantar la
+   cabecera `X-Forwarded-For`** y rotar IPs falsas para esquivar el bloqueo
+   por IP (el escalonado por cuenta y el throttler siguen protegiendo, pero
+   pierdes esa capa).
+
+La configuración correcta el día del despliegue:
+- En la API: `app.set('trust proxy', 1)` — confía SOLO en el primer salto
+  (tu nginx), en `apps/api/src/main.ts`.
+- En nginx: **siempre pisar** `X-Forwarded-For` con `$remote_addr`
+  (`proxy_set_header X-Forwarded-For $remote_addr;`), nunca apendar la del
+  cliente.
+- Preferible dominio + Let's Encrypt (nadie instala certificados en los
+  teléfonos — ver la sección de HTTPS de la PWA).
+
 ### Build para Móvil (Capacitor)
 
 ```bash
