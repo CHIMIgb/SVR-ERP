@@ -1,10 +1,12 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { AuditAction, AuditResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { esFechaFutura } from '../common/validacion';
 import { TOPE_CATALOGO_MAQUINAS } from '../modules/maquinas/maquinas.service';
+import { generarPinTemporal } from '../auth/pin/pin.validator';
 
 /** Tope del catálogo de proyectos para los selects (datos maestros). */
 const TOPE_CATALOGO_PROYECTOS = 500;
@@ -38,6 +40,12 @@ export interface TrabajadorResponse {
   tarifaHoraExtra?: number;
   descuentosSemana?: number;
   conceptoDescuento?: string;
+  /** Cuenta de acceso P14 (listado/edición de acceso — PR #18 #6/#8). */
+  usuarioId?: string;
+  numeroEmpleado?: string;
+  rolAccesoId?: string;
+  rolAccesoNombre?: string;
+  encargadoUserId?: string | null;
 }
 
 const CATEGORIA_DB_A_UI: Record<string, string> = {
@@ -77,7 +85,7 @@ const CATEGORIA_LICENCIA_UI_A_DB: Record<string, string> = {
 };
 
 const TRABAJADOR_INCLUDE = {
-  categorias_puesto: { select: { nombre: true } },
+  categorias_puesto: { select: { nombre: true, torre: true } },
   licencias_trabajador: true,
   contactos_emergencia: true,
   clientes: { select: { nombre: true } },
@@ -87,8 +95,51 @@ const TRABAJADOR_INCLUDE = {
   },
 } as const;
 
+/** Credenciales del alta (§6.6-1/2): se entregan UNA VEZ en la respuesta del POST. */
+export interface IdentidadAltaResponse {
+  numeroEmpleado: string;
+  /** PIN temporal en claro — SOLO aquí: nunca se guarda en claro ni va a la auditoría. */
+  pinTemporal: string;
+  temporalHasta: string;
+}
+
+const SALT_ROUNDS = 12;
+const PIN_TEMPORAL_HORAS = 24;
+/** Email técnico del alta: el login PWA es por numero_empleado + PIN (§6.4); el email solo debe ser único. */
+const DOMINIO_EMAIL_PWA = 'pwa.svr-constructora.com';
+
+/** Prefijo del numero_empleado por rol (§6.4: ADM-01, RES-014, TEC-007, COB-003, TRA-0142). */
+const PREFIJO_ROL: Record<string, string> = {
+  ADMINISTRADOR: 'ADM',
+  RESIDENTE: 'RES',
+  TECNICO: 'TEC',
+  COBRANZA: 'COB',
+  COBRADOR: 'COB',
+  TRABAJADOR: 'TRA',
+};
+
+function prefijoDeRol(nombre: string): string {
+  const base = nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  if (PREFIJO_ROL[base]) return PREFIJO_ROL[base];
+  const letras = base.replace(/[^A-Z]/g, '');
+  return (letras.slice(0, 3) || 'USR');
+}
+
 const ENTITY_TYPE = 'trabajadores';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Roles asignables desde el alta P14 (§6.6): activos, sin borrar y SIN
+ * permisos del módulo sistema (con lo cual Administrador queda fuera —
+ * review PR #18 #2: una cuenta con solo rrhh.trabajadores.crear no puede
+ * fabricar un administrador con acceso total). Data-driven: si mañana se
+ * crea otro rol con permisos de sistema, también queda excluido.
+ */
+const ROLES_ASIGNABLES_WHERE = {
+  activo: true,
+  eliminado_en: null,
+  role_permissions: { none: { permissions: { modulo: 'sistema' } } },
+} as const;
 
 @Injectable()
 export class TrabajadoresService {
@@ -147,6 +198,72 @@ export class TrabajadoresService {
     }
   }
 
+  /**
+   * Vínculo trabajador ↔ cuenta de acceso (P14): el alta une por persona
+   * (mismo nombre y teléfono) — no hay FK. Trae también el rol principal y
+   * el jefe, para la edición de acceso (PR #18 #6/#8).
+   */
+  private async vinculosAcceso(
+    items: { nombre: string; telefono: string }[],
+  ): Promise<
+    Map<
+      string,
+      {
+        usuarioId: string;
+        numeroEmpleado: string | null;
+        rolId: string | null;
+        rolNombre: string | null;
+        encargadoUserId: string | null;
+      }
+    >
+  > {
+    type Vinculo = {
+      usuarioId: string;
+      numeroEmpleado: string | null;
+      rolId: string | null;
+      rolNombre: string | null;
+      encargadoUserId: string | null;
+    };
+    const vacio = new Map<string, Vinculo>();
+    if (items.length === 0) return vacio;
+    const personas = await this.prisma.personas.findMany({
+      where: { OR: items.map((t) => ({ nombre: t.nombre, telefono: t.telefono })) },
+      select: {
+        nombre: true,
+        telefono: true,
+        users_users_persona_idTopersonas: {
+          select: {
+            id: true,
+            numero_empleado: true,
+            activo: true,
+            eliminado_en: true,
+            jefe_user_id: true,
+            users_roles_users_roles_user_idTousers: {
+              where: { activo: true, es_principal: true },
+              select: { roles: { select: { id: true, nombre: true } } },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+    const mapa = new Map<string, Vinculo>();
+    for (const p of personas) {
+      const u = p.users_users_persona_idTopersonas;
+      if (u && u.activo && !u.eliminado_en) {
+        const ur = u.users_roles_users_roles_user_idTousers?.[0];
+        mapa.set(`${p.nombre}|${p.telefono}`, {
+          usuarioId: u.id,
+          numeroEmpleado: u.numero_empleado,
+          rolId: ur?.roles.id ?? null,
+          rolNombre: ur?.roles.nombre ?? null,
+          encargadoUserId: u.jefe_user_id,
+        });
+      }
+    }
+    return mapa;
+  }
+
   async findAll(query: QueryTrabajadoresDto) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 12, 100);
@@ -186,8 +303,13 @@ export class TrabajadoresService {
     });
     const maquinaPorOperador = new Map(maquinas.map((m) => [m.operador_id as string, m]));
 
+    // Vínculo con la cuenta de acceso (usuarioId/numeroEmpleado) para la acción "Reiniciar PIN".
+    const vinculos = await this.vinculosAcceso(items);
+
     return {
-      items: items.map((item) => this.toResponse(item, maquinaPorOperador.get(item.id))),
+      items: items.map((item) =>
+        this.toResponse(item, maquinaPorOperador.get(item.id), vinculos.get(`${item.nombre}|${item.telefono}`)),
+      ),
       pagination: {
         page,
         limit,
@@ -221,7 +343,7 @@ export class TrabajadoresService {
    * Las máquinas traen su operador actual para avisar antes de reasignarla.
    */
   async catalogos() {
-    const [maquinas, proyectos] = await Promise.all([
+    const [maquinas, proyectos, residentes, roles, puestos] = await Promise.all([
       this.prisma.maquinas.findMany({
         where: { eliminado_en: null, codigo: { not: null } },
         select: { codigo: true, nombre: true, operador_id: true, trabajadores: { select: { nombre: true } } },
@@ -235,6 +357,31 @@ export class TrabajadoresService {
         orderBy: { nombre: 'asc' },
         take: TOPE_CATALOGO_PROYECTOS,
       }),
+      // Encargados del alta P14 (§6.8): users activos con rol Residente.
+      this.prisma.users.findMany({
+        where: {
+          activo: true,
+          eliminado_en: null,
+          users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { nombre: 'Residente', activo: true } } },
+        },
+        select: { id: true, numero_empleado: true, personas_users_persona_idTopersonas: { select: { nombre: true } } },
+        orderBy: { personas_users_persona_idTopersonas: { nombre: 'asc' } },
+        take: TOPE_CATALOGO_PROYECTOS,
+      }),
+      // Rol de acceso del alta (§6.6): tabla pequeña, con tope igual que los demás catálogos.
+      // Solo roles ASIGNABLES: sin Administrador ni roles con permisos de sistema.
+      this.prisma.roles.findMany({
+        where: ROLES_ASIGNABLES_WHERE,
+        select: { id: true, nombre: true },
+        orderBy: { nombre: 'asc' },
+        take: TOPE_CATALOGO_PROYECTOS,
+      }),
+      // Puesto → rol (decisión del SVR): el alta deriva el acceso del puesto.
+      this.prisma.categorias_puesto.findMany({
+        where: { activo: true },
+        select: { nombre: true, rol_id: true, rol: { select: { nombre: true } } },
+        orderBy: { nombre: 'asc' },
+      }),
     ]);
 
     return {
@@ -245,10 +392,22 @@ export class TrabajadoresService {
         operadorNombre: m.trabajadores?.nombre ?? null,
       })),
       proyectos,
+      residentes: residentes.map((r) => ({
+        id: r.id,
+        nombre: r.personas_users_persona_idTopersonas.nombre,
+        numeroEmpleado: r.numero_empleado,
+      })),
+      roles,
+      // Mapeo puesto → rol: el front muestra el acceso derivado del puesto
+      puestos: puestos.map((p) => ({
+        nombre: p.nombre,
+        rolId: p.rol_id,
+        rolNombre: p.rol?.nombre ?? null,
+      })),
     };
   }
 
-  async create(dto: CreateTrabajadorDto, userId: string): Promise<TrabajadorResponse> {
+  async create(dto: CreateTrabajadorDto, userId: string): Promise<TrabajadorResponse & { identidad?: IdentidadAltaResponse }> {
     if (esFechaFutura(dto.fechaContratacion)) {
       return this.fallir(
         AuditAction.TRABAJADOR_CREADO,
@@ -260,7 +419,84 @@ export class TrabajadoresService {
     }
     await this.exigirMetodoPagoCoherente(AuditAction.TRABAJADOR_CREADO, null, dto.metodoPago, dto.sueldoFiscal, dto.sueldoEfectivo);
 
-    const categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
+    // Identidad PWA (§6.6-1 + decisión del SVR 12-nov): el ROL sale del PUESTO
+    // (categorias_puesto.rol_id); "Otro" y puestos sin rol → SIN cuenta. Un
+    // rolId explícito en el DTO es override (compatibilidad P14/tests).
+    const categoria = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
+    const categoriaId = categoria.id;
+    const categoriaTorre = categoria.torre;
+
+    let rol: { id: string; nombre: string } | null = null;
+    if (dto.rolId) {
+      const rolOverride = await this.prisma.roles.findUnique({ where: { id: dto.rolId } });
+      if (!rolOverride || !rolOverride.activo || rolOverride.eliminado_en) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_CREADO,
+          null,
+          'ROL_INVALIDO',
+          BadRequestException,
+          'Elige un rol de acceso válido para el trabajador',
+        );
+      }
+      // El rol existe pero no es asignable (Administrador o con permisos de sistema):
+      // una cuenta RRHH no puede fabricar un administrador con acceso total (PR #18 #2).
+      const asignable = await this.prisma.roles.findFirst({ where: { id: rolOverride.id, ...ROLES_ASIGNABLES_WHERE } });
+      if (!asignable) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_CREADO,
+          null,
+          'ROL_NO_ASIGNABLE',
+          ForbiddenException,
+          'El rol seleccionado no puede asignarse desde el alta de trabajadores',
+        );
+      }
+      rol = { id: rolOverride.id, nombre: rolOverride.nombre };
+    } else if (categoria.rolId) {
+      const rolDelPuesto = await this.prisma.roles.findFirst({
+        where: { id: categoria.rolId, ...ROLES_ASIGNABLES_WHERE },
+        select: { id: true, nombre: true },
+      });
+      if (!rolDelPuesto) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_CREADO,
+          null,
+          'ROL_INVALIDO',
+          BadRequestException,
+          'El rol asociado al puesto no es válido o no es asignable',
+        );
+      }
+      rol = rolDelPuesto;
+    }
+
+    let encargadoId: string | undefined;
+    if (rol && dto.encargadoId) {
+      // El encargado solo aplica con cuenta (el jefe vive en el user).
+      const encargado = await this.prisma.users.findFirst({
+        where: {
+          id: dto.encargadoId,
+          activo: true,
+          eliminado_en: null,
+          users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { nombre: 'Residente', activo: true } } },
+        },
+        select: { id: true },
+      });
+      if (!encargado) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_CREADO,
+          null,
+          'ENCARGADO_INVALIDO',
+          BadRequestException,
+          'El encargado debe ser un Residente activo',
+        );
+      }
+      encargadoId = encargado.id;
+    }
+
+    const pinTemporal = generarPinTemporal();
+    const pinHash = await bcrypt.hash(pinTemporal, SALT_ROUNDS);
+    const temporalHasta = new Date(Date.now() + PIN_TEMPORAL_HORAS * 60 * 60 * 1000);
+    // Contraseña inutilizable: nadie la conoce (el login PWA es numero_empleado + PIN).
+    const passwordPlaceholder = await bcrypt.hash(randomUUID(), SALT_ROUNDS);
 
     let maquinaId: string | undefined;
     // Si la máquina ya tenía operador, se le quita: queda registrado en la auditoría.
@@ -303,8 +539,27 @@ export class TrabajadoresService {
 
     const trabajadorId = randomUUID();
     const now = new Date();
+    const prefijo = rol ? prefijoDeRol(rol.nombre) : '';
 
-    const creado = await this.prisma.$transaction(async (tx) => {
+    const crearAlta = async (tx: Prisma.TransactionClient, prefijoRol: string) => {
+      // Consecutivo por prefijo (§6.4): el índice único de numero_empleado es la verdad;
+      // si dos altas en paralelo calculan el mismo número, la transacción reintenta.
+      // Sufijo MÁS ALTO existente (no un conteo): con huecos en la numeración
+      // (seed demo TEC-007..010, bajas) count+1 repetiría números ya asignados
+      // y el reintento recalcularía el mismo choque para siempre (PR #18 #9).
+      // Solo aplica con cuenta (puesto con rol); "Otro" no lleva numero.
+      if (prefijoRol) {
+        const existentes = await tx.users.findMany({
+          where: { numero_empleado: { startsWith: `${prefijoRol}-` } },
+          select: { numero_empleado: true },
+        });
+        const maxSufijo = existentes.reduce((max, u) => {
+          const sufijo = parseInt((u.numero_empleado ?? '').slice(prefijoRol.length + 1), 10);
+          return Number.isFinite(sufijo) && sufijo > max ? sufijo : max;
+        }, 0);
+        numero = `${prefijoRol}-${String(maxSufijo + 1).padStart(3, '0')}`;
+      }
+
       const nuevo = await tx.trabajadores.create({
         data: {
           id: trabajadorId,
@@ -373,8 +628,81 @@ export class TrabajadoresService {
         });
       }
 
+      // Identidad PWA (§6.4-6.6 + decisión del SVR): persona + user con
+      // numero_empleado consecutivo, PIN temporal de 24 h y el rol DEL PUESTO
+      // (o el override). Sin rol (puesto "Otro") NO hay cuenta ni numero.
+      if (rol) {
+        const personaId = randomUUID();
+        const nuevoUserId = randomUUID();
+        await tx.personas.create({
+        data: {
+          id: personaId,
+          nombre: dto.nombre.trim(),
+          telefono: dto.telefono.trim(),
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: now,
+        },
+      });
+      await tx.users.create({
+        data: {
+          id: nuevoUserId,
+          persona_id: personaId,
+          // Email técnico (único por diseño); el login PWA es por numero_empleado + PIN.
+          email: `${numero.toLowerCase()}@${DOMINIO_EMAIL_PWA}`,
+          password_hash: passwordPlaceholder,
+          numero_empleado: numero,
+          // La torre del PUESTO alimenta users.torre (área de reportes, PR modelo 5 roles)
+          torre: (categoriaTorre ?? undefined) as never,
+          pin_hash: pinHash,
+          pin_temporal_hasta: temporalHasta,
+          pin_cambiado_en: now,
+          jefe_user_id: encargadoId,
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: now,
+        },
+      });
+      await tx.users_roles.create({
+        data: { id: randomUUID(), user_id: nuevoUserId, rol_id: rol.id, es_principal: true, asignado_por: userId },
+      });
+      } // fin if (rol) — identidad PWA solo cuando el puesto lleva rol
+
       return tx.trabajadores.findUniqueOrThrow({ where: { id: trabajadorId }, include: TRABAJADOR_INCLUDE });
-    });
+    };
+
+    // Alta con reintento: un choque de consecutivo (P2002 del unique) recorre la transacción completa.
+    let creado: Awaited<ReturnType<typeof crearAlta>> | null = null;
+    let numero = '';
+    let chocoConsecutivo = false;
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        creado = await this.prisma.$transaction((tx) => crearAlta(tx, prefijo));
+        chocoConsecutivo = false;
+        break;
+      } catch (e) {
+        chocoConsecutivo = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+        if (!chocoConsecutivo) throw e;
+      }
+    }
+    if (creado === null || chocoConsecutivo) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_CREADO,
+        null,
+        'NUMERO_EMPLEADO_DUPLICADO',
+        ConflictException,
+        'No se pudo generar el número de empleado: reintenta el alta',
+      );
+    }
+
+    // Identidad SOLO cuando el puesto lleva rol (PR decisión SVR: "Otro" sin cuenta).
+    const identidad: IdentidadAltaResponse | undefined = rol
+      ? {
+          numeroEmpleado: numero,
+          pinTemporal,
+          temporalHasta: temporalHasta.toISOString(),
+        }
+      : undefined;
 
     const maquina = maquinaId
       ? await this.prisma.maquinas.findUnique({ where: { id: maquinaId }, select: { id: true, codigo: true, nombre: true, operador_id: true } })
@@ -390,16 +718,21 @@ export class TrabajadoresService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: serialized,
+      // El PIN temporal en claro NUNCA va a la auditoría (§8.9): solo el número y su vigencia.
+      newValue: {
+        ...serialized,
+        ...(identidad && { identidad: { numeroEmpleado: identidad.numeroEmpleado, temporalHasta: identidad.temporalHasta } }),
+        ...(!rol && { acceso: 'sin_cuenta' }),
+      },
       ...(operadorDesplazadoId && {
         metadata: { maquinaReasignada: dto.maquinaId, operadorDesplazadoId },
       }),
     });
 
-    return serialized;
+    return { ...serialized, ...(identidad && { identidad }) };
   }
 
-  async update(id: string, dto: UpdateTrabajadorDto, userId: string): Promise<TrabajadorResponse> {
+  async update(id: string, dto: UpdateTrabajadorDto, userId: string): Promise<TrabajadorResponse & { identidad?: IdentidadAltaResponse }> {
     const existente = await this.prisma.trabajadores.findFirst({
       where: { id, eliminado_en: null },
       include: TRABAJADOR_INCLUDE,
@@ -458,14 +791,60 @@ export class TrabajadoresService {
       );
     }
 
+    // ── Acceso a la app (PR #18 #8): ajusta el rol/jefe de la cuenta existente
+    //    o —si el trabajador no tiene— crea la identidad completa con temporal.
+    let accesoRol: { id: string; nombre: string } | undefined;
+    let accesoEncargado: string | null | undefined; // null = quitar jefe; undefined = no tocar
+    if (dto.acceso) {
+      const rol = await this.prisma.roles.findFirst({
+        where: { id: dto.acceso.rolId, ...ROLES_ASIGNABLES_WHERE },
+        select: { id: true, nombre: true },
+      });
+      if (!rol) {
+        return this.fallir(
+          AuditAction.TRABAJADOR_ACTUALIZADO,
+          id,
+          'ACCESO_ROL_INVALIDO',
+          BadRequestException,
+          'El rol de acceso a la app no es válido o no es asignable',
+        );
+      }
+      accesoRol = rol;
+      if (dto.acceso.encargadoId !== undefined) {
+        if (dto.acceso.encargadoId === '') {
+          accesoEncargado = null;
+        } else {
+          const encargado = await this.prisma.users.findFirst({
+            where: {
+              id: dto.acceso.encargadoId,
+              activo: true,
+              eliminado_en: null,
+              users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { nombre: 'Residente', activo: true } } },
+            },
+            select: { id: true },
+          });
+          if (!encargado) {
+            return this.fallir(
+              AuditAction.TRABAJADOR_ACTUALIZADO,
+              id,
+              'ENCARGADO_INVALIDO',
+              BadRequestException,
+              'El encargado debe ser un Residente activo',
+            );
+          }
+          accesoEncargado = encargado.id;
+        }
+      }
+    }
+
     const maquinaAnterior = await this.prisma.maquinas.findFirst({
       where: { operador_id: id, eliminado_en: null },
       select: { id: true, codigo: true, nombre: true, operador_id: true },
     });
 
-    let categoriaId: string | undefined;
+    let categoriaNueva: { id: string; torre: string | null } | undefined;
     if (dto.categoriaPuesto) {
-      categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
+      categoriaNueva = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
     }
 
     let nuevaMaquinaId: string | null | undefined;
@@ -519,13 +898,23 @@ export class TrabajadoresService {
 
     const now = new Date();
 
-    const actualizado = await this.prisma.$transaction(async (tx) => {
-      await tx.trabajadores.update({
+    // Vínculo con la cuenta de acceso: se resuelve con los valores FINALES
+    // (el PATCH puede cambiar nombre/teléfono en la misma petición).
+    const nombreFinal = (dto.nombre ?? existente.nombre).trim();
+    const telefonoFinal = (dto.telefono ?? existente.telefono).trim();
+    const vinculoAcceso = dto.acceso || categoriaNueva
+      ? (await this.vinculosAcceso([{ nombre: nombreFinal, telefono: telefonoFinal }])).get(
+          `${nombreFinal}|${telefonoFinal}`,
+        )
+      : undefined;
+    let rolPrevioId: string | null = null;
+
+    const actualizado = await this.prisma.$transaction(async (tx) => {      await tx.trabajadores.update({
         where: { id },
         data: {
           ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
           ...(dto.puesto !== undefined && { puesto: dto.puesto.trim() }),
-          ...(categoriaId && { categoria_puesto_id: categoriaId }),
+          ...(categoriaNueva && { categoria_puesto_id: categoriaNueva.id }),
           ...(dto.estado !== undefined && { estado: ESTADO_UI_A_DB[dto.estado] }),
           ...(dto.telefono !== undefined && { telefono: dto.telefono.trim() }),
           ...(dto.entrada !== undefined && { entrada: this.horaAUtc(dto.entrada) }),
@@ -631,6 +1020,40 @@ export class TrabajadoresService {
         });
       }
 
+      // Acceso a la app (PR #18 #8): ajusta el rol principal y el jefe de la cuenta existente.
+      if (dto.acceso && accesoRol && vinculoAcceso?.usuarioId) {        const ur = await tx.users_roles.findFirst({
+          where: { user_id: vinculoAcceso.usuarioId, es_principal: true },
+          select: { id: true, rol_id: true },
+        });
+        if (ur) {
+          rolPrevioId = ur.rol_id;
+          if (ur.rol_id !== accesoRol.id) {
+            await tx.users_roles.update({
+              where: { id: ur.id },
+              data: { rol_id: accesoRol.id, asignado_por: userId },
+            });
+          }
+        } else {
+          await tx.users_roles.create({
+            data: { id: randomUUID(), user_id: vinculoAcceso.usuarioId, rol_id: accesoRol.id, es_principal: true, asignado_por: userId },
+          });
+        }
+        if (accesoEncargado !== undefined) {
+          await tx.users.update({
+            where: { id: vinculoAcceso.usuarioId },
+            data: { jefe_user_id: accesoEncargado, actualizado_en: now },
+          });
+        }
+      }
+
+      // La torre del PUESTO alimenta users.torre (área de reportes — modelo 5 roles)
+      if (categoriaNueva && vinculoAcceso?.usuarioId) {
+        await tx.users.update({
+          where: { id: vinculoAcceso.usuarioId },
+          data: { torre: (categoriaNueva.torre ?? null) as never, actualizado_en: now },
+        });
+      }
+
       return tx.trabajadores.findUniqueOrThrow({ where: { id }, include: TRABAJADOR_INCLUDE });
     });
 
@@ -641,7 +1064,63 @@ export class TrabajadoresService {
           ? await this.prisma.maquinas.findUnique({ where: { id: nuevaMaquinaId }, select: { id: true, codigo: true, nombre: true, operador_id: true } })
           : null;
 
-    const serialized = this.toResponse(actualizado, maquinaFinal ?? undefined);
+    // Si hubo cambio de acceso, re-resuelve el vínculo DESPUÉS de la transacción:
+    // la respuesta debe reflejar el rol/jefe NUEVOS (y en el otorgamiento, la cuenta nueva).
+    let vinculoRespuesta = vinculoAcceso;
+    if (dto.acceso && accesoRol) {
+      vinculoRespuesta =
+        (await this.vinculosAcceso([{ nombre: nombreFinal, telefono: telefonoFinal }])).get(
+          `${nombreFinal}|${telefonoFinal}`,
+        ) ?? undefined;
+    }
+
+    const serialized = this.toResponse(actualizado, maquinaFinal ?? undefined, vinculoRespuesta);
+
+    // ── Acceso a la app (PR #18 #8) ──
+    let identidadNueva: IdentidadAltaResponse | undefined;
+    if (dto.acceso && accesoRol) {
+      if (vinculoAcceso?.usuarioId) {
+        // rol principal modificado: audita ROL_ASIGNADO con el rol anterior/nuevo
+        if (rolPrevioId && rolPrevioId !== accesoRol.id) {
+          await this.auditService.log({
+            action: AuditAction.ROL_ASIGNADO,
+            entityType: 'users',
+            entityId: vinculoAcceso.usuarioId,
+            result: AuditResult.SUCCESS,
+            actorUserId: userId,
+            actorType: 'USER',
+            actorRole: 'autenticado',
+            previousValue: { rolId: rolPrevioId },
+            newValue: { rolId: accesoRol.id, rolNombre: accesoRol.nombre },
+          });
+        }
+      } else {
+        // trabajador sin cuenta: la identidad se crea ahora (temporal de 24 h en la respuesta)
+        identidadNueva = await this.otorgarCuentaAcceso(
+          id,
+          nombreFinal,
+          telefonoFinal,
+          accesoRol,
+          accesoEncargado ?? null,
+          userId,
+          existente.categorias_puesto?.torre ?? null,
+        );
+      }
+    }
+
+    const meta: Record<string, unknown> = {};
+    if (operadorDesplazadoId) {
+      meta.maquinaReasignada = dto.maquinaId;
+      meta.operadorDesplazadoId = operadorDesplazadoId;
+    }
+    if (dto.acceso && accesoRol) {
+      meta.acceso = {
+        rolId: accesoRol.id,
+        rolNombre: accesoRol.nombre,
+        jefe: accesoEncargado === null ? 'sin_jefe' : (accesoEncargado ?? 'sin_cambio'),
+        cuentaNueva: !vinculoAcceso?.usuarioId,
+      };
+    }
 
     await this.auditService.log({
       action: AuditAction.TRABAJADOR_ACTUALIZADO,
@@ -652,13 +1131,158 @@ export class TrabajadoresService {
       actorType: 'USER',
       actorRole: 'autenticado',
       previousValue: this.toResponse(existente, maquinaAnterior ?? undefined),
-      newValue: serialized,
-      ...(operadorDesplazadoId && {
-        metadata: { maquinaReasignada: dto.maquinaId, operadorDesplazadoId },
-      }),
+      newValue: { ...serialized, ...(identidadNueva && { identidad: { numeroEmpleado: identidadNueva.numeroEmpleado, temporalHasta: identidadNueva.temporalHasta } }) },
+      ...(Object.keys(meta).length > 0 && { metadata: meta }),
     });
 
-    return serialized;
+    return { ...serialized, ...(identidadNueva && { identidad: identidadNueva }) };
+  }
+
+  /**
+   * Crea la identidad P14 de un trabajador SIN cuenta (PR #18 #8): persona +
+   * user con numero_empleado (sufijo máximo, índice único cierra la carrera
+   * con reintento), PIN temporal de 24 h y el rol elegido. Igual que el alta,
+   * el temporal NUNCA va a la auditoría — solo el número y su vigencia.
+   */
+  private async otorgarCuentaAcceso(
+    trabajadorId: string,
+    nombre: string,
+    telefono: string,
+    rol: { id: string; nombre: string },
+    encargadoId: string | null,
+    creadoPor: string,
+    torre: string | null,
+  ): Promise<IdentidadAltaResponse> {
+    const prefijoRol = prefijoDeRol(rol.nombre);
+    const passwordPlaceholder = await bcrypt.hash(randomUUID(), SALT_ROUNDS);
+
+    let creada: Awaited<ReturnType<typeof this.crearFilaCuentaAcceso>> | null = null;
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        creada = await this.prisma.$transaction((tx) =>
+          this.crearFilaCuentaAcceso(tx, {
+            trabajadorId,
+            nombre,
+            telefono,
+            rolId: rol.id,
+            prefijoRol,
+            encargadoId,
+            torre,
+            passwordPlaceholder,
+            creadoPor,
+          }),
+        );
+        break;
+      } catch (e) {
+        const chocoConsecutivo = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+        if (!chocoConsecutivo || intento === 2) {
+          return this.fallir(
+            AuditAction.TRABAJADOR_ACTUALIZADO,
+            trabajadorId,
+            'NUMERO_EMPLEADO_DUPLICADO',
+            ConflictException,
+            'No se pudo generar el número de empleado: reintenta',
+          );
+        }
+      }
+    }
+    if (!creada) {
+      return this.fallir(
+        AuditAction.TRABAJADOR_ACTUALIZADO,
+        trabajadorId,
+        'NUMERO_EMPLEADO_DUPLICADO',
+        ConflictException,
+        'No se pudo generar el número de empleado: reintenta el alta',
+      );
+    }
+
+    // Auditoría DESPUÉS del commit (nunca dentro de la transacción).
+    await this.auditService.log({
+      action: AuditAction.USUARIO_CREADO,
+      entityType: 'users',
+      entityId: creada.usuarioId,
+      result: AuditResult.SUCCESS,
+      actorUserId: creadoPor,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      metadata: { numeroEmpleado: creada.numero, trabajadorId, rolId: rol.id, modo: 'acceso-pwa' },
+    });
+
+    return {
+      numeroEmpleado: creada.numero,
+      pinTemporal: creada.pinTemporal,
+      temporalHasta: creada.temporalHasta.toISOString(),
+    };
+  }
+
+  /** Filas de identidad (persona + user + rol) dentro de una transacción. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async crearFilaCuentaAcceso(
+    tx: Prisma.TransactionClient,
+    args: {
+      trabajadorId: string;
+      nombre: string;
+      telefono: string;
+      rolId: string;
+      prefijoRol: string;
+      encargadoId: string | null;
+      torre: string | null;
+      passwordPlaceholder: string;
+      creadoPor: string;
+    },
+  ): Promise<{ usuarioId: string; numero: string; pinTemporal: string; temporalHasta: Date }> {
+    // Consecutivo por prefijo con SUFIJO MÁXIMO (no conteo — review PR #18 #9).
+    const existentes = await tx.users.findMany({
+      where: { numero_empleado: { startsWith: `${args.prefijoRol}-` } },
+      select: { numero_empleado: true },
+    });
+    const maxSufijo = existentes.reduce((max, u) => {
+      const sufijo = parseInt((u.numero_empleado ?? '').slice(args.prefijoRol.length + 1), 10);
+      return Number.isFinite(sufijo) && sufijo > max ? sufijo : max;
+    }, 0);
+    const numero = `${args.prefijoRol}-${String(maxSufijo + 1).padStart(3, '0')}`;
+
+    const pinTemporal = generarPinTemporal();
+    const pinHash = await bcrypt.hash(pinTemporal, SALT_ROUNDS);
+    const temporalHasta = new Date(Date.now() + PIN_TEMPORAL_HORAS * 60 * 60 * 1000);
+    const now = new Date();
+    const personaId = randomUUID();
+    const usuarioId = randomUUID();
+
+    await tx.personas.create({
+      data: {
+        id: personaId,
+        nombre: args.nombre,
+        telefono: args.telefono,
+        creado_por: args.creadoPor,
+        actualizado_por: args.creadoPor,
+        actualizado_en: now,
+      },
+    });
+    await tx.users.create({
+      data: {
+        id: usuarioId,
+        persona_id: personaId,
+        // Email técnico (único por diseño); el login PWA es por numero_empleado + PIN.
+        email: `${numero.toLowerCase()}@${DOMINIO_EMAIL_PWA}`,
+        password_hash: args.passwordPlaceholder,
+        numero_empleado: numero,
+        // La torre del PUESTO alimenta users.torre (área de reportes)
+        torre: (args.torre ?? undefined) as never,
+        pin_hash: pinHash,
+        pin_temporal_hasta: temporalHasta,
+        pin_cambiado_en: now,
+        jefe_user_id: args.encargadoId ?? undefined,
+        creado_por: args.creadoPor,
+        actualizado_por: args.creadoPor,
+        actualizado_en: now,
+      },
+    });
+    await tx.users_roles.create({
+      data: { id: randomUUID(), user_id: usuarioId, rol_id: args.rolId, es_principal: true, asignado_por: args.creadoPor },
+    });
+
+    return { usuarioId, numero, pinTemporal, temporalHasta };
   }
 
   async remove(id: string, userId: string): Promise<{ message: string }> {
@@ -843,14 +1467,15 @@ export class TrabajadoresService {
     return new Date(Date.UTC(1970, 0, 1, horas, minutos, 0));
   }
 
-  private async resolverCategoriaPuesto(nombre: string): Promise<string> {
+  private async resolverCategoriaPuesto(nombre: string): Promise<{ id: string; torre: string | null; rolId: string | null }> {
     let categoria = await this.prisma.categorias_puesto.findUnique({ where: { nombre } });
     if (!categoria) {
       categoria = await this.prisma.categorias_puesto.create({
         data: { id: randomUUID(), nombre, actualizado_en: new Date() },
       });
     }
-    return categoria.id;
+    const c = categoria as { torre?: string | null; rol_id?: string | null };
+    return { id: categoria.id, torre: c.torre ?? null, rolId: c.rol_id ?? null };
   }
 
   private iniciales(nombre: string): string {
@@ -864,7 +1489,18 @@ export class TrabajadoresService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private toResponse(t: any, maquina?: { id: string; codigo: string | null; nombre: string } | null) {
+  private toResponse(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    t: any,
+    maquina?: { id: string; codigo: string | null; nombre: string } | null,
+    vinculo?: {
+      usuarioId: string;
+      numeroEmpleado: string | null;
+      rolId: string | null;
+      rolNombre: string | null;
+      encargadoUserId: string | null;
+    },
+  ) {
     return {
       id: t.id,
       nombre: t.nombre,
@@ -904,6 +1540,12 @@ export class TrabajadoresService {
       tarifaHoraExtra: t.tarifa_hora_extra != null ? Number(t.tarifa_hora_extra) : undefined,
       descuentosSemana: t.descuentos_semana != null ? Number(t.descuentos_semana) : undefined,
       conceptoDescuento: t.concepto_descuento ?? undefined,
+      // Cuenta de acceso P14 (solo en el listado — acciones "Reiniciar PIN" y edición de acceso)
+      usuarioId: vinculo?.usuarioId,
+      numeroEmpleado: vinculo?.numeroEmpleado ?? undefined,
+      rolAccesoId: vinculo?.rolId ?? undefined,
+      rolAccesoNombre: vinculo?.rolNombre ?? undefined,
+      encargadoUserId: vinculo?.encargadoUserId ?? undefined,
     };
   }
 }

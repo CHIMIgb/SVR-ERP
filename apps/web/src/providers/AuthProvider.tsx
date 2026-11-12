@@ -16,7 +16,8 @@ import {
   type ApiResponse,
   type AuthResponse,
 } from "@svr-erp/shared";
-import { authApi, clearTokens, setTokens, initializeAuth } from "@/lib/api";
+import { authApi, clearTokens, setTokens, initializeAuth, getAccessToken, type PinEstadoDTO } from "@/lib/api";
+import { limpiarCola } from "@/lib/pwa/offline";
 
 interface AuthState {
   user: UserAuth | null;
@@ -28,6 +29,8 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; message?: string }>;
+  /** Login móvil: número de empleado + PIN (plan §8.2). */
+  loginPin: (credentials: { numeroEmpleado: string; pin: string }) => Promise<{ success: boolean; message?: string; requiereCambio?: boolean }>;
   register: (credentials: RegisterCredentials) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -141,6 +144,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [handleAuthResponse],
   );
 
+  const loginPin = useCallback(
+    async (credentials: { numeroEmpleado: string; pin: string }): Promise<{ success: boolean; message?: string; requiereCambio?: boolean }> => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await authApi.loginPin(credentials);
+        const success = handleAuthResponse(response);
+
+        if (!success) {
+          const detalles = response.success ? undefined : response.error.details;
+          if (Array.isArray(detalles) && detalles.length) {
+            const message = detalles.map(String).join(' ');
+            setError(message);
+            return { success: false, message };
+          }
+          const backendMessage = response.success ? undefined : response.error.message;
+          const message = backendMessage || 'Credenciales incorrectas';
+          setError(message);
+          return { success: false, message };
+        }
+
+        // el estado del PIN llega en la respuesta (temporal/vencido → obligar cambio)
+        const pinEstado = ((response as unknown as { data: { pinEstado: PinEstadoDTO } }).data.pinEstado);
+        return { success: true, requiereCambio: pinEstado?.requiereCambio };
+      } catch {
+        setError("No se pudo conectar con el servidor. Verifica tu conexión.");
+        return { success: false, message: 'No se pudo conectar con el servidor' };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [handleAuthResponse],
+  );
+
   const register = useCallback(
     async (
       credentials: RegisterCredentials,
@@ -185,6 +223,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null);
       setError(null);
       setIsLoading(false);
+      // Cola offline (PR #18, mediano): lo pendiente del trabajador NO viaja
+      // con el token del siguiente en un teléfono compartido. Nunca rompe el logout.
+      limpiarCola().catch(() => {});
     }
   }, []);
 
@@ -198,33 +239,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await logout();
       }
     } catch {
-      await logout();
+      // Error de red: NO cerrar sesión — solo si el refresh ya limpió
+      // los tokens (revocación/expiración) la sesión está muerta
+      if (!getAccessToken()) await logout();
     }
   }, [logout]);
 
   const clearError = useCallback(() => setError(null), []);
 
-  // Inicialización: recuperar usuario de localStorage y restaurar sesión desde refresh token
+  // Inicialización: restaurar sesión desde el refresh token en localStorage.
+  // El setState va dentro de .then (asíncrono) — la regla de React prohíbe
+  // setState síncrono en el cuerpo del effect (cascading renders).
   useEffect(() => {
     const storedUser = getStoredUser();
-    if (storedUser) {
-      setUser(storedUser);
-    }
 
-    // Intentar restaurar el access token desde el refresh token en localStorage
     initializeAuth()
-      .then((hasToken) => {
-        if (hasToken && storedUser) {
-          // Token restaurado: refrescar perfil en segundo plano para validar
-          refreshProfile().catch(() => {});
-        } else if (!hasToken && storedUser) {
-          // Refresh token expirado o inválido: cerrar sesión
+      .then((estado) => {
+        if (estado === 'invalid') {
+          // Refresh token expirado o revocado: cerrar sesión
           clearTokens();
           setUser(null);
+          return;
         }
-      })
-      .catch(() => {
-        // Error de red: mantener usuario cacheado si existe
+        if (storedUser) {
+          setUser(storedUser);
+          if (estado === 'ok') {
+            // Token restaurado: refrescar perfil en segundo plano para validar
+            refreshProfile().catch(() => {});
+          }
+          // 'red' (sin conexión): conservar tokens y usuario cacheado — la app
+          // abre igual; al volver la señal, el interceptor refresca en el 401
+        }
       })
       .finally(() => {
         setIsInitialized(true);
@@ -239,6 +284,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isInitialized,
       error,
       login,
+      loginPin,
       register,
       logout,
       refreshProfile,
@@ -251,6 +297,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isInitialized,
       error,
       login,
+      loginPin,
       register,
       logout,
       refreshProfile,

@@ -34,7 +34,12 @@ dedicado por rol** (camino B: shell móvil propio), tal como lo describe
 > - **Residentes:** inicio · asistencia · reportes · obras · contactos
 > - **Cobradores:** inicio · asistencia · cobro (punto de venta) · cobro del día
 > - **Técnicos:** inicio · asistencia · reportes · flota · obras *(el diseño las toma como una sola — se hará lo que diga)* · inventario · diesel
-> - **Trabajadores:** inicio · asistencia · reportes · contactos · mi perfil
+> - **Trabajadores:** inicio · asistencia · reportes · contactos
+>
+> **El perfil NO es pestaña del nav inferior** (aclaración del cliente
+> 2026-11-11): se abre tocando el bloque avatar + nombre + rol del HEADER y
+> existe para TODOS los roles. Ahí viven: la información del empleado, el
+> selector de tema claro/oscuro y cerrar sesión (fuera del header).
 >
 > Las tablas de esta sección quedan congeladas contra esa lista (los subtítulos
 > "¿Qué pantalla Figma?" mapean a estas vistas). Implicaciones que introduce:
@@ -440,11 +445,14 @@ raíz (AuthProvider, toasts) y:
 
 | Rol | Pestañas (ruta → vista) |
 |---|---|
-| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` · `/m/perfil` |
+| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` |
 | Residente | `/m` Inicio · `/m/asistencia` (equipo) · `/m/reportes` · `/m/obras` · `/m/contactos` |
 | Técnico (×4) | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/flota-obras` · `/m/inventario` (+ `/m/diesel` solo Técnico-Diesel) |
 | Cobrador | `/m` Inicio · `/m/asistencia` · `/m/pos` · `/m/corte` |
 | Administrador | `/m` Inicio · `/m/reportes` · `/m/finanzas` · `/m/modulos` |
+
+`/m/perfil` no es pestaña: se abre desde el header (avatar + nombre + rol)
+y es común a todos los roles — guard del shell la exenta del RBAC de vistas.
 
 El helper `rol-nav.ts` resuelve qué pestañas corresponden leyendo el rol y
 las vistas del usuario — si el RBAC quita una vista, la pestaña desaparece
@@ -522,10 +530,12 @@ módulos todavía.
    - `cuenta_bloqueada_en` TIMESTAMPTZ NULL.
 2. **RBAC de la PWA (idempotente):**
    - Vistas móviles registradas en la tabla `vistas` con ruta `/m/*`
-     (`/m`, `/m/asistencia`, `/m/reportes`, `/m/contactos`, `/m/perfil`,
+     (`/m`, `/m/asistencia`, `/m/reportes`, `/m/contactos`, `/m/perfil`*,
      `/m/obras`, `/m/flota-obras`, `/m/inventario`, `/m/diesel`, `/m/pos`,
      `/m/corte`, `/m/finanzas`, `/m/modulos`) — así `user.vistas` alimenta
      `rol-nav.ts` SIN mapeos ad hoc, y el escritorio queda con sus vistas.
+     (* `/m/perfil` ya no se lista en el nav: accede todo rol desde el
+     header; el guard del shell la exenta — ver "El perfil NO es pestaña".)
    - **Asistencia universal** (aclaración del cliente): `puedeVer` de
      `/m/asistencia` para Trabajador, Residente, los 4 Técnicos y Cobrador
      (solo ver — la captura es propia; el Residente además la de su equipo
@@ -551,7 +561,8 @@ Un PIN es válido si:
 1. 8 caracteres de [A-Za-z0-9], **case-insensitive** (se normaliza a mayúsculas
    antes de evaluar y hashear).
 2. Al menos 1 letra y 1 número.
-3. Sin 3+ caracteres consecutivos repetidos (ej. `AAA`, `7777`).
+3. **SIN caracteres repetidos** en todo el PIN (estricta — decisión del
+   cliente 2026-11-11; ni consecutivos ni separados: `HV4K5R7H` se rechaza).
 4. Sin secuencias de 3+ (asc/desc en letras o números: `ABC`, `123`, `CBA`, `987`).
 5. No contiene su número de empleado (ni el prefijo+consecutivo con o sin guion).
 6. Distinto de los últimos 3 (`pin_historial`).
@@ -577,7 +588,7 @@ construcción") y **nada más** — sin lógica de módulos:
 
 | Rol | Vistas placeholder |
 |---|---|
-| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` · `/m/perfil` |
+| Trabajador | `/m` Inicio · `/m/asistencia` · `/m/reportes` · `/m/contactos` |
 | Residente | `/m` · `/m/asistencia` · `/m/reportes` · `/m/obras` · `/m/contactos` |
 | Técnicos | `/m` · `/m/asistencia` · `/m/reportes` · `/m/flota-obras` · `/m/inventario` · `/m/diesel` (solo Diesel) |
 | Cobrador | `/m` · `/m/asistencia` · `/m/pos` · `/m/corte` |
@@ -639,6 +650,18 @@ Conclusiones:
 
 ### 8.7 Notas de la base
 
+**Respuestas del cliente (2026-11-11) a §6.9:**
+- **Caducidad del PIN del Administrador: los mismos 30 días** — SOLO en la
+  PWA (la app móvil de admin abre reportes/finanzas/módulos, misma superficie
+  de riesgo que cualquier PIN; el escritorio con email+password queda
+  intocado). Uniformidad = mismo aviso a los 25 días y misma regla de
+  bloqueo, sin excepciones por rol en el código.
+- **Margen sin internet con PIN vencido: 3-4 días** (constante
+  `PIN_GRACE_OFFLINE_DIAS` en el front cuando llegue la fase de captura
+  offline de asistencia).
+- **Regla de repeticiones: ESTRICTA** — ningún carácter repetido en todo el
+  PIN (`new Set(pin).size === 8`), implementado en `validarPinNuevo`.
+
 - El desktop NO cambia en esta base (su login email+password sigue) — solo el
   alta de Trabajadores gana el número/PIN/WhatsApp.
 - Los 8 usuarios demo del seed ganan su `numero_empleado` (ADM-01 admin,
@@ -648,3 +671,60 @@ Conclusiones:
   sistema.
 - §3 de este documento queda superseded por §7c (offline ya es alcance de la
   base) — no se borra por trazabilidad, pero se lee con esa nota.
+
+### 8.9 Auditoría de seguridad y casos especiales (spec §6.7 y §6.8) — verificado 2026-11-11
+
+**§6.7 Seguridad:**
+
+| Regla del spec | Estado | Evidencia |
+|---|---|---|
+| **Nadie ve PINs** — el sistema nunca muestra un PIN existente | ✅ | No existe ningún GET que devuelva `pin_hash`/PIN. Única excepción por diseño: el temporal NUEVO del reinicio se entrega UNA VEZ al ejecutante (equivalente a la entrega del alta por WhatsApp — es un PIN que aún no existía, no uno "existente") |
+| **Bloqueo: 5 intentos fallidos + mesa de ayuda desbloquea** | ✅ | `login-pin` bloquea la cuenta a los 5 (`intentos_pin`/`cuenta_bloqueada_en`) — integration real probada; `POST /auth/pin/desbloqueo` con permiso `sistema.usuarios.editar` |
+| **Reautenticar: cambiar PIN pide el actual** | ✅ | `pin/cambio` exige `pinActual` verificado con bcrypt |
+| **Cierre de sesiones: el administrativo cierra TODAS las sesiones de un trabajador** | ⚠️ PARCIAL — el reinicio de PIN ya cierra todas, pero falta la acción **standalone** (cerrar sesiones sin cambiar PIN) + su botón en Trabajadores del escritorio | Pendiente en §8.9-pendientes |
+| **Reautenticar también para cerrar otras sesiones (propio)** | ⚠️ PARCIAL — cerrar las OTRAS sesiones existe dentro del cambio de PIN; falta la acción propia independiente | Pendiente en §8.9-pendientes |
+| **Bajas: al desactivar al usuario, deja de entrar** | ✅ | `JwtStrategy` rechaza **en cada request** a usuarios con `activo=false` o `eliminado_en` (verificado en el código) + ambos logins lo rechazan |
+| **Cifrado argon2 o bcrypt** | ✅ | bcryptjs cost 12 (decisión del cliente 2026-11-11 — cero dependencia nativa). **Ruta de actualización a argon2 documentada:** lazy-rehash por login o forzar cambio de PIN (los PINs rotan a 30 días — más fácil que con passwords) |
+
+**Nota pequeña encontrada:** una cuenta BLOQUEADA por PIN puede seguir usando
+su access token vigente (máx 15 min) hasta que expire — el login-pin ya no le
+da tokens nuevos. Si se quiere cierre instantáneo, `JwtStrategy` puede
+verificar también `cuenta_bloqueada_en` (una consulta más por request).
+Pendiente menor, decisión al construir la mesa de ayuda.
+
+**§6.8 Casos especiales:**
+
+| Caso | Estado |
+|---|---|
+| **Olvidó el PIN:** reinicio con clic + temporal 24 h → vuelve al paso 3 (primer ingreso obliga a crear PIN) | ✅ implementado (reinicio + guard de `requiereCambio`) |
+| **Cambio de teléfono:** número + PIN desde cualquier dispositivo | ✅ el login-pin es independiente del dispositivo (sesiones por dispositivo en `sessions`) |
+| **Teléfono compartido:** cada quien cierra SU sesión | ✅ botón de cerrar sesión en el shell móvil + escritorio (el listado "mis sesiones" es mejoramiento posterior) |
+| **Residente: alta liga a cada trabajador con su obra y su encargado** | ⚠️ la BD ya lo soporta (`users.jefe_user_id` + el scope lo usa) — el FORMULARIO del alta (escritorio) debe pedir encargado/obra: pendiente junto con el alta ampliada |
+
+**§6.9 Pendiente de decidir — cerrado 2026-11-11:**
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿30 días aplica igual al administrador? | **SÍ — mismos 30 días, SOLO en la PWA** (el escritorio email+password queda intocado). Uniformidad sin excepciones por rol |
+| ¿Margen sin internet con PIN vencido? | **3-4 días** (constante `PIN_GRACE_OFFLINE_DIAS` — se activa con la fase de captura offline de asistencia) |
+| ¿Qué datos se guardan en el SVR? | **Ya existen todos:** rol (`users_roles`), fecha del último cambio de PIN (`pin_cambiado_en`), estado de sesión (`sessions.activa/revocado_en/motivo_revocado`) y número de intentos (`intentos_pin`) |
+
+**§8.10 Pendientes de usuario/seguridad para construir DESPUÉS** — ahora
+registrados en `docs-planes/IMPLEMENTACIONES-A-FUTURO.md` con número:
+
+1. **Alta ampliada** → **P14** de IMPLEMENTACIONES-A-FUTURO (en la ALTA
+   EXISTENTE de Trabajadores del escritorio: número + PIN temporal 24 h +
+   botón `wa.me` + encargado/obra en el formulario + acciones de mesa de
+   ayuda conectadas a P12).
+2. **Cierre masivo de sesiones standalone** (administrativo) → **P12** (panel
+   de gestión de identidad: por usuario, sin cambiar PIN).
+3. **"Mis sesiones" propio en la PWA** (opcional) → también vive en **P12**
+   (ver sesiones activas del propio usuario desde el móvil).
+4. **Bloqueo instantáneo opcional** → se decide al construir **P12**
+   (verificar `cuenta_bloqueada_en` en `JwtStrategy`).
+5. Upgrade futuro de hash: **bcryptjs → argon2** vía lazy-rehash o forzando
+   el cambio de PIN (los PINs rotan a 30 días — trivial comparado con
+   passwords). Sin P-number: decisión técnica cuando se quiera.
+6. **Sweeper de `token_blacklist`** → **P13** de IMPLEMENTACIONES-A-FUTURO.
+   el cambio de PIN (los PINs rotan a 30 días — trivial comparado con
+   passwords).

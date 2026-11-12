@@ -10,6 +10,26 @@
 > Cada estado aquí se verifica contra `schema.prisma` y el código real antes de
 > marcarse pendiente o realizado.
 
+> ⚠️ **PRIORIDAD ACTUAL (2026-11-11):** el plan vigente es
+> **[`PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md`](./PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md)**
+> — correcciones confirmadas por el cliente (doc `docs_dudas/Dudas del SVR-11-11-2026.docx`
+> + respuestas del proveedor GPS) y decisiones de las vistas de Comercial y Operaciones.
+> **Las series P/F de este documento se ejecutan LUEGO** de ese plan.
+>
+> 🧵 **HILO CONDUCTOR (2026-11-12) — orden de los 3 documentos:**
+> 1. **[`ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md`](./ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md)**
+>    — TERMINADO: insumo de reglas de negocio (retiros, plantilla de cotización,
+>    conciliación de proveedores) y 4 dudas bloqueantes.
+> 2. **[`PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md`](./PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md)**
+>    — VIGENTE: F1 fixes → F2 preguntas → F3 retiros/cotizaciones/corte.
+> 3. **ESTE documento** — las series P/F se ejecutan DESPUÉS del plan comercial,
+>    empezando por las que ese plan desbloquea:
+>    **P2** (partidas) se construye junto con la plantilla de cotización de F3 ·
+>    **P7** (precios por medida) junto con LISTA DE PRECIOS como tabulador ·
+>    **C3** (venta a crédito → CxC) junto con el motor de retiros ·
+>    **§9/§10** (proveedores) junto con la conciliación semanal de docs-svr.
+>    El detalle del enlace vive en §8 del plan comercial.
+
 ---
 
 ## Índice
@@ -436,15 +456,128 @@ tabla). Relación con lo ya documentado: subcategorías por torre en
 - **No hay UI ni endpoint para asignar el jefe** — hoy es solo SQL (`UPDATE users
   SET jefe_user_id = …`). Cuando se construya el **panel de usuarios**, la misma
   columna se expone ahí con un select de residentes para cada trabajador.
-- **El vínculo es usuario↔usuario**: no va por la tabla `trabajadores` ni por
-  `trabajadores_proyectos` (worker↔proyecto). Si el negocio prefiere asignar
-  trabajadores **por proyecto** al residente (y que el residente herede los
-  reportes de todos los de esa obra), es la variante B: `proyectos.residente_id`
-  + scope por `trabajadores_proyectos` — pendiente de confirmar con el cliente.
+- **CONFIRMADO por el cliente (2026-11-11): el vínculo es usuario↔usuario
+  (asignación POR USUARIO, no por proyecto)** — y un residente puede tener
+  como empleados a **múltiples usuarios de CUALQUIER rol** (no solo
+  trabajadores). La variante B (por proyecto) queda descartada.
 - **Fallback ya implementado:** cualquier trabajador **sin jefe asignado** solo ve
   sus propios reportes (nadie más los ve, salvo Admin).
 - El mismo mecanismo (`jefe_user_id`) sirve para cualquier rol con subordinados
   (p. ej. administrativos que supervisan personal de oficina) sin cambios.
+
+---
+
+### P11 — Asignación de equipos: trabajadores ↔ residentes (UI + endpoint)
+
+**Qué se construye** (formaliza el punto de trabajo de P10, que hoy es solo SQL):
+- **Vista nueva** (módulo Sistema/Trabajadores, escritorio): lista de usuarios
+  con rol **Residente** y, por cada uno, su equipo (trabajadores con
+  `jefe_user_id` = ese residente). Acciones: **asignar** un trabajador a un
+  residente (select de residentes), **re-asignar** (cambia el jefe) y
+  **des-asignar** (jefe NULL → fallback de solo-sus-propios-reportes).
+- **Endpoint:** `POST/PATCH /usuarios/:id/jefe` (admin/RRHH, con auditoría
+  SUCCESS/FAIL: `JEFE_ASIGNADO` / `SIN_PERMISO`).
+- **Efecto inmediato en la PWA:** el scope de /reportes y la vista de
+  asistencia del equipo del Residente se recalculan solos (usan
+  `jefe_user_id` — nada por recodificar).
+- **Relación con la PWA:** `pwa/vistas-movil-comercial-operaciones.md` §8.10-1
+  (el alta ampliada también asigna encargado — esta vista lo GESTIONA después).
+
+### P12 — Panel "Gestión de identidad" (usuarios + roles + permisos + áreas + sesiones, todo junto)
+
+**Qué se construye** (la vista 360 que pide el cliente — hoy están en 4
+pantallas separadas: Usuarios, Roles, Configuración, Trabajadores):
+- **Una vista** que por cada usuario muestra EN UNA FILA/DETALLE: su
+  **rol(es)**, sus **vistas** con flags, sus **permisos** por módulo, su
+  **área (torre)**, su **número de empleado**, su **jefe** (P11), su
+  **estado de PIN** (cambiado hace N días / temporal activo / cuenta
+  bloqueada) y sus **sesiones activas** (dispositivo, IP, última actividad).
+- **Acciones de mesa de ayuda integradas ahí** (spec PWA §6.7):
+  **desbloquear** cuenta · **reiniciar PIN** (temporal 24 h) · **cerrar
+  todas las sesiones** del trabajador. Relación: `pwa/...§8.9` (las 2
+  acciones parciales — cierre masivo standalone y bloqueo instantáneo —
+  viven aquí).
+- **Relación visible de unos con otros:** cambiar el rol de la fila muestra
+  al instante qué vistas/permisos hereda (preview antes de guardar) — el
+  "ver la relación de unos a otros" que pide el cliente.
+- **BD:** no pide columnas nuevas — todo ya existe (users, users_roles,
+  role_vistas, sessions, refresh_tokens, campos de PIN del paso 1 de la
+  PWA). Es una vista de LECTURA + acciones.
+
+### P13 — Sweeper de `token_blacklist` (limpieza de filas vencidas)
+
+**Qué se construye:** tarea programada (cron de la API o job del hosting) que
+borra de `token_blacklist` las filas cuya `expira` ya pasó (los tokens ahí
+listados ya no son válidos por firma/fecha — borrarlos es seguro). La tabla
+crece 1 fila por logout/rotación; hoy es cosmético, con miles de usuarios
+diarios deja de serlo. Propuesto en la revisión del PR #17 (P11 de esa
+conversación).
+
+### P14 — Alta ampliada de Trabajadores con identidad PWA (número + PIN temporal + WhatsApp + encargado/obra)
+
+**Qué se construye — en la VISTA/ALTA QUE YA EXISTE de Trabajadores**
+(escritorio), no en una nueva: el spec del cliente (PWA §6.6-1/2) dice "el
+administrativo registra al trabajador **en Trabajadores**, elige el rol…" —
+el alta de siempre se AMPLÍA con la identidad móvil:
+
+- **Al crear el trabajador** (el administrativo elige el rol), el sistema
+  genera y guarda:
+  - `users.numero_empleado` (prefijo por rol + consecutivo, transacción
+    anti-carrera: ADM-01, RES-014, TEC-007, COB-003, TRA-0142…)
+  - `users.pin_hash` de un **PIN temporal de 24 h** (sin caracteres
+    confusos 0/O/1/l/I, sin repetidos — regla estricta §8.3 del plan PWA)
+  - `pin_temporal_hasta` (24 h) + `pin_cambiado_en`
+- **Campos nuevos en el formulario del alta:** encargado (select de
+  residentes → `jefe_user_id`) y obra (según P10/variante pendiente de
+  confirmar) — el caso Residente (PWA §6.8) necesita esa liga.
+- **Botón "Enviar por WhatsApp"** (`wa.me` con el número de la persona,
+  mensaje prellenado: nombre, número de empleado, PIN temporal y enlace a la
+  PWA — **sin API y sin costo**, spec §6.6-2). El PIN temporal se muestra UNA
+  VEZ en esa pantalla (nunca vuelve a verse — spec §6.7).
+- **Acciones de mesa de ayuda** conectadas a P12 (desbloquear/reiniciar/
+  cerrar sesiones desde la misma ficha del trabajador).
+- **Relación con la PWA:** `pwa/vistas-movil-comercial-operaciones.md`
+  §8.2 (endpoint ampliado), §8.9/§8.10 (auditoría de §6.7/§6.8 y
+  pendientes) — este item CIERRE el ciclo §6.6-1/2 que quedó pendiente.
+
+**Auditoría:** todas las acciones auditan SUCCESS/FAIL con los 4 estándares
+(`TRABAJADOR_CREADO` ya existe; acciones de PIN: `PIN_REINICIADO`/
+`CUENTA_DESBLOQUEADA` — ya en el enum desde el paso 2 de la PWA).
+
+### P15 — Depurar la tabla `obras`: todo se consolida en `proyectos` (decisión del cliente 2026-11-11)
+
+**Decisión del cliente:** la tabla `obras` **NO se usará** — el sistema
+trabajará únicamente con la tabla `proyectos`. Las dos tablas se solapan
+(obra = proyecto con otro nombre) y mantener ambas duplica datos y lógica.
+
+**Inventario de lo que toca `obras` hoy (a migrar/reencaminar a
+`proyectos`):**
+- **Esquema:** tabla `obras` + FK `obra_id` en `reportes_campo`,
+  `bitacoras_operacion` (y relaciones en `proyectos`/users creadas por
+  autogeneración).
+- **API:** endpoints/catálogo `/catalogos/obras`, el uso de `obra_id`/
+  `obra_texto` en **asistencia** (radio de obra por marcador), **bitácora**,
+  **bitacoras-renta**, **nomina** (horas por obra) y **reportes-campo**
+  (`obra_texto` es NOT NULL en reportes — migrar a texto libre o a
+  `proyecto_id`).
+- **Web:** vista/catálogo de obras (el catálogo de selects del escritorio),
+  la vista PWA `/m/obras` y `/m/flota-obras` ya leen PROYECTOS (sin
+  cambio).
+
+**Plan de migración (cuando se ejecute):**
+1. Mapear cada fila de `obras` a su equivalente en `proyectos` (o crear los
+   faltantes) — la FK `reportes_campo.obra_id` se re-apunta a
+   `proyectos.id`.
+2. Migrar las columnas `obra_id`/`obra_texto` de los otros módulos a
+   `proyecto_id` (`ON DELETE SET NULL`), y `obra_texto` (NOT NULL) queda
+   como texto histórico o columna derivada del proyecto — decisión al
+   ejecutar.
+3. Soltar FKs/índices/columnas y al final `DROP TABLE obras` + limpiar el
+   catálogo `/catalogos/obras` y sus usos en el front.
+4. Los catálogos de selects (`/catalogos/proyectos` ya existe) alimentan
+   todos los formularios.
+**⚠️ Esto es una migración destructiva** — requiere dump de respaldo y
+revisión de cada módulo afectado; NO se ejecuta en la base de la PWA.
 
 ---
 

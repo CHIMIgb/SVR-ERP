@@ -199,7 +199,7 @@ Un PR que incumpla cualquiera = Request Changes.
 - ⚠️ El historial fue RECONSTRUIDO (la primera migración es `seed_rbac`, NO hay init que cree las tablas base): **`migrate deploy` es la vía segura**; restaurar de cero solo con `pg_restore` del dump, nunca re-replaying todo el historial en una BD vacía.
 - Para migración NUEVA: `cd apps/api; npx prisma migrate dev --name <nombre>` (UUIDs PKs, snake_case con `@map`, soft delete `eliminado_en`, auditoría `creado_en/actualizado_en/creado_por/actualizado_por`). Cliente: `npx prisma generate`.
 - ⚠️ PostGIS NO instalado aquí: las columnas de geometría (`geocercas.geometria`, `rastreo_gps.posicion`) no existen (migración salta con NOTICE benigno) — no las declares en cambios nuevos; consultar por lat/lng (Haversine manual).
-- Seeds dev: roles=2, users=2, 106 permisos, 121 role_permissions, 27 vistas. Usuarios: `admin@svr-constructora.com` / `admin123`, `rrhh@svr-constructora.com` / `rrhh123`.
+- Seeds dev (estado actual): 6 roles activos (5 de negocio + Administrador), ~14 users, 106 permisos, vistas 27+. Usuarios: `admin@svr-constructora.com` / `admin123`, `rrhh@svr-constructora.com` / `rrhh123` (rol Administrativo desde la consolidación). Los 5 roles de negocio: Residente (90), Administrativo (80, absorbió RRHH), Técnico (70, absorbió los 4 técnicos), Cobrador (60), Trabajador (20). La **torre** de reportes vive en el PUESTO (`categorias_puesto.torre` → `users.torre`, que tiene precedencia en /reportes). Detalle completo: README "Estructura organizacional".
 - `_prisma_migrations` existe desde el dump pero fue regenerada en el baseline — no hagas diffs contra ella como verdad histórica.
 
 ## Git y Pull Requests
@@ -221,6 +221,97 @@ Un PR que incumpla cualquiera = Request Changes.
 - Validación previa a un push ordenado: `npm run lint` (raíz), `npx tsc --noEmit` (apps/web), `npm run test` (apps/api); si tocó Prisma `npx prisma validate`.
 - CI/CD: **el repo NO tiene GitHub Actions todavía** (solo existe la plantilla de PR en `.github/`). Puedes crear el workflow SOLO cuando el usuario lo pida explícitamente — nunca de tu cuenta. Propuesta si lo piden: job `ci` con PostgreSQL 18 como service → checkout, setup-node 26 + `npm ci`, turbo `lint` + `tsc --noEmit` web, `jest` unitarios api (con BD del service para los `test:integration` marcados).
 
+## Reglas que también aplican (sincronizado de AGENTS.md)
+
+**Regla de oro — código existente NO se toca sin autorización explícita.**
+Refactors, "mejoras de paso" y limpieza incidental incluidos: nada se mueve,
+renombra o elimina sin decir antes qué se cambia y dónde, y esperar el sí.
+Aplica también a docs que toquen código.
+
+**Regla de oro — escritorio y PWA son INDEPENDIENTES.** Lo que se hace para
+escritorio queda en escritorio y viceversa (excepción: piezas de sesión/API
+compartidas: `lib/api.ts`, `providers/AuthProvider.tsx`). La PWA vive como
+grupo de rutas `(pwa)` en `apps/web` con pantallas `/m/*` — NUNCA crear
+`apps/pwa` ni duplicar sesión/apiClient. Reglas duras de las vistas móviles:
+diseño "acción primero" (prohibido apretar tablas del desktop en el teléfono),
+reusar el kit `src/components/ui/*` primero y los nuevos en
+`src/components/pwa/*` documentados en `COMPONENTS.md`, nav inferior construida
+desde `user.vistas` (`lib/pwa/rol-nav.ts` — PROHIBIDO hardcodear el menú por
+rol), objetivos táctiles ≥44px + safe-areas, texto 100% es-MX con
+`mensajeErrorApi`, offline-first DESDE EL DÍA 1 (capturas → cola local
+`lib/pwa/offline.ts` + sincronizador; la cola se limpia al logout), el
+detector móvil↔escritorio vive en `lib/pwa/dispositivo.ts`, login móvil por
+número de empleado + PIN (fase de backend propia — nunca email+password),
+la asistencia es universal, y la PWA consume la MISMA API (prohibido
+endpoints "versión móvil" de lo que ya existe).
+
+**Loaders/Skeletons — regla dura (todas las vistas):** la primera impresión
+cargando nunca es un bloque vacío ni un "0" falso: tablas con
+`<DataTable loading={...}>` (skeleton interno, nunca spinner encima para la
+carga inicial), KPIs `StatsCard loading` con el spinner SOLO en el espacio del
+valor (`Loader2 className="w-5 h-5 text-primary animate-spin"` — nunca
+coloreado con el dato), bloques no tabulares con `<Skeleton variant="card"/>`,
+refetches con `RefreshOverlay`, banners condicionales NO existen durante la
+carga (gated con `!initialLoading`). Reusar el kit (prohibido copiar
+`Loader2 + animate-spin` entre vistas).
+
+**Toasts de error — helper único:** el mensaje de todo toast de error de API
+sale de `mensajeErrorApi(res.error, '<fallback de la vista>')` (en
+`lib/api.ts`) — nunca `res.error?.message || '...'` a mano: el helper une
+`details[]` (class-validator) con "·" para que se vea QUÉ campo falló.
+
+**Reglas de estilos (informativo del detalle en AGENTS.md):** PROHIBIDO
+`style={{}}` (solo posición/z-index/dimensiones calculadas en runtime);
+componentes UI con patrón `Componente.tsx` + `Componente.styles.ts` +
+`index.ts`; en `globals.css` solo tokens/keyframes/utilitarias globales;
+usar SIEMPRE `scrollbar-none` (nunca inventar variantes); `cn()` de
+`@/lib/utils`; al crear o refactorizar vistas, reemplazar los patrones
+manuales por el kit UI (tabla completa de equivalencias en AGENTS.md;
+`COMPONENTS.md` documenta props y cuándo NO usar cada componente).
+
+**Convención de idioma en la BD (no renombrar lo existente):** tablas de
+DOMINIO/negocio en español (`reportes_campo`, `trabajadores`…) y las de
+AUTH/infraestructura en inglés por convención histórica (`users`,
+`sessions`, `token_blacklist`). Los campos nuevos siguen la lengua de sus
+vecinos en esa tabla. PROHIBIDO renombrar tablas/columnas legadas en masa.
+
+**Deuda activa — cero tests frontend:** hoy NO existe infra de tests front
+(jest + RTL no configurados); lo único e2e probado es login y perfil. Mientras
+tanto, toda vista nueva/migrada lleva smoke manual documentado en su registro
+de `historial-cambios/` (tsc + eslint como único gate automático). Cuando se
+configure la infra, toda pantalla nueva DEBE llevar tests — se activa antes
+de que existan 3+ pantallas reales.
+
+**Gotchas extra de AGENTS.md:** Turbopack panics en navegación (arquitectura
+monolítica conocida — no intentar "arreglar" Turbopack); no hay code
+splitting (`next/dynamic`/`React.lazy` en ningún lado); `framer-motion` está
+en package.json pero nunca importado (dependencia muerta); todos los headers
+de página siguen el mismo patrón (PageHeader cuando toque); locale
+hardcoded es-MX/MXN (sin i18n).
+
+## RBAC — modelo organizacional vigente y vigilancia de permisos
+
+**5 roles de negocio + 1 de sistema** (desde la migración
+`20261112000000_roles_5_puestos_torre`): Residente (90), Administrativo (80,
+absorbió Encargado de RRHH), Técnico (70, absorbió Tecnico
+Mecanico/Soldador/Diesel/Mantenimiento), Cobrador (60), Trabajador (20), y
+Administrador (100, `es_sistema`, no asignable desde el alta — el service
+rechaza con `ROL_NO_ASIGNABLE`/`ACCESO_ROL_INVALIDO`). El rol decide qué puede
+hacer; el **puesto** (`categorias_puesto.torre`) decide el área: se escribe en
+`users.torre` (que tiene precedencia sobre `roles.torre` en todo
+`/reportes`). El número de empleado toma su prefijo del rol y el consecutivo
+usa el SUFIJO MÁXIMO (no conteo). Detalle y gráfica: README "Estructura
+organacional".
+
+**⚠️ Vigilancia de permisos (regla dura — permiso #107 y siguientes):**
+los permisos son granulares por `(modulo, recurso, accion)` — hoy 106, sin
+duplicados. Al agregar uno NUEVO o al construir la Vista B:
+1. **Verificar duplicados** antes de insertar (otro recurso del mismo módulo
+   que haga lo mismo = duplicado invisible; con dos devs se multiplica).
+2. Seed de RBAC + rol correspondiente **en el mismo cambio**.
+3. Un endpoint nuevo usa **SU permiso propio** — nunca "pedir prestado" el de
+   otra vista.
+
 ## Gotchas que matan horas (recuérdalos al diagnosticar)
 
 - Puertos: web=3000, api=3001. Compartirlos rompe el login con errores de conexión/CORS.
@@ -232,3 +323,4 @@ Un PR que incumpla cualquiera = Request Changes.
 - Procesos node huérfanos ocupando el puerto 3000: matarlos antes de arrancar.
 - Turbopack/CD: `.next`, `dist`, `*.tsbuildinfo` nunca van al PR.
 - Localización: TODO texto de UI en español — incluso errores de validación (class-validator con mensajes personalizados en español).
+- **Despliegue con proxy (⚠️ día del despliegue):** el bloqueo por IP usa `req.ip` — sin `trust proxy` es la IP directa de la conexión (hoy, en LAN, la real ✓). Con nginx: `app.set('trust proxy', 1)` en `main.ts` (SOLO el primer salto) y nginx SIEMPRE pisa `X-Forwarded-For` con `$remote_addr` — sin trust proxy todos comparten la IP del proxy (un mal actor bloquea a la oficina entera); con trust proxy abierto, un atacante suplanta `X-Forwarded-For` y rota IPs falsas para esquivar el bloqueo por IP. Detalle: README "Despliegue con servidor".

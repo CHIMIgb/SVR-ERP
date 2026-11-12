@@ -17,7 +17,15 @@ describe('CreateTrabajadorDto', () => {
     sueldoEfectivo: 3500,
     metodoPago: 'Mixto',
     fechaContratacion: '2024-03-01',
+    // ID estilo seed (versión 0): IsUUID lo rechazaba; el regex laxo debe aceptarlo.
+    rolId: 'e0000000-0000-0000-0000-0000000000a5',
   };
+
+  it('should fail with invalid rolId (P14: el alta siempre crea la identidad)', async () => {
+    const dto = plainToInstance(CreateTrabajadorDto, { ...base, rolId: 'no-uuid' });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('rolId');
+  });
 
   it('should pass with valid data', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, base);

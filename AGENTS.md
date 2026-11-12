@@ -98,9 +98,17 @@ src/
 `src/lib/data.ts` is the single source of truth for all types and mock data. **28 files import from it.** Treat it carefully — any change can cascade re-compilations. Types are organized by domain but live in this one file.
 
 
+## Regla de oro — escritorio y PWA son INDEPENDIENTES
+
+**Lo que se haga para ESCRITORIO se queda en el escritorio; lo que se haga
+para la PWA se queda en la PWA. En el frontend son aplicaciones
+independientes: ninguna afecta a la otra.** Un cambio de escritorio no debe
+arrastrar la PWA ni viceversa (excepción: piezas de sesión/API compartidas,
+que viven en su propio archivo).
+
 ## PWA móvil (rutas `/m/*` — grupo de rutas `(pwa)`)
 
-La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/m/*` — **NUNCA crear `apps/pwa` aparte ni duplicar sesión/apiClient** (ver plan completo: `docs-planes/vistas-movil-comercial-operaciones.md`, §5b y §6 — la especificación funcional definitiva del cliente: asistencia universal con foto+GPS, login por número de empleado + PIN, offline-first).
+La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/m/*` — **NUNCA crear `apps/pwa` aparte ni duplicar sesión/apiClient** (ver plan completo: `pwa/vistas-movil-comercial-operaciones.md`, §5b y §6 — la especificación funcional definitiva del cliente: asistencia universal con foto+GPS, login por número de empleado + PIN, offline-first).
 
 Reglas duras al construir vistas móviles (aplican igual que las de escritorio, con estos matices):
 
@@ -129,6 +137,14 @@ Reglas duras al construir vistas móviles (aplican igual que las de escritorio, 
 ## Language
 
 The app UI is entirely in **Spanish** (Mexican). All mock data, labels, and user-facing strings are Spanish.
+
+## Regla de oro — código existente
+
+**El código ya creado NO se toca a menos que el usuario lo autorice.** Si un
+cambio requiere tocar código existente, SIEMPRE decir antes **qué se va a
+cambiar y en dónde** (archivos/métodos), y esperar la autorización. Aplica a
+refactors, "mejoras de paso" y limpieza incidental: nada se mueve, renombra
+o elimina sin autorización explícita.
 
 ## Critical Rules
 
@@ -251,6 +267,17 @@ import { cn } from '@/lib/utils';
 - Config de Prisma en `apps/api/prisma.config.ts` (defineConfig), NO en `schema.prisma`
 - URL de BD en `apps/api/.env`
 
+### Despliegue con proxy — trust proxy y el bloqueo por IP (⚠️ regla del día del despliegue)
+
+El bloqueo por IP de la autenticación usa `req.ip`, que **sin `trust proxy`
+es la IP directa de la conexión** (en LAN: la real de cada dispositivo ✓). El
+día que exista servidor detrás de nginx: `app.set('trust proxy', 1)` en
+`apps/api/src/main.ts` (SOLO el primer salto) y nginx SIEMPRE pisa
+`X-Forwarded-For` con `$remote_addr` — sin eso, todos comparten la IP del
+proxy (un mal actor bloquea a la oficina entera); con trust proxy abierto, un
+atacante suplanta `X-Forwarded-For` y rota IPs falsas para esquivar el
+bloqueo por IP. Detalle completo: README "Despliegue con servidor".
+
 ### Prisma ORM
 - Schema: `apps/api/prisma/schema.prisma` (~2,015 líneas)
 - UUIDs para PKs (`@db.Uuid`), snake_case en columnas (`@map`)
@@ -258,9 +285,41 @@ import { cn } from '@/lib/utils';
 - Auditoría: `creado_en`, `actualizado_en`, `creado_por`, `actualizado_por`
 - `npx prisma migrate dev` para migraciones, `npx prisma generate` para el cliente
 
+- **Convención de idioma en la BD** (no renombrar lo existente): las tablas de
+  DOMINIO/negocio van en español (`reportes_campo`, `registros_asistencia`,
+  `trabajadores`…) y las de AUTH/infraestructura en inglés por convención
+  histórica (`users`, `sessions`, `refresh_tokens`, `token_blacklist`). Los
+  campos nuevos de una tabla SIGUEN LA LENGUA DE SUS VECINOS en esa tabla
+  (ej. `numero_empleado` junto a campos en español; `pin_hash` junto a
+  `token_hash`). PROHIBIDO renombrar tablas/columnas legadas en masa — es
+  deuda cosmética sin beneficio funcional.
+
 ### RBAC (Role-Based Access Control)
 
 Sistema de control de acceso completo. **Las permisos controlan acceso a módulos/acciones. Las vistas controlan acceso a rutas del sidebar.**
+
+#### Modelo organizacional vigente (desde `20261112000000_roles_5_puestos_torre`)
+
+**5 roles de negocio + 1 de sistema.** El rol decide qué puede hacer; el
+**puesto** (`categorias_puesto`, con columna `torre`) decide quién es y a qué
+área pertenece para /reportes — la torre del puesto se escribe en `users.torre`
+(alta/edición del puesto) y `users.torre` tiene precedencia sobre `roles.torre`
+en todo `/reportes`. Roles consolidados: **Administrativo** (absorbió Encargado
+de RRHH) y **Técnico** (absorbió Tecnico Mecanico/Soldador/Diesel/Mantenimiento
+— viejos roles desactivados). El detalle completo (roles, puestos, torres y
+gráfica) está en el README, sección "Estructura organizacional".
+
+#### ⚠️ Vigilancia de permisos (regla dura al agregar el permiso #107 y siguientes)
+
+Los permisos son granulares por `(modulo, recurso, accion)` — hoy 106, sin
+duplicados. Al agregar uno NUEVO o al construir la Vista B de usuarios/roles:
+1. **Verificar duplicados** antes de insertar: no debe existir un permiso que
+   haga lo mismo en otro recurso del mismo módulo (invisible al inicio; con
+   dos devs se multiplica).
+2. Agregarlo al seed de RBAC y al rol correspondiente **en el mismo cambio**
+   (nunca "el seed después").
+3. Un endpoint nuevo usa **SU permiso propio** — no "pedir prestado" el de
+   otra vista, que es como nacen los duplicados.
 
 #### Modelos principales
 | Modelo | Descripción |
@@ -412,3 +471,19 @@ describe('Inventario Audit (Real DB)', () => {
 ### Frontend (Jest + React Testing Library) — Coming Soon
 
 When frontend tests are implemented, they will use `@testing-library/react` + `jest`.
+
+### DEUDA ACTIVA — Cero tests frontend (regla para todos los agentes)
+
+**Hoy NO existe infra de tests frontend (jest + RTL no configurados).**
+Lo único que funciona de punta a punta es **login y perfil** — **NO se ha
+implementado ninguna vista de la aplicación** (las pantallas PWA son
+placeholders y las de escritorio son mock). Todo es smoke manual.
+
+- **Regla mientras tanto:** toda vista nueva o módulo migrado de la PWA
+  lleva su smoke manual documentado en el registro de
+  `historial-cambios/` (tsc + eslint como único gate automático).
+- **Cuando se configure la infra (jest + @testing-library/react):**
+  toda pantalla nueva de la PWA DEBE llevar tests — los refactors a
+  ciegas son lo primero que muerde con dos desarrolladores en paralelo.
+- **Prioridad: media-alta** — se activa ANTES de que existan 3+
+  pantallas reales (el esqueleto 8/10 decae rápido sin red de seguridad).

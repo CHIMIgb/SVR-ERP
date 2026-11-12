@@ -10,8 +10,8 @@ export type PreferenciaTema = "light" | "dark" | "system";
 
 export const CLAVE_TEMA = "svr-tema";
 
-/** Sin preferencia guardada se usa claro: es el modo que ya conocen los usuarios. */
-export const TEMA_POR_DEFECTO: PreferenciaTema = "light";
+/** Sin preferencia guardada se sigue al sistema: la PWA nace con el tema del teléfono (petición del cliente 2026-11-11). */
+export const TEMA_POR_DEFECTO: PreferenciaTema = "system";
 
 export const CONSULTA_OSCURO = "(prefers-color-scheme: dark)";
 

@@ -17,6 +17,7 @@ import {
   CATEGORIAS_PUESTO,
   LicenciaDto,
   ContactoEmergenciaDto,
+  AccesoPwaDto,
   MONTO_MAXIMO,
   MONTO_MAXIMO_10_2,
   HORAS_SEMANA_MAXIMAS,
@@ -134,4 +135,10 @@ export class UpdateTrabajadorDto {
   @ValidateNested()
   @Type(() => ContactoEmergenciaDto)
   contactoEmergencia?: ContactoEmergenciaDto;
+
+  /** Acceso a la app (PR #18 #8): ajusta el rol/jefe de la cuenta existente o crea la identidad. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AccesoPwaDto)
+  acceso?: AccesoPwaDto;
 }

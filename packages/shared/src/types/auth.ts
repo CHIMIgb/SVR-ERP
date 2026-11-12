@@ -2,6 +2,16 @@ export interface PersonaAuth {
   nombre: string;
   apellidoPaterno: string | null;
   apellidoMaterno?: string | null;
+  correo?: string | null;
+  /** Teléfono de contacto (vista de perfil PWA). */
+  telefono?: string | null;
+}
+
+/** Jefe directo del empleado (auto-relación de users). */
+export interface JefeAuth {
+  nombre: string;
+  email: string;
+  telefono?: string | null;
 }
 
 export interface RolAuth {
@@ -17,6 +27,8 @@ export interface VistaAuth {
   ruta: string;
   icono?: string | null;
   orden: number;
+  /** false = vista exclusiva de la PWA (no aparece en el sidebar del escritorio). */
+  es_menu?: boolean;
   puedeVer: boolean;
   puedeCrear: boolean;
   puedeEditar: boolean;
@@ -36,6 +48,10 @@ export interface UserAuth {
   activo: boolean;
   /** Área (torre) asignada al empleado — para "misma área" en /reportes. */
   torre?: string | null;
+  /** Número de empleado (users.numero_empleado) — vista de perfil PWA. */
+  numeroEmpleado?: string | null;
+  /** Jefe directo, si el usuario tiene uno asignado. */
+  jefe?: JefeAuth | null;
   persona: PersonaAuth;
   roles: RolAuth[];
   vistas: VistaAuth[];

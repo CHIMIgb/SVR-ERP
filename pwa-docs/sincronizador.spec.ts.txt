@@ -1,0 +1,74 @@
+import { sincronizarAhora } from './sincronizador';
+import type { ElementoCola } from './offline';
+
+// La cola se inyecta como puerto (el sincronizador es puro en su lógica).
+// Para este test mockeamos el módulo offline con jest.mock.
+const colaMock: ElementoCola[] = [];
+jest.mock('./offline', () => ({
+  pendientes: jest.fn(async () => colaMock),
+  marcarEnviada: jest.fn(async (id: string) => {
+    const i = colaMock.findIndex((x) => x.id === id);
+    if (i >= 0) colaMock.splice(i, 1);
+  }),
+  marcarError: jest.fn(async (id: string) => {
+    const it = colaMock.find((x) => x.id === id);
+    if (it) {
+      it.intentos += 1;
+      it.estado = 'error';
+    }
+  }),
+  contarPendientes: jest.fn(async () => colaMock.length),
+}));
+
+const item = (id: string, creado_en: string): ElementoCola => ({
+  id,
+  endpoint: '/api/test',
+  payload: { x: 1 },
+  creado_en,
+  intentos: 0,
+  estado: 'pendiente',
+});
+
+describe('sincronizarAhora (lógica FIFO + marca de estado)', () => {
+  beforeEach(() => {
+    colaMock.length = 0;
+  });
+
+  it('envía en orden FIFO y borra las enviadas', async () => {
+    colaMock.push(item('a', '2026-11-11T01:00:00Z'), item('b', '2026-11-11T02:00:00Z'));
+    const orden: string[] = [];
+    const enviados = await sincronizarAhora(async (it) => {
+      orden.push(it.id);
+      return { ok: true };
+    });
+    expect(enviados).toBe(2);
+    expect(orden).toEqual(['a', 'b']);
+    expect(colaMock).toHaveLength(0);
+  });
+
+  it('un fallo NO bloquea la cola: los demás siguen y el fallido queda con error', async () => {
+    colaMock.push(item('a', '2026-11-11T01:00:00Z'), item('b', '2026-11-11T02:00:00Z'));
+    const enviados = await sincronizarAhora(async (it) => ({ ok: it.id !== 'a' }));
+    expect(enviados).toBe(1);
+    expect(colaMock).toHaveLength(1);
+    expect(colaMock[0].id).toBe('a');
+    expect(colaMock[0].estado).toBe('error');
+    expect(colaMock[0].intentos).toBe(1);
+  });
+
+  it('excepción del puerto tampoco bloquea la cola', async () => {
+    colaMock.push(item('a', '2026-11-11T01:00:00Z'), item('b', '2026-11-11T02:00:00Z'));
+    const enviados = await sincronizarAhora(async (it) => {
+      if (it.id === 'a') throw new Error('sin señal a la mitad');
+      return { ok: true };
+    });
+    expect(enviados).toBe(1);
+    expect(colaMock[0].id).toBe('a');
+    expect(colaMock[0].estado).toBe('error');
+  });
+
+  it('cola vacía: 0 enviados y sin errores', async () => {
+    const enviados = await sincronizarAhora(async () => ({ ok: true }));
+    expect(enviados).toBe(0);
+  });
+});

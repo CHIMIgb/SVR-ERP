@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:https": "next dev --turbopack --experimental-https",
+    "dev:https:ip": "next dev --turbopack --experimental-https --experimental-https-cert cert.pem --experimental-https-key key.pem"
   },
   "dependencies": {
     "@svr-erp/shared": "*",

@@ -473,4 +473,70 @@ describe('Auth Integration (Real DB)', () => {
       expect(session!.refresh_token_jti).toBe(newPayload.jti);
     });
   });
+
+  // ── Perfil del empleado (PWA: telefono, numeroEmpleado, jefe) ──
+
+  describe('Perfil del empleado', () => {
+    let jefeUserId: string;
+    let jefePersonaId: string;
+
+    beforeAll(async () => {
+      // Usuario jefe (self-relación users.jefe_user_id)
+      jefePersonaId = randomUUID();
+      await prisma.personas.create({
+        data: {
+          id: jefePersonaId,
+          nombre: 'Rosa',
+          apellido_paterno: 'Marin',
+          correo: `jefe-${TEST_EMAIL}`,
+          telefono: '5598765432',
+          actualizado_en: new Date(),
+        },
+      });
+      jefeUserId = randomUUID();
+      await prisma.users.create({
+        data: {
+          id: jefeUserId,
+          persona_id: jefePersonaId,
+          email: `jefe-${TEST_EMAIL}`,
+          password_hash: await bcrypt.hash(TEST_PASSWORD, 12),
+          actualizado_en: new Date(),
+        },
+      });
+
+      // Usuario de prueba: telefono, numero de empleado y jefe asignado
+      await prisma.personas.update({
+        where: { id: testPersonaId },
+        data: { telefono: '5512345678' },
+      });
+      await prisma.users.update({
+        where: { id: testUserId },
+        data: { numero_empleado: `EMP-${TEST_ID}`, jefe_user_id: jefeUserId },
+      });
+    });
+
+    it('getProfile debe entregar telefono, numeroEmpleado y jefe con su telefono', async () => {
+      const perfil = await authService.getProfile(testUserId);
+
+      expect(perfil).not.toBeNull();
+      expect(perfil!.persona.telefono).toBe('5512345678');
+      expect(perfil!.numeroEmpleado).toBe(`EMP-${TEST_ID}`);
+      expect(perfil!.jefe).not.toBeNull();
+      expect(perfil!.jefe!.nombre).toBe('Rosa Marin');
+      expect(perfil!.jefe!.email).toBe(`jefe-${TEST_EMAIL}`);
+      expect(perfil!.jefe!.telefono).toBe('5598765432');
+    });
+
+    afterAll(async () => {
+      // FK-safe: soltar la auto-relación antes de soft-deletear
+      await prisma.users.update({
+        where: { id: testUserId },
+        data: { jefe_user_id: null },
+      });
+      await prisma.users.update({
+        where: { id: jefeUserId },
+        data: { eliminado_en: new Date(), activo: false },
+      });
+    });
+  });
 });

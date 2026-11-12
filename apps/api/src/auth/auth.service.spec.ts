@@ -498,6 +498,57 @@ describe('AuthService', () => {
       expect(jwtService.sign).toHaveBeenCalledTimes(2); // access + refresh
     });
 
+    it('sesión pwa-pin con temporal: renueva el claim rpc (PR #18 #4)', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({ ...mockSession, dispositivo: 'pwa-pin' });
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+        pin_temporal_hasta: new Date(Date.now() + 60_000), // temporal vigente
+        pin_cambiado_en: new Date(),
+      });
+
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ rpc: true }),
+        expect.anything(),
+      );
+    });
+
+    it('sesión pwa-pin con PIN propio recién creado: el claim se limpia (PR #18 #4)', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({ ...mockSession, dispositivo: 'pwa-pin' });
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+        pin_temporal_hasta: null, // el cambio lo limpió
+        pin_cambiado_en: new Date(), // fresco: no vencido
+      });
+
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.not.objectContaining({ rpc: expect.anything() }),
+        expect.anything(),
+      );
+    });
+
+    it('sesión de email+password: nunca lleva claim rpc aunque el PIN esté viejo', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({ ...mockSession }); // sin dispositivo
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+        pin_temporal_hasta: null,
+        pin_cambiado_en: new Date(Date.now() - 90 * 86_400_000), // 90 días
+      });
+
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.not.objectContaining({ rpc: expect.anything() }),
+        expect.anything(),
+      );
+    });
+
     it('debe blacklistear el refresh token viejo en la transacción', async () => {
       await service.refresh('user-1', 'old-refresh-jti');
 
@@ -627,6 +678,50 @@ describe('AuthService', () => {
       const perfil = await service.getProfile('user-inexistente');
 
       expect(perfil).toBeNull();
+    });
+
+    it('debe incluir telefono, numero de empleado y jefe directo', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        ...mockUser,
+        numero_empleado: 'EMP-001',
+        personas_users_persona_idTopersonas: {
+          ...mockUser.personas_users_persona_idTopersonas,
+          telefono: '5512345678',
+        },
+        jefe: {
+          email: 'jefe@svr-constructora.com',
+          personas_users_persona_idTopersonas: {
+            nombre: 'Rosa',
+            apellido_paterno: 'Marín',
+            apellido_materno: null,
+            telefono: '5598765432',
+          },
+        },
+      });
+
+      const perfil = await service.getProfile('user-1');
+
+      expect(perfil!.numeroEmpleado).toBe('EMP-001');
+      expect(perfil!.persona.telefono).toBe('5512345678');
+      expect(perfil!.jefe).toEqual({
+        nombre: 'Rosa Marín',
+        email: 'jefe@svr-constructora.com',
+        telefono: '5598765432',
+      });
+    });
+
+    it('debe retornar jefe null si el usuario no tiene jefe asignado', async () => {
+      prisma.users.findUnique.mockResolvedValue({
+        ...mockUser,
+        numero_empleado: null,
+        jefe: null,
+      });
+
+      const perfil = await service.getProfile('user-1');
+
+      expect(perfil!.numeroEmpleado).toBeNull();
+      expect(perfil!.jefe).toBeNull();
+      expect(perfil!.persona.telefono).toBeNull();
     });
   });
 });

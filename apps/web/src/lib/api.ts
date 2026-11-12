@@ -90,50 +90,82 @@ function addRefreshSubscriber(callback: (token: string) => void): void {
   refreshSubscribers.push(callback);
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+type EstadoRefresh = 'ok' | 'invalid' | 'red';
 
+/** Si la API no responde en 8s la tratamos como sin conexión (no sesión muerta). */
+const REFRESH_TIMEOUT_MS = 8000;
+
+let refreshEnCurso: Promise<EstadoRefresh> | null = null;
+
+async function ejecutarRefresh(): Promise<EstadoRefresh> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return 'invalid';
+
+  const control = new AbortController();
+  const temporizador = setTimeout(() => control.abort(), REFRESH_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken } satisfies RefreshCredentials),
+      signal: control.signal,
     });
 
     if (!response.ok) {
-      throw new Error('Refresh failed');
+      // Token rechazado por el servidor (vencido/revocado): sesión muerta.
+      // Otros errores HTTP (500/503): la sesión puede seguir viva — no borrar.
+      if (response.status === 401 || response.status === 400) {
+        clearTokens();
+        return 'invalid';
+      }
+      return 'red';
     }
 
     const result: ApiResponse<AuthResponse['data']> = await response.json();
     if (!result.success) {
-      throw new Error('Refresh failed');
+      clearTokens();
+      return 'invalid';
     }
 
     setTokens(result.data.accessToken, result.data.refreshToken);
-    return result.data.accessToken;
+    return 'ok';
   } catch {
-    clearTokens();
-    return null;
+    // Timeout del AbortController o error de red (API inalcanzable / offline):
+    // NO borrar la sesión — el refresh se reintentará al volver la señal.
+    return 'red';
+  } finally {
+    clearTimeout(temporizador);
   }
+}
+
+function refreshAccessToken(): Promise<EstadoRefresh> {
+  // UN solo refresh en vuelo: StrictMode (dev) monta el provider dos veces y
+  // el interceptor puede recibir varios 401 a la vez — el refresh token es de
+  // un solo uso, así que los concurrentes COMPARTEN la misma promesa.
+  if (!refreshEnCurso) {
+    refreshEnCurso = ejecutarRefresh().finally(() => {
+      refreshEnCurso = null;
+    });
+  }
+  return refreshEnCurso;
 }
 
 /**
  * Intenta obtener un access token válido al cargar la app.
  * Si el refresh token existe en localStorage, rota para obtener un access token fresco.
- * Retorna true si se obtuvo un token válido, false si no (sesión expirada).
+ * 'ok' = sesión restaurada; 'invalid' = sesión expirada/revocada; 'red' = sin conexión
+ * (se conservan los tokens y el usuario cacheado; se reintenta al volver la señal).
  */
-export async function initializeAuth(): Promise<boolean> {
+export async function initializeAuth(): Promise<EstadoRefresh> {
   // Si ya tenemos un access token en memoria, la sesión está activa
-  if (inMemoryAccessToken) return true;
+  if (inMemoryAccessToken) return 'ok';
 
   // Si no hay refresh token, no hay sesión que restaurar
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
+  if (!refreshToken) return 'invalid';
 
   // Intentar rotar el refresh token para obtener un access token nuevo
-  const newToken = await refreshAccessToken();
-  return newToken !== null;
+  return refreshAccessToken();
 }
 
 async function request<T>(
@@ -193,21 +225,33 @@ async function request<T>(
     }
 
     isRefreshing = true;
-    const newToken = await refreshAccessToken();
+    const resultado = await refreshAccessToken();
     isRefreshing = false;
 
-    if (newToken) {
-      notifySubscribers(newToken);
-      return request<T>(endpoint, {
-        ...options,
-        headers: {
-          ...((customHeaders as Record<string, string>) || {}),
-          Authorization: `Bearer ${newToken}`,
-        },
-      });
+    if (resultado === 'ok') {
+      const newToken = getAccessToken();
+      if (newToken) {
+        notifySubscribers(newToken);
+        return request<T>(endpoint, {
+          ...options,
+          headers: {
+            ...((customHeaders as Record<string, string>) || {}),
+            Authorization: `Bearer ${newToken}`,
+          },
+        });
+      }
     }
 
-    // Refresh falló: limpiar y dejar que el caller maneje
+    if (resultado === 'red') {
+      // Sin conexión para refrescar: NO limpiar ni redirigir — el caller
+      // muestra su error de conexión y la sesión sigue viva en el dispositivo
+      return {
+        success: false,
+        error: { code: 'API_DOWN', message: 'No hay conexión con el servidor' },
+      };
+    }
+
+    // Refresh inválido (token vencido/revocado): limpiar y dejar que el caller maneje
     window.location.href = '/';
     return {
       success: false,
@@ -252,6 +296,32 @@ export const apiClient = {
     request<T>(endpoint, { ...options, method: 'DELETE' }),
 };
 
+// ── Ciclo PIN de la PWA (plan §8.2) ──
+export interface LoginPinCredentials {
+  numeroEmpleado: string;
+  pin: string;
+}
+
+export interface PinEstadoDTO {
+  temporalActivo: boolean;
+  temporalHasta: string | null;
+  pinCambiadoEn: string | null;
+  diasDesdeCambio: number | null;
+  diasRestantes: number | null;
+  avisar: boolean;
+  vencido: boolean;
+  bloqueada: boolean;
+  requiereCambio: boolean;
+}
+
+export interface LoginPinResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: UserAuth;
+  session: { id: string; iniciadaEn: string; expiraEn: string };
+  pinEstado: PinEstadoDTO;
+}
+
 export const authApi = {
   login: (credentials: LoginCredentials) =>
     apiClient.post<AuthResponse['data']>('/auth/login', credentials, {
@@ -271,6 +341,20 @@ export const authApi = {
   logout: () => apiClient.post<void>('/auth/logout', {}),
 
   profile: () => apiClient.get<UserAuth>('/auth/profile'),
+
+  loginPin: (credentials: LoginPinCredentials) =>
+    apiClient.post<LoginPinResponse>('/auth/login-pin', credentials, {
+      skipAuth: true,
+    }),
+
+  pinEstado: () => apiClient.get<PinEstadoDTO>('/auth/pin/estado'),
+
+  /** Mesa de ayuda (Vista B / ficha de trabajadores): temporal de 24 h, se muestra UNA vez. */
+  pinReinicio: (userId: string) =>
+    apiClient.post<{ message: string; pinTemporal: string }>('/auth/pin/reinicio', { userId }),
+
+  pinCambio: (data: { pinActual: string; pinNuevo: string }) =>
+    apiClient.post<{ message: string }>('/auth/pin/cambio', data),
 };
 
 // setTokens, clearTokens, getAccessToken, getRefreshToken, initializeAuth
@@ -1054,6 +1138,18 @@ export interface TrabajadorDTO {
   tarifaHoraExtra?: number;
   descuentosSemana?: number;
   conceptoDescuento?: string;
+  /** Cuenta de acceso P14 (solo en el listado): para la acción "Reiniciar PIN" (PR #18 #6). */
+  usuarioId?: string;
+  numeroEmpleado?: string;
+  rolAccesoId?: string;
+  rolAccesoNombre?: string;
+  encargadoUserId?: string | null;
+}
+
+/** Acceso a la app desde la edición (PR #18 #8): '' en encargadoId quita al jefe. */
+export interface TrabajadorAccesoInput {
+  rolId: string;
+  encargadoId?: string;
 }
 
 export interface TrabajadorCreateInput {
@@ -1065,6 +1161,10 @@ export interface TrabajadorCreateInput {
   sueldoFiscal: number;
   sueldoEfectivo: number;
   metodoPago: 'Tarjeta' | 'Efectivo' | 'Mixto';
+  /** Rol de acceso a la app (P14): el alta crea numero_empleado + PIN temporal. */
+  rolId: string;
+  /** Encargado (Residente) al que reporta — opcional (§6.8). */
+  encargadoId?: string;
   proyecto?: string;
   maquinaId?: string;
   fechaContratacion?: string;
@@ -1072,6 +1172,15 @@ export interface TrabajadorCreateInput {
   licencia?: LicenciaDTO;
   contactoEmergencia?: ContactoEmergenciaDTO;
 }
+
+/** Credenciales del alta (P14, §6.6): el PIN temporal se entrega UNA vez, nunca se vuelve a pedir. */
+export interface IdentidadAltaDTO {
+  numeroEmpleado: string;
+  pinTemporal: string;
+  temporalHasta: string;
+}
+
+export type TrabajadorAltaDTO = TrabajadorDTO & { identidad: IdentidadAltaDTO };
 
 export interface LiquidarInput {
   tipoTerminacion: 'Despido' | 'Renuncia' | 'Convenio';
@@ -1123,9 +1232,26 @@ export interface MaquinaTrabajadoresDTO {
   operadorNombre: string | null;
 }
 
+export interface ResidenteCatalogoDTO {
+  id: string;
+  nombre: string;
+  numeroEmpleado: string | null;
+}
+
+export interface RolCatalogoDTO {
+  id: string;
+  nombre: string;
+}
+
 export interface CatalogosTrabajadoresDTO {
   maquinas: MaquinaTrabajadoresDTO[];
   proyectos: ProyectoCatalogoDTO[];
+  /** Encargados (Residente) para el alta P14. */
+  residentes: ResidenteCatalogoDTO[];
+  /** Roles de acceso (edición de acceso P14). */
+  roles: RolCatalogoDTO[];
+  /** Mapeo puesto → rol (decisión del SVR): el rol del alta sale del puesto; rolNombre null = sin cuenta. */
+  puestos: { nombre: string; rolId: string | null; rolNombre: string | null }[];
 }
 
 export const trabajadoresApi = {
@@ -1146,10 +1272,10 @@ export const trabajadoresApi = {
   /** Máquinas y proyectos con el permiso de RRHH (rrhh.trabajadores.ver). */
   catalogos: () => apiClient.get<CatalogosTrabajadoresDTO>('/trabajadores/catalogos'),
 
-  crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorDTO>('/trabajadores', data),
+  crear: (data: TrabajadorCreateInput) => apiClient.post<TrabajadorAltaDTO>('/trabajadores', data),
 
-  actualizar: (id: string, data: Partial<TrabajadorCreateInput> & { estado?: string }) =>
-    apiClient.patch<TrabajadorDTO>(`/trabajadores/${id}`, data),
+  actualizar: (id: string, data: Partial<TrabajadorCreateInput> & { estado?: string; acceso?: TrabajadorAccesoInput }) =>
+    apiClient.patch<TrabajadorDTO & { identidad?: IdentidadAltaDTO }>(`/trabajadores/${id}`, data),
 
   eliminar: (id: string) => apiClient.delete<{ message: string }>(`/trabajadores/${id}`),
 

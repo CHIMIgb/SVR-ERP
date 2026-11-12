@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+// ThrottlerModule: el ThrottlerGuard de login/register/refresh lo necesita
+// resoluble en el injector del test (en producción lo aporta AppModule, es @Global).
+import { ThrottlerModule } from '@nestjs/throttler';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -41,6 +44,7 @@ describe('AuthController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ name: 'short', ttl: 900000, limit: 5 }, { name: 'medium', ttl: 900000, limit: 30 }])],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },

@@ -4917,3 +4917,156 @@ import type { TimelineCardProps, TimelineMeta, TimelineBadge } from '@/component
 - Para datos tabulares con muchas columnas → usar DataTable
 - Para metricas/resumen → usar StatsCard
 - Para contenido sin cronologia → usar Card directamente
+
+---
+
+## 16. Componentes PWA móvil (rutas /m/*)
+
+La PWA vive en `apps/web` como grupo de rutas `(pwa)` con URL `/m/*` (ver
+AGENTS.md → "PWA móvil" y `pwa/vistas-movil-comercial-operaciones.md`).
+Los componentes móviles viven en `src/components/pwa/*` — REUSAN el kit
+`components/ui/*` antes de crear algo nuevo (regla 2 de AGENTS.md).
+
+### 16.1 PinInput
+
+Input de PIN de 8 casillas para login móvil y cambio de PIN (spec §6.5).
+
+**Archivos:**
+- `src/components/pwa/PinInput.tsx`
+
+**Importacion:**
+```tsx
+import { PinInput } from '@/components/pwa/PinInput';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `value` | `string` | *(requerido)* | PIN actual (string de hasta 8 chars) |
+| `onChange` | `(pin: string) => void` | *(requerido)* | Callback con el PIN actualizado |
+| `disabled` | `boolean` | `false` | Deshabilita durante la petición |
+| `error` | `boolean` | `false` | Bordes rojos (fallo de validación/login) |
+| `ariaLabel` | `string` | `'PIN'` | Accesible por casilla ("PIN posición N") |
+
+**Uso:**
+```tsx
+<PinInput value={pin} onChange={setPin} error={!!fieldErrors.pin} />
+```
+
+**Comportamiento:**
+- Enmascarado (type=password) — nadie ve el PIN en pantalla (spec §6.7).
+- Auto-avanza a la casilla siguiente al escribir; Backspace borra la casilla
+  actual y retrocede si está vacía; pegar un PIN completo lo distribuye.
+- Normaliza a MAYÚSCULAS (el PIN no distingue mayúsculas — spec §6.5).
+
+**Cuando USAR:** login móvil, cambio de PIN. **Cuando NO:** nada del escritorio.
+
+### 16.2 PantallaPlaceholder
+
+Placeholder de pantalla de la base de la PWA (plan §8.5): solo título +
+subtítulo + ícono opcional. Las pantallas reales lo reemplazan por módulo.
+
+**Archivos:**
+- `src/components/pwa/PantallaPlaceholder.tsx`
+
+**Importacion:**
+```tsx
+import PantallaPlaceholder from '@/components/pwa/PantallaPlaceholder';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `titulo` | `string` | *(requerido)* | Nombre de la pantalla |
+| `subtitulo` | `string` | `undefined` | Texto "en construcción" |
+| `icono` | `ReactNode` | `undefined` | Ícono lucide en un recuadro suave |
+
+**Uso:**
+```tsx
+<PantallaPlaceholder
+  titulo="Inicio"
+  subtitulo="Tu pantalla de inicio llegará con el dashboard móvil del rol"
+  icono={<Home className="w-10 h-10" />}
+/>
+```
+
+### 16.3 ModalInstalar
+
+Modal de instalación de la PWA (petición del cliente 2026-11-11): se
+renderiza en CADA acceso al shell `(pwa)` cuando la app NO está instalada
+(`display-mode: standalone` falso), desde `(pwa)/layout.tsx`. El botón
+«Instalar» lanza el DIÁLOGO NATIVO del navegador (`beforeinstallprompt`,
+capturado temprano por el script inline del layout); si Chrome no entregó
+el evento (enfriamiento tras descartarlo u origen sin confianza), el
+propio modal muestra la salida del menú ⋮ — nunca un botón silencioso.
+
+**Archivos:**
+- `src/components/pwa/ModalInstalar.tsx`
+- `src/lib/pwa/instalar.ts` (helpers: `obtenerPrompt`, `estaInstalada`, `instalarApp`)
+
+**Importacion:**
+```tsx
+import ModalInstalar from '@/components/pwa/ModalInstalar';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `onCerrar` | `() => void` | *(requerido)* | Cierra el modal (solo esta visita; vuelve en el próximo acceso) |
+
+**Cuándo usar:** solo desde `(pwa)/layout.tsx` (ya cableado — no montar
+en otro lado). **Cuándo NO:** en el escritorio (regla de independencia) ni
+dentro de pantallas móviles individuales.
+
+**Cuando USAR:** cualquier ruta `/m/*` de la base aún sin módulo.
+**Cuando NO:** cuando la pantalla ya tiene su módulo real.
+
+## 17. Componentes de Escritorio (workers)
+
+Componentes de vista del módulo Trabajadores en `src/components/workers/*`
+(mismo patrón que TrabajadorFormModal / LiquidacionModal).
+
+### 17.1 CredencialesAccesoModal
+
+Entrega de credenciales del alta (P14, spec §6.6-2): muestra el
+`numero_empleado` + PIN temporal UNA vez y arma el mensaje de WhatsApp
+(`wa.me` con texto prellenado — sin API, sin costo). El teléfono de 10
+dígitos se envía con prefijo 52 (formato internacional).
+
+**Archivos:**
+- `src/components/workers/CredencialesAccesoModal.tsx`
+
+**Importacion:**
+```tsx
+import CredencialesAccesoModal, { type CredencialesAcceso } from '@/components/workers/CredencialesAccesoModal';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `credenciales` | `CredencialesAcceso` | *(requerido)* | `{ nombre, telefono, numeroEmpleado, pinTemporal, temporalHasta }` |
+| `onClose` | `() => void` | *(requerido)* | Cierra el modal (el PIN se pierde: no hay refetch) |
+
+**Uso:**
+```tsx
+{credenciales && (
+  <CredencialesAccesoModal credenciales={credenciales} onClose={() => setCredenciales(null)} />
+)}
+```
+
+**Comportamiento:**
+- El PIN temporal vive SOLO en el estado de la vista: cerrar el modal lo
+  descarta. Para generar otro se usa "Reiniciar PIN" (P12) en la ficha.
+- Botones: "Copiar mensaje" (clipboard) y "Enviar por WhatsApp" (link
+  externo). El modal es `persistent` (no se cierra con Escape/overlay:
+  obliga a decidir si ya se envió).
+- El backend audita `TRABAJADOR_CREADO` con el numeroEmpleado y la
+  vigencia — NUNCA el PIN en claro (spec §8.9).
+
+**Cuando USAR:** justo después de `POST /trabajadores` cuando la respuesta
+trae `identidad`. **Cuando NO:** en edición (no hay identidad nueva) ni
+para mostrar PINs permanentes (nunca existen en la UI).

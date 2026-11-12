@@ -170,15 +170,15 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 | **Contraseña** | `admin123` |
 | **Rol** | Administrador (nivel 100) |
 
-#### Encargado de RRHH (solo módulo Recursos Humanos)
+#### Administrativo de RRHH (módulo Recursos Humanos)
 
 | Campo | Valor |
 |-------|-------|
 | **Email** | `rrhh@svr-constructora.com` |
 | **Contraseña** | `rrhh123` |
-| **Rol** | Encargado de RRHH (nivel 30) |
+| **Rol** | Administrativo (nivel 80) — con los permisos de RRHH absorbidos |
 | **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
-| **No tiene acceso** | Maquinaria, Operaciones, Comercial, Sistema, Configuración |
+| **No tiene acceso** | Maquinaria, Comercial, Sistema, Configuración |
 
 #### Roles de plantilla (5 — /reportes y dashboard)
 
@@ -193,34 +193,94 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 |-------|------------|-------------|--------------|--------------------|
 | `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
 | `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |
-| `tecnico@svr-constructora.com` | `tecnico123` | Tecnico Mecanico (70) | Mecanico | ver, crear, editar |
-| `soldador@svr-constructora.com` | `tecnico123` | Tecnico Soldador (70) | Soldador | ver, crear, editar |
-| `diesel@svr-constructora.com` | `tecnico123` | Tecnico Diesel (70) | Diesel | ver, crear, editar |
-| `mantenimiento@svr-constructora.com` | `tecnico123` | Tecnico Mantenimiento (70) | Mantenimiento | ver, crear, editar |
+| `tecnico@svr-constructora.com` | `tecnico123` | Técnico (70) | Mecanico | ver, crear, editar |
+| `soldador@svr-constructora.com` | `tecnico123` | Técnico (70) | Soldador | ver, crear, editar |
+| `diesel@svr-constructora.com` | `tecnico123` | Técnico (70) | Diesel | ver, crear, editar |
+| `mantenimiento@svr-constructora.com` | `tecnico123` | Técnico (70) | Mantenimiento | ver, crear, editar |
 | `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | ver, crear (también /criba, /ventas y /ventas/corte) |
 | `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
 
 > Cada usuario hereda su **área (torre)** → el alta "Misma área" de /reportes
-> envía el incidente a esa torre automáticamente (y sus subcategorías). La torre
-> vive en `users.torre` (toma precedencia) o en `roles.torre` — se ajusta por SQL
-> o con el futuro panel de usuarios.
+> envía el incidente a esa torre automáticamente (y sus subcategorías). La
+> torre **vive en el PUESTO** (`categorias_puesto.torre`) y se escribe en
+> `users.torre` al dar de alta o editar el puesto — `users.torre` tiene
+> precedencia sobre cualquier otra fuente. El rol ya no la define.
 
 ### Áreas del sistema (torres de /reportes)
 
 Las **6 áreas** del alta "Área (a la que se envía)" y qué abarca cada una (guía del cliente):
 
-| Área (torre) | Quiénes pertenecen / qué abarca | Rol de plantilla |
-|--------------|----------------------------------|------------------|
-| **Administrativo** | **Administradores, jefes y personas en oficina** + el cobrador de criba y punto de venta (solo es 1) | Administrador · Administrativo · Cobrador |
-| **Residente** | **Ingenieros encargados de obra y de personal** — ven los reportes que levantan sus trabajadores y dan seguimiento | Residente |
-| **Mecanico** | **Técnicos** mecánicos de flota | Técnico Mecánico |
-| **Soldador** | **Técnicos** soldadores | Tecnico Soldador |
+| Área (torre) | Quiénes pertenecen / qué abarca | Puestos que la llevan |
+|--------------|----------------------------------|----------------------|
+| **Administrativo** | **Administradores, jefes y personas en oficina** + el cobrador de criba y punto de venta (solo es 1) | RRHH, Administrativo, Cobrador |
+| **Residente** | **Ingenieros encargados de obra y de personal** — ven los reportes que levantan sus trabajadores y dan seguimiento | Ingeniero |
+| **Mecanico** | **Técnicos** mecánicos de flota | Mecánico |
+| **Soldador** | **Técnicos** soldadores | Soldador |
 | **Diesel** | **Técnicos** de diésel (suministro/reparto — los piperos históricos) | Técnico Diésel |
-| **Mantenimiento** | **Técnicos** de mantenimiento general | Tecnico Mantenimiento |
+| **Mantenimiento** | **Técnicos** de mantenimiento general | Mantenimiento |
 
 **Trabajadores** (operadores, choferes y demás personal de campo) no tienen área
 propia: levantan el reporte y lo **envían a la torre que corresponde** (mecánico,
 residente, etc.); "Misma área" para ellos cae en oficina (Administrativo).
+
+### Estructura organizacional (roles, puestos y torres)
+
+**5 roles de negocio + 1 de sistema.** El rol decide **qué puede hacer** en la
+app (permisos + vistas del menú); el **puesto** decide **quién es** la persona
+laboralmente y **a qué torre (área) pertenece** para /reportes.
+
+```
+                       ┌──────────────────────────────┐
+                       │      ADMINISTRADOR (100)      │  ← rol del SISTEMA:
+                       │   (dueño del ERP, ve todo)    │    no sale en el alta
+                       └──────────────┬───────────────┘
+                                      │ gestiona todos los roles
+        ROL DE NEGOCIO      PUESTO (categorias_puesto)   TORRE DE /reportes
+        ─────────────────   ──────────────────────────   ───────────────────
+        RESIDENTE (90)  ──►  Ingeniero ─────────────────►  RESIDENTE
+                             (encargado de obra/personal)   · ve a su equipo,
+                                                              da seguimiento
+        ADMINISTRATIVO (80)►  RRHH ─────────────────────►  ADMINISTRATIVO
+                             ├ Administrativo ──────────►  (oficina: administra
+                             │                              el flujo de reportes)
+        TÉCNICO (70)  ─────►  ├ Mecánico ───────────────►  MECANICO
+                             ├ Técnico Diésel ──────────►  DIESEL
+                             ├ Soldador ─────────────────►  SOLDADOR
+                             └ Mantenimiento ────────────►  MANTENIMIENTO
+                             (las 4 TORRES técnicas: cada reporte
+                              lo atiende su especialidad)
+        COBRADOR (60)  ───►  Cobrador de criba/POS ─────►  ADMINISTRATIVO
+        TRABAJADOR (20) ──►  Operador / Chofer / … ─────►  (sin torre: levanta
+                                                            el reporte y lo
+                                                            ENVÍA a la torre
+                                                            que corresponde)
+```
+
+La torre del puesto se guarda en `categorias_puesto.torre` y se escribe en
+`users.torre` al dar de alta o editar el puesto; el número de empleado toma su
+prefijo del rol (`ADM-`, `RES-`, `TEC-`, `COB-`, `TRA-`) independientemente del
+puesto. Los roles viejos (Encargado de RRHH, Tecnico Mecanico/Soldador/Diesel/
+Mantenimiento) quedaron desactivados por la migración
+`20261112000000_roles_5_puestos_torre`.
+
+| Rol (nivel) | Para quién | Puestos del catálogo (con torre) |
+|-------------|-----------|----------------------------------|
+| **Administrador** (100, sistema) | El dueño/administrador del ERP — no se asigna desde el alta de trabajadores | — |
+| **Residente** (90) | Ingenieros encargados de obra y de personal | Ingeniero → **Residente** |
+| **Administrativo** (80) | Personal de oficina (incluye RRHH, cuyos permisos absorbió) | RRHH → **Administrativo**, Administrativo → **Administrativo** |
+| **Técnico** (70) | Las 4 torres técnicas | Mecánico → **Mecanico**, Técnico Diésel → **Diesel**, Soldador → **Soldador**, Mantenimiento → **Mantenimiento** |
+| **Cobrador** (60) | Cobranza de criba y punto de venta | (sin puesto con torre → Administrativo) |
+| **Trabajador** (20) | Personal de campo sin área: operadores, choferes… | Operador → *(sin torre)*, Chofer → *(sin torre)* |
+
+**⚠️ Vigilancia de permisos (regla para agregar el permiso #107 y siguientes):**
+los permisos son granulares por `(modulo, recurso, accion)` — a día de hoy hay
+106 y funcionan porque no hay duplicados. Al agregar uno NUEVO (o al construir
+la Vista B de usuarios/roles):
+1. Verificar que no exista ya un permiso que haga lo mismo en otro recurso del
+   mismo módulo (la duplicación empieza invisible y con dos devs se multiplica).
+2. Agregarlo al seed de RBAC y al rol correspondiente **en el mismo cambio**.
+3. Un endpoint nuevo usa SU permiso propio — no "pedir prestado" el de otra
+   vista para no crear el duplicado.
 
 **Endpoints de autenticación:**
 
@@ -379,6 +439,29 @@ npx prisma migrate dev --name agregar_campo_activo
 npx prisma db pull
 npx prisma generate
 ```
+
+### Despliegue con servidor — trust proxy y el bloqueo por IP (⚠️ día del despliegue)
+
+El bloqueo por IP de la autenticación (10 fallos/15 min → 60 min de bloqueo)
+usa `req.ip`, que **sin configurar `trust proxy` es la IP directa de la
+conexión** — hoy, en red local, la IP real de cada dispositivo. Al montar el
+servidor detrás de un proxy (nginx, etc.) hay dos errores que NO cometer:
+
+1. **Sin `trust proxy`:** todos los usuarios compartirían la IP del proxy —
+   un mal actor bloquearía a la oficina completa con el bloqueo por IP.
+2. **`trust proxy` abierto sin control:** un atacante puede **suplantar la
+   cabecera `X-Forwarded-For`** y rotar IPs falsas para esquivar el bloqueo
+   por IP (el escalonado por cuenta y el throttler siguen protegiendo, pero
+   pierdes esa capa).
+
+La configuración correcta el día del despliegue:
+- En la API: `app.set('trust proxy', 1)` — confía SOLO en el primer salto
+  (tu nginx), en `apps/api/src/main.ts`.
+- En nginx: **siempre pisar** `X-Forwarded-For` con `$remote_addr`
+  (`proxy_set_header X-Forwarded-For $remote_addr;`), nunca apendar la del
+  cliente.
+- Preferible dominio + Let's Encrypt (nadie instala certificados en los
+  teléfonos — ver la sección de HTTPS de la PWA).
 
 ### Build para Móvil (Capacitor)
 
@@ -579,3 +662,77 @@ Ver documentación completa en [COMPONENTS.md](./COMPONENTS.md).
 ## Datos
 
 Las páginas usan datos mock de `apps/web/src/lib/mock-data/`. Los tipos están en `packages/shared/src/types/`. El backend está implementado en `apps/api/` con autenticación JWT, RBAC y acceso a PostgreSQL.
+
+### PWA móvil (números de empleado + PIN dev)
+
+La PWA (rutas `/m/*`) entra con **número de empleado + PIN** (no con email).
+La migración asigna los **números de empleado** de los usuarios demo
+(`ADM-01`, `RES-014`, `TEC-007`–`TEC-010`, `COB-003`, `TRA-0142`).
+
+El **PIN de desarrollo NO vive en el repo** (retirado de la migración por
+la review del PR #18): se asigna a mano solo en tu local, con un PIN que
+tú elijas — el hash llega por variable, el valor nunca se escribe:
+
+```bash
+cd apps/api
+# 1. Genera el hash bcrypt de tu PIN dev (una sola vez):
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" TuPinDev
+# 2. Ejecuta el seed con el hash:
+psql -U postgres -d svr_erp -v pin_hash='<pegar-hash-aqui>' -f prisma/demo-seed-pin.sql
+# 3. Entra a la PWA con: <numero-empleado> / TuPinDev
+```
+
+> Idempotente: solo asigna PIN a usuarios con número de empleado y sin PIN.
+> En producción cada quien elige el suyo en el primer ingreso.
+> La mesa de ayuda (`rrhh@`) no tiene vista móvil — trabaja en el SVR
+> (desbloqueo/reinicio desde el escritorio).
+
+### PWA en HTTPS (probar instalación, cámara y GPS desde el teléfono)
+
+La instalación de la PWA, la cámara y el GPS **exigen HTTPS con certificado
+confiable** — el HTTP del desarrollo no sirve, y un certificado autofirmado
+aceptado con "Avanzado → Ir a" TAMPOCO cuenta (Chrome no lo considera
+confiable y bloquea la instalación).
+
+Setup de una sola vez (terminal como **Administrador** la primera vez):
+
+```powershell
+# 1. La CA de mkcert ya quedó instalada en tu PC al aceptar el aviso (mkcert -install)
+cd C:\Users\chimi\AppData\Local\mkcert
+
+# 2. Genera el cert para tu IP de LAN + localhost
+.\mkcert-v1.4.4-windows-amd64.exe -cert-file C:\Users\chimi\Documents\Github\SVR-ERP\apps\web\cert.pem -key-file C:\Users\chimi\Documents\Github\SVR-ERP\apps\web\key.pem 192.168.0.104 localhost
+
+# 3. Copia el CA raíz a tu teléfono e instálalo como certificado CA
+#    (Configuración → Seguridad → Instalar certificado → CA) — raíz: rootCA.pem de ESTA carpeta
+```
+
+**El paso 3 es OBLIGATORIO** (es lo que explica el «No se puede instalar
+esta app» del menú): Chrome solo considera instalable la PWA si el
+certificado del sitio es de CONFIANZA — aceptar el aviso de certificado con
+"Avanzado → Ir a" NO cuenta.
+
+Después de instalar el CA en el teléfono: **cierra Chrome por completo**
+(botón recientes → deslizar Chrome fuera) y reabre → el candado/ajuste de
+la barra deja de marcar error → menú ⋮ → «Instalar y crear acceso directo»
+→ **Instalar** disponible → la PWA se abre SIN barra de URL, con el ícono
+del casco en el cajón de apps.
+
+Si la opción «Instalar un certificado» no aparece en tu Configuración:
+usa la búsqueda de Ajustes con la palabra **certificado**, o el camino
+común: Configuración → Seguridad y privacidad → Más ajustes de seguridad →
+Cifrado y credenciales → Instalar un certificado → Certificado CA.
+
+Uso diario (terminal normal):
+
+```powershell
+cd apps\web
+npm run dev:https:ip
+```
+
+Luego en el teléfono: `https://192.168.0.104:3000` → candado limpio → el
+botón de instalación del header lanza el diálogo nativo → la PWA queda
+instalada con el ícono SVR, cámara y GPS activos.
+
+> `(dev:https)` sin `:ip` solo sirve para `localhost` — el cert de Next
+> no cubre la IP de tu LAN.

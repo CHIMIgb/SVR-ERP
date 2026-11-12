@@ -26,6 +26,8 @@ const REFRESH_TOKEN_EXPIRY_SECONDS = parseInt(
 ); // 604800s = 7d
 const REFRESH_TOKEN_EXPIRY_DAYS = REFRESH_TOKEN_EXPIRY_SECONDS / 86400;
 const SALT_ROUNDS = 12;
+/** Caducidad del PIN propio — misma regla que PinService.estadoPin (§6.5, PR #18 #4). */
+const PIN_CADUCIDAD_DIAS = 30;
 
 const USER_INCLUDE = {
   personas_users_persona_idTopersonas: {
@@ -49,6 +51,20 @@ const USER_INCLUDE = {
           role_permissions: {
             include: { permissions: true },
           },
+        },
+      },
+    },
+  },
+  // Jefe directo (auto-relación de users) para la vista de perfil PWA
+  jefe: {
+    select: {
+      email: true,
+      personas_users_persona_idTopersonas: {
+        select: {
+          nombre: true,
+          apellido_paterno: true,
+          apellido_materno: true,
+          telefono: true,
         },
       },
     },
@@ -240,63 +256,12 @@ export class AuthService {
       userAgent,
     });
 
-    // 5. Crear sesión
-    const accessJti = randomUUID();
-    const refreshJti = randomUUID();
-
-    const session = await this.prisma.sessions.create({
-      data: {
-        id: randomUUID(),
-        user_id: user.id,
-        refresh_token_jti: refreshJti,
-        ip_address: ip || null,
-        user_agent: userAgent || null,
-        expira_en: new Date(
-          Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-        ),
-        actualizado_en: new Date(),
-      },
-    });
-
-    // 6. Guardar refresh token en BD
-    const refreshTokenHash = await bcrypt.hash(refreshJti, SALT_ROUNDS);
-    await this.prisma.refresh_tokens.create({
-      data: {
-        id: randomUUID(),
-        session_id: session.id,
-        jti: refreshJti,
-        token_hash: refreshTokenHash,
-        expira_en: new Date(
-          Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-        ),
-      },
-    });
-
-    // 7. Generar tokens JWT
-    const accessPayload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      jti: accessJti,
-      tipo: 'access',
-      sessionId: session.id,
-    };
-
-    const refreshPayload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      jti: refreshJti,
-      tipo: 'refresh',
-    };
-
-    const accessToken = this.jwtService.sign(accessPayload, {
-      expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
-      secret: process.env.JWT_ACCESS_SECRET,
-    });
-
-    const refreshToken = this.jwtService.sign(refreshPayload, {
-      expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
-      secret: process.env.JWT_REFRESH_SECRET,
-    });
+    // 5-7. Crear sesión + tokens (maquinaria compartida con login-pin)
+    const { accessToken, refreshToken, session } = await this.crearSesionYTokens(
+      user,
+      ip,
+      userAgent,
+    );
 
     // 8. Actualizar último login
     await this.prisma.users.update({
@@ -328,8 +293,101 @@ export class AuthService {
       user: this.buildUserProfile(user),
       session: {
         id: session.id,
-        iniciadaEn: session.iniciada_en.toISOString(),
-        expiraEn: session.expira_en.toISOString(),
+        iniciadaEn: session.iniciadaEn.toISOString(),
+        expiraEn: session.expiraEn.toISOString(),
+      },
+    };
+  }
+
+
+  /**
+   * Maquinaria compartida de sesión: crea la sesión, guarda el refresh token
+   * hasheado y firma el par de tokens. La usan login (email+password) y
+   * login-pin (número+PIN) — UNA sola copia de esta lógica crítica.
+   */
+  async crearSesionYTokens(
+    user: { id: string; email: string },
+    ip?: string,
+    userAgent?: string,
+    opts?: {
+      /** Claim rpc en el access: obliga a crear el PIN propio (PR #18 #4). */
+      requierePinCambio?: boolean;
+      /** Marca la sesión como nacida de login-pin — refresh recalcula el claim. */
+      pwaPin?: boolean;
+    },
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    session: { id: string; iniciadaEn: Date; expiraEn: Date };
+  }> {
+    const accessJti = randomUUID();
+    const refreshJti = randomUUID();
+
+    const session = await this.prisma.sessions.create({
+      data: {
+        id: randomUUID(),
+        user_id: user.id,
+        refresh_token_jti: refreshJti,
+        ip_address: ip || null,
+        user_agent: userAgent || null,
+        // marca para que refresh() recalcule el claim de PIN solo en estas sesiones
+        ...(opts?.pwaPin && { dispositivo: 'pwa-pin' }),
+        expira_en: new Date(
+          Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+        ),
+        actualizado_en: new Date(),
+      },
+    });
+
+    // 6. Guardar refresh token en BD
+    const refreshTokenHash = await bcrypt.hash(refreshJti, SALT_ROUNDS);
+    await this.prisma.refresh_tokens.create({
+      data: {
+        id: randomUUID(),
+        session_id: session.id,
+        jti: refreshJti,
+        token_hash: refreshTokenHash,
+        expira_en: new Date(
+          Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+        ),
+      },
+    });
+
+    // 7. Generar tokens JWT
+    const accessPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      jti: accessJti,
+      tipo: 'access',
+      sessionId: session.id,
+      ...(opts?.requierePinCambio && { rpc: true }),
+    };
+
+    const refreshPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      jti: refreshJti,
+      tipo: 'refresh',
+    };
+
+    const accessToken = this.jwtService.sign(accessPayload, {
+      expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
+      secret: process.env.JWT_ACCESS_SECRET,
+    });
+
+    const refreshToken = this.jwtService.sign(refreshPayload, {
+      expiresIn: REFRESH_TOKEN_EXPIRY_SECONDS,
+      secret: process.env.JWT_REFRESH_SECRET,
+    });
+
+
+    return {
+      accessToken,
+      refreshToken,
+      session: {
+        id: session.id,
+        iniciadaEn: session.iniciada_en,
+        expiraEn: session.expira_en,
       },
     };
   }
@@ -496,7 +554,7 @@ export class AuthService {
     // 4. Generar nuevos tokens
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: { email: true, pin_temporal_hasta: true, pin_cambiado_en: true },
     });
 
     if (!user) {
@@ -505,8 +563,23 @@ export class AuthService {
 
     const accessJti = randomUUID();
 
+    // Sesiones PWA (login-pin): recalcular el claim de cambio de PIN (PR #18 #4).
+    // temporal activo o PIN vencido (30 días) → rpc sigue; tras el cambio → claim fuera.
+    const requierePinCambio = session.dispositivo === 'pwa-pin'
+      ? !!user.pin_temporal_hasta && user.pin_temporal_hasta.getTime() > Date.now()
+        || (user.pin_cambiado_en != null
+          && Date.now() - user.pin_cambiado_en.getTime() >= PIN_CADUCIDAD_DIAS * 86_400_000)
+      : false;
+
     const accessToken = this.jwtService.sign(
-      { sub: userId, email: user.email, jti: accessJti, tipo: 'access', sessionId: session.id },
+      {
+        sub: userId,
+        email: user.email,
+        jti: accessJti,
+        tipo: 'access',
+        sessionId: session.id,
+        ...(requierePinCambio && { rpc: true }),
+      },
       {
         expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
         secret: process.env.JWT_ACCESS_SECRET,
@@ -636,6 +709,7 @@ export class AuthService {
         ruta: string;
         icono: string | null;
         orden: number;
+        es_menu: boolean;
         puedeVer: boolean;
         puedeCrear: boolean;
         puedeEditar: boolean;
@@ -654,6 +728,7 @@ export class AuthService {
             ruta: rv.vistas.ruta,
             icono: rv.vistas.icono,
             orden: rv.vistas.orden,
+            es_menu: rv.vistas.es_menu,
             puedeVer: rv.puede_ver,
             puedeCrear: rv.puede_crear,
             puedeEditar: rv.puede_editar,
@@ -696,18 +771,43 @@ export class AuthService {
         .filter((ur: any) => ur.roles.torre != null)
         .sort((a: any, b: any) => Number(b.es_principal) - Number(a.es_principal))[0]?.roles.torre ?? null;
 
+    const personaRaw = user.personas_users_persona_idTopersonas;
+
+    const jefeRaw = user.jefe as
+      | {
+          email: string;
+          personas_users_persona_idTopersonas: {
+            nombre: string;
+            apellido_paterno: string | null;
+            apellido_materno: string | null;
+            telefono: string | null;
+          } | null;
+        }
+      | null;
+    const jefeNombre = jefeRaw?.personas_users_persona_idTopersonas
+      ? [
+          jefeRaw.personas_users_persona_idTopersonas.nombre,
+          jefeRaw.personas_users_persona_idTopersonas.apellido_paterno,
+          jefeRaw.personas_users_persona_idTopersonas.apellido_materno,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : null;
+
     return {
       id: user.id,
       email: user.email,
       activo: user.activo,
+      // Extras para la vista de perfil (PWA) — null si no aplican
+      numeroEmpleado: user.numero_empleado ?? null,
+      jefe: jefeRaw && jefeNombre ? { nombre: jefeNombre, email: jefeRaw.email, telefono: jefeRaw.personas_users_persona_idTopersonas?.telefono ?? null } : null,
       torre: (user.torre ?? torreDelRol) as import('@prisma/client').CategoriaReporte | null,
       persona: {
-        nombre: user.personas_users_persona_idTopersonas.nombre,
-        apellidoPaterno:
-          user.personas_users_persona_idTopersonas.apellido_paterno,
-        apellidoMaterno:
-          user.personas_users_persona_idTopersonas.apellido_materno,
-        correo: user.personas_users_persona_idTopersonas.correo,
+        nombre: personaRaw.nombre,
+        apellidoPaterno: personaRaw.apellido_paterno,
+        apellidoMaterno: personaRaw.apellido_materno,
+        correo: personaRaw.correo,
+        telefono: personaRaw.telefono ?? null,
       },
       roles,
       vistas,

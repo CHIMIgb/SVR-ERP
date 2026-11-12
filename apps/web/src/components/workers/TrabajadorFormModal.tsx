@@ -1,9 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useRef, useState } from 'react';
 import {
   trabajadoresApi,
   type CatalogosTrabajadoresDTO,
+  type IdentidadAltaDTO,
+  type TrabajadorAccesoInput,
   type TrabajadorCreateInput,
   type TrabajadorDTO,
 } from '@/lib/api';
@@ -13,12 +15,20 @@ import { useToast } from '@/components/layout/Toast';
 import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 
+// Modelo de 5 roles (decisión SVR): los PUESTOS van aquí — cada uno con su
+// torre y su rol en la BD (categorias_puesto alimenta users.torre y el acceso
+// del alta). "Otro" = perfil laboral SIN acceso a la app.
 export const CATEGORIAS_PUESTO = [
   { value: 'Operador', label: 'Operador de maquinaria' },
   { value: 'Chofer', label: 'Chofer' },
   { value: 'Mecanico', label: 'Mecánico' },
+  { value: 'Tecnico Diesel', label: 'Técnico Diésel' },
+  { value: 'Soldador', label: 'Soldador' },
+  { value: 'Mantenimiento', label: 'Mantenimiento' },
   { value: 'Ingeniero', label: 'Ingeniero o encargado' },
+  { value: 'RRHH', label: 'RRHH' },
   { value: 'Administrativo', label: 'Administrativo' },
+  { value: 'Otro', label: 'Otro (sin acceso a la app)' },
 ] as const;
 
 const METODOS_PAGO: { value: TrabajadorCreateInput['metodoPago']; label: string }[] = [
@@ -57,6 +67,11 @@ interface FormState {
   metodoPago: TrabajadorCreateInput['metodoPago'];
   sueldoFiscal: string;
   sueldoEfectivo: string;
+  /** P14: identidad de acceso a la app — solo en el alta. */
+  rolId: string;
+  encargadoId: string;
+  /** PR #18 #8: dar acceso a la app a un trabajador sin cuenta (solo edición). */
+  darAcceso: boolean;
 }
 
 type Errores = Partial<Record<keyof FormState, string>>;
@@ -79,6 +94,9 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
       metodoPago: 'Mixto',
       sueldoFiscal: '',
       sueldoEfectivo: '',
+      rolId: '',
+      encargadoId: '',
+      darAcceso: false,
     };
   }
   return {
@@ -93,6 +111,10 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
     metodoPago: t.metodoPago,
     sueldoFiscal: String(t.sueldoFiscal),
     sueldoEfectivo: String(t.sueldoEfectivo),
+    // PR #18 #8: acceso a la app precargado de la cuenta existente
+    rolId: t.rolAccesoId ?? '',
+    encargadoId: t.encargadoUserId ?? '',
+    darAcceso: false,
   };
 }
 
@@ -104,7 +126,7 @@ function leerMonto(valor: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function validar(f: FormState): Errores {
+function validar(f: FormState, editando: boolean, pideAcceso: boolean): Errores {
   const e: Errores = {};
   const nombre = f.nombre.trim();
   if (nombre.length < NOMBRE_MIN || nombre.length > NOMBRE_MAX) {
@@ -140,6 +162,11 @@ function validar(f: FormState): Errores {
   if (f.metodoPago === 'Tarjeta' && efectivo !== null && efectivo > 0) {
     e.sueldoEfectivo = 'Con pago solo por transferencia debe ser 0 (o cambia el esquema a Mixto).';
   }
+  // P14: el alta siempre crea la identidad (numero_empleado + PIN temporal) con el rol elegido.
+  // PR #18 #8: en edición también es requerido si hay cuenta o se pide dar acceso.
+  if (pideAcceso && !f.rolId) {
+    e.rolId = 'Elige el rol de acceso a la app del trabajador.';
+  }
   return e;
 }
 
@@ -151,7 +178,7 @@ interface TrabajadorFormModalProps {
   errorCatalogos: string | null;
   onReintentarCatalogos: () => void;
   onClose: () => void;
-  onGuardado: (t: TrabajadorDTO) => void;
+  onGuardado: (t: TrabajadorDTO, identidad?: IdentidadAltaDTO) => void;
 }
 
 export default function TrabajadorFormModal({
@@ -209,16 +236,23 @@ export default function TrabajadorFormModal({
     form.proyecto && catalogoListo && !proyectos.some((p) => p.nombre === form.proyecto);
   const otrosProyectos = trabajador ? trabajador.proyectos.length - 1 : 0;
 
+  // Acceso a la app (PR #18 #8 + decisión del SVR): en el ALTA el rol sale del
+  // puesto (sin select); en la EDICIÓN se exige rol solo si hay cuenta o se
+  // marca "dar acceso".
+  const teniaAcceso = !!trabajador?.usuarioId;
+  const pideAcceso = editando && (teniaAcceso || form.darAcceso);
+  const puestoElegido = catalogos?.puestos?.find((p) => p.nombre === form.categoriaPuesto);
+
   const guardar = async () => {
     if (enviandoRef.current) return;
-    const encontrados = validar(form);
+    const encontrados = validar(form, editando, pideAcceso);
     if (Object.values(encontrados).some(Boolean)) {
       setErrores(encontrados);
       showToast('Revisa los campos marcados.', 'error');
       return;
     }
 
-    const base: TrabajadorCreateInput = {
+    const base = {
       nombre: form.nombre.trim(),
       puesto: form.puesto.trim(),
       categoriaPuesto: form.categoriaPuesto,
@@ -229,10 +263,13 @@ export default function TrabajadorFormModal({
       metodoPago: form.metodoPago,
     };
 
-    let payload: Partial<TrabajadorCreateInput>;
+    let payload: Partial<TrabajadorCreateInput> & { acceso?: TrabajadorAccesoInput };
     if (!editando) {
+      // El ROL sale del PUESTO (decisión del SVR): el server lo resuelve de
+      // categorias_puesto.rol_id — "Otro" no lleva cuenta.
       payload = {
         ...base,
+        ...(form.encargadoId && { encargadoId: form.encargadoId }),
         fechaContratacion: form.fechaContratacion,
         ...(form.proyecto && { proyecto: form.proyecto }),
         ...(conMaquina && form.maquinaId && { maquinaId: form.maquinaId }),
@@ -249,20 +286,38 @@ export default function TrabajadorFormModal({
       } else if (catalogoListo && !dadoDeBaja && form.maquinaId !== original.maquinaId) {
         payload.maquinaId = form.maquinaId;
       }
+      // Acceso a la app (PR #18 #8): solo si cambió algo respecto al original.
+      const rolCambio = teniaAcceso && form.rolId !== original.rolId;
+      const jefeCambio = form.encargadoId !== original.encargadoId;
+      if (form.darAcceso && !teniaAcceso) {
+        // sin cuenta: crea la identidad completa (temporal de 24 h)
+        payload.acceso = { rolId: form.rolId, ...(form.encargadoId && { encargadoId: form.encargadoId }) };
+      } else if (teniaAcceso && (rolCambio || jefeCambio) && form.rolId) {
+        payload.acceso = { rolId: form.rolId, ...(jefeCambio && { encargadoId: form.encargadoId }) };
+      }
     }
 
     enviandoRef.current = true;
     setGuardando(true);
     try {
-      const res = trabajador
-        ? await trabajadoresApi.actualizar(trabajador.id, payload)
-        : await trabajadoresApi.crear(payload as TrabajadorCreateInput);
-      if (!res.success) {
-        showToast(res.error.message, 'error');
-        return;
+      if (trabajador) {
+        const res = await trabajadoresApi.actualizar(trabajador.id, payload);
+        if (!res.success) {
+          showToast(res.error.message, 'error');
+          return;
+        }
+        showToast(`${res.data.nombre} actualizado.`, 'success');
+        // PR #18 #8: si se otorgó acceso nuevo, el temporal viaja en la respuesta
+        onGuardado(res.data, res.data.identidad);
+      } else {
+        const res = await trabajadoresApi.crear(payload as TrabajadorCreateInput);
+        if (!res.success) {
+          showToast(res.error.message, 'error');
+          return;
+        }
+        showToast(`${res.data.nombre} dado de alta.`, 'success');
+        onGuardado(res.data, res.data.identidad);
       }
-      showToast(`${res.data.nombre} ${editando ? 'actualizado' : 'dado de alta'}.`, 'success');
-      onGuardado(res.data);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'No se pudo guardar el trabajador.', 'error');
     } finally {
@@ -335,6 +390,88 @@ export default function TrabajadorFormModal({
               onChange={(e) => cambiar('puesto', e.target.value)}
             />
           </ModalField>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {editando && !teniaAcceso && (
+              <label className="sm:col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-ui-300 text-primary focus:ring-primary/40"
+                  checked={form.darAcceso}
+                  onChange={(e) => cambiar('darAcceso', e.target.checked)}
+                />
+                <span className="text-sm text-ui-800">
+                  Dar acceso a la app móvil <span className="text-xs text-ui-500">(crea su número de empleado y PIN temporal)</span>
+                </span>
+              </label>
+            )}
+            {editando && teniaAcceso && (
+              <p className="sm:col-span-2 text-xs text-ui-500">
+                Cuenta de acceso: <strong>{trabajador!.numeroEmpleado}</strong>
+                {trabajador!.rolAccesoNombre ? ` · rol actual: ${trabajador!.rolAccesoNombre}` : ''}. Los
+                cambios de rol o encargado se aplican al guardar.
+              </p>
+            )}
+            {pideAcceso && (
+              <ModalField label="Rol de acceso a la app" required={pideAcceso} error={errores.rolId}>
+                  <select
+                    aria-label="Rol de acceso a la app"
+                    className={modalSelectClass}
+                    value={form.rolId}
+                    disabled={!catalogoListo}
+                    onChange={(e) => cambiar('rolId', e.target.value)}
+                  >
+                    {!catalogoListo ? (
+                      <option value="">{catalogosCargando ? 'Cargando roles…' : 'No disponible'}</option>
+                    ) : (
+                      <>
+                        <option value="">Elige el rol…</option>
+                        {(catalogos?.roles ?? []).map((r) => (
+                          <option key={r.id} value={r.id}>{r.nombre}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+              </ModalField>
+            )}
+            <ModalField label="Encargado (Residente)" hint="Opcional: quién lleva su control en obra.">
+                  <select
+                    aria-label="Encargado Residente"
+                    className={modalSelectClass}
+                    value={form.encargadoId}
+                    disabled={!catalogoListo}
+                    onChange={(e) => cambiar('encargadoId', e.target.value)}
+                  >
+                    {!catalogoListo ? (
+                      <option value="">{catalogosCargando ? 'Cargando residentes…' : 'No disponible'}</option>
+                    ) : (
+                      <>
+                        <option value="">Sin encargado</option>
+                        {(catalogos?.residentes ?? []).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.nombre}{r.numeroEmpleado ? ` (${r.numeroEmpleado})` : ''}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+            </ModalField>
+            {/* Alta: el ROL sale del PUESTO (decisión del SVR) — nota derivada del catálogo */}
+            {!editando && puestoElegido && (
+              puestoElegido.rolNombre ? (
+                <p className="sm:col-span-2 text-xs text-ui-500">
+                  Tendrá acceso a la app móvil como <strong>{puestoElegido.rolNombre}</strong>: al guardar se genera
+                  su <strong>número de empleado</strong> y un <strong>PIN temporal de 24 h</strong>; ahí mismo puedes
+                  enviarlos por WhatsApp.
+                </p>
+              ) : (
+                <p className="sm:col-span-2 text-xs text-ui-500">
+                  Este puesto <strong>no incluye acceso a la app móvil</strong> (sin usuario ni PIN). Se lo puedes
+                  dar después desde su ficha.
+                </p>
+              )
+            )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

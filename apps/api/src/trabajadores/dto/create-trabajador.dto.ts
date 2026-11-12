@@ -16,11 +16,30 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { HORA_HHMM, TELEFONO_VALIDO, recortar } from '../../common/validacion';
 
-export const CATEGORIAS_PUESTO = ['Operador', 'Chofer', 'Mecanico', 'Ingeniero', 'Administrativo'] as const;
+// Modelo de 5 roles: los puestos viven en categorias_puesto (con su torre —
+// alimenta users.torre de /reportes).
+export const CATEGORIAS_PUESTO = [
+  'Operador',
+  'Chofer',
+  'Mecanico',
+  'Tecnico Diesel',
+  'Soldador',
+  'Mantenimiento',
+  'Ingeniero',
+  'RRHH',
+  'Administrativo',
+  'Otro',
+] as const;
 export const CATEGORIAS_LICENCIA = ['DC3', 'Licencia Federal', 'Certificado Técnico', 'Cédula Profesional', 'Otro'] as const;
 
 /** Tope de las columnas Decimal(12,2) de sueldo: un monto mayor daba 500 al guardar. */
 export const MONTO_MAXIMO = 9_999_999_999;
+
+/**
+ * El seed de la BD usa IDs con formato UUID pero dígito de versión 0 (ej. e0000000-0000-0000-0000-0000000000a5),
+ * que `IsUUID` de class-validator rechaza. Regex laxo = mismo criterio del tipo @db.Uuid de la BD.
+ */
+export const UUID_LAXO = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 /** Tope de las columnas Decimal(10,2) (tarifa de hora extra y descuentos de la semana). */
 export const MONTO_MAXIMO_10_2 = 99_999_999;
 /** Una semana tiene 168 h: más horas extra que eso no son posibles (la columna es Decimal(6,2)). */
@@ -73,6 +92,26 @@ export class ContactoEmergenciaDto {
   @MinLength(2)
   @MaxLength(50)
   parentesco!: string;
+}
+
+/**
+ * Acceso a la app desde la EDICIÓN (PR #18 #8): ajusta el rol/jefe de la
+ * cuenta existente o —si el trabajador no tiene— crea la identidad completa
+ * (numero_empleado + PIN temporal de 24 h). El rol debe ser asignable
+ * (lo vuelve a validar el servicio, igual que el alta).
+ */
+export class AccesoPwaDto {
+  @Transform(recortar)
+  @IsString()
+  @Matches(UUID_LAXO, { message: 'rolId debe ser un id de rol válido' })
+  rolId!: string;
+
+  /** '' quita al encargado; ausente = no tocar el jefe actual. */
+  @IsOptional()
+  @Transform(recortar)
+  @IsString()
+  @MaxLength(50)
+  encargadoId?: string;
 }
 
 export class CreateTrabajadorDto {
@@ -164,6 +203,20 @@ export class CreateTrabajadorDto {
   @IsString()
   @MaxLength(200)
   conceptoDescuento?: string;
+
+  /**
+   * Rol de acceso a la app — OPCIONAL (decisión del SVR 12-nov): el rol sale
+   * del PUESTO (categorias_puesto.rol_id); "Otro" no lleva cuenta. Si viene
+   * explícito actúa como override.
+   */
+  @IsOptional()
+  @Matches(UUID_LAXO, { message: 'rolId debe ser un UUID válido (rol de acceso a la app)' })
+  rolId?: string;
+
+  /** Encargado (Residente) al que reporta — solo aplica si el alta crea cuenta (§6.8). */
+  @IsOptional()
+  @Matches(UUID_LAXO, { message: 'encargadoId debe ser un UUID válido' })
+  encargadoId?: string;
 
   @IsOptional()
   @ValidateNested()

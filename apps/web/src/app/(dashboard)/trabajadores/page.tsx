@@ -11,6 +11,7 @@ import {
 import { formatCurrency, formatFechaSolo } from '@/lib/formatters';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
+import { authApi, mensajeErrorApi } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -18,9 +19,11 @@ import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Select } from '@/components/ui/Select';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { Pagination } from '@/components/ui/Pagination';
 import { LoadingState } from '@/components/ui/LoadingState';
 import TrabajadorFormModal, { CATEGORIAS_PUESTO, llevaMaquina } from '@/components/workers/TrabajadorFormModal';
+import CredencialesAccesoModal, { type CredencialesAcceso } from '@/components/workers/CredencialesAccesoModal';
 import BitacorasRentaModal, { ESTADO_COBRO_BADGE } from '@/components/workers/BitacorasRentaModal';
 import LiquidacionModal from '@/components/workers/LiquidacionModal';
 
@@ -33,8 +36,13 @@ const FILTRO_CATEGORIAS = [
   { value: 'Operador', label: 'Operadores' },
   { value: 'Chofer', label: 'Choferes' },
   { value: 'Mecanico', label: 'Mecánicos' },
+  { value: 'Tecnico Diesel', label: 'Téc. Diésel' },
+  { value: 'Soldador', label: 'Soldadores' },
+  { value: 'Mantenimiento', label: 'Mantenimiento' },
   { value: 'Ingeniero', label: 'Ingenieros' },
+  { value: 'RRHH', label: 'RRHH' },
   { value: 'Administrativo', label: 'Administrativos' },
+  { value: 'Otro', label: 'Otro' },
 ];
 
 const FILTRO_ESTADOS = [
@@ -79,6 +87,10 @@ export default function TrabajadoresPage() {
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
+  // Reiniciar PIN (mesa de ayuda, PR #18 #6): el endpoint exige sistema.usuarios.editar.
+  const puedeGestionarPin = user?.permisos?.some(
+    (p) => p.modulo === 'sistema' && p.recurso === 'usuarios' && p.accion === 'editar',
+  ) ?? false;
 
   const [tab, setTab] = useState<'plantilla' | 'bitacoras'>('plantilla');
 
@@ -124,6 +136,11 @@ export default function TrabajadoresPage() {
   // ── Modales ──
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TrabajadorDTO | null>(null);
+  // P14 §6.6-2: credenciales del alta — el PIN temporal vive aquí y se muestra una sola vez.
+  const [credenciales, setCredenciales] = useState<CredencialesAcceso | null>(null);
+  // Reiniciar PIN (PR #18 #6): confirmación + entrega con el MISMO modal del alta.
+  const [reinicioPendiente, setReinicioPendiente] = useState<TrabajadorDTO | null>(null);
+  const [reiniciando, setReiniciando] = useState(false);
   const [bitacorasDe, setBitacorasDe] = useState<TrabajadorDTO | null>(null);
   const [abriendoBitacorasId, setAbriendoBitacorasId] = useState<string | null>(null);
   const abriendoBitacorasRef = useRef(false);
@@ -244,6 +261,32 @@ export default function TrabajadoresPage() {
     setLiquidacionOpen(true);
   };
 
+  /** Mesa de ayuda (PR #18 #6): genera el temporal y lo entrega con el modal de credenciales del alta. */
+  const confirmarReinicioPin = async () => {
+    const t = reinicioPendiente;
+    if (!t?.usuarioId) return;
+    setReiniciando(true);
+    try {
+      const res = await authApi.pinReinicio(t.usuarioId);
+      if (res.success) {
+        setCredenciales({
+          nombre: t.nombre,
+          telefono: t.telefono,
+          numeroEmpleado: t.numeroEmpleado ?? '',
+          pinTemporal: res.data.pinTemporal,
+          temporalHasta: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        });
+        setReinicioPendiente(null);
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo reiniciar el PIN.'), 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor. Verifica que la API esté corriendo en :3001/api.', 'error');
+    } finally {
+      setReiniciando(false);
+    }
+  };
+
   /** Desde el concentrado: se trae al operador de la hoja para abrir sus bitácoras. */
   const abrirBitacorasDeHoja = async (b: BitacoraRentaDTO) => {
     if (abriendoBitacorasRef.current) return;
@@ -343,6 +386,11 @@ export default function TrabajadoresPage() {
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           {llevaMaquina(t.categoriaPuesto) && (
             <Button variant="ghost" size="sm" onClick={() => setBitacorasDe(t)}>Bitácoras</Button>
+          )}
+          {puedeGestionarPin && t.usuarioId && t.numeroEmpleado && (
+            <Button variant="ghost" size="sm" onClick={() => setReinicioPendiente(t)}>
+              Reiniciar PIN
+            </Button>
           )}
           {puedeEliminar && t.estado !== 'Inactivo' && (
             <Button variant="ghost" size="sm" className="text-red-600 dark:text-red-400" onClick={() => abrirLiquidacion(t)}>
@@ -590,11 +638,52 @@ export default function TrabajadoresPage() {
           errorCatalogos={errorCatalogos}
           onReintentarCatalogos={reintentarCatalogos}
           onClose={() => setFormOpen(false)}
-          onGuardado={() => {
+          onGuardado={(t, identidad) => {
             setFormOpen(false);
             recargarTodo();
+            if (identidad) {
+              setCredenciales({
+                nombre: t.nombre,
+                telefono: t.telefono,
+                numeroEmpleado: identidad.numeroEmpleado,
+                pinTemporal: identidad.pinTemporal,
+                temporalHasta: identidad.temporalHasta,
+              });
+            }
           }}
         />
+      )}
+
+      {credenciales && (
+        <CredencialesAccesoModal credenciales={credenciales} onClose={() => setCredenciales(null)} />
+      )}
+
+      {reinicioPendiente && (
+        <Modal open onClose={() => setReinicioPendiente(null)} size="sm" persistent>
+          <ModalHeader
+            title="Reiniciar PIN"
+            subtitle={reinicioPendiente.nombre}
+            onClose={() => setReinicioPendiente(null)}
+          />
+          <ModalBody className="space-y-3">
+            <p className="text-sm text-ui-700">
+              Se generará un <strong>PIN temporal de 24 horas</strong> y se cerrarán{' '}
+              <strong>todas sus sesiones activas</strong>. El PIN se muestra una sola vez.
+            </p>
+            <p className="text-xs text-ui-500">
+              Envíalo por WhatsApp o cópialo: el trabajador entra con su número + el temporal y la
+              app le pedirá crear su propio PIN.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setReinicioPendiente(null)} disabled={reiniciando}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={confirmarReinicioPin} loading={reiniciando}>
+              Generar temporal
+            </Button>
+          </ModalFooter>
+        </Modal>
       )}
 
       {bitacorasDe && (

@@ -152,7 +152,12 @@ export default function ReportesOperacionesPage() {
   const vista = user?.vistas?.find((v) => v.ruta === VISTA_RUTA);
   const puedeCrear = vista?.puedeCrear ?? false;
   const puedeEditar = vista?.puedeEditar ?? false;
-  const puedeEliminar = vista?.puedeEliminar ?? false;
+  // El borrado de reportes es SOLO del Administrador (decisión del SVR): se
+  // gatea por el PERMISO del API — role_vistas puede quedarse atrás si un
+  // permiso se revoca por SQL.
+  const puedeEliminar = (user?.permisos ?? []).some(
+    (p) => p.modulo === 'operaciones' && p.recurso === 'reportes_campo' && p.accion === 'eliminar',
+  );
   /** Solo un Administrador edita reportes ajenos; los empleados editan los suyos. */
   const esAdminReportes = (user?.roles ?? []).some((r) => r.nivel >= 100);
   /** Los Residentes solo dan seguimiento: no aceptan incidentes ajenos. */

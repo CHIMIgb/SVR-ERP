@@ -31,15 +31,25 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
+/** int de env con default (mismo patrón de bloqueo.service). */
+function envInt(key: string, defaultValue: number): number {
+  const value = process.env[key];
+  if (!value) return defaultValue;
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? defaultValue : parsed;
+}
+
 @Module({
   imports: [
     // Rate limiting: SOLO se aplica donde se use @UseGuards(ThrottlerGuard)
-    // (AuthController). El resto de la API NO tiene rate limiting.
+    // (auth/login, login-pin, register, refresh). Límites configurables por
+    // env — en dev se suben para no bloquear las pruebas (el anti fuerza
+    // bruta real lo llevan el bloqueo escalonado por cuenta y el por IP).
     ThrottlerModule.forRoot([
       {
-        name: 'short',   // Login: 5 intentos / 15 min
-        ttl: 900000,
-        limit: 5,
+        name: 'short',   // Login: THROTTLE_SHORT_LIMIT (default 5) / 15 min
+        ttl: envInt('THROTTLE_SHORT_TTL_MIN', 15) * 60_000,
+        limit: envInt('THROTTLE_SHORT_LIMIT', 5),
       },
       {
         name: 'medium',  // Refresh: 30 requests / 15 min
