@@ -1,4 +1,5 @@
 import * as bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 
 /**
  * Validador del PIN (plan §8.3 — reglas del spec §6.5):
@@ -96,7 +97,8 @@ export function generarPinTemporal(): string {
   for (;;) {
     let pin = '';
     for (let i = 0; i < PIN_LARGO; i++) {
-      pin += alfabeto[Math.floor(Math.random() * alfabeto.length)];
+      // randomInt (PR #18, mediano): criptográficamente seguro, no Math.random
+      pin += alfabeto[randomInt(0, alfabeto.length)];
     }
     const tieneLetra = /[A-Z]/.test(pin);
     const tieneNumero = /[0-9]/.test(pin);
