@@ -12,6 +12,8 @@ import { AuditAction, AuditResult, users } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { AuthService } from '../auth.service';
+import { BloqueoService } from '../../bloqueo/bloqueo.service';
+import { IntentosLoginService } from '../intentos-login.service';
 import { LoginPinDto, PinCambioDto } from './dto/pin.dto';
 import { normalizarPin, validarPinNuevo, generarPinTemporal } from './pin.validator';
 
@@ -20,6 +22,8 @@ const MAX_INTENTOS_PIN = 5;
 const PIN_CADUCIDAD_DIAS = 30;
 const PIN_TEMPORAL_HORAS = 24;
 const PIN_AVISO_DIAS = 25;
+/** Bloqueo de cuenta por PINs fallidos: TEMPORAL con auto-desbloqueo (PR #18 #3) */
+const PIN_BLOQUEO_MINUTOS = Number(process.env.PIN_BLOQUEO_MINUTOS || 15);
 
 /** Usuario con los campos de PIN (select fijo). */
 const PIN_SELECT = {
@@ -46,72 +50,118 @@ export class PinService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly authService: AuthService,
+    private readonly bloqueoService: BloqueoService,
+    private readonly intentosLoginService: IntentosLoginService,
   ) {}
 
   /**
    * LOGIN-PIN: número de empleado + PIN (spec §6.4-6.6).
    * Reutiliza la maquinaria de sesión/tokens de AuthService (regla 12 de
-   * AGENTS.md: una sola copia de la lógica crítica). Bloqueo de cuenta a los
-   * 5 intentos fallidos (por cuenta, no solo IP).
+   * AGENTS.md: una sola copia de la lógica crítica). Bloqueo TEMPORAL de
+   * cuenta a los 5 intentos fallidos (15 min, auto-desbloqueo) + bloqueo
+   * por IP con el mismo BloqueoService del login por email (PR #18 #3).
    */
   async loginPin(dto: LoginPinDto, ip?: string, userAgent?: string) {
     const numero = dto.numeroEmpleado.trim().toUpperCase();
+
+    // 0. IP bloqueada — misma maquinaria por IP del login por email (PR #18 #3)
+    if (ip) {
+      const ipBloqueada = await this.bloqueoService.verificarBloqueoPorIP(ip);
+      if (ipBloqueada.bloqueado) {
+        await this.intentosLoginService.registrar({
+          email: numero,
+          exitoso: false,
+          motivoFallo: `IP bloqueada (${ipBloqueada.minutosRestantes} min restantes)`,
+          ip,
+          userAgent,
+        });
+        await this.fallirLogin(numero, 'IP_BLOCKED', ip, userAgent);
+        throw new UnauthorizedException(
+          `Demasiados intentos desde esta IP. Intenta de nuevo en ${ipBloqueada.minutosRestantes} minuto(s)`,
+        );
+      }
+    }
+
     const user = (await this.prisma.users.findFirst({
       where: { numero_empleado: numero, eliminado_en: null },
       select: { ...PIN_SELECT, email: true },
     })) as UserPin & { email: string } | null;
 
-    // usuario inexistente/inactivo: mismo mensaje que PIN incorrecto (anti
-    // enumeración), auditado con su propio código interno
+    // Mensaje ÚNICO anti-enumeración (review PR #18, mediano): inexistente/
+    // inactivo/sin PIN, cuenta bloqueada y temporal expirado responden igual;
+    // el detalle queda solo en el errorCode de la auditoría.
+    const MENSAJE_GENERICO = 'Número de empleado o PIN incorrecto';
+
     if (!user || !user.activo || !user.pin_hash) {
-      await this.fallirLogin(numero, 'CREDENCIALES_INVALIDAS', ip, userAgent);
-      throw new UnauthorizedException('Número de empleado o PIN incorrecto');
+      await this.registrarFalloPin(numero, user?.id, 'CREDENCIALES_INVALIDAS', ip, userAgent);
+      throw new UnauthorizedException(MENSAJE_GENERICO);
     }
 
-    // cuenta bloqueada (5 intentos previos) — la desbloquea la mesa de ayuda
-    if (user.cuenta_bloqueada_en) {
-      await this.fallirLogin(numero, 'CUENTA_BLOQUEADA', ip, userAgent);
-      throw new UnauthorizedException(
-        'Cuenta bloqueada por intentos fallidos. Contacta a la mesa de ayuda',
-      );
+    // cuenta bloqueada: TEMPORAL (15 min, auto-desbloqueo — PR #18 #3); la
+    // mesa de ayuda puede adelantarla con pin/desbloqueo
+    const bloqueadaActiva =
+      !!user.cuenta_bloqueada_en &&
+      Date.now() - user.cuenta_bloqueada_en.getTime() < PIN_BLOQUEO_MINUTOS * 60_000;
+    if (bloqueadaActiva) {
+      await this.registrarFalloPin(numero, user.id, 'CUENTA_BLOQUEADA', ip, userAgent);
+      throw new UnauthorizedException(MENSAJE_GENERICO);
     }
 
     // PIN temporal expirado (24 h): solo un reinicio lo re-activa
     if (user.pin_temporal_hasta && user.pin_temporal_hasta.getTime() < Date.now()) {
-      await this.fallirLogin(numero, 'PIN_TEMPORAL_EXPIRADO', ip, userAgent);
-      throw new UnauthorizedException(
-        'Tu PIN temporal expiró. Pide un reinicio a la mesa de ayuda',
-      );
+      await this.registrarFalloPin(numero, user.id, 'PIN_TEMPORAL_EXPIRADO', ip, userAgent);
+      throw new UnauthorizedException(MENSAJE_GENERICO);
     }
 
     const ok = await bcrypt.compare(normalizarPin(dto.pin), user.pin_hash!);
     if (!ok) {
-      const intentos = (user.intentos_pin ?? 0) + 1;
-      const bloquear = intentos >= MAX_INTENTOS_PIN;
-      await this.prisma.users.update({
-        where: { id: user.id },
-        data: {
-          intentos_pin: bloquear ? MAX_INTENTOS_PIN : intentos,
-          ...(bloquear && { cuenta_bloqueada_en: new Date() }),
-        },
-      });
-      await this.fallirLogin(
+      // contador ATÓMICO (review PR #18, mediano): update condicional +
+      // increment en una sola sentencia (row lock de Postgres); devuelve el
+      // valor final y P2025 si ya estaba al tope — intentos en paralelo no
+      // se saltan el bloqueo ni lo atrasan.
+      let nuevosIntentos: number;
+      try {
+        const r = await this.prisma.users.update({
+          where: { id: user.id, intentos_pin: { lt: MAX_INTENTOS_PIN } },
+          data: { intentos_pin: { increment: 1 } },
+        });
+        nuevosIntentos = r.intentos_pin;
+      } catch {
+        nuevosIntentos = MAX_INTENTOS_PIN; // al tope (o el usuario desapareció)
+      }
+      const bloquear = nuevosIntentos >= MAX_INTENTOS_PIN;
+      if (bloquear) {
+        await this.prisma.users.update({
+          where: { id: user.id },
+          data: { intentos_pin: MAX_INTENTOS_PIN, cuenta_bloqueada_en: new Date() },
+        });
+      }
+      await this.registrarFalloPin(
         numero,
+        user.id,
         bloquear ? 'CUENTA_BLOQUEADA' : 'PIN_INVALIDO',
         ip,
         userAgent,
       );
-      throw new UnauthorizedException(
-        bloquear
-          ? 'Cuenta bloqueada por 5 intentos fallidos. Contacta a la mesa de ayuda'
-          : 'Número de empleado o PIN incorrecto',
-      );
+      throw new UnauthorizedException(MENSAJE_GENERICO);
     }
 
-    // éxito: resetea intentos y crea sesión + tokens con la maquinaria común
+    // éxito: resetea intentos y bloqueo (p. ej. uno vencido), crea sesión + tokens
     await this.prisma.users.update({
       where: { id: user.id },
-      data: { intentos_pin: 0, ultimo_login: new Date(), actualizado_en: new Date() },
+      data: {
+        intentos_pin: 0,
+        cuenta_bloqueada_en: null,
+        ultimo_login: new Date(),
+        actualizado_en: new Date(),
+      },
+    });
+    await this.intentosLoginService.registrar({
+      email: numero,
+      userId: user.id,
+      exitoso: true,
+      ip,
+      userAgent,
     });
 
     const { accessToken, refreshToken, session } = await this.authService.crearSesionYTokens(
@@ -343,7 +393,10 @@ export class PinService {
       diasRestantes,
       avisar: diasRestantes != null && diasRestantes <= PIN_CADUCIDAD_DIAS - PIN_AVISO_DIAS,
       vencido,
-      bloqueada: !!user.cuenta_bloqueada_en,
+      // bloqueo TEMPORAL: cuenta solo si la ventana de 15 min sigue viva (PR #18 #3)
+      bloqueada:
+        !!user.cuenta_bloqueada_en &&
+        Date.now() - user.cuenta_bloqueada_en.getTime() < PIN_BLOQUEO_MINUTOS * 60_000,
       // el temporal cuenta como "debe cambiar" (primer ingreso, paso 3 del ciclo)
       requiereCambio: temporalActivo || vencido,
     };
@@ -374,6 +427,32 @@ export class PinService {
       default:
         return 'El PIN no cumple las reglas';
     }
+  }
+
+  /**
+   * Fallo de login-pin completo: bitácora intentos_login (alimenta el conteo
+   * por IP del BloqueoService) + audit LOGIN_FALLIDO. Misma maquinaria del
+   * login por email (PR #18 #3).
+   */
+  private async registrarFalloPin(
+    numeroEmpleado: string,
+    userId: string | undefined,
+    errorCode: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    await this.intentosLoginService.registrar({
+      email: numeroEmpleado,
+      userId,
+      exitoso: false,
+      motivoFallo: errorCode,
+      ip,
+      userAgent,
+    });
+    if (ip) {
+      await this.bloqueoService.registrarIntentoFallidoPorIP(ip);
+    }
+    await this.fallirLogin(numeroEmpleado, errorCode, ip, userAgent);
   }
 
   /** FAIL de login-pin (los LOGIN_FALLIDO comparten shape con el login de email). */

@@ -7,6 +7,8 @@ import { PinService } from './pin.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { AuthService } from '../auth.service';
+import { BloqueoService } from '../../bloqueo/bloqueo.service';
+import { IntentosLoginService } from '../intentos-login.service';
 
 describe('PinService', () => {
   let service: PinService;
@@ -14,6 +16,8 @@ describe('PinService', () => {
   let prisma: any;
   let mockAudit: { log: jest.Mock; logFailure: jest.Mock };
   let mockAuth: { crearSesionYTokens: jest.Mock; getProfile: jest.Mock };
+  let mockBloqueo: { verificarBloqueoPorIP: jest.Mock; registrarIntentoFallidoPorIP: jest.Mock };
+  let mockIntentos: { registrar: jest.Mock };
 
   const USER_ID = 'u-1';
   const NUM = 'TRA-0142';
@@ -41,6 +45,7 @@ describe('PinService', () => {
         findFirst: jest.fn().mockResolvedValue(usuario()),
         findUnique: jest.fn().mockResolvedValue(usuario()),
         update: jest.fn().mockResolvedValue(usuario()),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       sessions: {
         findMany: jest.fn().mockResolvedValue([{ id: 's-2' }]),
@@ -52,6 +57,11 @@ describe('PinService', () => {
       $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
     };
     mockAudit = { log: jest.fn().mockResolvedValue(undefined), logFailure: jest.fn().mockResolvedValue(undefined) };
+    mockBloqueo = {
+      verificarBloqueoPorIP: jest.fn().mockResolvedValue({ bloqueado: false }),
+      registrarIntentoFallidoPorIP: jest.fn().mockResolvedValue({ bloqueado: false }),
+    };
+    mockIntentos = { registrar: jest.fn().mockResolvedValue(undefined) };
     mockAuth = {
       crearSesionYTokens: jest.fn().mockResolvedValue({
         accessToken: 'at',
@@ -75,6 +85,8 @@ describe('PinService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: AuthService, useValue: mockAuth },
+        { provide: BloqueoService, useValue: mockBloqueo },
+        { provide: IntentosLoginService, useValue: mockIntentos },
       ],
     }).compile();
     service = module.get(PinService);
@@ -82,26 +94,40 @@ describe('PinService', () => {
 
   describe('loginPin', () => {
     const dto = { numeroEmpleado: NUM, pin: PIN_OK };
+    const MENSAJE_GENERICO = 'Número de empleado o PIN incorrecto';
 
-    it('login exitoso: resetea intentos, crea sesión, audit LOGIN_EXITOSO y devuelve pinEstado', async () => {
+    it('login exitoso: resetea intentos y bloqueo, registra intento, audit LOGIN_EXITOSO y pinEstado', async () => {
       const r = await service.loginPin(dto, '1.1.1.1', 'UA');
       expect(r.accessToken).toBe('at');
       expect(r.pinEstado).toBeTruthy();
       expect(prisma.users.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ intentos_pin: 0 }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ intentos_pin: 0, cuenta_bloqueada_en: null }),
+        }),
+      );
+      expect(mockIntentos.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({ email: NUM, exitoso: true, ip: '1.1.1.1' }),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.LOGIN_EXITOSO, result: AuditResult.SUCCESS }),
       );
     });
 
-    it('PIN incorrecto: incrementa intentos, audit LOGIN_FALLIDO PIN_INVALIDO', async () => {
+    it('PIN incorrecto: incrementa atómicamente, registra intento+IP, audit LOGIN_FALLIDO PIN_INVALIDO', async () => {
+      prisma.users.update.mockResolvedValueOnce({ intentos_pin: 1 } as never);
       await expect(service.loginPin({ ...dto, pin: 'PQ7W2N9K' }, '1.1.1.1', 'UA')).rejects.toThrow(
         UnauthorizedException,
       );
       expect(prisma.users.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ intentos_pin: 1 }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ intentos_pin: { lt: 5 } }),
+          data: expect.objectContaining({ intentos_pin: { increment: 1 } }),
+        }),
       );
+      expect(mockIntentos.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({ email: NUM, exitoso: false, ip: '1.1.1.1' }),
+      );
+      expect(mockBloqueo.registrarIntentoFallidoPorIP).toHaveBeenCalledWith('1.1.1.1');
       expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.LOGIN_FALLIDO,
@@ -114,6 +140,7 @@ describe('PinService', () => {
       prisma.users.findFirst.mockResolvedValue(
         usuario({ intentos_pin: 4 }) as never,
       );
+      prisma.users.update.mockResolvedValueOnce({ intentos_pin: 5 } as never); // 4 → 5
       await expect(service.loginPin({ ...dto, pin: 'PQ7W2N9K' }, '1.1.1.1', 'UA')).rejects.toThrow(
         UnauthorizedException,
       );
@@ -127,36 +154,71 @@ describe('PinService', () => {
       );
     });
 
-    it('cuenta bloqueada: rechaza ANTES de validar el PIN', async () => {
+    it('cuenta bloqueada (ventana viva): rechaza ANTES de validar el PIN con mensaje genérico', async () => {
       prisma.users.findFirst.mockResolvedValue(
         usuario({ cuenta_bloqueada_en: new Date() }) as never,
       );
-      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(
-        'Cuenta bloqueada por intentos fallidos',
-      );
+      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(MENSAJE_GENERICO);
       expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'CUENTA_BLOQUEADA' }),
       );
     });
 
-    it('temporal expirado: PIN_TEMPORAL_EXPIRADO (solo reinicio lo re-activa)', async () => {
+    it('bloqueo TEMPORAL: vencidos los 15 min la cuenta se auto-desbloquea (PR #18 #3)', async () => {
+      prisma.users.findFirst.mockResolvedValue(
+        usuario({ cuenta_bloqueada_en: new Date(Date.now() - 16 * 60_000), intentos_pin: 5 }) as never,
+      );
+      const r = await service.loginPin(dto, '1.1.1.1', 'UA');
+      expect(r.accessToken).toBe('at'); // entró
+      expect(prisma.users.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ intentos_pin: 0, cuenta_bloqueada_en: null }),
+        }),
+      );
+    });
+
+    it('temporal expirado: PIN_TEMPORAL_EXPIRADO con el mismo mensaje genérico (anti-enumeración)', async () => {
       prisma.users.findFirst.mockResolvedValue(
         usuario({ pin_temporal_hasta: new Date(Date.now() - 1000) }) as never,
       );
-      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow('expiró');
+      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(MENSAJE_GENERICO);
       expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'PIN_TEMPORAL_EXPIRADO' }),
       );
     });
 
-    it('usuario inexistente: CREDENCIALES_INVALIDAS (mismo mensaje anti-enumeración)', async () => {
+    it('usuario inexistente: CREDENCIALES_INVALIDAS con el mismo mensaje genérico', async () => {
       prisma.users.findFirst.mockResolvedValue(null);
-      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(
-        'Número de empleado o PIN incorrecto',
-      );
+      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow(MENSAJE_GENERICO);
       expect(mockAudit.logFailure).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'CREDENCIALES_INVALIDAS' }),
       );
+    });
+
+    it('IP bloqueada: rechaza con la maquinaria del login por email (IP_BLOCKED auditado)', async () => {
+      mockBloqueo.verificarBloqueoPorIP.mockResolvedValue({ bloqueado: true, minutosRestantes: 42 });
+      await expect(service.loginPin(dto, '1.1.1.1', 'UA')).rejects.toThrow('Demasiados intentos desde esta IP');
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'IP_BLOCKED', ipAddress: '1.1.1.1' }),
+      );
+    });
+
+    it('anti-enumeración: inexistente, bloqueada y temporal expirado responden EXACTAMENTE lo mismo', async () => {
+      const mensajes: string[] = [];
+      prisma.users.findFirst.mockResolvedValueOnce(null as never);
+      prisma.users.findFirst.mockResolvedValueOnce(usuario({ cuenta_bloqueada_en: new Date() }) as never);
+      prisma.users.findFirst.mockResolvedValueOnce(
+        usuario({ pin_temporal_hasta: new Date(Date.now() - 1000) }) as never,
+      );
+      for (const caso of [dto, dto, dto]) {
+        try {
+          await service.loginPin(caso, '1.1.1.1', 'UA');
+        } catch (e) {
+          mensajes.push((e as Error).message);
+        }
+      }
+      expect(new Set(mensajes).size).toBe(1);
+      expect(mensajes[0]).toBe(MENSAJE_GENERICO);
     });
   });
 

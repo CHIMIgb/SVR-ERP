@@ -130,10 +130,10 @@ describe('PinService Integration (Real DB)', () => {
         service.loginPin({ numeroEmpleado: num, pin: 'Z9Z9Z9Z9' }, '10.98.0.2', 'PinInt/1.0'),
       ).rejects.toThrow(UnauthorizedException);
     }
-    // el 5º bloquea
+    // el 5º bloquea — mensaje GENÉRICO anti-enumeración (PR #18, mediano)
     await expect(
       service.loginPin({ numeroEmpleado: num, pin: 'Z9Z9Z9Z9' }, '10.98.0.2', 'PinInt/1.0'),
-    ).rejects.toThrow('bloqueada por 5 intentos');
+    ).rejects.toThrow('Número de empleado o PIN incorrecto');
 
     const row = await prisma.users.findUnique({
       where: { id: userId },
@@ -142,10 +142,10 @@ describe('PinService Integration (Real DB)', () => {
     expect(row!.cuenta_bloqueada_en).not.toBeNull();
     expect(row!.intentos_pin).toBe(5);
 
-    // el 6º intento (con el PIN CORRECTO) también rechaza por bloqueo
+    // el 6º intento (con el PIN CORRECTO) también rechaza (bloqueo activo)
     await expect(
       service.loginPin({ numeroEmpleado: num, pin: PIN_INICIAL }, '10.98.0.2', 'PinInt/1.0'),
-    ).rejects.toThrow('bloqueada');
+    ).rejects.toThrow('Número de empleado o PIN incorrecto');
 
     const fail = await prisma.registro_auditoria.findFirst({
       where: { error_code: 'CUENTA_BLOQUEADA', entity_type: 'users' },
@@ -162,6 +162,29 @@ describe('PinService Integration (Real DB)', () => {
       orderBy: { timestamp: 'desc' },
     });
     expect(unlock!.result).toBe('SUCCESS');
+  });
+
+  it('2b. bloqueo TEMPORAL: vencidos los 15 min el PIN correcto vuelve a entrar (auto-desbloqueo, PR #18 #3)', async () => {
+    // simula un bloqueo de hace 16 minutos (la ventana venció)
+    await prisma.users.update({
+      where: { id: userId },
+      data: { intentos_pin: 5, cuenta_bloqueada_en: new Date(Date.now() - 16 * 60_000) },
+    });
+
+    const r = await service.loginPin(
+      { numeroEmpleado, pin: PIN_INICIAL },
+      '10.98.0.4',
+      'PinInt/1.0',
+    );
+    expect(r.accessToken).toBeTruthy();
+    sessionIds.push(r.session.id);
+
+    const row = await prisma.users.findUnique({
+      where: { id: userId },
+      select: { cuenta_bloqueada_en: true, intentos_pin: true },
+    });
+    expect(row!.cuenta_bloqueada_en).toBeNull(); // el éxito limpia el bloqueo vencido
+    expect(row!.intentos_pin).toBe(0);
   });
 
   it('3. cambio de PIN: cierra las OTRAS sesiones, reinicia 30 días y audita PIN_CAMBIADO SUCCESS', async () => {

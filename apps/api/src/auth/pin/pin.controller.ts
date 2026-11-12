@@ -8,7 +8,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { Request } from 'express';
 import { PinService } from './pin.service';
 import { LoginPinDto, PinCambioDto, PinReinicioDto, PinDesbloqueoDto } from './dto/pin.dto';
@@ -22,10 +22,12 @@ export class PinController {
   /**
    * POST /api/auth/login-pin
    * Login móvil: número de empleado + PIN (spec §6.4-6.5).
-   * Rate limit: 5 por 15 min por IP (el bloqueo por CUENTA aplica a los 5
-   * intentos fallidos del servicio, como pide el spec §6.7).
+   * Rate limit: 5 por 15 min por IP — ThrottlerGuard REAL (review PR #18 #3:
+   * el @Throttle solo era decoración sin el guard) + bloqueo por IP y por
+   * cuenta en PinService, como pide el spec §6.7.
    */
   @Throttle({ short: { limit: 5, ttl: 900000 } })
+  @UseGuards(ThrottlerGuard)
   @Post('login-pin')
   @HttpCode(HttpStatus.OK)
   async loginPin(@Body() dto: LoginPinDto, @Req() req: Request) {

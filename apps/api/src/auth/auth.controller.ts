@@ -8,7 +8,7 @@ import {
   HttpStatus,
   Get,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -26,6 +26,7 @@ export class AuthController {
    * Rate limit: 5 intentos por 15 minutos por IP (anti brute-force).
    */
   @Throttle({ short: { limit: 5, ttl: 900000 } })
+  @UseGuards(ThrottlerGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -42,6 +43,7 @@ export class AuthController {
    * Rate limit: 3 registros por hora por IP (anti spam).
    */
   @Throttle({ short: { limit: 3, ttl: 3600000 } })
+  @UseGuards(ThrottlerGuard)
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(
@@ -59,7 +61,7 @@ export class AuthController {
    * Requiere refresh token válido.
    */
   @Throttle({ medium: { limit: 30, ttl: 900000 } })
-  @UseGuards(JwtRefreshAuthGuard)
+  @UseGuards(JwtRefreshAuthGuard, ThrottlerGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
