@@ -164,10 +164,16 @@ export class PinService {
       userAgent,
     });
 
+    // estado del PIN (aviso 25 días / obligar cambio) — antes de firmar: alimenta el claim rpc
+    const estado = this.estadoPin(user as unknown as users);
+
     const { accessToken, refreshToken, session } = await this.authService.crearSesionYTokens(
       { id: user.id, email: user.email },
       ip,
       userAgent,
+      // el temporal/vencido viaja como claim rpc: el guard lo bloquea en TODO
+      // salvo pin/cambio|estado, logout y profile (PR #18 #4)
+      { requierePinCambio: estado.requiereCambio, pwaPin: true },
     );
 
     const profile = await this.authService.getProfile(user.id);
@@ -185,9 +191,6 @@ export class PinService {
       userAgent,
       newValue: { modo: 'login-pin', numeroEmpleado: numero, userId: user.id },
     });
-
-    // estado del PIN para el flujo móvil (aviso 25 días / obligar cambio)
-    const estado = this.estadoPin(user as unknown as users);
 
     return {
       accessToken,

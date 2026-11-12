@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { KeyRound, Loader2, AlertCircle } from "lucide-react";
 import { PinInput } from "@/components/pwa/PinInput";
 import { useAuth } from "@/hooks/useAuth";
-import { authApi } from "@/lib/api";
+import { authApi, getRefreshToken, setTokens } from "@/lib/api";
 import { mensajeErrorApi } from "@/lib/api";
 
 /**
@@ -36,6 +36,22 @@ export default function PinCambioPage() {
     try {
       const res = await authApi.pinCambio({ pinActual, pinNuevo });
       if (res.success) {
+        // Repone el access: el token vivo aún cargaba el claim rpc (PR #18 #4) —
+        // sin esto, todo daría 403 hasta que expirara (15 min). El refresh
+        // recalcula el claim desde la BD (cambio hecho → claim fuera).
+        try {
+          const rt = getRefreshToken();
+          if (rt) {
+            const rr = await authApi.refresh({ refreshToken: rt });
+            if (rr.success && rr.data) {
+              setTokens(rr.data.accessToken, rr.data.refreshToken);
+            } else {
+              await logout();
+            }
+          }
+        } catch {
+          // Sin red: el claim muere junto con el access (≤15 min)
+        }
         // sesión limpia: vuelve a entrar con su PIN nuevo (spec: se cierran
         // las otras sesiones; la actual queda)
         router.replace("/m");

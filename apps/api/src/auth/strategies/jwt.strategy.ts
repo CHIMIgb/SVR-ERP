@@ -12,6 +12,8 @@ export interface AuthenticatedUser {
   nombre?: string;
   jti: string;
   sessionId?: string;
+  /** Claim del token: debe crear su PIN propio antes de usar el resto de la API (PR #18 #4). */
+  requierePinCambio?: boolean;
   /** "Issued at" del token (epoch segundos) — para trazabilidad en auditoría. */
   iat?: number;
 }
@@ -68,6 +70,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       nombre: nombre || undefined,
       jti: payload.jti,
       sessionId: payload.sessionId,
+      ...(payload.rpc === true && { requierePinCambio: true }),
       iat: payload.iat,
     };
   }

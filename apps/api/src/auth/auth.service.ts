@@ -26,6 +26,8 @@ const REFRESH_TOKEN_EXPIRY_SECONDS = parseInt(
 ); // 604800s = 7d
 const REFRESH_TOKEN_EXPIRY_DAYS = REFRESH_TOKEN_EXPIRY_SECONDS / 86400;
 const SALT_ROUNDS = 12;
+/** Caducidad del PIN propio — misma regla que PinService.estadoPin (§6.5, PR #18 #4). */
+const PIN_CADUCIDAD_DIAS = 30;
 
 const USER_INCLUDE = {
   personas_users_persona_idTopersonas: {
@@ -307,6 +309,12 @@ export class AuthService {
     user: { id: string; email: string },
     ip?: string,
     userAgent?: string,
+    opts?: {
+      /** Claim rpc en el access: obliga a crear el PIN propio (PR #18 #4). */
+      requierePinCambio?: boolean;
+      /** Marca la sesión como nacida de login-pin — refresh recalcula el claim. */
+      pwaPin?: boolean;
+    },
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -322,6 +330,8 @@ export class AuthService {
         refresh_token_jti: refreshJti,
         ip_address: ip || null,
         user_agent: userAgent || null,
+        // marca para que refresh() recalcule el claim de PIN solo en estas sesiones
+        ...(opts?.pwaPin && { dispositivo: 'pwa-pin' }),
         expira_en: new Date(
           Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
         ),
@@ -350,6 +360,7 @@ export class AuthService {
       jti: accessJti,
       tipo: 'access',
       sessionId: session.id,
+      ...(opts?.requierePinCambio && { rpc: true }),
     };
 
     const refreshPayload: JwtPayload = {
@@ -543,7 +554,7 @@ export class AuthService {
     // 4. Generar nuevos tokens
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: { email: true, pin_temporal_hasta: true, pin_cambiado_en: true },
     });
 
     if (!user) {
@@ -552,8 +563,23 @@ export class AuthService {
 
     const accessJti = randomUUID();
 
+    // Sesiones PWA (login-pin): recalcular el claim de cambio de PIN (PR #18 #4).
+    // temporal activo o PIN vencido (30 días) → rpc sigue; tras el cambio → claim fuera.
+    const requierePinCambio = session.dispositivo === 'pwa-pin'
+      ? !!user.pin_temporal_hasta && user.pin_temporal_hasta.getTime() > Date.now()
+        || (user.pin_cambiado_en != null
+          && Date.now() - user.pin_cambiado_en.getTime() >= PIN_CADUCIDAD_DIAS * 86_400_000)
+      : false;
+
     const accessToken = this.jwtService.sign(
-      { sub: userId, email: user.email, jti: accessJti, tipo: 'access', sessionId: session.id },
+      {
+        sub: userId,
+        email: user.email,
+        jti: accessJti,
+        tipo: 'access',
+        sessionId: session.id,
+        ...(requierePinCambio && { rpc: true }),
+      },
       {
         expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
         secret: process.env.JWT_ACCESS_SECRET,

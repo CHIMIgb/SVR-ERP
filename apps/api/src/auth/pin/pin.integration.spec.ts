@@ -6,7 +6,7 @@
  * Run: npm run test:integration -- --testPathPattern=pin.integration
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
@@ -29,6 +29,8 @@ const PIN_INICIAL = 'HV4K5R7M';
 describe('PinService Integration (Real DB)', () => {
   let prisma: PrismaService;
   let service: PinService;
+  let authService: AuthService;
+  let jwtService: JwtService;
   let userId: string;
   let personaId: string;
   let numeroEmpleado: string;
@@ -73,6 +75,8 @@ describe('PinService Integration (Real DB)', () => {
     }).compile();
     prisma = module.get(PrismaService);
     service = module.get(PinService);
+    authService = module.get(AuthService);
+    jwtService = module.get(JwtService);
 
     // persona + user de prueba con numero_empleado único
     personaId = randomUUID();
@@ -270,5 +274,32 @@ describe('PinService Integration (Real DB)', () => {
       orderBy: { timestamp: 'desc' },
     });
     expect(audit).not.toBeNull();
+  });
+
+  it('6. claim rpc (PR #18 #4): temporal viaja en el token y el cambio lo limpia en el refresh', async () => {
+    // 1) temporal nuevo (el reinicio del test 5 ya dejó uno vigente)
+    const reinicio = await service.reiniciarPin(userId, ACTOR_ADMIN, '10.98.0.7', 'PinInt/1.0');
+    const login = await service.loginPin(
+      { numeroEmpleado, pin: reinicio.pinTemporal },
+      '10.98.0.7',
+      'PinInt/1.0',
+    );
+    sessionIds.push(login.session.id);
+
+    const payload = jwtService.decode(login.accessToken) as { rpc?: boolean };
+    expect(payload.rpc).toBe(true); // temporal → exige cambio en TODO el API
+
+    // 2) cambio a PIN propio…
+    await service.cambiarPin(
+      { pinActual: reinicio.pinTemporal, pinNuevo: 'ZQ9W8E7R' },
+      userId,
+      login.session.id,
+    );
+
+    // 3) …y el refresh recalcula: claim fuera
+    const ses = await prisma.sessions.findUnique({ where: { id: login.session.id } });
+    const rr = await authService.refresh(userId, ses!.refresh_token_jti);
+    const payload2 = jwtService.decode(rr.accessToken) as { rpc?: boolean };
+    expect(payload2.rpc).toBeUndefined();
   });
 });

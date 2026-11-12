@@ -4,6 +4,8 @@ export interface JwtPayload {
   jti: string;       // unique token ID (UUID)
   tipo: 'access' | 'refresh';
   sessionId?: string; // session UUID (solo en access tokens)
+  /** Requiere cambio de PIN (temporal/vencido) — solo en access de sesiones PWA (PR #18 #4). */
+  rpc?: boolean;
   iat?: number;      // "Issued at" (epoch segundos) — lo agrega jsonwebtoken al firmar
 }
 

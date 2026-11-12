@@ -498,6 +498,57 @@ describe('AuthService', () => {
       expect(jwtService.sign).toHaveBeenCalledTimes(2); // access + refresh
     });
 
+    it('sesión pwa-pin con temporal: renueva el claim rpc (PR #18 #4)', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({ ...mockSession, dispositivo: 'pwa-pin' });
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+        pin_temporal_hasta: new Date(Date.now() + 60_000), // temporal vigente
+        pin_cambiado_en: new Date(),
+      });
+
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ rpc: true }),
+        expect.anything(),
+      );
+    });
+
+    it('sesión pwa-pin con PIN propio recién creado: el claim se limpia (PR #18 #4)', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({ ...mockSession, dispositivo: 'pwa-pin' });
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+        pin_temporal_hasta: null, // el cambio lo limpió
+        pin_cambiado_en: new Date(), // fresco: no vencido
+      });
+
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.not.objectContaining({ rpc: expect.anything() }),
+        expect.anything(),
+      );
+    });
+
+    it('sesión de email+password: nunca lleva claim rpc aunque el PIN esté viejo', async () => {
+      prisma.sessions.findFirst.mockResolvedValue({ ...mockSession }); // sin dispositivo
+      prisma.users.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'admin@svr-constructora.com',
+        pin_temporal_hasta: null,
+        pin_cambiado_en: new Date(Date.now() - 90 * 86_400_000), // 90 días
+      });
+
+      await service.refresh('user-1', 'old-refresh-jti');
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.not.objectContaining({ rpc: expect.anything() }),
+        expect.anything(),
+      );
+    });
+
     it('debe blacklistear el refresh token viejo en la transacción', async () => {
       await service.refresh('user-1', 'old-refresh-jti');
 
