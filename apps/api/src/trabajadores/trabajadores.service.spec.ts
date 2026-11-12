@@ -311,7 +311,7 @@ describe('TrabajadoresService', () => {
         { numero_empleado: 'TEC-009' },
         { numero_empleado: 'TEC-010' },
       ]);
-      prisma.roles.findUnique.mockResolvedValue({ id: 'rol-t', nombre: 'Tecnico Mecanico', activo: true, eliminado_en: null });
+      prisma.roles.findUnique.mockResolvedValue({ id: 'rol-t', nombre: 'Tecnico', activo: true, eliminado_en: null });
 
       const result = await service.create(createDto(), 'user-1');
       expect(result.identidad?.numeroEmpleado).toBe('TEC-011');

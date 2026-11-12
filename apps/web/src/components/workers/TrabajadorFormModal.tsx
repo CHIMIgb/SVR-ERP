@@ -15,11 +15,17 @@ import { useToast } from '@/components/layout/Toast';
 import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 
+// Modelo de 5 roles (decisión SVR): los PUESTOS van aquí — cada uno con su
+// torre en la BD (categorias_puesto.torre alimenta users.torre de /reportes).
 export const CATEGORIAS_PUESTO = [
   { value: 'Operador', label: 'Operador de maquinaria' },
   { value: 'Chofer', label: 'Chofer' },
   { value: 'Mecanico', label: 'Mecánico' },
+  { value: 'Tecnico Diesel', label: 'Técnico Diésel' },
+  { value: 'Soldador', label: 'Soldador' },
+  { value: 'Mantenimiento', label: 'Mantenimiento' },
   { value: 'Ingeniero', label: 'Ingeniero o encargado' },
+  { value: 'RRHH', label: 'RRHH' },
   { value: 'Administrativo', label: 'Administrativo' },
 ] as const;
 

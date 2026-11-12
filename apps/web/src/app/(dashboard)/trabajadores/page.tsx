@@ -36,7 +36,11 @@ const FILTRO_CATEGORIAS = [
   { value: 'Operador', label: 'Operadores' },
   { value: 'Chofer', label: 'Choferes' },
   { value: 'Mecanico', label: 'Mecánicos' },
+  { value: 'Tecnico Diesel', label: 'Téc. Diésel' },
+  { value: 'Soldador', label: 'Soldadores' },
+  { value: 'Mantenimiento', label: 'Mantenimiento' },
   { value: 'Ingeniero', label: 'Ingenieros' },
+  { value: 'RRHH', label: 'RRHH' },
   { value: 'Administrativo', label: 'Administrativos' },
 ];
 

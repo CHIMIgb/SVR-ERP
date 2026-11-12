@@ -85,7 +85,7 @@ const CATEGORIA_LICENCIA_UI_A_DB: Record<string, string> = {
 };
 
 const TRABAJADOR_INCLUDE = {
-  categorias_puesto: { select: { nombre: true } },
+  categorias_puesto: { select: { nombre: true, torre: true } },
   licencias_trabajador: true,
   contactos_emergencia: true,
   clientes: { select: { nombre: true } },
@@ -460,7 +460,9 @@ export class TrabajadoresService {
     // Contraseña inutilizable: nadie la conoce (el login PWA es numero_empleado + PIN).
     const passwordPlaceholder = await bcrypt.hash(randomUUID(), SALT_ROUNDS);
 
-    const categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
+    const categoria = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
+    const categoriaId = categoria.id;
+    const categoriaTorre = categoria.torre;
 
     let maquinaId: string | undefined;
     // Si la máquina ya tenía operador, se le quita: queda registrado en la auditoría.
@@ -611,6 +613,8 @@ export class TrabajadoresService {
           email: `${numero.toLowerCase()}@${DOMINIO_EMAIL_PWA}`,
           password_hash: passwordPlaceholder,
           numero_empleado: numero,
+          // La torre del PUESTO alimenta users.torre (área de reportes, PR modelo 5 roles)
+          torre: (categoriaTorre ?? undefined) as never,
           pin_hash: pinHash,
           pin_temporal_hasta: temporalHasta,
           pin_cambiado_en: now,
@@ -791,9 +795,9 @@ export class TrabajadoresService {
       select: { id: true, codigo: true, nombre: true, operador_id: true },
     });
 
-    let categoriaId: string | undefined;
+    let categoriaNueva: { id: string; torre: string | null } | undefined;
     if (dto.categoriaPuesto) {
-      categoriaId = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
+      categoriaNueva = await this.resolverCategoriaPuesto(dto.categoriaPuesto);
     }
 
     let nuevaMaquinaId: string | null | undefined;
@@ -851,7 +855,7 @@ export class TrabajadoresService {
     // (el PATCH puede cambiar nombre/teléfono en la misma petición).
     const nombreFinal = (dto.nombre ?? existente.nombre).trim();
     const telefonoFinal = (dto.telefono ?? existente.telefono).trim();
-    const vinculoAcceso = accesoRol
+    const vinculoAcceso = dto.acceso || categoriaNueva
       ? (await this.vinculosAcceso([{ nombre: nombreFinal, telefono: telefonoFinal }])).get(
           `${nombreFinal}|${telefonoFinal}`,
         )
@@ -863,7 +867,7 @@ export class TrabajadoresService {
         data: {
           ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
           ...(dto.puesto !== undefined && { puesto: dto.puesto.trim() }),
-          ...(categoriaId && { categoria_puesto_id: categoriaId }),
+          ...(categoriaNueva && { categoria_puesto_id: categoriaNueva.id }),
           ...(dto.estado !== undefined && { estado: ESTADO_UI_A_DB[dto.estado] }),
           ...(dto.telefono !== undefined && { telefono: dto.telefono.trim() }),
           ...(dto.entrada !== undefined && { entrada: this.horaAUtc(dto.entrada) }),
@@ -970,8 +974,7 @@ export class TrabajadoresService {
       }
 
       // Acceso a la app (PR #18 #8): ajusta el rol principal y el jefe de la cuenta existente.
-      if (dto.acceso && accesoRol && vinculoAcceso?.usuarioId) {
-        const ur = await tx.users_roles.findFirst({
+      if (dto.acceso && accesoRol && vinculoAcceso?.usuarioId) {        const ur = await tx.users_roles.findFirst({
           where: { user_id: vinculoAcceso.usuarioId, es_principal: true },
           select: { id: true, rol_id: true },
         });
@@ -994,6 +997,14 @@ export class TrabajadoresService {
             data: { jefe_user_id: accesoEncargado, actualizado_en: now },
           });
         }
+      }
+
+      // La torre del PUESTO alimenta users.torre (área de reportes — modelo 5 roles)
+      if (categoriaNueva && vinculoAcceso?.usuarioId) {
+        await tx.users.update({
+          where: { id: vinculoAcceso.usuarioId },
+          data: { torre: (categoriaNueva.torre ?? null) as never, actualizado_en: now },
+        });
       }
 
       return tx.trabajadores.findUniqueOrThrow({ where: { id }, include: TRABAJADOR_INCLUDE });
@@ -1045,6 +1056,7 @@ export class TrabajadoresService {
           accesoRol,
           accesoEncargado ?? null,
           userId,
+          existente.categorias_puesto?.torre ?? null,
         );
       }
     }
@@ -1092,6 +1104,7 @@ export class TrabajadoresService {
     rol: { id: string; nombre: string },
     encargadoId: string | null,
     creadoPor: string,
+    torre: string | null,
   ): Promise<IdentidadAltaResponse> {
     const prefijoRol = prefijoDeRol(rol.nombre);
     const passwordPlaceholder = await bcrypt.hash(randomUUID(), SALT_ROUNDS);
@@ -1107,6 +1120,7 @@ export class TrabajadoresService {
             rolId: rol.id,
             prefijoRol,
             encargadoId,
+            torre,
             passwordPlaceholder,
             creadoPor,
           }),
@@ -1165,6 +1179,7 @@ export class TrabajadoresService {
       rolId: string;
       prefijoRol: string;
       encargadoId: string | null;
+      torre: string | null;
       passwordPlaceholder: string;
       creadoPor: string;
     },
@@ -1205,6 +1220,8 @@ export class TrabajadoresService {
         email: `${numero.toLowerCase()}@${DOMINIO_EMAIL_PWA}`,
         password_hash: args.passwordPlaceholder,
         numero_empleado: numero,
+        // La torre del PUESTO alimenta users.torre (área de reportes)
+        torre: (args.torre ?? undefined) as never,
         pin_hash: pinHash,
         pin_temporal_hasta: temporalHasta,
         pin_cambiado_en: now,
@@ -1403,14 +1420,14 @@ export class TrabajadoresService {
     return new Date(Date.UTC(1970, 0, 1, horas, minutos, 0));
   }
 
-  private async resolverCategoriaPuesto(nombre: string): Promise<string> {
+  private async resolverCategoriaPuesto(nombre: string): Promise<{ id: string; torre: string | null }> {
     let categoria = await this.prisma.categorias_puesto.findUnique({ where: { nombre } });
     if (!categoria) {
       categoria = await this.prisma.categorias_puesto.create({
         data: { id: randomUUID(), nombre, actualizado_en: new Date() },
       });
     }
-    return categoria.id;
+    return { id: categoria.id, torre: (categoria as { torre?: string | null }).torre ?? null };
   }
 
   private iniciales(nombre: string): string {

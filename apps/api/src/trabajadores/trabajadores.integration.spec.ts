@@ -562,4 +562,35 @@ describe('Trabajadores Audit (Real DB)', () => {
       expect(JSON.stringify(audit!.new_value)).not.toContain(res.identidad!.pinTemporal);
     });
   });
+
+  describe('modelo de 5 roles + torre del puesto (consolidación)', () => {
+    it('alta con rol Tecnico: numero TEC- y users.torre desde el puesto', async () => {
+      // rol consolidado 'Tecnico' (activo tras la migración)
+      const tecnico = await prisma.roles.findFirst({ where: { nombre: 'Tecnico', activo: true } });
+      expect(tecnico).not.toBeNull();
+
+      const dto = createDto({ nombre: `Tecnico torre ${TEST_ID}`, categoriaPuesto: 'Mecanico' });
+      const trabajador = await service.create({ ...dto, rolId: tecnico!.id }, ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      expect(trabajador.identidad!.numeroEmpleado).toMatch(/^TEC-\d+$/);
+      const userRow = await prisma.users.findFirst({
+        where: { numero_empleado: trabajador.identidad!.numeroEmpleado },
+      });
+      expect(userRow).not.toBeNull();
+      expect(userRow!.torre).toBe('MECANICO'); // la torre del PUESTO
+    });
+
+    it('edición del puesto refresca users.torre de la cuenta', async () => {
+      const dto = createDto({ nombre: `Cambio puesto ${TEST_ID}`, categoriaPuesto: 'Mecanico' });
+      const trabajador = await service.create(dto, ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      const actualizado = await service.update(trabajador.id, { categoriaPuesto: 'Tecnico Diesel' }, ACTOR_USER_ID);
+      const userRow = await prisma.users.findFirst({
+        where: { numero_empleado: trabajador.identidad!.numeroEmpleado },
+      });
+      expect(userRow!.torre).toBe('DIESEL'); // la torre nueva del puesto
+    });
+  });
 });

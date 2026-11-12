@@ -16,7 +16,19 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { HORA_HHMM, TELEFONO_VALIDO, recortar } from '../../common/validacion';
 
-export const CATEGORIAS_PUESTO = ['Operador', 'Chofer', 'Mecanico', 'Ingeniero', 'Administrativo'] as const;
+// Modelo de 5 roles: los puestos viven en categorias_puesto (con su torre —
+// alimenta users.torre de /reportes).
+export const CATEGORIAS_PUESTO = [
+  'Operador',
+  'Chofer',
+  'Mecanico',
+  'Tecnico Diesel',
+  'Soldador',
+  'Mantenimiento',
+  'Ingeniero',
+  'RRHH',
+  'Administrativo',
+] as const;
 export const CATEGORIAS_LICENCIA = ['DC3', 'Licencia Federal', 'Certificado Técnico', 'Cédula Profesional', 'Otro'] as const;
 
 /** Tope de las columnas Decimal(12,2) de sueldo: un monto mayor daba 500 al guardar. */

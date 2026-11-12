@@ -225,13 +225,15 @@ model categorias_inventario {
 }
 
 model categorias_puesto {
-  id                    String         @id @db.Uuid
-  nombre                String         @unique
+  id                    String                 @id @db.Uuid
+  nombre                String                 @unique
   descripcion           String?
-  salario_base_sugerido Decimal?       @db.Decimal(12, 2)
-  activo                Boolean        @default(true)
-  creado_en             DateTime       @default(now()) @db.Timestamptz()
-  actualizado_en        DateTime       @db.Timestamptz()
+  salario_base_sugerido Decimal?               @db.Decimal(12, 2)
+  /** Área (torre) que atiende este puesto — alimenta users.torre para /reportes (PR #18, modelo de 5 roles). */
+  torre                 CategoriaReporte?
+  activo                Boolean                @default(true)
+  creado_en             DateTime               @default(now()) @db.Timestamptz()
+  actualizado_en        DateTime               @db.Timestamptz()
   trabajadores          trabajadores[]
 }
 
