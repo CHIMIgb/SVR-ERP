@@ -58,8 +58,8 @@ export default function CredencialesAccesoModal({
     <Modal open onClose={onClose} size="md" persistent>
       <ModalHeader title="Credenciales de acceso" subtitle={credenciales.nombre} onClose={onClose} />
       <ModalBody className="space-y-4">
-        <div role="alert" className="flex gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50">
-          <p className="text-xs text-amber-800">
+        <div role="alert" className="flex gap-2 px-3 py-2.5 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10">
+          <p className="text-xs text-amber-800 dark:text-amber-300">
             Este PIN se muestra <strong>solo esta vez</strong>. Envíalo antes de cerrar; si se pierde o
             vence, usa el botón <strong>&ldquo;Reiniciar PIN&rdquo;</strong> en su fila de la lista de
             Trabajadores para generar otro.
@@ -73,7 +73,7 @@ export default function CredencialesAccesoModal({
           </div>
           <div className="flex items-center justify-between gap-3 px-3 py-2.5">
             <span className="text-xs text-ui-500">PIN temporal (24 h)</span>
-            <span className="text-2xl font-black tracking-widest text-slate-900 font-mono">
+            <span className="text-2xl font-black tracking-widest text-slate-900 dark:text-slate-50 font-mono">
               {credenciales.pinTemporal}
             </span>
           </div>
