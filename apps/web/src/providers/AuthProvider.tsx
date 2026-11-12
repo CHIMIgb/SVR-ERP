@@ -17,6 +17,7 @@ import {
   type AuthResponse,
 } from "@svr-erp/shared";
 import { authApi, clearTokens, setTokens, initializeAuth, getAccessToken, type PinEstadoDTO } from "@/lib/api";
+import { limpiarCola } from "@/lib/pwa/offline";
 
 interface AuthState {
   user: UserAuth | null;
@@ -222,6 +223,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null);
       setError(null);
       setIsLoading(false);
+      // Cola offline (PR #18, mediano): lo pendiente del trabajador NO viaja
+      // con el token del siguiente en un teléfono compartido. Nunca rompe el logout.
+      limpiarCola().catch(() => {});
     }
   }, []);
 

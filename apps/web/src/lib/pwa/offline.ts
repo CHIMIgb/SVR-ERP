@@ -87,3 +87,11 @@ export async function marcarError(id: string): Promise<void> {
   item.estado = "error";
   await conStore<void>("readwrite", (store) => store.put(item));
 }
+
+/**
+ * Vacía la cola al CERRAR SESIÓN (PR #18, mediano): en un teléfono compartido,
+ * lo pendiente de un trabajador no debe enviarse con el token del siguiente.
+ */
+export async function limpiarCola(): Promise<void> {
+  await conStore<void>("readwrite", (store) => store.clear());
+}
