@@ -207,7 +207,7 @@ describe('TrabajadoresService', () => {
 
   describe('identidad PWA del alta (P14, spec §6.6)', () => {
     it('crea persona + user con numero_empleado consecutivo, PIN temporal de 24 h y el rol elegido', async () => {
-      prisma.users.count.mockResolvedValue(141); // 141 existentes con prefijo TRA → el siguiente es TRA-142
+      prisma.users.findMany.mockResolvedValue([{ numero_empleado: 'TRA-141' }]); // el sufijo más alto → el siguiente es TRA-142
       prisma.users.findFirst.mockResolvedValue({ id: 'res-user-1' }); // encargado Residente válido
       const result = await service.create(createDto({ encargadoId: 'res-user-1' }), 'user-1');
 
@@ -265,11 +265,36 @@ describe('TrabajadoresService', () => {
       prisma.users.create
         .mockRejectedValueOnce(P2002)
         .mockResolvedValueOnce({});
-      prisma.users.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+      prisma.users.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ numero_empleado: 'TRA-001' }]);
 
       const result = await service.create(createDto(), 'user-1');
       expect(result.identidad?.numeroEmpleado).toBe('TRA-002');
       expect(prisma.users.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('salta los huecos de numeración: toma el sufijo más alto, no un conteo (PR #18 #9)', async () => {
+      // Seed demo: TEC-007..010 ya existen pero el conteo daría 4 → TEC-005 colisiona.
+      prisma.users.findMany.mockResolvedValue([
+        { numero_empleado: 'TEC-007' },
+        { numero_empleado: 'TEC-008' },
+        { numero_empleado: 'TEC-009' },
+        { numero_empleado: 'TEC-010' },
+      ]);
+      prisma.roles.findUnique.mockResolvedValue({ id: 'rol-t', nombre: 'Tecnico Mecanico', activo: true, eliminado_en: null });
+
+      const result = await service.create(createDto(), 'user-1');
+      expect(result.identidad?.numeroEmpleado).toBe('TEC-011');
+    });
+
+    it('tolera anchos mezclados del sufijo (TRA-142 y TRA-0142) y no-numericos', async () => {
+      prisma.users.findMany.mockResolvedValue([
+        { numero_empleado: 'TRA-142' },
+        { numero_empleado: 'TRA-0142' },
+        { numero_empleado: 'TRA-XX' }, // ruido: se ignora
+      ]);
+
+      const result = await service.create(createDto(), 'user-1');
+      expect(result.identidad?.numeroEmpleado).toBe('TRA-143');
     });
   });
 

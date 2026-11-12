@@ -431,8 +431,18 @@ export class TrabajadoresService {
     const crearAlta = async (tx: Prisma.TransactionClient, prefijoRol: string) => {
       // Consecutivo por prefijo (§6.4): el índice único de numero_empleado es la verdad;
       // si dos altas en paralelo calculan el mismo número, la transacción reintenta.
-      const consecutivo = await tx.users.count({ where: { numero_empleado: { startsWith: `${prefijoRol}-` } } });
-      numero = `${prefijoRol}-${String(consecutivo + 1).padStart(3, '0')}`;
+      // Sufijo MÁS ALTO existente (no un conteo): con huecos en la numeración
+      // (seed demo TEC-007..010, bajas) count+1 repetiría números ya asignados
+      // y el reintento recalcularía el mismo choque para siempre (PR #18 #9).
+      const existentes = await tx.users.findMany({
+        where: { numero_empleado: { startsWith: `${prefijoRol}-` } },
+        select: { numero_empleado: true },
+      });
+      const maxSufijo = existentes.reduce((max, u) => {
+        const sufijo = parseInt((u.numero_empleado ?? '').slice(prefijoRol.length + 1), 10);
+        return Number.isFinite(sufijo) && sufijo > max ? sufijo : max;
+      }, 0);
+      numero = `${prefijoRol}-${String(maxSufijo + 1).padStart(3, '0')}`;
 
       const nuevo = await tx.trabajadores.create({
         data: {

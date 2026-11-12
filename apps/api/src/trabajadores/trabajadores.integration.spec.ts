@@ -297,6 +297,32 @@ describe('Trabajadores Audit (Real DB)', () => {
       }
     });
 
+    it('salta los huecos de numeración: sufijo más alto, no conteo (PR #18 #9)', async () => {
+      // Pre-crea ZZR-010 (el "seed demo" del hueco): un conteo daría 2-3 y
+      // repetiría un número existente; el sufijo más alto da ZZR-011.
+      const personaHueco = await prisma.personas.create({
+        data: { id: randomUUID(), nombre: `Hueco ${TEST_ID}`, actualizado_en: new Date() },
+      });
+      createdPersonaIds.push(personaHueco.id);
+      await prisma.users.create({
+        data: {
+          id: randomUUID(),
+          persona_id: personaHueco.id,
+          email: `hueco-${TEST_ID}@integration.mx`,
+          password_hash: 'x',
+          numero_empleado: 'ZZR-010', // se limpia con el startsWith 'ZZR-' del afterAll
+          actualizado_en: new Date(),
+        },
+      });
+
+      const trabajador = await service.create(createDto({ nombre: `Hueco alta ${TEST_ID}` }), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+
+      expect(trabajador.identidad!.numeroEmpleado).toBe('ZZR-011');
+      const user = await prisma.users.findFirst({ where: { numero_empleado: 'ZZR-011' } });
+      expect(user).not.toBeNull();
+    });
+
     it('catalogos debe traer los roles y a los Residentes como encargados', async () => {
       const cat = await service.catalogos();
       expect(cat.roles.some((r) => r.id === rolTestId)).toBe(true);
