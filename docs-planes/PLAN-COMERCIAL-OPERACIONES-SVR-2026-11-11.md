@@ -56,6 +56,9 @@ Corresponde a **P12** (panel "Gestión de identidad" 360).
   WhatsApp; al entrar, la app lo obliga a crear su PIN propio. El reinicio
   también cubre el temporal perdido (quien cerró el modal sin enviarlo). El
   temporal se muestra **una sola vez** — si se pierde, el admin genera otro.
+  **Jerarquía (PR #18 #5):** la cuenta de un Administrador solo la puede
+  reiniciar o desbloquear otro Administrador (403 `JERARQUIA_INSUFICIENTE`
+  auditado) — nadie con solo `sistema.usuarios.editar` se fabrica acceso total.
 - **BD:** no pide columnas nuevas — todo ya existe (users, users_roles,
   role_vistas, sessions, campos de PIN). Es una vista de lectura + acciones con
   auditoría en cada mutación.

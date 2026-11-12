@@ -8,7 +8,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { AuditAction } from '@prisma/client';
@@ -301,5 +301,20 @@ describe('PinService Integration (Real DB)', () => {
     const rr = await authService.refresh(userId, ses!.refresh_token_jti);
     const payload2 = jwtService.decode(rr.accessToken) as { rpc?: boolean };
     expect(payload2.rpc).toBeUndefined();
+  });
+
+  it('7. jerarquía (PR #18 #5): un no-administrador NO puede reiniciar el PIN del Administrador', async () => {
+    // actor = el user de prueba (sin rol Administrador); objetivo = admin seed
+    await expect(
+      service.reiniciarPin(ACTOR_ADMIN, userId, '10.98.0.8', 'PinInt/1.0'),
+    ).rejects.toThrow(ForbiddenException);
+
+    const fail = await prisma.registro_auditoria.findFirst({
+      where: { error_code: 'JERARQUIA_INSUFICIENTE', entity_id: ACTOR_ADMIN },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(fail).not.toBeNull();
+    expect(fail!.result).toBe('FAIL');
+    expect(fail!.actor_user_id).toBe(userId);
   });
 });

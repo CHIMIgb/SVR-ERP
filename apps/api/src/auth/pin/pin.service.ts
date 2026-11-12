@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Logger,
   HttpException,
@@ -278,6 +279,39 @@ export class PinService {
     return { message: 'PIN actualizado. Tus otras sesiones fueron cerradas' };
   }
 
+  /** Fallo de jerarquía (review PR #18 #5): a un Administrador solo lo toca otro Administrador. */
+  private async fallirJerarquia(
+    action: AuditAction,
+    targetId: string,
+    actorId: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<never> {
+    await this.auditService.logFailure({
+      action,
+      entityType: 'users',
+      entityId: targetId,
+      actorUserId: actorId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      errorCode: 'JERARQUIA_INSUFICIENTE',
+      ipAddress: ip,
+      userAgent,
+    });
+    throw new ForbiddenException(
+      'Solo otro Administrador puede reiniciar o desbloquear la cuenta de un Administrador',
+    );
+  }
+
+  /** ¿El usuario tiene el rol Administrador activo? (jerarquía de reinicio/desbloqueo) */
+  private async esAdministrador(userId: string): Promise<boolean> {
+    const r = await this.prisma.users_roles.findFirst({
+      where: { user_id: userId, activo: true, roles: { nombre: 'Administrador', activo: true } },
+      select: { id: true },
+    });
+    return !!r;
+  }
+
   /** Reinicio por mesa de ayuda: temporal de 24 h + cierre de TODAS las sesiones (§6.8). */
   async reiniciarPin(userId: string, actorUserId: string, ip?: string, userAgent?: string) {
     const user = await this.prisma.users.findUnique({
@@ -293,6 +327,11 @@ export class PinService {
         ip,
         userAgent,
       );
+    }
+
+    // Jerarquía (PR #18 #5): un no-administrador no puede fabricarse el acceso de un Administrador.
+    if ((await this.esAdministrador(userId)) && !(await this.esAdministrador(actorUserId))) {
+      return this.fallirJerarquia(AuditAction.PIN_REINICIADO, userId, actorUserId, ip, userAgent);
     }
 
     const temporal = generarPinTemporal();
@@ -353,6 +392,11 @@ export class PinService {
         ip,
         userAgent,
       );
+    }
+
+    // Misma jerarquía que el reinicio (PR #18 #5).
+    if ((await this.esAdministrador(userId)) && !(await this.esAdministrador(actorUserId))) {
+      return this.fallirJerarquia(AuditAction.CUENTA_DESBLOQUEADA, userId, actorUserId, ip, userAgent);
     }
 
     await this.prisma.users.update({

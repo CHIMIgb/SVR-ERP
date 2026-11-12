@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction, AuditResult } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -46,6 +46,9 @@ describe('PinService', () => {
         findUnique: jest.fn().mockResolvedValue(usuario()),
         update: jest.fn().mockResolvedValue(usuario()),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      users_roles: {
+        findFirst: jest.fn().mockResolvedValue(null), // ni objetivo ni actor son Administrador
       },
       sessions: {
         findMany: jest.fn().mockResolvedValue([{ id: 's-2' }]),
@@ -304,6 +307,28 @@ describe('PinService', () => {
         expect.objectContaining({ errorCode: 'USUARIO_NO_ENCONTRADO' }),
       );
     });
+
+    it('jerarquía: un no-administrador NO puede reiniciar a un Administrador (403 auditado, PR #18 #5)', async () => {
+      prisma.users_roles.findFirst
+        .mockResolvedValueOnce({ id: 'ur-1' }) // objetivo = Administrador
+        .mockResolvedValueOnce(null); // actor NO es Administrador
+      await expect(service.reiniciarPin('admin-target', ACTOR)).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'JERARQUIA_INSUFICIENTE' }),
+      );
+      // nada tocado: ni PIN ni sesiones
+      expect(prisma.users.update).not.toHaveBeenCalled();
+      expect(prisma.sessions.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('jerarquía: un Administrador SÍ puede reiniciar a otro Administrador', async () => {
+      prisma.users_roles.findFirst.mockResolvedValue({ id: 'ur-1' }); // ambos Administrador
+      const r = await service.reiniciarPin('admin-target', 'admin-actor');
+      expect(r.pinTemporal).toHaveLength(8);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.PIN_REINICIADO, result: 'SUCCESS' }),
+      );
+    });
   });
 
   describe('desbloquear (mesa de ayuda)', () => {
@@ -324,6 +349,20 @@ describe('PinService', () => {
           result: AuditResult.SUCCESS,
         }),
       );
+    });
+
+    it('jerarquía: un no-administrador NO puede desbloquear a un Administrador (403 auditado, PR #18 #5)', async () => {
+      prisma.users.findUnique.mockResolvedValue(
+        usuario({ cuenta_bloqueada_en: new Date() }) as never,
+      );
+      prisma.users_roles.findFirst
+        .mockResolvedValueOnce({ id: 'ur-1' }) // objetivo = Administrador
+        .mockResolvedValueOnce(null); // actor NO es Administrador
+      await expect(service.desbloquear('admin-target', 'rrhh-user')).rejects.toThrow(ForbiddenException);
+      expect(mockAudit.logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'JERARQUIA_INSUFICIENTE' }),
+      );
+      expect(prisma.users.update).not.toHaveBeenCalled();
     });
   });
 
