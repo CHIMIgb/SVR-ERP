@@ -583,21 +583,24 @@ Las páginas usan datos mock de `apps/web/src/lib/mock-data/`. Los tipos están 
 ### PWA móvil (números de empleado + PIN dev)
 
 La PWA (rutas `/m/*`) entra con **número de empleado + PIN** (no con email).
-El seed de desarrollo asigna números y un PIN común:
+La migración asigna los **números de empleado** de los usuarios demo
+(`ADM-01`, `RES-014`, `TEC-007`–`TEC-010`, `COB-003`, `TRA-0142`).
 
-| Email | Número | PIN dev |
-|-------|--------|---------|
-| `admin@svr-constructora.com` | `ADM-01` | `SVR26DEM` |
-| `residente@svr-constructora.com` | `RES-014` | `SVR26DEM` |
-| `tecnico@svr-constructora.com` | `TEC-007` | `SVR26DEM` |
-| `soldador@svr-constructora.com` | `TEC-008` | `SVR26DEM` |
-| `diesel@svr-constructora.com` | `TEC-009` | `SVR26DEM` |
-| `mantenimiento@svr-constructora.com` | `TEC-010` | `SVR26DEM` |
-| `cobrador@svr-constructora.com` | `COB-003` | `SVR26DEM` |
-| `trabajador@svr-constructora.com` | `TRA-0142` | `SVR26DEM` |
+El **PIN de desarrollo NO vive en el repo** (retirado de la migración por
+la review del PR #18): se asigna a mano solo en tu local, con un PIN que
+tú elijas — el hash llega por variable, el valor nunca se escribe:
 
-> El PIN `SVR26DEM` es SOLO para dev (el seed lo asigna; cumple las reglas
-> §6.5). En producción cada quien elige el suyo en el primer ingreso.
+```bash
+cd apps/api
+# 1. Genera el hash bcrypt de tu PIN dev (una sola vez):
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" TuPinDev
+# 2. Ejecuta el seed con el hash:
+psql -U postgres -d svr_erp -v pin_hash='<pegar-hash-aqui>' -f prisma/demo-seed-pin.sql
+# 3. Entra a la PWA con: <numero-empleado> / TuPinDev
+```
+
+> Idempotente: solo asigna PIN a usuarios con número de empleado y sin PIN.
+> En producción cada quien elige el suyo en el primer ingreso.
 > La mesa de ayuda (`rrhh@`) no tiene vista móvil — trabaja en el SVR
 > (desbloqueo/reinicio desde el escritorio).
 

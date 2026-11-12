@@ -9,16 +9,18 @@
 
 ## Cuentas para probar
 
-| Número | PIN | Rol |
-|---|---|---|
-| `TRA-0142` | **temporal de 24 h: `7KPDR3BA`** (generado hoy para tu smoke — la app te OBLIGARÁ a crear tu propio PIN al entrar ✅ paso 3 del ciclo) | Trabajador |
-| `RES-014` | `SVR26DEM` | Residente |
-| `TEC-007` | `SVR26DEM` | Técnico Mecánico |
-| `COB-003` | `SVR26DEM` | Cobrador |
-| `ADM-01` | `SVR26DEM` | Administrador |
+| Número | Rol |
+|---|---|
+| `TRA-0142` | Trabajador |
+| `RES-014` | Residente |
+| `TEC-007` | Técnico Mecánico |
+| `COB-003` | Cobrador |
+| `ADM-01` | Administrador |
 
-⚠️ El PIN `SVR26DEM` de TRA-0142 ya NO sirve ( quedó en su historial de
-últimos 3 — regla "distinto de los últimos 3" ✅ probado).
+El PIN dev no vive en el repo (review PR #18 #1): se asigna a mano en tu
+local con `apps/api/prisma/demo-seed-pin.sql` — ahí están los comandos.
+Para probar el primer ingreso con temporal, genera uno con el reinicio
+(`POST /api/auth/pin/reinicio`).
 
 ## Qué probar (en orden)
 
@@ -26,7 +28,7 @@
    **número + PIN** (no email/password). ❌ si pide email en el teléfono.
 2. **Teclado alfanumérico:** al tocar las casillas del PIN el teclado debe ser
    el completo (con letras), no el numérico.
-3. **Primer ingreso con temporal (TRA-0142 / 7KPDR3BA):** debe ENTRAR y
+3. **Primer ingreso con temporal (TRA-0142):** debe ENTRAR y
    mandarte directo a **"Cambia tu PIN"** — crea tu PIN propio (8 caracteres,
    sin repetidos, con letra y número) → te deja en /m.
 4. **Shell + nav por rol:** pestañas del fondo = Inicio · Asistencia ·
