@@ -182,3 +182,33 @@ y Mantenimiento/llantas/diésel (F8) viven en
 > está completo y con la misma numeración en
 > `PLAN-FUERA-DE-ALCANCE-SISTEMA-GPS-RRHH-MAQUINARIA-2026-11-12.md` — ese
 > documento conserva la nota de que la Fase 0 (Sistema) arrancaba primero.
+
+---
+
+## 8. Hilo conductor — orden de ejecución de los 3 documentos
+
+```
+[0] ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md   (TERMINADO — insumo)
+      │ reglas de negocio + 4 dudas bloqueantes
+      ▼
+[1] ESTE PLAN  (vigente — se ejecuta ahora)
+      F1 fixes/reglas confirmadas ──► F2 preguntas (paralelo) ──► F3 retiros/cotizaciones/corte
+      │                                                              │
+      │ cuando F3 termina o entrega sus primeros módulos             │
+      ▼                                                              ▼
+[2] IMPLEMENTACIONES-A-FUTURO.md  (después)          ENLACES PUNTUALES (se construyen juntos):
+      · P2 partidas de cotización  ◄────────────────── la plantilla de cotización de F3
+        (los Word definen concepto/cantidad/monto = cotizacion_items)
+      · P7 precios por medida  ◄───────────────────── LISTA DE PRECIOS.xlsx como tabulador
+      · C3 venta a crédito → CxC  ◄────────────────── el motor de retiros (un retiro ES venta
+        de material — este plan define si nace CxC directo o pasa por /ventas)
+      · §9/§10 (conciliación bancaria / vencimiento CxP) ◄── conciliación semanal de
+        proveedores externos + P4 (bloqueo de carga conciliada) de este plan
+      · el resto (6.2–6.6, P8, F1, F5, P13–P15) sin dependencia del hilo —
+        según el orden interno de ese documento
+```
+
+**Regla del hilo:** terminar una fase de este plan libera el bloque
+correspondiente de `IMPLEMENTACIONES-A-FUTURO.md` — no se arranca esa serie
+antes de que su habilitador de este plan exista (ej.: no construir P2 sin la
+plantilla de cotización que define QUÉ renglones lleva).

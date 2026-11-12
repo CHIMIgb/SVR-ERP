@@ -145,3 +145,31 @@ apodo↔persona) son detalle fino de cada vista.
 - Semántica exacta de columnas sueltas de NÓMINA (`SEGURO DESCUENTO`,
   `SALIDA`, `DIA DESCUENTO`) — la lógica general (sueldo + horas extra × tarifa
   + festivo − descuentos = neto) sí cierra con los totales.
+
+---
+
+## 8. Hilo conductor — lugar de este documento en la secuencia
+
+**Este documento es el PASO 0 de la secuencia de trabajo Comercial/Operaciones
+— ya está terminado y es insumo de los otros dos:**
+
+```
+[0] ESTE DOC (insumo — reglas de negocio, TERMINADO)
+      │ entrega: reglas del retiro/plantilla/conciliación + 4 dudas bloqueantes
+      ▼
+[1] PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md  (vigente — el que se ejecuta)
+      │   · su F2 consume las dudas bloqueantes de este doc (§5)
+      │   · su F3 construye lo que este doc describe (retiros, plantilla,
+      │     corte, estados de cuenta, conciliación de proveedores)
+      ▼
+[2] IMPLEMENTACIONES-A-FUTURO.md  (después del plan comercial)
+          · P2 partidas ← renglones concepto/cantidad/monto de los Word
+          · P7 precios por medida ← LISTA DE PRECIOS.xlsx como tabulador
+          · C3 venta a crédito → CxC ← el motor de retiros de F3
+          · §9/§10 (proveedores) ← conciliación semanal + P4 (bloqueo carga)
+```
+
+**Regla del hilo:** una vez terminado el plan comercial (o su F3), se arranca
+con las series de `IMPLEMENTACIONES-A-FUTURO.md` empezando por las que este
+análisis ya desbloqueó (P2, P7, C3, §9/§10). Detalle del enlace en §7/§8 de
+ese plan.
