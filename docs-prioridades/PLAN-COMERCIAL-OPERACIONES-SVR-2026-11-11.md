@@ -458,10 +458,13 @@ P3 cotización→proyecto · la PWA (`/m/flota-obras` sigue en pausa y no se toc
 | B1.3 UI | ✅ HECHA | `2c43917d` (editor de partidas + condiciones + subtotal bloqueado) + cierre — detalle con tabla de renglones y condiciones; "Creada por" en el detalle |
 | B1.4 Gates | ✅ HECHA | `jest` 1328/1330 (2 fallos preexistentes de cobranza), `tsc` limpio, lint 56 baseline, smoke real: cotización de 3 partidas → monto 30,500 → factura FAC-2026-0003 con 3 conceptos y total 35,380 (IVA 4,880) |
 
-**Ajuste posterior pedido por el cliente (mismo día):** estado de cotización
-como texto plano (sin badges de color) y área de condiciones más grande
-(`2c43917d`), y **"Creada por"** en el detalle (backend expone el nombre del
-creador vía la relación a `personas`).
+**Ajustes posteriores pedidos por el cliente (mismo día):** estado de
+cotización como texto plano (sin badges de color) y área de condiciones más
+grande (`2c43917d`) · **"Creada por"** en el detalle · subtotal con comas
+automáticas, fecha capturada sola (se quita el input de crear/editar) y
+modales Nueva/Editar/Ver más anchos (`59340c62`) · compensación del scrollbar
+al abrir modales para que la página no salte — cambio en el kit `Modal`,
+aplica a toda la app (`f13e9679`).
 
 **Deuda anotada:** el spec de integración de PIN acumula fallos a nivel IP
 entre corridas (bloqueo automático por IP a los 10 intentos en 15 min) → 423
