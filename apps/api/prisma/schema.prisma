@@ -972,6 +972,7 @@ enum TipoNotificacion {
 
 /// B5: una fila por evento del ERP; audiencia por rol (null = todos los roles).
 /// El estado de leído/descartado vive POR USUARIO en `notificaciones_lecturas`.
+/// Destinatario explícito: usuario / torre(área) / rol — elegido al emitir.
 model notificaciones {
   id               String            @id @db.Uuid
   tipo             TipoNotificacion  @default(INFO)
@@ -980,13 +981,20 @@ model notificaciones {
   referencia_tipo  String?
   referencia_id    String?           @db.Uuid
   audiencia_rol_id String?           @db.Uuid
+  /// B5.8: destinatario PERSONAL (ej. "te asignaron el reporte").
+  destinatario_user_id String?       @db.Uuid
+  /// B5.8: audiencia por ÁREA/TORRE (ej. "se creó un reporte de tu área").
+  audiencia_torre  CategoriaReporte?
   creado_en        DateTime          @default(now()) @db.Timestamptz()
   creado_por       String?           @db.Uuid
   roles            roles?            @relation("notificaciones_audiencia", fields: [audiencia_rol_id], references: [id])
   users_notificaciones_creado_porTousers users? @relation("notificaciones_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_notificaciones_creado_por")
+  users_notificaciones_destinatarioTousers users? @relation("notificaciones_destinatario", fields: [destinatario_user_id], references: [id], onUpdate: NoAction, map: "fk_notificaciones_destinatario")
   lecturas         notificaciones_lecturas[] @relation("lecturas_notificacion")
 
   @@index([audiencia_rol_id])
+  @@index([destinatario_user_id])
+  @@index([audiencia_torre])
   @@index([creado_en])
 }
 
@@ -2153,6 +2161,7 @@ model users {
   pagos_proveedor_pagos_proveedor_creado_porTousers                              pagos_proveedor[]             @relation("pagos_proveedor_creado_porTousers")
   notificaciones_notificaciones_creado_porTousers                                notificaciones[]              @relation("notificaciones_creado_porTousers")
   lecturas_notificaciones_lecturas_user_idTousers                                notificaciones_lecturas[]     @relation("lecturas_usuario")
+  notificaciones_notificaciones_destinatarioTousers                              notificaciones[]              @relation("notificaciones_destinatario")
 
   @@unique([numero_empleado])
 }
