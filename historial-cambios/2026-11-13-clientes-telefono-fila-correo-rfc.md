@@ -9,11 +9,13 @@ anterior de este cambio quedó deshecho por el usuario (el log no tenía
 
 - **`apps/web/src/lib/formatters.ts`** — 4 helpers compartidos:
   - `telefonoEsValido(valor)`: exactamente 10 dígitos (ignora espacios/guiones).
-  - `limpiarTelefono(valor)`: filtra el input a dígitos, espacios y guiones.
+  - `limpiarTelefono(valor)`: filtra el input a dígitos, espacios y guiones
+    **con TOPE de 10 dígitos** (al llegar al décimo deja de aceptar más).
   - `rfcEsValido(valor)`: formato MX 3-4 letras + 6 dígitos + homoclave de 3
     (acepta ñ y &; probado con `AUR780101XXX` y `VERS810225EQ8`, el RFC del
     representante legal de los Word).
-  - `limpiarRfc(valor)`: mayúsculas, sin caracteres ajenos, máx 13.
+  - `limpiarRfc(valor)`: mayúsculas, sin caracteres ajenos, **tope de 13**
+    caracteres (persona moral 12, física 13).
 - **`apps/web/src/app/(dashboard)/clientes/page.tsx`**:
   - `validateForm` (usada por crear y editar): teléfono opcional pero con 10
     dígitos si se captura; RFC opcional pero con formato válido si se captura

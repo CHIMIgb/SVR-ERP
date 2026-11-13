@@ -116,9 +116,23 @@ export function telefonoEsValido(valor: string): boolean {
   return valor.replace(/\D/g, '').length === 10;
 }
 
-/** Solo dígitos, espacios y guiones (para el onChange del input teléfono). */
+/**
+ * Solo dígitos, espacios y guiones — con TOPE de 10 dígitos (para el onChange
+ * del input teléfono: no deja escribir más allá del décimo dígito).
+ */
 export function limpiarTelefono(valor: string): string {
-  return valor.replace(/[^\d\s\-]/g, '');
+  let digitos = 0;
+  let salida = '';
+  for (const c of valor) {
+    if (/\d/.test(c)) {
+      if (digitos >= 10) break;
+      salida += c;
+      digitos += 1;
+    } else if (/[\s\-]/.test(c) && salida.length > 0) {
+      salida += c;
+    }
+  }
+  return salida;
 }
 
 /**
@@ -129,7 +143,7 @@ export function rfcEsValido(valor: string): boolean {
   return /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(valor.trim().toUpperCase());
 }
 
-/** RFC en mayúsculas, sin caracteres ajenos al formato (para el onChange). */
+/** RFC en mayúsculas, sin caracteres ajenos y con TOPE de 13 (para el onChange). */
 export function limpiarRfc(valor: string): string {
   return valor
     .toUpperCase()
