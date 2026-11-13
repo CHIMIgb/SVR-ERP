@@ -2067,6 +2067,8 @@ export interface VentaPagoInput {
 export interface CreateVentaInput {
   cajero: string;
   cliente?: string;
+  /** Cliente del catálogo (opcional): el backend guarda id + snapshot del nombre. */
+  clienteId?: string;
   terminal?: string;
   caja?: string;
   items: VentaItemInput[];
@@ -2088,6 +2090,8 @@ export interface VentaDTO {
   terminal: string;
   registerNumber: string;
   customer: string;
+  /** Id del cliente del catálogo (solo si la venta llevó cliente). */
+  clienteId?: string;
   cashier: string;
   subtotal: number;
   iva: number;

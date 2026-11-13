@@ -10,6 +10,7 @@ import {
   Banknote,
   RefreshCw,
   Clock,
+  UserRound,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -20,6 +21,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
+import { clientesApi, type ClienteDTO } from '@/lib/api';
 
 import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
@@ -170,6 +172,19 @@ export default function VentasPage() {
   const [modalRetiro, setModalRetiro] = useState(false);
   const [formRetiro, setFormRetiro] = useState({ concepto: '', monto: '', autorizadoPor: '' });
 
+  // ── Cliente de la venta (B3: catálogo real, null = Público en general) ──
+  const [clientesPos, setClientesPos] = useState<ClienteDTO[]>([]);
+  const [clienteId, setClienteId] = useState('');
+  const [modalCliente, setModalCliente] = useState(false);
+  const [formCliente, setFormCliente] = useState({ nombre: '', empresa: '', telefono: '', correo: '' });
+  const [creandoCliente, setCreandoCliente] = useState(false);
+
+  useEffect(() => {
+    clientesApi.listar({ limit: 100 }).then((res) => {
+      if (res.success && res.data) setClientesPos(res.data.items);
+    });
+  }, []);
+
   const total = useMemo(() => calculateTotal(cart), [cart]);
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
@@ -212,6 +227,35 @@ export default function VentasPage() {
   };
 
   // ── Cobro ─────────────────────────────────────────────────────────────────
+  // Alta rápida de cliente (B3): crea en el catálogo y lo deja seleccionado.
+  const handleCrearCliente = useCallback(async () => {
+    if (!formCliente.nombre.trim() || !formCliente.correo.trim() || !formCliente.telefono.trim()) {
+      showToast('Nombre, teléfono y correo son obligatorios.', 'error');
+      return;
+    }
+    setCreandoCliente(true);
+    try {
+      const res = await clientesApi.crear({
+        nombre: formCliente.nombre.trim(),
+        empresa: formCliente.empresa.trim() || undefined,
+        telefono: formCliente.telefono.trim(),
+        correo: formCliente.correo.trim(),
+      });
+      if (res.success) {        setClientesPos((prev) => [...prev, res.data]);
+        setClienteId(res.data.id);
+        setModalCliente(false);
+        setFormCliente({ nombre: '', empresa: '', telefono: '', correo: '' });
+        showToast(`Cliente "${res.data.empresa || res.data.nombre}" creado y seleccionado.`, 'success');
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo crear el cliente.'), 'error');
+      }
+    } catch {
+      showToast('Error de conexión al crear el cliente.', 'error');
+    } finally {
+      setCreandoCliente(false);
+    }
+  }, [formCliente, showToast]);
+
   // Guard anti doble-submit: evita insertar la venta más de una vez si el
   // botón "Cobrar" se presiona repetido mientras el request está en vuelo.
   const cobrando = useRef(false);
@@ -230,7 +274,7 @@ export default function VentasPage() {
 
     const payload: CreateVentaInput = {
       cajero: cashierName,
-      cliente: 'Público en general',
+      ...(clienteId ? { clienteId } : {}),
       terminal: POS_TERMINAL,
       caja: POS_REGISTER,
       idempotenciaKey: generateUUID(),
@@ -436,6 +480,32 @@ export default function VentasPage() {
                       <span className="text-xs font-bold text-ui-400">{itemsSold} art(s)</span>
                     </div>
 
+                    {/* Cliente de la venta (Público en general si no se elige) */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <UserRound className="w-4 h-4 text-ui-400 shrink-0" />
+                      <select
+                        className="h-10 flex-1 min-w-0 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                        value={clienteId}
+                        onChange={(e) => setClienteId(e.target.value)}
+                        aria-label="Cliente de la venta"
+                      >
+                        <option value="">Público en general</option>
+                        {clientesPos.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.empresa || c.nombre}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={<Plus className="w-4 h-4" />}
+                        onClick={() => setModalCliente(true)}
+                      >
+                        Nuevo
+                      </Button>
+                    </div>
+
                     {cart.length === 0 ? (
                       <p className="text-sm text-ui-400 text-center py-8">
                         Elige el material, la medida y presiona Agregar.
@@ -584,6 +654,53 @@ export default function VentasPage() {
             onChange={(e) => setFormRetiro({ ...formRetiro, autorizadoPor: e.target.value })}
           />
         </ModalField>
+      </FormModal>
+
+      {/* Alta rápida de cliente desde el POS (B3) */}
+      <FormModal
+        open={modalCliente}
+        onClose={() => setModalCliente(false)}
+        onSubmit={handleCrearCliente}
+        title="Nuevo Cliente"
+        subtitle="Alta rápida sin salir del punto de venta."
+        submitLabel="Crear Cliente"
+        isSubmitting={creandoCliente}
+        size="full"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Nombre *" required className="sm:col-span-2">
+            <input
+              className={modalInputClass}
+              placeholder="Nombre de la persona de contacto"
+              value={formCliente.nombre}
+              onChange={(e) => setFormCliente({ ...formCliente, nombre: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Empresa (opcional)">
+            <input
+              className={modalInputClass}
+              placeholder="Solo si tiene empresa"
+              value={formCliente.empresa}
+              onChange={(e) => setFormCliente({ ...formCliente, empresa: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Teléfono *" required>
+            <input
+              className={modalInputClass}
+              placeholder="Ej: 322-123-4567"
+              value={formCliente.telefono}
+              onChange={(e) => setFormCliente({ ...formCliente, telefono: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Correo *" required>
+            <input
+              className={modalInputClass}
+              placeholder="correo@ejemplo.com"
+              value={formCliente.correo}
+              onChange={(e) => setFormCliente({ ...formCliente, correo: e.target.value })}
+            />
+          </ModalField>
+        </div>
       </FormModal>
     </div>
   );

@@ -48,7 +48,7 @@
 |---|---|---|---|
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ✅ HECHA completa (B1.1–B1.4, 2026-11-12) — ver §11 |
 | B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ✅ HECHA completa (`83fb6198`, `c8423b02`, B2.3/B2.4 2026-11-12) — ver §10 |
-| B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
+| B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ✅ HECHA completa (B3.1–B3.4, 2026-11-13) — ver §12 |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
 | B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ⏳ |
@@ -472,3 +472,29 @@ LOCKED donde espera 401; flake preexistente de auth, fuera de B1.
 
 **Fuera de B1 (no se construye aquí):** P4 bajada de inventario desde partidas
 · P3 cotización→proyecto · precios por medida (P7, tabulador LISTA DE PRECIOS).
+
+---
+
+## 12. Plan de implementación B3 — cliente real en el POS (EJECUTADO 2026-11-13)
+
+> **Diseño:** el POS deja de mandar "Público en general" fijo: puede elegir un
+> cliente del catálogo y dar de alta uno nuevo sin salir de la venta. La FK
+> `ventas.cliente_id` es **nullable** — las ventas sin cliente siguen naciendo
+> igual. El nombre en `ventas.cliente` es un **snapshot** (empresa || nombre):
+> los tickets no cambian ni se rompen si el cliente se edita después.
+
+| Fase | Estado | Evidencia |
+|---|---|---|
+| Prerrequisito: empresa opcional | ✅ HECHA | `8f0bfd40` — migración `20261112130000_clientes_empresa_opcional` + DTO/service/web (clientes sin empresa) |
+| B3.1 Datos | ✅ HECHA | `12d05ca6` — `ventas.cliente_id` FK nullable + índice, migración `20261112140000` |
+| B3.2 Backend | ✅ HECHA | `5c9085fe` — `clienteId?` en el DTO, validación con `fallir`/`CLIENTE_NO_ENCONTRADO`, snapshot del nombre, `clienteId` en el serializer; unit 57/57, integración 12/12 |
+| B3.3 UI POS | ✅ HECHA | selector de cliente en el carrito + mini-modal de alta rápida (nombre/empresa opcional/teléfono/correo); el cobro manda `clienteId` |
+| B3.4 Gates | ✅ HECHA | `jest` 1330/1332 (2 fallos preexistentes de cobranza), `tsc` limpio, lint 56 baseline, smoke real: venta con cliente → `cliente_id` poblado en BD y snapshot "Peluqueria Smoke"; venta sin cliente → "Público en general" NULL |
+
+**Hallazgo ambiental:** el suite de integración de ventas y el smoke dependen
+del horario de atención en BD (07:00–02:00 real). Se corrió con 00:00–23:59
+temporal y **restaurado** al terminar (verificado). Deuda: los specs de
+integración deberían fijar su propio horario (como los unit con `TURNO_*`).
+
+**Fuera de B3 (no se construye aquí):** C3 venta a crédito → CxC desde el POS ·
+historial de compras por cliente en /clientes (depende de este `cliente_id`).
