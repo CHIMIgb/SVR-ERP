@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsDateString,
   IsNumber,
   IsOptional,
@@ -6,7 +8,10 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CotizacionItemDto } from './cotizacion-item.dto';
 
 /** DTO para editar una cotización (todos los campos opcionales = PATCH). */
 export class UpdateCotizacionDto {
@@ -27,4 +32,20 @@ export class UpdateCotizacionDto {
   @IsOptional()
   @IsDateString()
   fecha?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  condiciones?: string;
+
+  /**
+   * Reemplazo completo de partidas. `undefined` = no tocar; `[]` = eliminar
+   * todas (vuelve a cotización plana). Con partidas, el monto se recalcula.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => CotizacionItemDto)
+  items?: CotizacionItemDto[];
 }

@@ -92,6 +92,34 @@ export class CotizacionesService {
     }
   }
 
+  /**
+   * Normaliza las partidas del DTO: importa calculado en servidor
+   * (cantidad × precio, redondeado) y monto de cabecera = Σ importes.
+   * Devuelve null cuando el DTO no trae partidas (cotización plana).
+   */
+  private itemsDe(
+    dto: { items?: { descripcion: string; cantidad: number; unidad: string; precioUnitario: number }[] },
+    userId: string,
+  ) {
+    if (!dto.items) return null;
+    const items = dto.items.map((item, indice) => {
+      const importe = round2(item.cantidad * item.precioUnitario);
+      return {
+        id: randomUUID(),
+        descripcion: item.descripcion.trim(),
+        cantidad: item.cantidad,
+        unidad: item.unidad.trim(),
+        precio_unitario: item.precioUnitario,
+        importe,
+        orden: indice,
+        creado_por: userId,
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      };
+    });
+    return { items, monto: round2(items.reduce((suma, item) => suma + item.importe, 0)) };
+  }
+
   // ────────────────────────────────────────────
   //  HISTORIAL DE COTIZACIONES DEL CLIENTE
   // ────────────────────────────────────────────
@@ -132,22 +160,34 @@ export class CotizacionesService {
     await this.validarCliente(clienteId, AuditAction.COTIZACION_CREADA);
 
     const hoy = new Date(dto.fecha).toISOString().split('T')[0].replace(/-/g, '');
-    const cotizacion = await this.prisma.cotizaciones.create({
-      data: {
-        id: randomUUID(),
-        codigo: `COT-${hoy}-${randomUUID().slice(0, 6).toUpperCase()}`,
-        cliente_id: clienteId,
-        descripcion: dto.descripcion.trim(),
-        monto: dto.monto,
-        fecha: new Date(dto.fecha),
-        estado: EstadoCotizacion.PENDIENTE,
-        creado_por: userId,
-        actualizado_por: userId,
-        actualizado_en: new Date(),
-      },
-    });
+    const partidas = this.itemsDe(dto, userId);
+    const base = {
+      id: randomUUID(),
+      codigo: `COT-${hoy}-${randomUUID().slice(0, 6).toUpperCase()}`,
+      cliente_id: clienteId,
+      descripcion: dto.descripcion.trim(),
+      // Con partidas el monto es SIEMPRE la suma de importes (se ignora el
+      // enviado); sin partidas conserva el flujo plano actual.
+      monto: partidas ? partidas.monto : dto.monto,
+      condiciones: dto.condiciones?.trim() || null,
+      fecha: new Date(dto.fecha),
+      estado: EstadoCotizacion.PENDIENTE,
+      creado_por: userId,
+      actualizado_por: userId,
+      actualizado_en: new Date(),
+    };
+
+    // Con partidas, cabecera + renglones nacen en la misma transacción.
+    const cotizacion = partidas
+      ? await this.prisma.$transaction((tx: Prisma.TransactionClient) =>
+          tx.cotizaciones.create({
+            data: { ...base, items: { create: partidas.items } },
+          }),
+        )
+      : await this.prisma.cotizaciones.create({ data: base });
 
     const serialized = this.serialize(cotizacion);
+    if (partidas) serialized.items = partidas.items.map((item) => this.serializeItem(item));
 
     await this.auditService.log({
       action: AuditAction.COTIZACION_CREADA,
@@ -231,6 +271,7 @@ export class CotizacionesService {
       where: { id, eliminado_en: null },
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true, telefono: true, correo: true } },
+        items: { orderBy: { orden: 'asc' } },
       },
     });
 
@@ -291,14 +332,29 @@ export class CotizacionesService {
     if (dto.descripcion !== undefined) data.descripcion = dto.descripcion.trim();
     if (dto.monto !== undefined) data.monto = dto.monto;
     if (dto.fecha !== undefined) data.fecha = new Date(dto.fecha);
+    if (dto.condiciones !== undefined) data.condiciones = dto.condiciones.trim() || null;
     if (clienteId !== existente.cliente_id) data.cliente_id = clienteId;
 
-    const cotizacion = await this.prisma.cotizaciones.update({
-      where: { id },
-      data,
-    });
+    // `items: []` vuelve a cotización plana (deleteMany); `items: undefined`
+    // no toca las partidas existentes.
+    const partidas = this.itemsDe(dto, userId);
+    if (partidas) {
+      data.monto = partidas.monto;
+      data.items = {
+        deleteMany: {},
+        create: partidas.items,
+      };
+    }
+
+    const cotizacion =
+      partidas !== null
+        ? await this.prisma.$transaction((tx: Prisma.TransactionClient) =>
+            tx.cotizaciones.update({ where: { id }, data }),
+          )
+        : await this.prisma.cotizaciones.update({ where: { id }, data });
 
     const serialized = this.serialize(cotizacion);
+    if (partidas) serialized.items = partidas.items.map((item) => this.serializeItem(item));
 
     await this.auditService.log({
       action: AuditAction.COTIZACION_ACTUALIZADA,
@@ -464,7 +520,10 @@ export class CotizacionesService {
   async facturar(id: string, userId: string) {
     const cotizacion = await this.prisma.cotizaciones.findFirst({
       where: { id, eliminado_en: null },
-      include: { facturas: { select: { id: true } } },
+      include: {
+        facturas: { select: { id: true } },
+        items: { orderBy: { orden: 'asc' } },
+      },
     });
 
     if (!cotizacion) {
@@ -522,7 +581,40 @@ export class CotizacionesService {
     // La CxC se crea por el total CON IVA: si el desglose naciera mal ya no
     // se puede corregir una vez emitida.
     const TASA_IVA = 0.16;
-    const impuestoIva = round2(monto * TASA_IVA);
+
+    // Con partidas: un concepto por renglón, y el IVA se calcula renglón a
+    // renglón para que la factura conserve el desglose. Sin partidas
+    // (cotizaciones viejas): el concepto único de siempre.
+    const itemsFactura = cotizacion.items?.length
+      ? cotizacion.items.map((item) => ({
+          id: randomUUID(),
+          cantidad: Number(item.cantidad),
+          unidad: item.unidad,
+          descripcion: item.descripcion,
+          valor_unitario: Number(item.precio_unitario),
+          importe: Number(item.importe),
+          descuento: 0,
+          objeto_impuesto: '04',
+          impuesto_tasa: TASA_IVA,
+          impuesto_importe: round2(Number(item.importe) * TASA_IVA),
+          activo: true,
+        }))
+      : [
+          {
+            id: randomUUID(),
+            cantidad: 1,
+            unidad: 'Servicio',
+            descripcion: cotizacion.descripcion,
+            valor_unitario: monto,
+            importe: monto,
+            descuento: 0,
+            objeto_impuesto: '04',
+            impuesto_tasa: TASA_IVA,
+            impuesto_importe: round2(monto * TASA_IVA),
+            activo: true,
+          },
+        ];
+    const impuestoIva = round2(itemsFactura.reduce((suma, item) => suma + item.impuesto_importe, 0));
     const totalConIva = round2(monto + impuestoIva);
 
     for (let intento = 0; intento < MAX_INTENTOS_FOLIO; intento++) {
@@ -593,21 +685,7 @@ export class CotizacionesService {
               creado_por: userId,
               actualizado_por: userId,
               factura_conceptos: {
-                create: [
-                  {
-                    id: randomUUID(),
-                    cantidad: 1,
-                    unidad: 'Servicio',
-                    descripcion: cotizacion.descripcion,
-                    valor_unitario: monto,
-                    importe: monto,
-                    descuento: 0,
-                    objeto_impuesto: '04',
-                    impuesto_tasa: TASA_IVA,
-                    impuesto_importe: impuestoIva,
-                    activo: true,
-                  },
-                ],
+                create: itemsFactura,
               },
             },
           });
@@ -646,6 +724,7 @@ export class CotizacionesService {
             estado: 'Aceptada',
             facturaId: factura.id,
             facturaCodigo: factura.codigo,
+            conceptos: itemsFactura.length,
             cxcId: cxc.id,
           },
         });
@@ -717,6 +796,13 @@ export class CotizacionesService {
       clienteId: cotizacion.cliente_id,
       descripcion: cotizacion.descripcion,
       monto: Number(cotizacion.monto),
+      condiciones: cotizacion.condiciones ?? null,
+      // Solo los queries que incluyen la relación traen partidas (detalle y
+      // audit); los listados livianos la omiten para no cargar N+1.
+      items: Array.isArray(cotizacion.items)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? cotizacion.items.map((item: any) => this.serializeItem(item))
+        : undefined,
       fecha:
         cotizacion.fecha instanceof Date
           ? cotizacion.fecha.toISOString().split('T')[0]
@@ -728,6 +814,19 @@ export class CotizacionesService {
       creadoEn: cotizacion.creado_en?.toISOString?.() ?? cotizacion.creado_en,
       actualizadoEn:
         cotizacion.actualizado_en?.toISOString?.() ?? cotizacion.actualizado_en,
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private serializeItem(item: any) {
+    return {
+      id: item.id,
+      descripcion: item.descripcion,
+      cantidad: Number(item.cantidad),
+      unidad: item.unidad,
+      precioUnitario: Number(item.precio_unitario),
+      importe: Number(item.importe),
+      orden: item.orden,
     };
   }
 }

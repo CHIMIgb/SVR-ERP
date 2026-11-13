@@ -480,4 +480,153 @@ describe('Cotizaciones Audit (Real DB)', () => {
       facturas.forEach((f) => createdFacturaIds.push(f.id));
     });
   });
+
+  // ────────────────────────────────────────────────
+  //  B1.2 — PARTIDAS (cotizacion_items)
+  // ────────────────────────────────────────────────
+  describe('PARTIDAS (cotizacion_items)', () => {
+    const items = [
+      { descripcion: 'VIBROCOMPACTADOR BOMAG', cantidad: 1, unidad: 'DIA', precioUnitario: 5500 },
+      { descripcion: 'PIPA CAP 20,000 LTS', cantidad: 2, unidad: 'DIA', precioUnitario: 8000 },
+    ];
+
+    it('debe crear cotización con partidas: importes en BD, monto recalculado y audit SUCCESS', async () => {
+      const cliente = await createCliente();
+
+      const cotizacion = await service.create(
+        cliente.id,
+        {
+          descripcion: `Con partidas ${TEST_ID}`,
+          monto: 1, // enviado mal a propósito: se recalcula
+          fecha: '2026-09-08',
+          condiciones: 'Estos precios no incluyen IVA.',
+          items,
+        },
+        ACTOR_USER_ID,
+      );
+
+      // Cabecera
+      expect(cotizacion.monto).toBe(21500); // 5500 + 2×8000
+      expect(cotizacion.condiciones).toBe('Estos precios no incluyen IVA.');
+      expect(cotizacion.items).toHaveLength(2);
+      expect(cotizacion.items![0]).toEqual(
+        expect.objectContaining({ descripcion: 'VIBROCOMPACTADOR BOMAG', importe: 5500, orden: 0 }),
+      );
+
+      // BD real
+      const filas = await prisma.cotizacion_items.findMany({
+        where: { cotizacion_id: cotizacion.id },
+        orderBy: { orden: 'asc' },
+      });
+      expect(filas).toHaveLength(2);
+      expect(Number(filas[1].importe)).toBe(16000);
+      expect(filas[0].creado_por).toBe(ACTOR_USER_ID);
+
+      // Audit SUCCESS
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COTIZACION_CREADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('debe reemplazar partidas al editar y recalcular el monto en BD', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        {
+          descripcion: `Edita partidas ${TEST_ID}`,
+          monto: 1,
+          fecha: '2026-09-10',
+          items,
+        },
+        ACTOR_USER_ID,
+      );
+
+      const actualizada = await service.update(
+        cotizacion.id,
+        { items: [{ descripcion: 'GRAVA', cantidad: 14, unidad: 'M3', precioUnitario: 285.71 }] },
+        ACTOR_USER_ID,
+      );
+
+      expect(actualizada.monto).toBe(3999.94);
+      expect(actualizada.items).toHaveLength(1);
+
+      const filas = await prisma.cotizacion_items.findMany({
+        where: { cotizacion_id: cotizacion.id },
+      });
+      expect(filas).toHaveLength(1);
+      expect(filas[0].descripcion).toBe('GRAVA');
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COTIZACION_ACTUALIZADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('debe facturar por renglón: conceptos reales por partida con IVA por partida', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        {
+          descripcion: `Factura por partidas ${TEST_ID}`,
+          monto: 1,
+          fecha: '2026-09-08',
+          items,
+        },
+        ACTOR_USER_ID,
+      );
+
+      const resultado = await service.facturar(cotizacion.id, ACTOR_USER_ID);
+      createdFacturaIds.push(resultado.factura.id);
+
+      expect(resultado.factura.total).toBe(24940); // 21500 + 3440 IVA
+
+      const factura = await prisma.facturas.findUnique({
+        where: { id: resultado.factura.id },
+        include: { factura_conceptos: true },
+      });
+      expect(factura!.factura_conceptos).toHaveLength(2);
+      const porImporte = factura!.factura_conceptos.sort((a, b) => Number(a.importe) - Number(b.importe));
+      expect(Number(porImporte[0].importe)).toBe(5500);
+      expect(Number(porImporte[0].impuesto_importe)).toBe(880);
+      expect(Number(porImporte[1].importe)).toBe(16000);
+      expect(Number(porImporte[1].impuesto_importe)).toBe(2560);
+      expect(Number(factura!.impuestos)).toBe(3440);
+      expect(factura!.estado).toBe('PENDIENTE');
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: { action: AuditAction.COTIZACION_FACTURADA, entity_id: cotizacion.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+      expect((audits[0].new_value as Record<string, unknown>).conceptos).toBe(2);
+    });
+
+    it('al eliminar la cotización, sus partidas desaparecen por CASCADE', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Cascade ${TEST_ID}`, monto: 1, fecha: '2026-09-10', items },
+        ACTOR_USER_ID,
+      );
+
+      const filas = await prisma.cotizacion_items.findMany({
+        where: { cotizacion_id: cotizacion.id },
+      });
+      expect(filas).toHaveLength(2);
+
+      // Borrado físico directo (la limpieza FK-safe del afterAll borra la
+      // cotización con deleteMany): el cascade debe llevarse las partidas.
+      await prisma.cotizaciones.deleteMany({ where: { id: cotizacion.id } });
+
+      const quedan = await prisma.cotizacion_items.findMany({
+        where: { cotizacion_id: cotizacion.id },
+      });
+      expect(quedan).toHaveLength(0);
+    });
+  });
 });

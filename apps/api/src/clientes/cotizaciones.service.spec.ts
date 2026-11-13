@@ -448,6 +448,37 @@ describe('CotizacionesService', () => {
       );
     });
 
+    it('debe reemplazar partidas en $transaction y recalcular el monto', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({ ...mockCotizacion, estado: EstadoCotizacion.PENDIENTE });
+      const txCotizaciones = { update: jest.fn().mockResolvedValue(mockCotizacion) };
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) =>
+        cb({ cotizaciones: txCotizaciones }),
+      );
+
+      await service.update(
+        mockCotizacion.id,
+        { items: [{ descripcion: 'GRAVA', cantidad: 14, unidad: 'M3', precioUnitario: 285.71 }] },
+        'user-1',
+      );
+
+      expect(txCotizaciones.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockCotizacion.id },
+          data: expect.objectContaining({
+            monto: 3999.94, // round2(14 × 285.71)
+            items: { deleteMany: {}, create: [expect.objectContaining({ importe: 3999.94, orden: 0 })] },
+          }),
+        }),
+      );
+      expect(prisma.cotizaciones.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COTIZACION_ACTUALIZADA,
+          result: AuditResult.SUCCESS,
+        }),
+      );
+    });
+
     it('should reject editing an already decided quote (COTIZACION_YA_DECIDIDA)', async () => {
       prisma.cotizaciones.findFirst.mockResolvedValue(mockCotizacion);
       await expect(
@@ -479,6 +510,59 @@ describe('CotizacionesService', () => {
         rechazadas: 1,
         montoAceptado: 125000,
       });
+    });
+  });
+
+  describe('create con partidas (cotizacion_items)', () => {
+    const items = [
+      { descripcion: 'VIBROCOMPACTADOR BOMAG', cantidad: 1, unidad: 'DIA', precioUnitario: 5500 },
+      { descripcion: 'PIPA CAP 20,000 LTS', cantidad: 2, unidad: 'DIA', precioUnitario: 8000 },
+    ];
+
+    it('debe crear cotización + partidas en $transaction y recalcular el monto', async () => {
+      const txCotizaciones = { create: jest.fn().mockResolvedValue(mockCotizacion) };
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) =>
+        cb({ cotizaciones: txCotizaciones }),
+      );
+
+      const result = await service.create(mockClienteId, { descripcion: 'Renta', monto: 1, fecha: '2026-11-12', items }, 'user-1');
+
+      // monto = Σ importes (5500 + 2×8000), NO el enviado.
+      expect(txCotizaciones.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            monto: 21500,
+            condiciones: null,
+            items: {
+              create: [
+                expect.objectContaining({ descripcion: 'VIBROCOMPACTADOR BOMAG', importe: 5500, orden: 0 }),
+                expect.objectContaining({ descripcion: 'PIPA CAP 20,000 LTS', cantidad: 2, importe: 16000, orden: 1 }),
+              ],
+            },
+          }),
+        }),
+      );
+      // No pasa por el create plano.
+      expect(prisma.cotizaciones.create).not.toHaveBeenCalled();
+      expect(result.monto).toBe(125000); // mockCotizacion devuelto por el mock
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.COTIZACION_CREADA,
+          result: AuditResult.SUCCESS,
+        }),
+      );
+    });
+
+    it('sin partidas conserva el flujo plano (sin $transaction)', async () => {
+      prisma.$transaction = jest.fn();
+      await service.create(mockClienteId, { descripcion: 'Renta', monto: 5000, fecha: '2026-11-12', condiciones: 'Estos precios no incluyen IVA.' }, 'user-1');
+
+      expect(prisma.cotizaciones.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ monto: 5000, condiciones: 'Estos precios no incluyen IVA.' }),
+        }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 
@@ -554,6 +638,47 @@ describe('CotizacionesService', () => {
       );
       expect(result.cotizacionId).toBe(ID);
       expect(result.factura.codigo).toBe('FAC-2026-0001');
+    });
+
+    it('debe facturar por renglón: un concepto por partida con IVA por partida', async () => {
+      prisma.cotizaciones.findFirst.mockResolvedValue({
+        ...mockCotizacion,
+        estado: EstadoCotizacion.PENDIENTE,
+        facturas: [],
+        monto: 21500,
+        items: [
+          { id: 'i1', descripcion: 'VIBROCOMPACTADOR BOMAG', cantidad: 1, unidad: 'DIA', precio_unitario: 5500, importe: 5500, orden: 0 },
+          { id: 'i2', descripcion: 'PIPA CAP 20,000 LTS', cantidad: 2, unidad: 'DIA', precio_unitario: 8000, importe: 16000, orden: 1 },
+        ],
+      });
+      prisma.clientes.findFirst.mockResolvedValue({ id: mockClienteId });
+      tx.cotizaciones.updateMany.mockResolvedValue({ count: 1 });
+      tx.facturas.create.mockImplementation(async ({ data }: any) => ({
+        id: data.id, codigo: data.codigo, total: data.total, estado: data.estado,
+      }));
+      tx.cuentas_por_cobrar.create.mockResolvedValue({ id: 'cxc', monto: 24940, fecha_vencimiento: new Date() });
+      prisma.$transaction = jest.fn(async (cb: (t: any) => Promise<unknown>) => cb(tx));
+
+      await service.facturar(ID, 'user-1');
+
+      const dataFactura = tx.facturas.create.mock.calls[0][0].data;
+      expect(dataFactura.factura_conceptos.create).toHaveLength(2);
+      expect(dataFactura.factura_conceptos.create[0]).toEqual(
+        expect.objectContaining({
+          cantidad: 1, unidad: 'DIA', valor_unitario: 5500, importe: 5500,
+          impuesto_tasa: 0.16, impuesto_importe: 880, // 5500 × 0.16
+        }),
+      );
+      expect(dataFactura.factura_conceptos.create[1]).toEqual(
+        expect.objectContaining({
+          cantidad: 2, unidad: 'DIA', valor_unitario: 8000, importe: 16000,
+          impuesto_importe: 2560, // 16000 × 0.16
+        }),
+      );
+      // Cabecera consistente con la suma de conceptos (sin partidas planas).
+      expect(dataFactura.subtotal).toBe(21500);
+      expect(dataFactura.impuestos).toBe(3440);
+      expect(dataFactura.total).toBe(24940);
     });
 
     it('debe fallar COTIZACION_YA_FACTURADA si perdió la carrera de transición', async () => {
