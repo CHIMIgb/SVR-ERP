@@ -275,8 +275,8 @@ export default function ProyectosPage() {
   const openFinanzas = useCallback((item: ProyectoDTO) => {
     setSelectedItem(item);
     setFinanzasForm({
-      ingresoCobrado: String(item.ingresoCobrado),
-      gastado: String(item.gastado),
+      ingresoCobrado: formatearMiles(String(item.ingresoCobrado)),
+      gastado: formatearMiles(String(item.gastado)),
     });
     setFinanzasOpen(true);
   }, []);
@@ -354,7 +354,7 @@ export default function ProyectosPage() {
 
   const parseOptionalMoney = (value: string): number | undefined => {
     if (value === '') return undefined;
-    const n = parseFloat(value);
+    const n = parsearMiles(value);
     return isNaN(n) ? undefined : n;
   };
 
@@ -368,7 +368,8 @@ export default function ProyectosPage() {
       ['gastado', 'Gasto acumulado'],
     ] as const) {
       const v = finanzasForm[campo];
-      if (v !== '' && (isNaN(parseFloat(v)) || parseFloat(v) < 0)) {
+      const n = parsearMiles(v);
+      if (v !== '' && (isNaN(n) || n < 0)) {
         showToast(`${label} debe ser un número mayor o igual a cero.`, 'error');
         return false;
       }
@@ -801,7 +802,7 @@ export default function ProyectosPage() {
               Ubicación de la obra
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ModalField label="Calle y número" required className="sm:col-span-2">
+              <ModalField label="Calle y número" required>
                 <input
                   type="text"
                   className={modalInputClass}
@@ -928,17 +929,6 @@ export default function ProyectosPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Progreso (%)" hint="Avance físico de la obra.">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              className={modalInputClass}
-              value={form.progreso}
-              onChange={(e) => setForm({ ...form, progreso: e.target.value })}
-            />
-          </ModalField>
-
           <ModalField label="Fecha de inicio" required>
             <input
               type="date"
@@ -963,7 +953,7 @@ export default function ProyectosPage() {
               Ubicación de la obra
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ModalField label="Calle y número" required className="sm:col-span-2">
+              <ModalField label="Calle y número" required>
                 <input
                   type="text"
                   className={modalInputClass}
@@ -1086,25 +1076,27 @@ export default function ProyectosPage() {
 
             <ModalField label="Ingreso cobrado (MXN)" hint="Monto facturado y cobrado al cliente hasta la fecha.">
               <input
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 className={modalInputClass}
-                placeholder="Ej: 350000"
+                placeholder="350,000"
                 value={finanzasForm.ingresoCobrado}
-                onChange={(e) => setFinanzasForm({ ...finanzasForm, ingresoCobrado: e.target.value })}
+                onChange={(e) =>
+                  setFinanzasForm({ ...finanzasForm, ingresoCobrado: formatearMiles(e.target.value) })
+                }
               />
             </ModalField>
 
             <ModalField label="Gasto acumulado (MXN)" hint="Costo real acumulado de ejecutar la obra hasta la fecha.">
               <input
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 className={modalInputClass}
-                placeholder="Ej: 280000"
+                placeholder="280,000"
                 value={finanzasForm.gastado}
-                onChange={(e) => setFinanzasForm({ ...finanzasForm, gastado: e.target.value })}
+                onChange={(e) =>
+                  setFinanzasForm({ ...finanzasForm, gastado: formatearMiles(e.target.value) })
+                }
               />
             </ModalField>
 
