@@ -11,6 +11,7 @@ describe('NotificacionesService', () => {
   let prisma: any;
   const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
   const USER_ID = 'c0000000-0000-0000-0000-000000000001';
+  const TORRE = 'MAQUINARIA' as never;
 
   const mockNotificacion = {
     id: '90000000-0000-0000-0000-000000000001',
@@ -24,7 +25,7 @@ describe('NotificacionesService', () => {
     creado_por: 'otro-usuario',
   };
 
-  /** Mocks base: el usuario tiene 2 roles y ve /ventas y /proveedores. */
+  /** Mocks base: el usuario tiene 2 roles activos y torre MAQUINARIA. */
   beforeEach(async () => {
     prisma = {
       notificaciones: {
@@ -41,14 +42,20 @@ describe('NotificacionesService', () => {
       users_roles: {
         findMany: jest.fn().mockResolvedValue([{ rol_id: 'rol-a' }, { rol_id: 'rol-b' }]),
       },
-      role_vistas: {
-        findMany: jest.fn().mockResolvedValue([
-          { vistas: { ruta: '/ventas' } },
-          { vistas: { ruta: '/proveedores' } },
-        ]),
+      users: {
+        findUnique: jest.fn().mockResolvedValue({ torre: TORRE }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'user-del-trabajador' }),
       },
       roles: {
         findFirst: jest.fn().mockResolvedValue({ id: 'rol-administrativo' }),
+      },
+      trabajadores: {
+        findUnique: jest.fn().mockResolvedValue({ nombre: 'Juan Perez' }),
+      },
+      personas: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'persona-1', nombre: 'Juan', apellido_paterno: 'Perez', apellido_materno: null },
+        ]),
       },
     };
 
@@ -72,13 +79,15 @@ describe('NotificacionesService', () => {
   });
 
   describe('emitir', () => {
-    it('debe crear la notificación con audiencia y referencia', async () => {
+    it('debe crear la notificación con TODOS los destinatarios explícitos', async () => {
       await service.emitir({
         tipo: TipoNotificacion.ALERTA,
-        titulo: 'OC aprobada',
-        cuerpo: 'La orden OC-2026-001 fue aprobada.',
-        referenciaTipo: 'ordenes_compra',
+        titulo: 'Reporte creado',
+        cuerpo: 'Nuevo reporte de tu área.',
+        referenciaTipo: 'reportes_campo',
         referenciaId: 'x',
+        audienciaTorre: TORRE,
+        destinatarioUserId: 'user-destino',
         creadoPor: USER_ID,
       });
 
@@ -86,9 +95,9 @@ describe('NotificacionesService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             tipo: TipoNotificacion.ALERTA,
-            titulo: 'OC aprobada',
-            referencia_tipo: 'ordenes_compra',
-            audiencia_rol_id: null,
+            audiencia_torre: TORRE,
+            destinatario_user_id: 'user-destino',
+            referencia_tipo: 'reportes_campo',
           }),
         }),
       );
@@ -99,6 +108,58 @@ describe('NotificacionesService', () => {
       await expect(
         service.emitir({ tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' }),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('emitirAUsuario / emitirATorre / emitirATrabajador', () => {
+    it('emitirAUsuario fija el destinatario personal', async () => {
+      await service.emitirAUsuario('user-receptor', { tipo: TipoNotificacion.INFO, titulo: 'T', cuerpo: 'C' });
+      expect(prisma.notificaciones.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ destinatario_user_id: 'user-receptor' }),
+        }),
+      );
+    });
+
+    it('emitirATorre fija la audiencia de área', async () => {
+      await service.emitirATorre(TORRE, { tipo: TipoNotificacion.INFO, titulo: 'T', cuerpo: 'C' });
+      expect(prisma.notificaciones.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ audiencia_torre: TORRE }),
+        }),
+      );
+    });
+
+    it('emitirATorre sin torre NO emite nada', async () => {
+      await service.emitirATorre(null, { tipo: TipoNotificacion.INFO, titulo: 'T', cuerpo: 'C' });
+      expect(prisma.notificaciones.create).not.toHaveBeenCalled();
+    });
+
+    it('emitirATrabajador resuelve su cuenta por nombre y emite personal', async () => {
+      await service.emitirATrabajador('trab-1', { tipo: TipoNotificacion.INFO, titulo: 'Te asignaron', cuerpo: 'X' });
+      expect(prisma.users.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { persona_id: 'persona-1' } }),
+      );
+      expect(prisma.notificaciones.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ destinatario_user_id: 'user-del-trabajador' }),
+        }),
+      );
+    });
+
+    it('emitirATrabajador sin cuenta de usuario NO emite', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await service.emitirATrabajador('trab-1', { tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' });
+      expect(prisma.notificaciones.create).not.toHaveBeenCalled();
+    });
+
+    it('emitirATrabajador con nombre ambiguo NO emite', async () => {
+      prisma.personas.findMany.mockResolvedValue([
+        { id: 'p1', nombre: 'Juan', apellido_paterno: 'Perez', apellido_materno: null },
+        { id: 'p2', nombre: 'Juan', apellido_paterno: 'Perez', apellido_materno: null },
+      ]);
+      await service.emitirATrabajador('trab-1', { tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' });
+      expect(prisma.notificaciones.create).not.toHaveBeenCalled();
     });
   });
 
@@ -120,24 +181,25 @@ describe('NotificacionesService', () => {
     });
   });
 
-  describe('findMine (visibilidad)', () => {
-    it('filtra: no descartadas, no del actor, audiencia de roles activos y tipos de vistas visibles', async () => {
+  describe('findMine (visibilidad por destinatario explícito)', () => {
+    it('filtra: no del actor, dirigido a él / su torre / sus roles activos o todos', async () => {
       const result = await service.findMine(USER_ID, { page: 1, limit: 10 });
 
-      // roles SOLO activos del usuario.
       expect(prisma.users_roles.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { user_id: USER_ID, activo: true },
-        }),
+        expect.objectContaining({ where: { user_id: USER_ID, activo: true } }),
       );
-      // El AND de visibilidad: actor excluido + audiencia + vista.
       const where = prisma.notificaciones.findMany.mock.calls[0][0].where;
       expect(where.AND).toEqual([
         { OR: [{ creado_por: null }, { creado_por: { not: USER_ID } }] },
-        { OR: [{ audiencia_rol_id: null }, { audiencia_rol_id: { in: ['rol-a', 'rol-b'] } }] },
-        { OR: [{ referencia_tipo: null }, { referencia_tipo: { in: ['ordenes_compra', 'pagos_proveedor', 'cierres_caja'] } }] },
+        {
+          OR: [
+            { destinatario_user_id: USER_ID },
+            { audiencia_torre: TORRE },
+            { audiencia_rol_id: null },
+            { audiencia_rol_id: { in: ['rol-a', 'rol-b'] } },
+          ],
+        },
       ]);
-      // El estado de lectura viene de las LECTURAS del usuario.
       expect(result.items[0].leida).toBe(false);
     });
 
@@ -150,11 +212,11 @@ describe('NotificacionesService', () => {
       expect(result.noLeidas).toBe(0); // total 1 visible − 1 leída
     });
 
-    it('sin vista visible, solo los tipos sin referencia le aparecerían', async () => {
-      prisma.role_vistas.findMany.mockResolvedValue([]);
+    it('sin torre en el usuario, las notificaciones de área no le entran', async () => {
+      prisma.users.findUnique.mockResolvedValue({ torre: null });
       await service.findMine(USER_ID, { page: 1, limit: 10 });
       const where = prisma.notificaciones.findMany.mock.calls[0][0].where;
-      expect(where.AND[2]).toEqual({ OR: [{ referencia_tipo: null }, { referencia_tipo: { in: [] } }] });
+      expect(where.AND[1].OR).not.toContainEqual({ audiencia_torre: TORRE });
     });
   });
 

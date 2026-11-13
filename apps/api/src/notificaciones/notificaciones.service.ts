@@ -4,7 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { AuditAction, AuditResult, TipoNotificacion } from '@prisma/client';
+import {
+  AuditAction,
+  AuditResult,
+  CategoriaReporte,
+  TipoNotificacion,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -12,16 +17,10 @@ import { AuditService } from '../audit/audit.service';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
 /**
- * Ruta de la vista DUEÑA de cada tipo de referencia. Con este mapa, el buzón
- * filtra por ACCESO A VISTA: si el usuario (por cualquiera de sus roles) no
- * puede ver la vista, las notificaciones de ese tipo no le aparecen.
+ * Destinatarios explícitos (B5.8): la notificación declara PARA QUIÉN es al
+ * emitir — a un usuario, a un área/torre, a un rol o a todos. NO depende de
+ * menús ni de vistas.
  */
-const RUTA_POR_REFERENCIA: Record<string, string> = {
-  ordenes_compra: '/proveedores',
-  pagos_proveedor: '/proveedores',
-  cierres_caja: '/ventas',
-  periodos_nomina: '/nomina',
-};
 
 /** Entrada para emitir una notificación desde cualquier service del ERP. */
 export interface EmitirNotificacionInput {
@@ -32,7 +31,11 @@ export interface EmitirNotificacionInput {
   referenciaId?: string;
   /** Rol destinatario; undefined/null = visible a TODOS los roles. */
   audienciaRolId?: string;
-  /** Usuario que disparó el evento (para trazabilidad y para NO mostrarle su propio aviso). */
+  /** Área/torre destinataria (ej. "se creó un reporte de tu área"). */
+  audienciaTorre?: CategoriaReporte;
+  /** Usuario destinatario PERSONAL (ej. "te asignaron el reporte"). */
+  destinatarioUserId?: string;
+  /** Usuario que disparó el evento (trazabilidad; NO recibe su propio aviso). */
   creadoPor?: string;
 }
 
@@ -61,6 +64,8 @@ export class NotificacionesService {
           referencia_tipo: input.referenciaTipo ?? null,
           referencia_id: input.referenciaId ?? null,
           audiencia_rol_id: input.audienciaRolId ?? null,
+          audiencia_torre: input.audienciaTorre ?? null,
+          destinatario_user_id: input.destinatarioUserId ?? null,
           creado_por: input.creadoPor ?? null,
         },
       });
@@ -69,6 +74,80 @@ export class NotificacionesService {
         `No se pudo emitir la notificación "${input.titulo}": ${error instanceof Error ? error.message : error}`,
       );
     }
+  }
+
+  /**
+   * Emite a un USUARIO PERSONAL (ej. el creador de un reporte). Destinatario
+   * explícito: la recibe aunque el actor sea de otro rol; si es el actor
+   * mismo, la excluye el filtro (no se avisa a sí mismo).
+   */
+  async emitirAUsuario(userIdDestinatario: string, input: Omit<EmitirNotificacionInput, 'destinatarioUserId'>): Promise<void> {
+    await this.emitir({ ...input, destinatarioUserId: userIdDestinatario });
+  }
+
+  /**
+   * Emite al TRABAJADOR asignado (es Trabajador, no User). Los trabajadores
+   * NO tienen FK a cuentas de usuario: se resuelve su cuenta por nombre
+   * contra `personas` (best-effort; sin match único, no se emite y queda
+   * loggeado).
+   */
+  async emitirATrabajador(trabajadorId: string, input: Omit<EmitirNotificacionInput, 'destinatarioUserId'>): Promise<void> {
+    try {
+      const trabajador = await this.prisma.trabajadores.findUnique({
+        where: { id: trabajadorId },
+        select: { nombre: true },
+      });
+      if (!trabajador) {
+        this.logger.warn(`No se emitió "${input.titulo}": trabajador ${trabajadorId} no encontrado`);
+        return;
+      }
+      // Match por nombre completo (nombre + apellidos de la persona).
+      const primeraPalabra = trabajador.nombre.split(' ')[0];
+      const candidatos = await this.prisma.personas.findMany({
+        where: { nombre: { contains: primeraPalabra, mode: 'insensitive' } },
+        select: { id: true, nombre: true, apellido_paterno: true, apellido_materno: true },
+      });
+      const coincidencias = candidatos.filter(
+        (p) =>
+          [p.nombre, p.apellido_paterno, p.apellido_materno]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase() === trabajador.nombre.trim().toLowerCase(),
+      );
+      if (coincidencias.length !== 1) {
+        this.logger.warn(
+          `No se emitió "${input.titulo}": no se identificó una cuenta única para el trabajador "${trabajador.nombre}" (${coincidencias.length} coincidencias)`,
+        );
+        return;
+      }
+      const user = await this.prisma.users.findFirst({
+        where: { persona_id: coincidencias[0].id },
+        select: { id: true },
+      });
+      if (!user) {
+        this.logger.warn(
+          `No se emitió "${input.titulo}": el trabajador "${trabajador.nombre}" no tiene cuenta de usuario`,
+        );
+        return;
+      }
+      await this.emitirAUsuario(user.id, input);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo resolver el trabajador ${trabajadorId} para "${input.titulo}": ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  /**
+   * Emite a TODA UN ÁREA (torre): la reciben los usuarios con ese `torre`.
+   * Si la torre es null no se emite nada.
+   */
+  async emitirATorre(torre: CategoriaReporte | null, input: Omit<EmitirNotificacionInput, 'audienciaTorre'>): Promise<void> {
+    if (!torre) {
+      this.logger.warn(`No se emitió "${input.titulo}": el evento no tiene torre definida`);
+      return;
+    }
+    await this.emitir({ ...input, audienciaTorre: torre });
   }
 
   /**
@@ -102,39 +181,39 @@ export class NotificacionesService {
    * Visibilidad del buzón de un usuario (compartida por TODOS los endpoints):
    *  1. no descartada por él (tabla `notificaciones_lecturas`),
    *  2. no la disparó él (el actor no recibe su propio aviso),
-   *  3. audiencia: eventos para todos o para alguno de sus roles activos,
-   *  4. ACCESO A VISTA: el tipo de referencia es de una vista que puede ver.
+   *  3. dirigida A ÉL: personal, su área/torre, sus roles activos o "todos".
    */
   private async filtroDeBuzon(userId: string) {
-    const roles = await this.prisma.users_roles.findMany({
-      where: { user_id: userId, activo: true },
-      select: { rol_id: true },
-    });
+    const [user, roles] = await Promise.all([
+      this.prisma.users.findUnique({
+        where: { id: userId },
+        select: { torre: true },
+      }),
+      this.prisma.users_roles.findMany({
+        where: { user_id: userId, activo: true },
+        select: { rol_id: true },
+      }),
+    ]);
     const roleIds = roles.map((r) => r.rol_id);
 
-    const roleVistas = await this.prisma.role_vistas.findMany({
-      where: { rol_id: { in: roleIds }, puede_ver: true },
-      include: { vistas: { select: { ruta: true } } },
-    });
-    const rutasVisibles = new Set(
-      roleVistas
-        .map((rv) => rv.vistas?.ruta)
-        .filter((ruta): ruta is string => Boolean(ruta)),
-    );
-    const tiposVisibles = Object.entries(RUTA_POR_REFERENCIA)
-      .filter(([, ruta]) => rutasVisibles.has(ruta))
-      .map(([tipo]) => tipo);
-
-    return {
-      roleIds,
-      where: {
-        AND: [
-          { OR: [{ creado_por: null }, { creado_por: { not: userId } }] },
-          { OR: [{ audiencia_rol_id: null }, { audiencia_rol_id: { in: roleIds } }] },
-          { OR: [{ referencia_tipo: null }, { referencia_tipo: { in: tiposVisibles } }] },
-        ],
-      },
+    const where = {
+      AND: [
+        // El actor no recibe su propio aviso (system-only si fuera necesario
+        // se emite con creadoPor null).
+        { OR: [{ creado_por: null }, { creado_por: { not: userId } }] },
+        // Destinatarios explícitos: personal, su torre, sus roles o todos.
+        {
+          OR: [
+            { destinatario_user_id: userId },
+            ...(user?.torre ? [{ audiencia_torre: user.torre }] : []),
+            { audiencia_rol_id: null },
+            ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
+          ],
+        },
+      ],
     };
+
+    return { roleIds, where };
   }
 
   /** Buzón del usuario: merge del contenido visible con SU estado de lectura. */
