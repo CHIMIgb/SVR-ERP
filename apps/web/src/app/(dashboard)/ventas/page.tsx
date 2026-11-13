@@ -249,11 +249,12 @@ export default function VentasPage() {
   // ── Cobro ─────────────────────────────────────────────────────────────────
   // Alta rápida de cliente (B3): crea en el catálogo y lo deja seleccionado.
   const handleCrearCliente = useCallback(async () => {
-    if (!formCliente.nombre.trim() || !formCliente.correo.trim() || !formCliente.telefono.trim()) {
-      showToast('Nombre, teléfono y correo son obligatorios.', 'error');
+    if (!formCliente.nombre.trim() || !formCliente.correo.trim()) {
+      showToast('Nombre y correo son obligatorios.', 'error');
       return;
     }
-    if (!telefonoEsValido(formCliente.telefono)) {
+    // Teléfono opcional, pero si se captura debe ser un teléfono MX de 10 dígitos.
+    if (formCliente.telefono.trim() && !telefonoEsValido(formCliente.telefono)) {
       showToast('El teléfono debe tener 10 dígitos.', 'error');
       return;
     }
@@ -262,7 +263,7 @@ export default function VentasPage() {
       const res = await clientesApi.crear({
         nombre: formCliente.nombre.trim(),
         empresa: formCliente.empresa.trim() || undefined,
-        telefono: formCliente.telefono.trim(),
+        telefono: formCliente.telefono.trim() || '—',
         correo: formCliente.correo.trim(),
       });
       if (res.success) {        setClientesPos((prev) => [...prev, res.data]);
@@ -720,7 +721,7 @@ export default function VentasPage() {
               onChange={(e) => setFormCliente({ ...formCliente, nombre: e.target.value })}
             />
           </ModalField>
-          <ModalField label="Empresa (opcional)">
+          <ModalField label="Empresa">
             <input
               className={modalInputClass}
               placeholder="Solo si tiene empresa"
@@ -728,7 +729,7 @@ export default function VentasPage() {
               onChange={(e) => setFormCliente({ ...formCliente, empresa: e.target.value })}
             />
           </ModalField>
-          <ModalField label="Teléfono" required>
+          <ModalField label="Teléfono">
             <input
               className={modalInputClass}
               placeholder="Ej: 322-123-4567"

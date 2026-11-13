@@ -461,12 +461,9 @@ export default function ClientesPage() {
     {
       key: 'estado',
       header: 'Estado',
+      // Solo texto, sin badge de color (decisión del cliente).
       render: (item) => (
-        item.activo ? (
-          <Badge variant="success" size="sm">Activo</Badge>
-        ) : (
-          <Badge variant="neutral" size="sm">Inactivo</Badge>
-        )
+        <span className="font-semibold text-ui-600">{item.activo ? 'Activo' : 'Inactivo'}</span>
       ),
     },
     {
@@ -694,7 +691,7 @@ export default function ClientesPage() {
             />
           </ModalField>
 
-          <ModalField label="Empresa (opcional)">
+          <ModalField label="Empresa">
             <input
               type="text"
               className={modalInputClass}
@@ -937,7 +934,7 @@ export default function ClientesPage() {
             />
           </ModalField>
 
-          <ModalField label="Empresa (opcional)">
+          <ModalField label="Empresa">
             <input
               type="text"
               className={modalInputClass}
