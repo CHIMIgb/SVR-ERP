@@ -47,7 +47,7 @@
 | # | Tarea | Vista(s) | Estado |
 |---|---|---|---|
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
-| B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ⏳ plan por fases en §10 |
+| B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ✅ hecho (`83fb6198`, `c8423b02`) — faltan B2.3 (labels) y B2.4 (gates), ver §10 |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
@@ -308,14 +308,42 @@ plantilla de cotización que define QUÉ renglones lleva).
 > **Por qué en fases:** el cambio toca datos, backend y UI. Cada fase se
 > verifica y se commitea sola para que un error no arrastre a la siguiente.
 
-**Estado real de la BD local (2026-11-12):** 9 proyectos vivos (6 EN_PROCESO) ·
+**Avance (2026-11-12):** B2.1 y B2.2 **hechas y verificadas**; B2.3 y B2.4
+**parciales** (detalle en cada fase).
+
+| Fase | Estado | Evidencia |
+|---|---|---|
+| B2.1 Datos | ✅ HECHA | `83fb6198` — índice único `obras_proyecto_id_key`, 6 obras de backfill, 9 proyectos / 9 obras / 0 huérfanas |
+| B2.2 Backend | ✅ HECHA | `c8423b02` — `$transaction` en create/update/remove, sync de estados, auditoría con `obraId`/`estadoObra`; unit 31/31, integración 14/14 |
+| B2.3 UI | ⏳ PARCIAL | `/operaciones` y `/asistencia` ya funcionan sin cambios; falta renombrar "obra" → "proyecto" en los labels del alta |
+| B2.4 Gates | ⏳ PARCIAL | `prisma validate`, `migrate diff`, `tsc` (api/web) y los tests de `src/proyectos` corridos; falta `npm run test` completo, `npm run lint` y el smoke manual de `/asistencia` |
+
+**Desviaciones respecto al plan:** `prisma migrate dev` no puede replayar el
+historial reconstruido de esta BD, así que la migración se aplicó con
+`prisma db execute` + `migrate resolve --applied`. El backfill dejó 9/9 (no 7
+obras en el catálogo) y, por acuerdo posterior, el catálogo de obras de
+`/operaciones` pasó a filtrar **estrictamente `EN_PROCESO`** (`230c2d60`), no
+"todo menos FINALIZADA".
+
+**Ajustes posteriores de `/proyectos`** (fuera de B2, ya commiteados):
+`230c2d60` presupuesto con comas + alta sin fecha de hoy · `6e1196de` estado sin
+badge · `6ca8c740` fecha de inicio sin días pasados · `353c03f1` columna
+`municipio` · `78aebb8a` ubicación 2×3, editar sin progreso, finanzas con comas ·
+`9515a1d1` acción "Estado" con modal · `3d65d73d` editar sin select de estado.
+
+**Estado ANTES de B2.1 (2026-11-12):** 9 proyectos vivos (6 EN_PROCESO) ·
 3 obras, las 3 ya 1:1 con un proyecto del mismo nombre, sin geocerca capturada ·
 3 `registros_asistencia` con `obra_id` · 0 bitácoras de operación/renta y 0
 reportes de campo con `obra_id`. **Faltan 6 obras** — incluidos 4 de los 6
 proyectos EN_PROCESO, que son la causa del catálogo cojo de `/operaciones`
 (no es un bug de filtro).
 
-### B2.1 — Datos (una sola migración, idempotente)
+**Estado DESPUÉS de B2.1/B2.2 (verificado 2026-11-12):** **16 proyectos vivos /
+16 obras vivas / 0 proyectos sin obra** — la relación 1:1 ya la garantiza el
+índice único. Las obras nuevas nacen **sin geocerca** (`lat/lng/radio` NULL):
+se ubican después desde `/asistencia` ("Ubicar obra").
+
+### B2.1 — Datos (una sola migración, idempotente) — ✅ HECHA (`83fb6198`)
 
 **`apps/api/prisma/schema.prisma`:** en `model obras`, `proyecto_id` pasa a
 `@@unique([proyecto_id])` (una obra por proyecto, garantizado por la BD). Sin
@@ -352,7 +380,7 @@ mano, todo en una transacción):
 (`pg_dump svr_erp`) y en el servidor vía `migrate deploy`, nunca re-replays del
 historial.
 
-### B2.2 — Backend (`apps/api/src/proyectos/`)
+### B2.2 — Backend (`apps/api/src/proyectos/`) — ✅ HECHA (`c8423b02`)
 
 | Archivo | Cambio |
 |---|---|
@@ -374,7 +402,7 @@ ya existen).
   `registro_auditoria` conserva `PROYECTO_CREADO` SUCCESS y el DELETE contra la
   auditoría sigue rechazado por el trigger.
 
-### B2.3 — UI (solo lo mínimo)
+### B2.3 — UI (solo lo mínimo) — ⏳ PENDIENTE (parcial)
 
 | Archivo | Cambio |
 |---|---|
@@ -384,7 +412,7 @@ ya existen).
 **Verificación manual:** crear un proyecto → aparece en el catálogo de
 `/operaciones` sin pasos extra; marcarlo FINALIZADO → desaparece del catálogo.
 
-### B2.4 — Gates y cierre
+### B2.4 — Gates y cierre — ⏳ PENDIENTE (parcial)
 
 `npx prisma validate` + `migrate diff` vacío · `npm run test` ·
 `npm run test:integration` · `npx tsc --noEmit` (web) · `npm run lint` · smoke
