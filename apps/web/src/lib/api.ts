@@ -839,6 +839,7 @@ export interface ProyectoDTO {
   /** Ubicación exacta (opcional en BD; la UI la exige) */
   calle: string | null;
   colonia: string | null;
+  municipio: string | null;
   ciudad: string | null;
   estadoUbicacion: string | null;
   codigoPostal: string | null;
@@ -870,6 +871,7 @@ export interface ProyectoCreateInput {
   gastado?: number;
   calle?: string;
   colonia?: string;
+  municipio?: string;
   ciudad?: string;
   estadoUbicacion?: string;
   codigoPostal?: string;

@@ -179,6 +179,7 @@ describe('ProyectosService', () => {
           ...createDto,
           calle: 'Av. Juárez 100',
           colonia: 'Centro',
+          municipio: 'Xalisco',
           ciudad: 'Tepic',
           estadoUbicacion: 'Nayarit',
         },
@@ -189,8 +190,9 @@ describe('ProyectosService', () => {
       expect(obraData.nombre).toBe(mockProyecto.nombre);
       expect(obraData.proyecto_id).toBe(mockProyecto.id);
       expect(obraData.estado).toBe(EstadoObra.EN_PROCESO);
-      expect(obraData.ubicacion).toBe('Av. Juárez 100, Centro, Tepic, Nayarit');
+      expect(obraData.ubicacion).toBe('Av. Juárez 100, Centro, Xalisco, Tepic, Nayarit');
       expect(obraData.creado_por).toBe('user-1');
+      expect(prisma.proyectos.create.mock.calls[0][0].data.municipio).toBe('Xalisco');
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 

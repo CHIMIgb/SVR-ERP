@@ -69,6 +69,11 @@ export class UpdateProyectoDto {
   @IsOptional()
   @IsString()
   @MaxLength(120)
+  municipio?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
   ciudad?: string;
 
   @IsOptional()

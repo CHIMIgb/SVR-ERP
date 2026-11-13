@@ -239,6 +239,7 @@ describe('Proyectos Audit (Real DB)', () => {
       const direccion = {
         calle: 'Calle Test 456',
         colonia: 'Col. Pruebas',
+        municipio: 'Xalisco',
         ciudad: 'Tepic',
         estadoUbicacion: 'Nayarit',
         codigoPostal: '63000',
@@ -249,11 +250,13 @@ describe('Proyectos Audit (Real DB)', () => {
       const row = await prisma.proyectos.findUnique({ where: { id: proyecto.id } });
       expect(row?.calle).toBe('Calle Test 456');
       expect(row?.colonia).toBe('Col. Pruebas');
+      expect(row?.municipio).toBe('Xalisco');
       expect(row?.ciudad).toBe('Tepic');
       expect(row?.estado_ubicacion).toBe('Nayarit');
       expect(row?.codigo_postal).toBe('63000');
 
       // serializado en camelCase
+      expect(actualizado.municipio).toBe('Xalisco');
       expect(actualizado.ciudad).toBe('Tepic');
       expect(actualizado.codigoPostal).toBe('63000');
 
@@ -263,6 +266,7 @@ describe('Proyectos Audit (Real DB)', () => {
       const newValue = audits[0].new_value as Record<string, unknown> | null;
       expect(previous?.ciudad).toBeNull();
       expect(newValue?.ciudad).toBe('Tepic');
+      expect(newValue?.municipio).toBe('Xalisco');
       expect(newValue?.calle).toBe('Calle Test 456');
     });
   });

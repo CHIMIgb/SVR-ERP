@@ -60,12 +60,14 @@ export class ProyectosService {
   private ubicacionDe(direccion: {
     calle?: string | null;
     colonia?: string | null;
+    municipio?: string | null;
     ciudad?: string | null;
     estadoUbicacion?: string | null;
   }): string | null {
     const partes = [
       direccion.calle,
       direccion.colonia,
+      direccion.municipio,
       direccion.ciudad,
       direccion.estadoUbicacion,
     ]
@@ -171,6 +173,7 @@ export class ProyectosService {
           fecha_fin: new Date(dto.fechaFin),
           calle: dto.calle?.trim() ?? null,
           colonia: dto.colonia?.trim() ?? null,
+          municipio: dto.municipio?.trim() ?? null,
           ciudad: dto.ciudad?.trim() ?? null,
           estado_ubicacion: dto.estadoUbicacion?.trim() ?? null,
           codigo_postal: dto.codigoPostal ?? null,
@@ -252,6 +255,7 @@ export class ProyectosService {
       ...(dto.fechaFin !== undefined && { fecha_fin: new Date(dto.fechaFin) }),
       ...(dto.calle !== undefined && { calle: dto.calle?.trim() ?? null }),
       ...(dto.colonia !== undefined && { colonia: dto.colonia?.trim() ?? null }),
+      ...(dto.municipio !== undefined && { municipio: dto.municipio?.trim() ?? null }),
       ...(dto.ciudad !== undefined && { ciudad: dto.ciudad?.trim() ?? null }),
       ...(dto.estadoUbicacion !== undefined && { estado_ubicacion: dto.estadoUbicacion?.trim() ?? null }),
       ...(dto.codigoPostal !== undefined && { codigo_postal: dto.codigoPostal ?? null }),
@@ -486,6 +490,7 @@ export class ProyectosService {
       gastado: Number(proyecto.gastado ?? 0),
       calle: proyecto.calle ?? null,
       colonia: proyecto.colonia ?? null,
+      municipio: proyecto.municipio ?? null,
       ciudad: proyecto.ciudad ?? null,
       estadoUbicacion: proyecto.estado_ubicacion ?? null,
       codigoPostal: proyecto.codigo_postal ?? null,

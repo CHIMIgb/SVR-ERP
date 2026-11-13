@@ -47,6 +47,7 @@ const emptyForm = {
   progreso: '0',
   calle: '',
   colonia: '',
+  municipio: '',
   ciudad: '',
   estadoUbicacion: '',
   codigoPostal: '',
@@ -263,6 +264,7 @@ export default function ProyectosPage() {
       progreso: String(item.progreso),
       calle: item.calle ?? '',
       colonia: item.colonia ?? '',
+      municipio: item.municipio ?? '',
       ciudad: item.ciudad ?? '',
       estadoUbicacion: item.estadoUbicacion ?? '',
       codigoPostal: item.codigoPostal ?? '',
@@ -342,6 +344,7 @@ export default function ProyectosPage() {
       progreso: parseFloat(form.progreso),
       calle: form.calle.trim(),
       colonia: form.colonia.trim(),
+      municipio: form.municipio.trim(),
       ciudad: form.ciudad.trim(),
       estadoUbicacion: form.estadoUbicacion.trim(),
       codigoPostal: form.codigoPostal.trim(),
@@ -491,6 +494,7 @@ export default function ProyectosPage() {
         const direccionCompleta = [
           item.calle,
           item.colonia,
+          item.municipio,
           `${item.ciudad}, ${item.estadoUbicacion}`.replace(/ , |, $/, ', '),
           item.codigoPostal ? `CP ${item.codigoPostal}` : null,
         ]
@@ -817,6 +821,16 @@ export default function ProyectosPage() {
                 />
               </ModalField>
 
+              <ModalField label="Municipio" hint="Opcional.">
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Tepic"
+                  value={form.municipio}
+                  onChange={(e) => setForm({ ...form, municipio: e.target.value })}
+                />
+              </ModalField>
+
               <ModalField label="Ciudad" required>
                 <input
                   type="text"
@@ -966,6 +980,16 @@ export default function ProyectosPage() {
                   placeholder="Ej: Col. Centro"
                   value={form.colonia}
                   onChange={(e) => setForm({ ...form, colonia: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Municipio" hint="Opcional.">
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Tepic"
+                  value={form.municipio}
+                  onChange={(e) => setForm({ ...form, municipio: e.target.value })}
                 />
               </ModalField>
 
