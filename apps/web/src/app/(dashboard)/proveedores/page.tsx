@@ -42,14 +42,6 @@ const PAGE_SIZE = 8;
 const CATEGORIAS: CategoriaProveedor[] = ['Refacciones', 'Combustible', 'Materiales', 'Servicios', 'Otros'];
 const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MIXTO'] as const;
 
-const badgeVariant: Record<CategoriaProveedor, 'info' | 'warning' | 'success' | 'neutral' | 'primary'> = {
-  Refacciones: 'info',
-  Combustible: 'warning',
-  Materiales: 'success',
-  Servicios: 'neutral',
-  Otros: 'primary',
-};
-
 const estadoVariant: Record<EstadoOrden, 'warning' | 'info' | 'success' | 'error'> = {
   Pendiente: 'warning',
   Aprobada: 'info',
@@ -596,11 +588,8 @@ export default function ProveedoresPage() {
     {
       key: 'categoria',
       header: 'Categoría',
-      render: (p) => (
-        <Badge variant={badgeVariant[(p.categoria as CategoriaProveedor)] ?? 'neutral'} size="sm">
-          {p.categoria}
-        </Badge>
-      ),
+      // Solo texto, sin badge de color (decisión del cliente).
+      render: (p) => <span className="text-xs font-semibold text-ui-600">{p.categoria}</span>,
     },
     {
       key: 'saldo',
