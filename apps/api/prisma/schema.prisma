@@ -295,6 +295,7 @@ model clientes {
   pagos                                 pagos[]
   proyectos                             proyectos[]
   trabajadores                          trabajadores[]
+  ventas                                ventas[]
 }
 
 model contactos_emergencia {
@@ -1850,6 +1851,8 @@ model ventas {
   terminal          String         @default("TER-01")
   caja              String         @default("CAJA-PV")
   cliente           String         @default("Público en general")
+  /// Cliente del catálogo cuando la venta lleva cliente real (null = Público en general).
+  cliente_id        String?        @db.Uuid
   cajero            String
   subtotal          Decimal        @db.Decimal(12, 2)
   iva               Decimal        @db.Decimal(12, 2)
@@ -1869,9 +1872,11 @@ model ventas {
   eliminado_en      DateTime?      @db.Timestamptz()
   items             ventas_items[]
   pagos             ventas_pagos[]
+  clientes          clientes?      @relation(fields: [cliente_id], references: [id])
 
   @@index([creado_en])
   @@index([ticket, creado_en])
+  @@index([cliente_id])
 }
 
 /// Línea de venta (artículo + medida + cantidades; snapshot de precios).
