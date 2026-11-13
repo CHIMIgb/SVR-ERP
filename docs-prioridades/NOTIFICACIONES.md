@@ -37,8 +37,14 @@
 | Rol | Vistas visibles (relevantes) | Notificaciones que le aparecen |
 |---|---|---|
 | **Administrador** | `/proveedores`, `/ventas`, `/nomina` (y todo) | Cierres de caja (si no los registró él) |
-| **Administrativo** | `/dashboard`, `/trabajadores`, `/asistencia`, `/nomina`, `/reportes` | **Solo nómina pagada** |
+| **Administrativo** | `/dashboard`, `/trabajadores`, `/asistencia`, `/nomina`, `/reportes`, **`/proveedores`** (desde B5.7) | Órdenes aprobadas, abonos a proveedores, nómina pagada |
 | Residente / Técnico / Cobrador / Trabajador | ninguna de las 3 | Nada aún |
+
+> ✅ **B5.7 (2026-11-13):** el rol **Administrativo** recibió acceso a
+> `/proveedores` (migración `20261113041000_administrativo_proveedores_vista`,
+> decisión RBAC del cliente) — sus notificaciones de órdenes y abonos ya
+> tienen receptor (verificado: el buzón de `rrhh@` muestra las 5 de
+> proveedores y no el cierre de caja, que es del Administrador). |
 
 > ⚠️ **Decisión pendiente del cliente (B5.7):** el rol **Administrativo NO
 > tiene acceso a `/proveedores`** en `role_vistas`, así que las notificaciones
@@ -46,7 +52,6 @@
 > dispara es el actor excluido). Opciones: **(a)** dar acceso a
 > `/proveedores` a Administrativo, **(b)** dirigir esos eventos también a
 > Administrador, o **(c)** dejarlo así. Es una decisión de RBAC/negocio.
-
 ## 3. Cómo probarlo paso a paso (5 min)
 
 1. **Genera un evento que el receptor pueda ver.** Ejemplo garantizado:
