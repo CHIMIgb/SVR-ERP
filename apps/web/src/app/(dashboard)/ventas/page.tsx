@@ -176,8 +176,6 @@ export default function VentasPage() {
   // ── Cliente de la venta (B3: catálogo real, null = Público en general) ──
   const [clientesPos, setClientesPos] = useState<ClienteDTO[]>([]);
   const [clienteId, setClienteId] = useState('');
-  /** Búsqueda del selector de clientes ('' = todos). */
-  const [clienteBusqueda, setClienteBusqueda] = useState('');
   /** Nombre a mano cuando el cliente no está en el catálogo ('manual'). */
   const [clienteManual, setClienteManual] = useState('');
   const [modalCliente, setModalCliente] = useState(false);
@@ -192,21 +190,6 @@ export default function VentasPage() {
 
   const total = useMemo(() => calculateTotal(cart), [cart]);
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
-
-  // Cliente elegido (para fijarlo en el selector aunque el filtro lo esconda)
-  // y lista filtrada por la búsqueda.
-  const clienteSeleccionado = useMemo(
-    () => clientesPos.find((c) => c.id === clienteId) ?? null,
-    [clientesPos, clienteId],
-  );
-  const clientesFiltrados = useMemo(() => {
-    const q = clienteBusqueda.trim().toLowerCase();
-    if (!q) return clientesPos;
-    return clientesPos.filter(
-      (c) =>
-        (c.empresa || '').toLowerCase().includes(q) || c.nombre.toLowerCase().includes(q),
-    );
-  }, [clientesPos, clienteBusqueda]);
 
   // ── Carrito ──────────────────────────────────────────────────────────────
   // Devuelve false si supera el stock (con toast inmediato) para que el
@@ -525,17 +508,24 @@ export default function VentasPage() {
                       <span className="text-xs font-bold text-ui-400">{itemsSold} art(s)</span>
                     </div>
 
-                    {/* Cliente de la venta: catálogo (con buscador), nombre a
-                        mano, o "Público en general" si no se elige nada. */}
+                    {/* Cliente de la venta: catálogo, nombre a mano, o
+                        "Público en general" si no se elige nada. */}
                     <div className="flex items-center gap-2 mb-2">
                       <UserRound className="w-4 h-4 text-ui-400 shrink-0" />
-                      <input
+                      <select
                         className="h-10 flex-1 min-w-0 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
-                        placeholder="Buscar cliente por nombre o empresa..."
-                        value={clienteBusqueda}
-                        onChange={(e) => setClienteBusqueda(e.target.value)}
-                        aria-label="Buscar cliente"
-                      />
+                        value={clienteId}
+                        onChange={(e) => setClienteId(e.target.value)}
+                        aria-label="Cliente de la venta"
+                      >
+                        <option value="">Público en general</option>
+                        {clientesPos.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.empresa || c.nombre}
+                          </option>
+                        ))}
+                        <option value="manual">Otro (escribir nombre)...</option>
+                      </select>
                       <Button
                         variant="outline"
                         size="sm"
@@ -545,26 +535,6 @@ export default function VentasPage() {
                         Nuevo
                       </Button>
                     </div>
-                    <select
-                      className="h-10 w-full px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50 mb-3"
-                      value={clienteId}
-                      onChange={(e) => setClienteId(e.target.value)}
-                      aria-label="Cliente de la venta"
-                    >
-                      <option value="">Público en general</option>
-                      {/* El seleccionado SIEMPRE visible, aunque el filtro no lo encuentre. */}
-                      {clienteSeleccionado && (
-                        <option value={clienteSeleccionado.id}>
-                          {clienteSeleccionado.empresa || clienteSeleccionado.nombre}
-                        </option>
-                      )}
-                      {clientesFiltrados.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.empresa || c.nombre}
-                        </option>
-                      ))}
-                      <option value="manual">Otro (escribir nombre)...</option>
-                    </select>
                     {clienteId === 'manual' && (
                       <input
                         className="h-10 w-full px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50 mb-3"
