@@ -980,6 +980,9 @@ model notificaciones {
   referencia_id    String?           @db.Uuid
   audiencia_rol_id String?           @db.Uuid
   leido_en         DateTime?         @db.Timestamptz()
+  /// B5+ : descartada desde el centro de alertas — desaparece y no vuelve a
+  /// aparecer (la fila permanece en BD para auditoría/consultas).
+  descartada       Boolean           @default(false)
   creado_en        DateTime          @default(now()) @db.Timestamptz()
   creado_por       String?           @db.Uuid
   roles            roles?            @relation("notificaciones_audiencia", fields: [audiencia_rol_id], references: [id])
@@ -2374,6 +2377,7 @@ enum AuditAction {
   MOVIMIENTO_CONCILIADO
   MOVIMIENTO_DESCONCILIADO
   NOTIFICACION_LEIDA
+  NOTIFICACION_DESCARTADA
 }
 
 enum AuditResult {

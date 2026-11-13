@@ -100,6 +100,7 @@ describe('NotificacionesService', () => {
       expect(prisma.notificaciones.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
+            descartada: false,
             OR: [{ audiencia_rol_id: null }, { audiencia_rol_id: { in: ['rol-a', 'rol-b'] } }],
           },
           skip: 0,
@@ -155,6 +156,7 @@ describe('NotificacionesService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             leido_en: null,
+            descartada: false,
             OR: [{ audiencia_rol_id: null }, { audiencia_rol_id: { in: ['rol-a', 'rol-b'] } }],
           }),
           data: expect.objectContaining({ leido_en: expect.any(Date) }),
@@ -168,6 +170,30 @@ describe('NotificacionesService', () => {
         }),
       );
       expect(result.marcadas).toBe(3);
+    });
+  });
+
+  describe('descartarTodas', () => {
+    it('debe descartar el buzón (desaparecen y no vuelven) y auditar con el conteo', async () => {
+      const result = await service.descartarTodas(USER_ID);
+
+      expect(prisma.notificaciones.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            descartada: false,
+            OR: [{ audiencia_rol_id: null }, { audiencia_rol_id: { in: ['rol-a', 'rol-b'] } }],
+          }),
+          data: { descartada: true },
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.NOTIFICACION_DESCARTADA,
+          result: AuditResult.SUCCESS,
+          newValue: expect.objectContaining({ descartadas: 3 }),
+        }),
+      );
+      expect(result.descartadas).toBe(3);
     });
   });
 });

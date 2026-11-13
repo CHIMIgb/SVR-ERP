@@ -32,11 +32,17 @@ export class NotificacionesController {
     });
   }
 
-  /** Ruta fija ANTES que :id/leer para que no la capture el parámetro. */
+  /** Rutas fijas ANTES que :id/leer para que no las capture el parámetro. */
   @Patch('leer-todas')
   marcarTodas(@Req() req: Request) {
     const user = req.user as { userId: string };
     return this.notificacionesService.marcarTodas(user.userId);
+  }
+
+  @Patch('descartar-todas')
+  descartarTodas(@Req() req: Request) {
+    const user = req.user as { userId: string };
+    return this.notificacionesService.descartarTodas(user.userId);
   }
 
   @Patch(':id/leer')

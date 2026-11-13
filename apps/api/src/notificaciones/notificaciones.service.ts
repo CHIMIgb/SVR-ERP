@@ -71,6 +71,7 @@ export class NotificacionesService {
     const roleIds = roles.map((r) => r.rol_id);
 
     const where = {
+      descartada: false,
       OR: [
         { audiencia_rol_id: null },
         ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
@@ -175,6 +176,7 @@ export class NotificacionesService {
     const roleIds = roles.map((r) => r.rol_id);
     const where = {
       leido_en: null,
+      descartada: false,
       OR: [
         { audiencia_rol_id: null },
         ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
@@ -198,6 +200,44 @@ export class NotificacionesService {
     });
 
     return { message: 'Notificaciones marcadas como leídas', marcadas: resultado.count };
+  }
+
+  /**
+   * Descarta TODAS las notificaciones del buzón del usuario (icono de basura):
+   * desaparecen del centro y NO vuelven a aparecer — la fila queda en BD con
+   * `descartada = true` para auditoría/consultas.
+   */
+  async descartarTodas(userId: string) {
+    const roles = await this.prisma.users_roles.findMany({
+      where: { user_id: userId },
+      select: { rol_id: true },
+    });
+    const roleIds = roles.map((r) => r.rol_id);
+    const where = {
+      descartada: false,
+      OR: [
+        { audiencia_rol_id: null },
+        ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
+      ],
+    };
+
+    const resultado = await this.prisma.notificaciones.updateMany({
+      where,
+      data: { descartada: true },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.NOTIFICACION_DESCARTADA,
+      entityType: 'notificaciones',
+      entityId: ENTITY_PLACEHOLDER,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { descartadas: resultado.count },
+    });
+
+    return { message: 'Notificaciones descartadas', descartadas: resultado.count };
   }
 
   /** Audita un fallo de negocio y lanza la excepción correspondiente. */

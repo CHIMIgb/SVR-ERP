@@ -2632,6 +2632,10 @@ export const notificacionesApi = {
 
   marcarTodas: () =>
     apiClient.patch<{ message: string; marcadas: number }>('/notificaciones/leer-todas', {}),
+
+  /** Basura del centro: descarta todas (desaparecen y no vuelven; quedan en BD). */
+  descartarTodas: () =>
+    apiClient.patch<{ message: string; descartadas: number }>('/notificaciones/descartar-todas', {}),
 };
 
 // ────────────────────────────────────────────────────────────

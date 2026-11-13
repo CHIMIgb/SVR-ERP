@@ -128,11 +128,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     });
   }, [showToast]);
 
-  /** Sin borrado en la API (se expiran después): limpia solo lo local. */
+  /** Basura del centro: descarta en la API — desaparecen y no vuelven
+   * (quedan en BD con `descartada = true`). */
   const clearNotifications = useCallback(() => {
     setNotifications([]);
     setUnreadCount(0);
-  }, []);
+    notificacionesApi.descartarTodas().then((res) => {
+      if (!res.success) showToast(mensajeErrorApi(res.error, 'No se pudieron descartar las notificaciones.'), 'error');
+    });
+  }, [showToast]);
 
   return (
     <NotificationContext.Provider value={{
