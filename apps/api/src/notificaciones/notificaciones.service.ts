@@ -139,6 +139,33 @@ export class NotificacionesService {
     return this.serialize(actualizada);
   }
 
+  /**
+   * Emite para un ROL por su NOMBRE (evita UUIDs hardcodeados en los events).
+   * Best-effort doble: si el rol no existe o la emisión falla, solo loggea.
+   */
+  async emitirARol(
+    nombreRol: string,
+    input: Omit<EmitirNotificacionInput, 'audienciaRolId'>,
+  ): Promise<void> {
+    try {
+      const rol = await this.prisma.roles.findFirst({
+        where: { nombre: nombreRol, eliminado_en: null },
+        select: { id: true },
+      });
+      if (!rol) {
+        this.logger.warn(
+          `No se emitió la notificación "${input.titulo}": rol "${nombreRol}" no encontrado`,
+        );
+        return;
+      }
+      await this.emitir({ ...input, audienciaRolId: rol.id });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo resolver el rol "${nombreRol}" para la notificación "${input.titulo}": ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
   /** Marca TODAS las notificaciones del buzón del usuario como leídas. */
   async marcarTodas(userId: string) {
     const roles = await this.prisma.users_roles.findMany({
