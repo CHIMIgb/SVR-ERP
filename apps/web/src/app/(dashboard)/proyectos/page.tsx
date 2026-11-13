@@ -945,7 +945,7 @@ export default function ProyectosPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Presupuesto (MXN)" required>
+          <ModalField label="Presupuesto (MXN)" required className="sm:col-span-2">
             <input
               type="text"
               inputMode="decimal"
@@ -954,20 +954,6 @@ export default function ProyectosPage() {
               value={form.presupuesto}
               onChange={(e) => setForm({ ...form, presupuesto: formatearMiles(e.target.value) })}
             />
-          </ModalField>
-
-          <ModalField label="Estado">
-            <select
-              className={modalSelectClass}
-              value={form.estado}
-              onChange={(e) =>
-                setForm({ ...form, estado: e.target.value as NonNullable<ProyectoCreateInput['estado']> })
-              }
-            >
-              {ESTADOS.map((e) => (
-                <option key={e.value} value={e.value}>{e.label}</option>
-              ))}
-            </select>
           </ModalField>
 
           <ModalField label="Fecha de inicio" required>
