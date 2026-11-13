@@ -43,10 +43,17 @@
   - Entrada de ayer en la mañana que no se cierra.
   - Conteo de días antes del ingreso en el resumen semanal.
 - `npx tsc --noEmit` en `apps/api` y en `apps/web`, y `npx eslint` de los archivos web tocados: sin errores.
+- Integración contra Postgres real (Nómina, Asistencia y Trabajadores): 45 de 45.
+  - La prueba de sincronizar ahora espera el prorrateo del trabajador de prueba, que entra hoy, según el día de la
+    semana en que corre. Antes esperaba la semana completa.
+  - Nueva: un ajuste sobre una nómina pagada da 409 con FAIL real `NOMINA_PAGADA`, y el neto no cambia.
+- Suites completas: unitarias 1320 de 1322; integración 245 de 256. Las fallas son de módulos que este cambio no
+  toca, y en la BD local:
+  - Cobranza (unitarias): dependen de la fecha de hoy (días de atraso).
+  - Reportes de campo: buscan usuarios demo que la BD local no tiene.
+  - Ventas y Proveedores: ya fallaban antes por la hora y los datos locales.
 
 ## Pendientes
-- Las pruebas de integración no se corrieron: la BD local todavía no tiene las migraciones del 2026-11-08 al
-  2026-11-12 que entraron con el #18.
 - No se probó en navegador.
 - Turno nocturno: el plazo de la omisión sigue siendo a las 17:00 para todos. Para quien entra de noche, una
   entrada tarde queda vencida de inmediato. Falta definir su plazo.
