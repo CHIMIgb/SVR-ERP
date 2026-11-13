@@ -21,7 +21,62 @@
 
 ---
 
-## 1. Vistas en alcance y leyenda
+## 1. ÍNDICE DE TRABAJO — arrancable SIN respuestas (2026-11-12)
+
+> Nada de esto requiere las dudas de `docs-svr/docs-svr-dudas/` (las
+> decisiones por defecto viven en el §10 del análisis docs-svr). Lo que
+> espera respuestas queda excluido al final.
+
+### A. Del propio plan — reglas ya confirmadas (F1)
+
+| # | Tarea | Vista | Estado |
+|---|---|---|---|
+| A1 | FIX: checklist guarda "luces y alarmas" como correcto sin preguntarlo (O2) | `/operaciones` | ⏳ por hacer |
+| A2 | Ubicación inicial de máquina: el patio (O5) | `/operaciones` | ⏳ por hacer |
+| A3 | Operador de lista obligatoria, con **nombre completo** (O6 + decisión A27) | `/operaciones` | ⏳ por hacer |
+| A4 | Foto de cada máquina al alta (O8) | `/operaciones` | ⏳ por hacer |
+| A5 | Firma del residente gatea la facturación de bitácora (Fa2) | `/facturas` | ✅ ya implementado (workflow 02) — solo verificar |
+| A6 | El horómetro JAMÁS genera CxC; cobro solo por bitácora de renta (C1 + O12) | `/operaciones` | ✅ ya implementado — bitácoras-renta es la única vía facturable |
+| A7 | Trabajador en varias obras sin fricción (Pr2) | `/proyectos` | ✅ ya implementado (`trabajadores_proyectos`) |
+
+### B. De IMPLEMENTACIONES-A-FUTURO — sin dependencia de dudas
+
+| # | Tarea | Vista(s) | Estado |
+|---|---|---|---|
+| B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
+| B2 | **6.6: flujo proyecto→obra** — obra base automática, multi-frente, sync de estados (BD con 4 de 6 proyectos sin obra) | `/proyectos` → `/operaciones` | ⏳ |
+| B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
+| B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
+| B5 | **F5: configuración POS** — horario de caja que gatee + categorías visibles | `/configuracion`, `/ventas` | ⏳ |
+| B6 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal | ⏳ |
+| B7 | 6.2: incidente resuelto → deriva mantenimiento/reporte de campo | `/operaciones` | ⏳ |
+| B8 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ⏳ |
+| B9 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ⏳ |
+| B10 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
+| B11 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
+
+### Orden de arranque propuesto
+
+**A1–A4** (fixes rápidos, ya confirmados) → **B2** (proyecto→obra — prerrequisito
+operativo de `/operaciones`) → **B1** (partidas — habilita facturación por
+línea) → **B3** (FK cliente en POS — prepara el crédito C3) → **B4 → B5 →
+B6** → **B7–B9** → **B10 → B11**.
+
+### ⛔ Queda FUERA de este arranque (espera respuestas de docs-svr-dudas)
+
+- **F3 — motor de retiros**: espera la regla del precio (CLAVE 1) y el
+  amarrado a obra (CLAVE 2).
+- **Crédito en POS — validación de límite**: espera asignación/rebase
+  (CLAVE 6). La parte no bloqueante es B3.
+- **Conciliación semanal de proveedores**: espera qué es exactamente
+  (CLAVE 8) y corrección post-conciliación (CLAVE 9).
+- **Formatos de estado de cuenta (flete incluido/aparte)**: espera CLAVE 4.
+- **Desgloses de costo por proyecto** (6.8 Fase 3): espera el costeo F1
+  (¿gasto a obra o por camión? — CLAVE 3).
+
+---
+
+## 2. Vistas en alcance y leyenda
 
 **Comercial:** `/clientes`, `/cotizaciones`, `/finanzas`, `/proveedores`,
 `/ventas`, `/cobranza`, `/ventas/corte`, `/facturas`
@@ -33,7 +88,7 @@ Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuest
 
 ---
 
-## 2. COMERCIAL — correspondencia por vista
+## 3. COMERCIAL — correspondencia por vista
 
 ### 2.1 /finanzas
 | # | Punto (sección del doc) | Estado | Implicación |
@@ -89,7 +144,7 @@ el formato del estado de cuenta que se le entrega al cliente — ver §2.6)*
 
 ---
 
-## 3. OPERACIONES — correspondencia por vista
+## 4. OPERACIONES — correspondencia por vista
 
 ### 3.1 /operaciones (flota: máquinas, checklists, despachos, horómetro interno)
 La sección con más correspondencia del documento:
@@ -132,7 +187,7 @@ mencionan reportes de campo ni criba. Cero impacto (por ahora).**
 
 ---
 
-## 4. Corrección confirmada dentro de este alcance
+## 5. Corrección confirmada dentro de este alcance
 
 | # | Error detectado | Respuesta del cliente | Vista |
 |---|---|---|---|
@@ -144,7 +199,7 @@ Maquinaria: viven en el doc fuera-de-alcance.)*
 
 ---
 
-## 5. Entregables del cliente que este alcance necesita (§11 filtrado)
+## 6. Entregables del cliente que este alcance necesita (§11 filtrado)
 
 - **Tarifas de renta por hora**, por máquina o tipo de máquina (alimenta C2).
 - **Coordenadas y radio de cada obra** (alimenta Pr3/Pr4).
@@ -157,7 +212,7 @@ finiquito — viven en el doc fuera-de-alcance)*
 
 ---
 
-## 6. Orden de trabajo de este alcance
+## 7. Orden de trabajo de este alcance
 
 | Fase | Qué | Dependencia |
 |---|---|---|
@@ -171,7 +226,7 @@ y Mantenimiento/llantas/diésel (F8) viven en
 
 ---
 
-## 7. Vínculo con IMPLEMENTACIONES-A-FUTURO.md y el doc fuera-de-alcance
+## 8. Vínculo con IMPLEMENTACIONES-A-FUTURO.md y el doc fuera-de-alcance
 
 > **NOTA de prioridad:** las series **P** (P2 partidas, P6 vendedor, P8 metas…)
 > y **F** de `IMPLEMENTACIONES-A-FUTURO.md` siguen vigentes como hoja de ruta,
@@ -186,7 +241,7 @@ y Mantenimiento/llantas/diésel (F8) viven en
 
 ---
 
-## 8. Hilo conductor — orden de ejecución de los 3 documentos
+## 9. Hilo conductor — orden de ejecución de los 3 documentos
 
 ```
 [0] ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md   (TERMINADO — insumo)
