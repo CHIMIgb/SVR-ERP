@@ -11,7 +11,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import {
@@ -35,6 +34,15 @@ import { mensajeErrorApi } from '@/lib/api';
 // ── Constantes ──
 const PAGE_SIZE = 10;
 
+/** Condiciones precargadas del Word (COTIZACION 37/50): el usuario las edita. */
+const CONDICIONES_PLANTILLA =
+  'Estos precios no incluyen IVA.\n' +
+  'Vigencia de la presente cotización 8 días a partir de su elaboración.\n' +
+  'Anticipar una semana antes de la fecha de inicio de trabajo para verificar disponibilidad.';
+
+/** Renglón vacío para el editor de partidas (todo string para los inputs). */
+const emptyPartida = { descripcion: '', cantidad: '', unidad: '', precio: '' };
+
 const emptyStats: CotizacionesStats = {
   total: 0,
   pendientes: 0,
@@ -48,17 +56,14 @@ const emptyForm = {
   descripcion: '',
   monto: '',
   fecha: new Date().toISOString().split('T')[0],
+  condiciones: CONDICIONES_PLANTILLA,
+  items: [emptyPartida] as { descripcion: string; cantidad: string; unidad: string; precio: string }[],
 };
 
 // ── Helpers ──
+/** Solo texto, sin badge de color (decisión del cliente). */
 function estadoBadge(estado: CotizacionDTO['estado']) {
-  if (estado === 'Aceptada') {
-    return <Badge variant="success" size="sm"><CheckCircle2 className="w-3 h-3" />Aceptada</Badge>;
-  }
-  if (estado === 'Rechazada') {
-    return <Badge variant="error" size="sm"><XCircle className="w-3 h-3" />Rechazada</Badge>;
-  }
-  return <Badge variant="warning" size="sm"><Clock className="w-3 h-3" />Pendiente</Badge>;
+  return <span className="font-semibold text-ui-600">{estado}</span>;
 }
 
 export default function CotizacionesPage() {
@@ -94,6 +99,8 @@ export default function CotizacionesPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
+  /** La cotización editada tenía partidas: el PATCH siempre envía el reemplazo. */
+  const [editHasItems, setEditHasItems] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [estadoOpen, setEstadoOpen] = useState(false);
   const [selectedEstado, setSelectedEstado] = useState<'ACEPTADA' | 'RECHAZADA'>('ACEPTADA');
@@ -194,6 +201,10 @@ export default function CotizacionesPage() {
   const openDetail = useCallback((item: CotizacionDTO) => {
     setSelected(item);
     setDetailOpen(true);
+    // El listado no trae partidas: el detalle las pide al backend.
+    cotizacionesApi.obtener(item.id).then((res) => {
+      if (res.success && res.data) setSelected(res.data);
+    });
   }, []);
 
   const openCrear = useCallback(() => {
@@ -214,11 +225,21 @@ export default function CotizacionesPage() {
 
   const openEditar = useCallback((item: CotizacionDTO) => {
     setEditId(item.id);
+    setEditHasItems(Boolean(item.items?.length));
     setEditForm({
       clienteId: item.clienteId,
       descripcion: item.descripcion,
       monto: String(item.monto),
       fecha: item.fecha,
+      condiciones: item.condiciones ?? CONDICIONES_PLANTILLA,
+      items: item.items?.length
+        ? item.items.map((it) => ({
+            descripcion: it.descripcion,
+            cantidad: String(it.cantidad),
+            unidad: it.unidad,
+            precio: String(it.precioUnitario),
+          }))
+        : [emptyPartida],
     });
     setDetailOpen(false);
     setEditOpen(true);
@@ -228,6 +249,30 @@ export default function CotizacionesPage() {
     fetchData(pagination.page, search, filterValues);
     fetchStats();
   }, [fetchData, pagination.page, search, filterValues, fetchStats]);
+
+  // ── Handlers del editor de partidas (crear y editar comparten el patrón) ──
+  const moverPartida = (
+    items: typeof emptyForm.items,
+    indice: number,
+    cambio: Partial<typeof emptyPartida>,
+  ) => items.map((p, i) => (i === indice ? { ...p, ...cambio } : p));
+
+  const totalPartidas = (items: typeof emptyForm.items) =>
+    items.reduce((suma, p) => {
+      const monto = Number(p.cantidad) * Number(p.precio);
+      return suma + (isNaN(monto) ? 0 : monto);
+    }, 0);
+
+  const partidasValidas = (items: typeof emptyForm.items) =>
+    items.every(
+      (p) =>
+        p.descripcion.trim() &&
+        p.unidad.trim() &&
+        Number(p.cantidad) > 0 &&
+        !isNaN(Number(p.cantidad)) &&
+        !isNaN(Number(p.precio)) &&
+        Number(p.precio) >= 0,
+    );
 
   // ── Crear cotización ──
   const handleCreate = useCallback(async () => {
@@ -239,8 +284,21 @@ export default function CotizacionesPage() {
       showToast('Ingresa una descripción o concepto.', 'error');
       return;
     }
-    const monto = Number(form.monto);
-    if (isNaN(monto) || monto <= 0) {
+    const conPartidas = form.items.some((p) => p.descripcion.trim() || p.cantidad || p.precio);
+    if (conPartidas && !partidasValidas(form.items)) {
+      showToast('Cada partida necesita descripción, cantidad, unidad y precio válido.', 'error');
+      return;
+    }
+    const itemsPayload = conPartidas
+      ? form.items.map((p) => ({
+          descripcion: p.descripcion.trim(),
+          cantidad: Number(p.cantidad),
+          unidad: p.unidad.trim(),
+          precioUnitario: Number(p.precio),
+        }))
+      : undefined;
+    const monto = conPartidas ? totalPartidas(form.items) : Number(form.monto);
+    if (conPartidas ? monto <= 0 : isNaN(monto) || monto <= 0) {
       showToast('Ingresa un monto válido.', 'error');
       return;
     }
@@ -251,9 +309,11 @@ export default function CotizacionesPage() {
         descripcion: form.descripcion.trim(),
         monto,
         fecha: form.fecha,
+        ...(form.condiciones.trim() ? { condiciones: form.condiciones.trim() } : {}),
+        ...(itemsPayload ? { items: itemsPayload } : {}),
       });
       if (res.success) {
-        showToast(`Cotización ${res.data.codigo ?? ''} creada por ${formatCurrency(monto)}.`, 'success');
+        showToast(`Cotización ${res.data.codigo ?? ''} creada por ${formatCurrency(res.data.monto)}.`, 'success');
         setCreateOpen(false);
         refresh();
       } else {
@@ -314,10 +374,28 @@ export default function CotizacionesPage() {
       showToast('Ingresa una descripción o concepto.', 'error');
       return;
     }
-    const monto = Number(editForm.monto);
-    if (isNaN(monto) || monto <= 0) {
-      showToast('Ingresa un monto válido.', 'error');
-      return;
+    const hayPartidas = editHasItems || editForm.items.some((p) => p.descripcion.trim() || p.cantidad || p.precio);
+    const renglones = editForm.items.filter((p) => p.descripcion.trim() || p.cantidad || p.precio);
+
+    let monto: number;
+    if (hayPartidas && renglones.length > 0) {
+      // Con partidas: cada renglón completo y el monto se recalcula.
+      if (!partidasValidas(editForm.items)) {
+        showToast('Cada partida necesita descripción, cantidad, unidad y precio válido.', 'error');
+        return;
+      }
+      monto = totalPartidas(editForm.items);
+      if (monto <= 0) {
+        showToast('Ingresa un monto válido.', 'error');
+        return;
+      }
+    } else {
+      // Plana (sin partidas o el usuario borró todas): monto capturado a mano.
+      monto = Number(editForm.monto);
+      if (isNaN(monto) || monto <= 0) {
+        showToast('Ingresa un monto válido.', 'error');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -327,6 +405,30 @@ export default function CotizacionesPage() {
         descripcion: editForm.descripcion.trim(),
         monto,
         fecha: editForm.fecha,
+        ...(editForm.condiciones.trim() ? { condiciones: editForm.condiciones.trim() } : {}),
+        // Con partidas originales el reemplazo SIEMPRE va (incluso [] = plana);
+        // en una plana solo se envían si el usuario añadió renglones.
+        ...(editHasItems
+          ? {
+              items: renglones.length > 0
+                ? renglones.map((p) => ({
+                    descripcion: p.descripcion.trim(),
+                    cantidad: Number(p.cantidad),
+                    unidad: p.unidad.trim(),
+                    precioUnitario: Number(p.precio),
+                  }))
+                : [],
+            }
+          : renglones.length > 0
+            ? {
+                items: renglones.map((p) => ({
+                  descripcion: p.descripcion.trim(),
+                  cantidad: Number(p.cantidad),
+                  unidad: p.unidad.trim(),
+                  precioUnitario: Number(p.precio),
+                })),
+              }
+            : {}),
       });
       if (res.success) {
         showToast('Cotización actualizada.', 'success');
@@ -341,9 +443,12 @@ export default function CotizacionesPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [editId, editForm, showToast, refresh]);
+  }, [editId, editForm, editHasItems, showToast, refresh]);
 
   // ── Columnas de DataTable ──
+  const hayPartidasForm = form.items.some((p) => p.descripcion.trim() || p.cantidad || p.precio);
+  const hayPartidasEdit = editHasItems || editForm.items.some((p) => p.descripcion.trim() || p.cantidad || p.precio);
+
   const columns: Column<CotizacionDTO>[] = [
     {
       key: 'cliente',
@@ -639,11 +744,14 @@ export default function CotizacionesPage() {
               placeholder="0.00"
               min="0"
               step="0.01"
-              value={form.monto}
+              disabled={hayPartidasForm}
+              value={hayPartidasForm ? totalPartidas(form.items) : form.monto}
               onChange={(e) => setForm({ ...form, monto: e.target.value })}
             />
             <p className="mt-1 text-xs text-ui-500">
-              La factura se emite por este monto + IVA 16% (se aplica al aceptar con factura).
+              {hayPartidasForm
+                ? 'Calculado como la suma de las partidas (cantidad × precio).'
+                : 'La factura se emite por este monto + IVA 16% (se aplica al aceptar con factura).'}
             </p>
           </ModalField>
 
@@ -653,6 +761,67 @@ export default function CotizacionesPage() {
               className={modalInputClass}
               value={form.fecha}
               onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Partidas (renglones de la cotización)" className="sm:col-span-2">
+            <div className="space-y-2">
+              {form.items.map((p, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2">
+                  <input
+                    className={`${modalInputClass} col-span-12 sm:col-span-5`}
+                    placeholder="Concepto (ej: Vibrocompactador BOMAG)"
+                    value={p.descripcion}
+                    onChange={(e) => setForm({ ...form, items: moverPartida(form.items, i, { descripcion: e.target.value }) })}
+                  />
+                  <input
+                    className={`${modalInputClass} col-span-4 sm:col-span-2`}
+                    placeholder="Cant."
+                    inputMode="decimal"
+                    value={p.cantidad}
+                    onChange={(e) => setForm({ ...form, items: moverPartida(form.items, i, { cantidad: e.target.value }) })}
+                  />
+                  <input
+                    className={`${modalInputClass} col-span-4 sm:col-span-2`}
+                    placeholder="Unidad"
+                    value={p.unidad}
+                    onChange={(e) => setForm({ ...form, items: moverPartida(form.items, i, { unidad: e.target.value }) })}
+                  />
+                  <input
+                    className={`${modalInputClass} col-span-3 sm:col-span-2`}
+                    placeholder="Precio"
+                    inputMode="decimal"
+                    value={p.precio}
+                    onChange={(e) => setForm({ ...form, items: moverPartida(form.items, i, { precio: e.target.value }) })}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Quitar partida"
+                    className="col-span-1 h-10 min-h-[44px] sm:h-10 flex items-center justify-center rounded-lg border border-ui-200 text-ui-400 hover:text-red-500 hover:border-red-300"
+                    onClick={() => setForm({ ...form, items: form.items.filter((_, j) => j !== i) })}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="text-xs font-bold text-primary hover:underline"
+                onClick={() => setForm({ ...form, items: [...form.items, emptyPartida] })}
+              >
+                + Agregar partida
+              </button>
+              <p className="text-xs text-ui-500">
+                Renglón = concepto + cantidad + unidad + precio unitario. Sin partidas, la cotización se captura con el subtotal de arriba.
+              </p>
+            </div>
+          </ModalField>
+
+          <ModalField label="Condiciones (se muestran en la cotización)" className="sm:col-span-2">
+            <textarea
+              className={`${modalInputClass} min-h-[180px] resize-y`}
+              value={form.condiciones}
+              onChange={(e) => setForm({ ...form, condiciones: e.target.value })}
             />
           </ModalField>
         </div>
@@ -700,11 +869,14 @@ export default function CotizacionesPage() {
               placeholder="0.00"
               min="0"
               step="0.01"
-              value={editForm.monto}
+              disabled={hayPartidasEdit}
+              value={hayPartidasEdit ? totalPartidas(editForm.items) : editForm.monto}
               onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
             />
             <p className="mt-1 text-xs text-ui-500">
-              La factura se emite por este monto + IVA 16%.
+              {hayPartidasEdit
+                ? 'Calculado como la suma de las partidas (cantidad × precio).'
+                : 'La factura se emite por este monto + IVA 16%.'}
             </p>
           </ModalField>
 
@@ -714,6 +886,67 @@ export default function CotizacionesPage() {
               className={modalInputClass}
               value={editForm.fecha}
               onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Partidas (renglones de la cotización)" className="sm:col-span-2">
+            <div className="space-y-2">
+              {editForm.items.map((p, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2">
+                  <input
+                    className={`${modalInputClass} col-span-12 sm:col-span-5`}
+                    placeholder="Concepto (ej: Vibrocompactador BOMAG)"
+                    value={p.descripcion}
+                    onChange={(e) => setEditForm({ ...editForm, items: moverPartida(editForm.items, i, { descripcion: e.target.value }) })}
+                  />
+                  <input
+                    className={`${modalInputClass} col-span-4 sm:col-span-2`}
+                    placeholder="Cant."
+                    inputMode="decimal"
+                    value={p.cantidad}
+                    onChange={(e) => setEditForm({ ...editForm, items: moverPartida(editForm.items, i, { cantidad: e.target.value }) })}
+                  />
+                  <input
+                    className={`${modalInputClass} col-span-4 sm:col-span-2`}
+                    placeholder="Unidad"
+                    value={p.unidad}
+                    onChange={(e) => setEditForm({ ...editForm, items: moverPartida(editForm.items, i, { unidad: e.target.value }) })}
+                  />
+                  <input
+                    className={`${modalInputClass} col-span-3 sm:col-span-2`}
+                    placeholder="Precio"
+                    inputMode="decimal"
+                    value={p.precio}
+                    onChange={(e) => setEditForm({ ...editForm, items: moverPartida(editForm.items, i, { precio: e.target.value }) })}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Quitar partida"
+                    className="col-span-1 h-10 min-h-[44px] sm:h-10 flex items-center justify-center rounded-lg border border-ui-200 text-ui-400 hover:text-red-500 hover:border-red-300"
+                    onClick={() => setEditForm({ ...editForm, items: editForm.items.filter((_, j) => j !== i) })}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="text-xs font-bold text-primary hover:underline"
+                onClick={() => setEditForm({ ...editForm, items: [...editForm.items, emptyPartida] })}
+              >
+                + Agregar partida
+              </button>
+              <p className="text-xs text-ui-500">
+                Renglón = concepto + cantidad + unidad + precio unitario. Sin partidas, la cotización se captura con el subtotal de arriba.
+              </p>
+            </div>
+          </ModalField>
+
+          <ModalField label="Condiciones (se muestran en la cotización)" className="sm:col-span-2">
+            <textarea
+              className={`${modalInputClass} min-h-[180px] resize-y`}
+              value={editForm.condiciones}
+              onChange={(e) => setEditForm({ ...editForm, condiciones: e.target.value })}
             />
           </ModalField>
         </div>
@@ -772,6 +1005,40 @@ export default function CotizacionesPage() {
                 <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest mb-1">Descripción</p>
                 <p className="text-sm font-semibold text-ui-700">{selected.descripcion}</p>
               </div>
+
+              {selected.items && selected.items.length > 0 && (
+                <div className="border border-ui-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-ui-50 text-[10px] font-black text-ui-400 uppercase tracking-widest">
+                        <th className="px-3 py-2 text-left">Descripción</th>
+                        <th className="px-2 py-2 text-right">Cant.</th>
+                        <th className="px-2 py-2 text-left">Unidad</th>
+                        <th className="px-2 py-2 text-right">P. Unitario</th>
+                        <th className="px-3 py-2 text-right">Importe</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.items.map((partida) => (
+                        <tr key={partida.id} className="border-t border-ui-100">
+                          <td className="px-3 py-2 font-semibold text-ui-700">{partida.descripcion}</td>
+                          <td className="px-2 py-2 text-right font-medium text-ui-600">{partida.cantidad}</td>
+                          <td className="px-2 py-2 font-medium text-ui-500">{partida.unidad}</td>
+                          <td className="px-2 py-2 text-right font-medium text-ui-600">{formatCurrency(partida.precioUnitario)}</td>
+                          <td className="px-3 py-2 text-right font-black text-ui-900">{formatCurrency(partida.importe)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {selected.condiciones && (
+                <div className="bg-ui-50 border border-dashed border-ui-200 rounded-xl p-4">
+                  <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest mb-1">Condiciones</p>
+                  <p className="text-xs font-semibold text-ui-600 whitespace-pre-line">{selected.condiciones}</p>
+                </div>
+              )}
             </div>
           )}
         </ModalBody>
