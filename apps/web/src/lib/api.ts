@@ -2473,12 +2473,17 @@ export interface CotizacionDTO {
   clienteId: string;
   descripcion: string;
   monto: number;
+  condiciones: string | null;
   fecha: string; // YYYY-MM-DD
   estado: 'Pendiente' | 'Aceptada' | 'Rechazada';
   motivoRechazo?: string | null;
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  /** Partidas (renglones). Solo presentes en el detalle y en crear/editar; los listados las omiten. */
+  items?: CotizacionItemDTO[];
+  /** Nombre del usuario que creó la cotización (solo en el detalle). */
+  creadoPor?: string | null;
   // Campos del cliente (solo presentes en el listado/detalle global)
   clienteNombre?: string | null;
   clienteEmpresa?: string | null;
@@ -2486,10 +2491,31 @@ export interface CotizacionDTO {
   clienteCorreo?: string | null;
 }
 
+/** Un renglón de cotización (partida). El importe lo calcula el backend. */
+export interface CotizacionItemDTO {
+  id: string;
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precioUnitario: number;
+  importe: number;
+  orden: number;
+}
+
+export interface CotizacionItemInput {
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precioUnitario: number;
+}
+
 export interface CotizacionCreateInput {
   descripcion: string;
   monto: number;
   fecha: string; // YYYY-MM-DD
+  condiciones?: string;
+  /** Con partidas, el backend recalcula el monto = Σ (cantidad × precioUnitario). */
+  items?: CotizacionItemInput[];
 }
 
 /** Campos editables de una cotización (todos opcionales = PATCH). */
@@ -2498,6 +2524,9 @@ export interface CotizacionUpdateInput {
   descripcion?: string;
   monto?: number;
   fecha?: string; // YYYY-MM-DD
+  condiciones?: string;
+  /** Reemplazo completo de partidas: `[]` las elimina; `undefined` no las toca. */
+  items?: CotizacionItemInput[];
 }
 
 /** Métricas para las tarjetas de /cotizaciones. */

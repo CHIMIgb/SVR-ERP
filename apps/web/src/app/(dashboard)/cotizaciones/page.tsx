@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   Plus, FileText, SlidersHorizontal, X, Pencil,
   Eye, Clock, CheckCircle2, XCircle, CalendarDays,
-  Building2, TrendingUp, ThumbsDown,
+  Building2, TrendingUp, ThumbsDown, User,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -997,6 +997,13 @@ export default function CotizacionesPage() {
                   <div>
                     <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Fecha</p>
                     <p className="text-sm font-bold text-ui-700">{formatFechaSolo(selected.fecha)}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <User className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Creada por</p>
+                    <p className="text-sm font-bold text-ui-700">{selected.creadoPor ?? '—'}</p>
                   </div>
                 </div>
               </div>

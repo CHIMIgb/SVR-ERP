@@ -272,6 +272,13 @@ export class CotizacionesService {
       include: {
         clientes: { select: { id: true, nombre: true, empresa: true, telefono: true, correo: true } },
         items: { orderBy: { orden: 'asc' } },
+        users_cotizaciones_creado_porTousers: {
+          select: {
+            personas_users_persona_idTopersonas: {
+              select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+            },
+          },
+        },
       },
     });
 
@@ -779,12 +786,18 @@ export class CotizacionesService {
   private serializeGlobal(cotizacion: any) {
     const base = this.serialize(cotizacion);
     const cliente = cotizacion.clientes;
+    const creador = cotizacion.users_cotizaciones_creado_porTousers?.personas_users_persona_idTopersonas;
     return {
       ...base,
       clienteNombre: cliente?.nombre ?? null,
       clienteEmpresa: cliente?.empresa ?? null,
       clienteTelefono: cliente?.telefono ?? null,
       clienteCorreo: cliente?.correo ?? null,
+      creadoPor: creador
+        ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+            .filter(Boolean)
+            .join(' ')
+        : null,
     };
   }
 
