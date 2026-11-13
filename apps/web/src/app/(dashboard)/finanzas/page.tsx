@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Download, Landmark,
   Receipt, BadgeCheck, Unlink,} from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
-import { formatFechaSolo } from '@/lib/formatters';
+import { formatFechaSolo, fechaLocalHoy, formatearMiles, parsearMiles } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -221,7 +221,8 @@ export default function FinanzasPage() {
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
-    setForm({ ...emptyForm, fecha: new Date().toISOString().split('T')[0] });
+    // La fecha se registra sola (hoy, horario local); ya no se captura en el modal.
+    setForm({ ...emptyForm, fecha: fechaLocalHoy() });
     setCreateOpen(true);
   }, []);
 
@@ -248,7 +249,7 @@ export default function FinanzasPage() {
     if (!form.categoria) return 'La categoría es obligatoria.';
     if (form.categoria === 'Otros' && !form.otraCategoria.trim())
       return 'Escribe el nombre de la categoría personalizada.';
-    if (!form.monto || Number(form.monto) <= 0) return 'El monto debe ser mayor a 0.';
+    if (!form.monto || parsearMiles(form.monto) <= 0) return 'El monto debe ser mayor a 0.';
     if (!form.descripcion) return 'La descripción es obligatoria.';
     if (!form.fecha) return 'La fecha es obligatoria.';
     return null;
@@ -266,7 +267,7 @@ export default function FinanzasPage() {
       const res = await finanzasApi.crear({
         tipo: form.tipo,
         categoria: form.categoria,
-        monto: Number(form.monto),
+        monto: parsearMiles(form.monto),
         fecha: form.fecha,
         descripcion: form.descripcion,
         otraCategoria: form.categoria === 'Otros' ? form.otraCategoria.trim() : undefined,
@@ -683,16 +684,7 @@ export default function FinanzasPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Categoría" required className="sm:col-span-2">
+          <ModalField label="Categoría" required>
             <select
               className={modalSelectClass}
               value={form.categoria}
@@ -716,13 +708,12 @@ export default function FinanzasPage() {
 
           <ModalField label="Monto (MXN)" required>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="0.00"
-              min="0"
-              step="0.01"
               value={form.monto}
-              onChange={(e) => setForm({ ...form, monto: e.target.value })}
+              onChange={(e) => setForm({ ...form, monto: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
