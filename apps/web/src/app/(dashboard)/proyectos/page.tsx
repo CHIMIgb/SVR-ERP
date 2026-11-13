@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, HardHat, CheckCircle2, FolderKanban,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Wallet,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Wallet, Flag,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -117,6 +117,9 @@ export default function ProyectosPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [estadoOpen, setEstadoOpen] = useState(false);
+  const [estadoValue, setEstadoValue] =
+    useState<NonNullable<ProyectoCreateInput['estado']>>('EN_PROCESO');
   const [finanzasOpen, setFinanzasOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ProyectoDTO | null>(null);
   const [viewItem, setViewItem] = useState<ProyectoDTO | null>(null);
@@ -279,6 +282,12 @@ export default function ProyectosPage() {
       gastado: formatearMiles(String(item.gastado)),
     });
     setFinanzasOpen(true);
+  }, []);
+
+  const openEstado = useCallback((item: ProyectoDTO) => {
+    setSelectedItem(item);
+    setEstadoValue(estadoToValue(item.estado));
+    setEstadoOpen(true);
   }, []);
 
   const openDelete = useCallback((item: ProyectoDTO) => {
@@ -444,6 +453,28 @@ export default function ProyectosPage() {
     }
   }, [selectedItem, validateFinanzas, finanzasForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
+  const handleEstado = useCallback(async () => {
+    if (!selectedItem) return;
+    setSubmitting(true);
+    try {
+      const res = await proyectosApi.actualizar(selectedItem.id, { estado: estadoValue });
+      if (res.success) {
+        const label = ESTADOS.find((e) => e.value === estadoValue)?.label ?? estadoValue;
+        showToast(`"${selectedItem.nombre}" ahora está ${label}.`, 'success');
+        setEstadoOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'Error al cambiar el estado.'), 'error');
+      }
+    } catch {
+      showToast('Error de conexión al cambiar el estado.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, estadoValue, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
@@ -552,6 +583,16 @@ export default function ProyectosPage() {
               onClick={(e) => { e.stopPropagation(); openView(item); }}
             >
               Ver
+            </Button>
+          )}
+          {puedeEditar && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Flag className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openEstado(item); }}
+            >
+              Estado
             </Button>
           )}
           {puedeEditar && (
@@ -1019,6 +1060,37 @@ export default function ProyectosPage() {
             </div>
           </div>
         </div>
+      </FormModal>
+
+      <FormModal
+        open={estadoOpen}
+        onClose={() => setEstadoOpen(false)}
+        onCancel={() => setEstadoOpen(false)}
+        title="Cambiar Estado"
+        subtitle={selectedItem ? `Proyecto: ${selectedItem.nombre}` : undefined}
+        submitLabel="Guardar Estado"
+        cancelLabel="Cancelar"
+        onSubmit={handleEstado}
+        isSubmitting={submitting}
+      >
+        <ModalField label="Estado del proyecto" required>
+          <select
+            className={modalSelectClass}
+            value={estadoValue}
+            onChange={(e) =>
+              setEstadoValue(e.target.value as NonNullable<ProyectoCreateInput['estado']>)
+            }
+          >
+            {ESTADOS.map((e) => (
+              <option key={e.value} value={e.value}>{e.label}</option>
+            ))}
+          </select>
+        </ModalField>
+
+        <p className="text-[11px] text-ui-400 font-medium mt-3">
+          El estado se sincroniza con la obra: al marcarlo Finalizado deja de
+          aparecer en el catálogo de obras de /operaciones.
+        </p>
       </FormModal>
 
       <FormModal
