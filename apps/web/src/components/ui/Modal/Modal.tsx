@@ -9,6 +9,10 @@ import { Overlay } from '@/components/ui/Overlay';
 
 type ModalSize = keyof typeof modalClasses.sizes;
 
+/** Contador de modales abiertos: con modales anidados, solo el último en
+ *  cerrarse libera el bloqueo de scroll (y la compensación del scrollbar). */
+let modalesAbiertos = 0;
+
 export interface ModalProps {
   /** Estado de visibilidad del modal */
   open: boolean;
@@ -46,11 +50,24 @@ export function Modal({
   useEffect(() => {
     if (open) {
       document.addEventListener('keydown', handleKeyDown);
+      // Compensa el ancho del scrollbar ANTES de bloquear el scroll para que
+      // la página no "salte" al desaparecer la barra. El contador soporta
+      // modales anidados (solo el último en cerrarse libera el bloqueo).
+      if (modalesAbiertos === 0) {
+        const anchoBarra = window.innerWidth - document.documentElement.clientWidth;
+        if (anchoBarra > 0) document.body.style.paddingRight = `${anchoBarra}px`;
+      }
+      modalesAbiertos += 1;
       document.body.style.overflow = 'hidden';
     }
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      modalesAbiertos -= 1;
+      if (modalesAbiertos <= 0) {
+        modalesAbiertos = 0;
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+      }
     };
   }, [open, handleKeyDown]);
 
