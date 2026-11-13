@@ -973,6 +973,8 @@ model ordenes_compra {
   monto                                       Decimal             @db.Decimal(14, 2)
   pagado                                      Decimal             @default(0) @db.Decimal(14, 2)
   fecha                                       DateTime            @db.Date
+  /// Fecha límite de pago (B4): se propaga a la CxP que nace con la OC.
+  fecha_vencimiento                           DateTime?           @db.Date
   estado                                      EstadoOrdenCompra   @default(PENDIENTE)
   motivo_cancelacion                          String?
   activo                                      Boolean             @default(true)
