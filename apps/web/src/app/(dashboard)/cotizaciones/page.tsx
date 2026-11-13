@@ -37,6 +37,7 @@ const PAGE_SIZE = 10;
 /** Condiciones precargadas del Word (COTIZACION 37/50): el usuario las edita. */
 const CONDICIONES_PLANTILLA =
   'Estos precios no incluyen IVA.\n' +
+  'El turno por día se tomará a 8 horas.\n' +
   'Vigencia de la presente cotización 8 días a partir de su elaboración.\n' +
   'Anticipar una semana antes de la fecha de inicio de trabajo para verificar disponibilidad.';
 
