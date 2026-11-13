@@ -4,8 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Wallet, ArrowUpCircle, ArrowDownCircle, TrendingUp, ArrowRightLeft,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Download, Landmark,
-  Receipt, BadgeCheck, Unlink,
-} from 'lucide-react';
+  Receipt, BadgeCheck, Unlink,} from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { formatFechaSolo } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -13,7 +12,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
@@ -374,10 +372,9 @@ export default function FinanzasPage() {
     {
       key: 'tipo',
       header: 'Tipo',
+      // Solo texto, sin badge de color (decisión del cliente).
       render: (item) => (
-        <Badge variant={item.tipo === 'INGRESO' ? 'success' : 'error'} size="sm">
-          {item.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}
-        </Badge>
+        <span className="font-semibold text-ui-600">{item.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}</span>
       ),
     },
     {
@@ -385,7 +382,7 @@ export default function FinanzasPage() {
       header: 'Monto',
       align: 'right',
       render: (item) => (
-        <span className={`font-black ${item.tipo === 'INGRESO' ? 'text-green-600' : 'text-ui-900'}`}>
+        <span className={`font-black ${item.tipo === 'INGRESO' ? 'text-green-600' : 'text-red-600'}`}>
           {item.tipo === 'INGRESO' ? '+' : '-'}{formatCurrency(item.monto)}
         </span>
       ),
