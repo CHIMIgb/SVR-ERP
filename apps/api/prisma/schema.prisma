@@ -965,6 +965,31 @@ model niveles_bloqueo {
   usuarios_bloqueados usuarios_bloqueados[]
 }
 
+enum TipoNotificacion {
+  ALERTA
+  INFO
+}
+
+/// B5: una fila por evento del ERP; audiencia por rol (null = todos los roles).
+model notificaciones {
+  id               String            @id @db.Uuid
+  tipo             TipoNotificacion  @default(INFO)
+  titulo           String            @db.VarChar(200)
+  cuerpo           String
+  referencia_tipo  String?
+  referencia_id    String?           @db.Uuid
+  audiencia_rol_id String?           @db.Uuid
+  leido_en         DateTime?         @db.Timestamptz()
+  creado_en        DateTime          @default(now()) @db.Timestamptz()
+  creado_por       String?           @db.Uuid
+  roles            roles?            @relation("notificaciones_audiencia", fields: [audiencia_rol_id], references: [id])
+  users_notificaciones_creado_porTousers users? @relation("notificaciones_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_notificaciones_creado_por")
+
+  @@index([audiencia_rol_id])
+  @@index([leido_en])
+  @@index([creado_en])
+}
+
 model ordenes_compra {
   id                                          String              @id @db.Uuid
   folio                                       String              @unique
@@ -1606,6 +1631,7 @@ model roles {
   users_roles_creado_porTousers      users?             @relation("roles_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_roles_creado_por")
   users_roles                        users_roles[]
   puestos_rol                        categorias_puesto[]  @relation("puestos_rol")
+  notificaciones_audiencia           notificaciones[]     @relation("notificaciones_audiencia")
 }
 
 model sessions {
@@ -2111,6 +2137,7 @@ model users {
   ordenes_compra_ordenes_compra_creado_porTousers                                ordenes_compra[]              @relation("ordenes_compra_creado_porTousers")
   ordenes_compra_ordenes_compra_actualizado_porTousers                           ordenes_compra[]              @relation("ordenes_compra_actualizado_porTousers")
   pagos_proveedor_pagos_proveedor_creado_porTousers                              pagos_proveedor[]             @relation("pagos_proveedor_creado_porTousers")
+  notificaciones_notificaciones_creado_porTousers                                notificaciones[]              @relation("notificaciones_creado_porTousers")
 
   @@unique([numero_empleado])
 }
