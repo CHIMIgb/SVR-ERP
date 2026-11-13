@@ -320,6 +320,7 @@ model cotizaciones {
   cliente_id                                String           @db.Uuid
   descripcion                               String
   monto                                     Decimal          @db.Decimal(14, 2)
+  condiciones                               String?
   fecha                                     DateTime         @db.Date
   estado                                    EstadoCotizacion @default(PENDIENTE)
   motivo_rechazo                            String?
@@ -331,12 +332,33 @@ model cotizaciones {
   eliminado_en                              DateTime?        @db.Timestamptz()
   vendedor_id                               String?          @db.Uuid
   facturas                                  facturas[]
+  items                                     cotizacion_items[]
   clientes                                  clientes         @relation(fields: [cliente_id], references: [id])
   users_cotizaciones_actualizado_porTousers users?           @relation("cotizaciones_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_actualizado_por")
   users_cotizaciones_creado_porTousers      users?           @relation("cotizaciones_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_creado_por")
   users_cotizaciones_vendedor_idTousers     users?           @relation("cotizaciones_vendedor_idTousers", fields: [vendedor_id], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_vendedor")
 
   @@index([cliente_id])
+}
+
+model cotizacion_items {
+  id               String     @id @db.Uuid
+  cotizacion_id    String     @db.Uuid
+  descripcion      String
+  cantidad         Decimal    @db.Decimal(10, 4)
+  unidad           String
+  precio_unitario  Decimal    @db.Decimal(12, 2)
+  importe          Decimal    @db.Decimal(12, 2)
+  orden            Int        @default(0)
+  creado_en        DateTime   @default(now()) @db.Timestamptz()
+  actualizado_en   DateTime   @db.Timestamptz()
+  creado_por       String?    @db.Uuid
+  actualizado_por  String?    @db.Uuid
+  cotizaciones     cotizaciones @relation(fields: [cotizacion_id], references: [id], onDelete: Cascade)
+  users_cotizacion_items_actualizado_porTousers users? @relation("cotizacion_items_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cotizacion_items_actualizado_por")
+  users_cotizacion_items_creado_porTousers      users? @relation("cotizacion_items_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_cotizacion_items_creado_por")
+
+  @@index([cotizacion_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1996,6 +2018,8 @@ model users {
   cotizaciones_cotizaciones_actualizado_porTousers                               cotizaciones[]                @relation("cotizaciones_actualizado_porTousers")
   cotizaciones_cotizaciones_creado_porTousers                                    cotizaciones[]                @relation("cotizaciones_creado_porTousers")
   cotizaciones_cotizaciones_vendedor_idTousers                                   cotizaciones[]                @relation("cotizaciones_vendedor_idTousers")
+  cotizacion_items_cotizacion_items_actualizado_porTousers                       cotizacion_items[]            @relation("cotizacion_items_actualizado_porTousers")
+  cotizacion_items_cotizacion_items_creado_porTousers                            cotizacion_items[]            @relation("cotizacion_items_creado_porTousers")
   despachos_maquina_despachos_maquina_actualizado_porTousers                     despachos_maquina[]           @relation("despachos_maquina_actualizado_porTousers")
   despachos_maquina_despachos_maquina_creado_porTousers                          despachos_maquina[]           @relation("despachos_maquina_creado_porTousers")
   dias_asistencia_semana_dias_asistencia_semana_actualizado_porTousers           dias_asistencia_semana[]      @relation("dias_asistencia_semana_actualizado_porTousers")
