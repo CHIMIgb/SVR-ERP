@@ -410,10 +410,41 @@ export class ProveedoresService {
       { cargo: 0, abono: 0 },
     );
 
+    // B4/ajustes: abonos del proveedor con quién los registró (patrón "Creada por").
+    const pagos = await this.prisma.pagos_proveedor.findMany({
+      where: { proveedor_id: proveedorId, eliminado_en: null },
+      orderBy: { fecha_pago: 'asc' },
+      include: {
+        ordenes_compra: { select: { folio: true } },
+        users_pagos_proveedor_creado_porTousers: {
+          select: {
+            personas_users_persona_idTopersonas: {
+              select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+            },
+          },
+        },
+      },
+    });
+
     return {
       proveedorId,
       proveedor: proveedor.nombre,
       movimientos,
+      abonos: pagos.map((p) => {
+        const creador = p.users_pagos_proveedor_creado_porTousers?.personas_users_persona_idTopersonas;
+        return {
+          codigo: p.codigo,
+          folioOrden: p.ordenes_compra?.folio ?? null,
+          fechaPago: p.fecha_pago.toISOString(),
+          monto: Number(p.monto),
+          metodoPago: p.metodo_pago,
+          registradoPor: creador
+            ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+                .filter(Boolean)
+                .join(' ')
+            : null,
+        };
+      }),
       totales: { ...totales, saldo: totales.cargo - totales.abono },
     };
   }
@@ -488,6 +519,15 @@ export class ProveedoresService {
         pagos_proveedor: {
           where: { eliminado_en: null },
           orderBy: { fecha_pago: 'asc' },
+          include: {
+            users_pagos_proveedor_creado_porTousers: {
+              select: {
+                personas_users_persona_idTopersonas: {
+                  select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+                },
+              },
+            },
+          },
         },
       },
     });
@@ -504,14 +544,23 @@ export class ProveedoresService {
 
     return {
       ...this.serializeOrden(orden),
-      abonos: orden!.pagos_proveedor.map((p) => ({
-        id: p.id,
-        codigo: p.codigo,
-        monto: Number(p.monto),
-        fechaPago: p.fecha_pago.toISOString(),
-        metodoPago: p.metodo_pago,
-        referencia: p.referencia ?? null,
-      })),
+      abonos: orden!.pagos_proveedor.map((p) => {
+        const creador = p.users_pagos_proveedor_creado_porTousers?.personas_users_persona_idTopersonas;
+        return {
+          id: p.id,
+          codigo: p.codigo,
+          monto: Number(p.monto),
+          fechaPago: p.fecha_pago.toISOString(),
+          metodoPago: p.metodo_pago,
+          referencia: p.referencia ?? null,
+          // Quién registró el abono (B4/ajustes: patrón "Creada por").
+          creadoPor: creador
+            ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+                .filter(Boolean)
+                .join(' ')
+            : null,
+        };
+      }),
     };
   }
 

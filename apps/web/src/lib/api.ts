@@ -2638,6 +2638,18 @@ export interface AbonoDTO {
   fechaPago: string; // ISO
   metodoPago: string | null;
   referencia: string | null;
+  /** Quién registró el abono (solo en el detalle de la orden). */
+  creadoPor?: string | null;
+}
+
+/** Abono listado en el ledger del estado de cuenta. */
+export interface AbonoLedgerDTO {
+  codigo: string;
+  folioOrden: string | null;
+  fechaPago: string; // ISO
+  monto: number;
+  metodoPago: string | null;
+  registradoPor: string | null;
 }
 
 export interface OrdenCompraDetalleDTO extends OrdenCompraDTO {
@@ -2671,6 +2683,8 @@ export interface LedgerDetalleDTO {
   proveedorId: string;
   proveedor: string;
   movimientos: LedgerMovimientoDTO[];
+  /** Abonos del proveedor con quién los registró (B4/ajustes). */
+  abonos: AbonoLedgerDTO[];
   totales: {
     cargo: number;
     abono: number;

@@ -106,6 +106,7 @@ describe('ProveedoresService', () => {
       pagos_proveedor: {
         create: jest.fn().mockResolvedValue(mockPago),
         count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       transacciones: {
         create: jest.fn().mockResolvedValue({ id: '990e8400-e29b-41d4-a716-446655440010' }),

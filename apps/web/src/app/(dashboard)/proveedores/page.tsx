@@ -739,17 +739,11 @@ export default function ProveedoresPage() {
                 Recibir
               </Button>
             )}
-            {activa && puedeEditar && (
+            {activa && puedeEditar && o.pagado === 0 && (
               <Button
                 variant="danger"
                 size="sm"
                 icon={<XCircle className="w-3.5 h-3.5" />}
-                disabled={o.pagado > 0}
-                title={
-                  o.pagado > 0
-                    ? 'No se puede cancelar: la orden ya tiene abonos registrados.'
-                    : 'Cancelar orden de compra'
-                }
                 onClick={() => {
                   setMotivoCancelacion('');
                   setCancelOC(o);
@@ -1646,14 +1640,40 @@ export default function ProveedoresPage() {
                   </div>
                 </div>
                 {ledger ? (
-                  <DataTable
-                    columns={ledgerColumns}
-                    data={ledger.movimientos}
-                    keyExtractor={(r) => r.folio}
-                    loading={!ledger}
-                    emptyText="Sin operaciones registradas."
-                    maxBodyHeight="320px"
-                  />
+                  <>
+                    <DataTable
+                      columns={ledgerColumns}
+                      data={ledger.movimientos}
+                      keyExtractor={(r) => r.folio}
+                      loading={!ledger}
+                      emptyText="Sin operaciones registradas."
+                      maxBodyHeight="320px"
+                    />
+                    {/* Abonos registrados con quién los hizo (patrón "Creada por"). */}
+                    {ledger.abonos.length > 0 && (
+                      <div className="border border-ui-200 rounded-xl overflow-hidden">
+                        <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest px-3 py-2 bg-ui-50">
+                          Abonos registrados ({ledger.abonos.length})
+                        </p>
+                        <div className="divide-y divide-ui-100 max-h-[200px] overflow-y-auto scrollbar-none">
+                          {ledger.abonos.map((a) => (
+                            <div key={a.codigo} className="flex items-center justify-between gap-3 px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="text-xs font-black text-ui-800 truncate">{a.codigo}</p>
+                                <p className="text-[10px] font-medium text-ui-400 truncate">
+                                  {a.folioOrden ?? '—'} · {a.fechaPago.slice(0, 10)} · {a.metodoPago ?? '—'}
+                                  {a.registradoPor ? ` · por ${a.registradoPor}` : ''}
+                                </p>
+                              </div>
+                              <span className="text-xs font-black text-green-600 whitespace-nowrap">
+                                {formatCurrency(a.monto)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : null}
               </div>
             </ModalBody>
