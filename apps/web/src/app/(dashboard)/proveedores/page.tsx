@@ -11,7 +11,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
@@ -41,13 +40,6 @@ const PAGE_SIZE = 8;
 
 const CATEGORIAS: CategoriaProveedor[] = ['Refacciones', 'Combustible', 'Materiales', 'Servicios', 'Otros'];
 const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MIXTO'] as const;
-
-const estadoVariant: Record<EstadoOrden, 'warning' | 'info' | 'success' | 'error'> = {
-  Pendiente: 'warning',
-  Aprobada: 'info',
-  Recibida: 'success',
-  Cancelada: 'error',
-};
 
 // ─── Estado inicial de formularios ────────────────────────────────────────────
 const emptyProvForm = {
@@ -672,13 +664,8 @@ export default function ProveedoresPage() {
       key: 'estado',
       header: 'Estado',
       align: 'center',
-      render: (o) => (
-        <div className="flex justify-center">
-          <Badge variant={estadoVariant[ESTADO_LABEL[o.estado]]} size="sm">
-            {ESTADO_LABEL[o.estado]}
-          </Badge>
-        </div>
-      ),
+      // Solo texto, sin badge de color (decisión del cliente).
+      render: (o) => <span className="text-xs font-semibold text-ui-600">{ESTADO_LABEL[o.estado]}</span>,
     },
     {
       key: 'vence',
