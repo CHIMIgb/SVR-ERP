@@ -60,7 +60,8 @@ const r2 = (n: number) => Number(n.toFixed(2));
 function calcular(t: TrabajadorDTO, fechaIngreso: string, tipo: TipoTerminacion, dias: number, vac: number, prestamos: number): Desglose {
   const diasAntiguedad = Math.max(0, Math.ceil((Date.now() - Date.parse(fechaIngreso)) / 86400000));
   const aniosAntiguedad = Math.max(0.1, r2(diasAntiguedad / 365.25));
-  const sueldoDiario = (t.sueldoFiscal + t.sueldoEfectivo) / 6;
+  // Semanal entre 7, igual que la API (el domingo de descanso se paga).
+  const sueldoDiario = (t.sueldoFiscal + t.sueldoEfectivo) / 7;
   const montoDiasTrabajados = r2(dias * sueldoDiario);
   const diasAguinaldo = r2((diasAntiguedad % 365) * (15 / 365));
   const montoAguinaldo = r2(diasAguinaldo * sueldoDiario);

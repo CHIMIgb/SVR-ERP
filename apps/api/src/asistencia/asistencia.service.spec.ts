@@ -278,6 +278,33 @@ describe('AsistenciaService', () => {
       expect(data.salida_anticipada).toBe(true);
     });
 
+    it('closes last night\'s entrada when a night shift leaves after midnight (it used to be rejected / 0 h)', async () => {
+      const entradaNocturna = { ...baseRegistro, hora_entrada: new Date(Date.UTC(1970, 0, 1, 20, 0, 0)) };
+      prisma.registros_asistencia.findFirst
+        .mockResolvedValueOnce(null) // nada hoy
+        .mockResolvedValueOnce(entradaNocturna); // entrada de ayer a las 20:00, sin salida
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 27, 6, 0, 0)); // salida 06:00 del día siguiente → 10 h
+      await service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1');
+
+      const busquedaAyer = prisma.registros_asistencia.findFirst.mock.calls[1][0].where;
+      expect(busquedaAyer.fecha.toISOString()).toBe('2026-08-26T00:00:00.000Z');
+      expect(busquedaAyer.hora_salida).toBeNull();
+      const update = prisma.registros_asistencia.updateMany.mock.calls[0][0];
+      expect(update.where.id).toBe(entradaNocturna.id);
+      expect(update.data.horas_trabajadas_ordinarias).toBe(10);
+    });
+
+    it('does not close yesterday\'s morning entrada left open (it is not a night shift)', async () => {
+      prisma.registros_asistencia.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(baseRegistro); // entrada de ayer 07:05 sin salida
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 27, 17, 0, 0));
+      await expect(
+        service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
+    });
+
     it('rejects when there is no entrada registered today', async () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(null);
       await expect(
@@ -640,6 +667,8 @@ describe('AsistenciaService', () => {
       expect(mar.estado).toBe('Descanso');
       expect(mie.estado).toBe('Falta'); // día de contratación en adelante sí cuenta
       expect(result[0].totalFaltas).toBe(1);
+      // No son falta, pero tampoco se pagan: la nómina prorratea con este dato.
+      expect(result[0].totalDiasAntesDeIngreso).toBe(2);
     });
 
     describe('omisión (plazo de las 17:00)', () => {

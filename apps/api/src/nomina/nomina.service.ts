@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, MetodoPago, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -244,7 +244,9 @@ export class NominaService {
       totalOmisionesVencidas += datos?.totalOmisionesVencidas ?? 0;
 
       await this.prisma.percepciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
-      await this.prisma.deducciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'FALTA_AUTO' } });
+      await this.prisma.deducciones_nomina.deleteMany({
+        where: { nomina_id: nomina.id, tipo: { in: ['FALTA_AUTO', 'INGRESO_AUTO'] } },
+      });
 
       if (montoHorasExtra > 0) {
         await this.prisma.percepciones_nomina.create({
@@ -259,8 +261,27 @@ export class NominaService {
         });
       }
 
+      // Sueldo diario = semanal entre 7 (el domingo de descanso se paga; regla del cliente). Antes era entre 6 y
+      // cada falta descontaba de más.
+      const sueldoDiario = (Number(nomina.sueldo_fiscal) + Number(nomina.sueldo_efectivo)) / 7;
+
+      // Quien entra a media semana cobra prorrateado: los días antes de su ingreso no se pagan. Antes cobraba la
+      // semana completa porque esos días no contaban como falta ni se descontaban.
+      const diasAntesDeIngreso = datos?.totalDiasAntesDeIngreso ?? 0;
+      if (diasAntesDeIngreso > 0) {
+        await this.prisma.deducciones_nomina.create({
+          data: {
+            id: randomUUID(),
+            nomina_id: nomina.id,
+            concepto: `${diasAntesDeIngreso} día(s) antes de su ingreso`,
+            tipo: 'INGRESO_AUTO',
+            monto: Number((sueldoDiario * diasAntesDeIngreso).toFixed(2)),
+            actualizado_en: new Date(),
+          },
+        });
+      }
+
       if (diasFaltas > 0) {
-        const sueldoDiario = (Number(nomina.sueldo_fiscal) + Number(nomina.sueldo_efectivo)) / 6;
         await this.prisma.deducciones_nomina.create({
           data: {
             id: randomUUID(),
@@ -331,6 +352,17 @@ export class NominaService {
         'NOMINA_NO_ENCONTRADA',
         NotFoundException,
         `Registro de nómina con id "${nominaId}" no encontrado`,
+      );
+    }
+    // Una nómina pagada queda cerrada: un bono o descuento después del pago cambiaba el recibo ya entregado.
+    if (nomina.estado === 'PAGADA') {
+      return this.fallir(
+        AuditAction.NOMINA_AJUSTE_APLICADO,
+        ENTITY_NOMINA,
+        nominaId,
+        'NOMINA_PAGADA',
+        ConflictException,
+        'Esta nómina ya está pagada: no se le pueden agregar bonos ni descuentos',
       );
     }
 
