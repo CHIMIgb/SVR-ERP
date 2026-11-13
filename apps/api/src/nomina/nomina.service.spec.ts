@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { NominaService } from './nomina.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -196,20 +196,41 @@ describe('NominaService', () => {
       expect(prisma.percepciones_nomina.create).not.toHaveBeenCalled();
     });
 
-    it('creates an auto deduccion line for faltas using 1/6 of the weekly wage per day', async () => {
+    it('creates an auto deduccion line for faltas using 1/7 of the weekly wage per day (paid Sunday)', async () => {
       mockAsistencia.findSemanal.mockResolvedValue([
         { trabajadorId: mockTrabajador.id, totalDiasAsistidos: 4, totalFaltas: 2, totalHorasOrdinarias: 32, totalHorasExtra: 0 },
       ]);
       await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      // Semanal 6,000 → diario 857.142… → 2 faltas = 1,714.29 (antes, entre 6, salían 2,000).
       expect(prisma.deducciones_nomina.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ tipo: 'FALTA_AUTO', monto: 2000 }) }),
+        expect.objectContaining({ data: expect.objectContaining({ tipo: 'FALTA_AUTO', monto: 1714.29 }) }),
+      );
+    });
+
+    it('prorates the week of someone hired mid-week: the days before the hire date are deducted', async () => {
+      mockAsistencia.findSemanal.mockResolvedValue([
+        {
+          trabajadorId: mockTrabajador.id,
+          totalDiasAsistidos: 4,
+          totalFaltas: 0,
+          totalDiasAntesDeIngreso: 2,
+          totalHorasOrdinarias: 32,
+          totalHorasExtra: 0,
+        },
+      ]);
+      await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      expect(prisma.deducciones_nomina.create).toHaveBeenCalledTimes(1);
+      expect(prisma.deducciones_nomina.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ tipo: 'INGRESO_AUTO', monto: 1714.29 }) }),
       );
     });
 
     it('clears previous auto-generated lines before regenerating them (no duplicate accumulation)', async () => {
       await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
       expect(prisma.percepciones_nomina.deleteMany).toHaveBeenCalledWith({ where: { nomina_id: mockNomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
-      expect(prisma.deducciones_nomina.deleteMany).toHaveBeenCalledWith({ where: { nomina_id: mockNomina.id, tipo: 'FALTA_AUTO' } });
+      expect(prisma.deducciones_nomina.deleteMany).toHaveBeenCalledWith({
+        where: { nomina_id: mockNomina.id, tipo: { in: ['FALTA_AUTO', 'INGRESO_AUTO'] } },
+      });
     });
 
     it('404s when the periodo does not exist', async () => {
@@ -250,6 +271,16 @@ describe('NominaService', () => {
   });
 
   describe('registrarAjuste', () => {
+    it('rejects a bono or descuento on a nómina already paid (it is closed) and audits the failure', async () => {
+      prisma.nominas.findFirst.mockResolvedValue({ ...mockNomina, estado: 'PAGADA' });
+      await expect(
+        service.registrarAjuste(mockNomina.id, { tipo: 'Bono', monto: 500, concepto: 'Productividad' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.percepciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NOMINA_PAGADA' }));
+    });
+
     it('creates a percepcion for a Bono and recomputes totals', async () => {
       prisma.percepciones_nomina.findMany.mockResolvedValue([{ monto: 500 }]);
       await service.registrarAjuste(mockNomina.id, { tipo: 'Bono', monto: 500, concepto: 'Productividad' }, 'user-1');

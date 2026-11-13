@@ -88,6 +88,8 @@ export interface AsistenciaSemanalResponse {
   totalOmisionesPendientes: number;
   /** Omisiones sin resolver que ya vencieron: están dentro de totalFaltas. */
   totalOmisionesVencidas: number;
+  /** Días de la semana anteriores a su fecha de ingreso: no son falta, pero no se pagan (la nómina se prorratea). */
+  totalDiasAntesDeIngreso: number;
   totalHorasOrdinarias: number;
   /** Horas extra registradas que siguen vigentes (sin rechazadas ni borradas), aprobadas o no. */
   totalHorasExtra: number;
@@ -138,6 +140,8 @@ const HORA_LIMITE_JUSTIFICACION_MINUTOS = 17 * 60;
 /** Con una señal peor que esta, la ubicación de la obra no se registra (la geocerca quedaría mal centrada). */
 const PRECISION_MAXIMA_UBICACION_OBRA_METROS = 100;
 const RADIO_DEFECTO_METROS = 2000;
+/** Tope de un turno nocturno: una entrada de ayer sin salida más vieja que esto no se cierra con la salida de hoy. */
+const MAX_HORAS_TURNO_NOCTURNO = 14;
 const TARIFA_HORA_EXTRA_DEFECTO = 80;
 /** Tope de registros del día que se revisan al pasar lista a una cuadrilla (máximo 200 trabajadores). */
 const TOPE_FILAS_CUADRILLA = 1000;
@@ -330,9 +334,15 @@ export class AsistenciaService {
     }
 
     const hoy = this.fechaHoy();
-    const registro = await this.prisma.registros_asistencia.findFirst({
+    const ahora = new Date();
+    let registro = await this.prisma.registros_asistencia.findFirst({
       where: { trabajador_id: dto.trabajadorId, fecha: hoy, eliminado_en: null },
     });
+    // Turno nocturno: la salida de pasada la medianoche cierra la entrada de ayer. Antes se buscaba solo la
+    // entrada de hoy y la salida se rechazaba ("sin entrada previa").
+    if (!registro) {
+      registro = await this.entradaNocturnaAbierta(dto.trabajadorId, hoy, ahora);
+    }
     if (!registro || !registro.hora_entrada) {
       return this.fallir(
         AuditAction.ASISTENCIA_SALIDA_REGISTRADA,
@@ -354,7 +364,6 @@ export class AsistenciaService {
       );
     }
 
-    const ahora = new Date();
     const horas =
       dto.horasTrabajadasOrdinarias ?? this.horasEntreHoras(registro.hora_entrada, this.horaActualUtc(ahora));
     const salidaAnticipada = dto.salidaAnticipada ?? false;
@@ -1337,6 +1346,7 @@ export class AsistenciaService {
       let totalOmisionesPendientes = 0;
       // Faltas que vienen de omisiones sin resolver (ya cuentan en totalFaltas): se avisan aparte en nómina.
       let totalOmisionesVencidas = 0;
+      let totalDiasAntesDeIngreso = 0;
       let totalHorasOrdinarias = 0;
       let totalHorasExtra = 0;
       let totalHorasExtraAprobadas = 0;
@@ -1395,7 +1405,11 @@ export class AsistenciaService {
             }
           }
         } else if (fechaDia.getTime() > hoy.getTime() || (trabajador.fecha_contratacion && fechaDia.getTime() < trabajador.fecha_contratacion.getTime())) {
-          // Día futuro, o anterior a la fecha de contratación: no cuenta como falta.
+          // Día futuro, o anterior a la fecha de contratación: no cuenta como falta. El anterior al ingreso
+          // tampoco se paga: quien entra a media semana cobra solo los días desde su ingreso (regla del cliente).
+          if (trabajador.fecha_contratacion && fechaDia.getTime() < trabajador.fecha_contratacion.getTime()) {
+            totalDiasAntesDeIngreso++;
+          }
           dias.push({
             dia: DIAS_SEMANA[i],
             fecha: fechaDia.toISOString().split('T')[0],
@@ -1445,6 +1459,7 @@ export class AsistenciaService {
         totalRetardos,
         totalOmisionesPendientes,
         totalOmisionesVencidas,
+        totalDiasAntesDeIngreso,
         totalHorasOrdinarias: Number(totalHorasOrdinarias.toFixed(2)),
         totalHorasExtra: Number(totalHorasExtra.toFixed(2)),
         totalHorasExtraAprobadas: Number(totalHorasExtraAprobadas.toFixed(2)),
@@ -1523,12 +1538,40 @@ export class AsistenciaService {
     return ahora.getHours() * 60 + ahora.getMinutes() >= HORA_LIMITE_JUSTIFICACION_MINUTOS;
   }
 
-  /** Horas decimales entre dos Time(0) anclados en UTC (mismo día calendario). */
+  /**
+   * Horas decimales entre dos Time(0) anclados en UTC. Si la salida es menor que la entrada, el turno cruzó la
+   * medianoche (antes daba 0 horas).
+   */
   private horasEntreHoras(entrada: Date, salida: Date): number {
     const minutosEntrada = entrada.getUTCHours() * 60 + entrada.getUTCMinutes();
     const minutosSalida = salida.getUTCHours() * 60 + salida.getUTCMinutes();
-    const horas = Math.max(0, minutosSalida - minutosEntrada) / 60;
-    return Number(horas.toFixed(1));
+    let minutos = minutosSalida - minutosEntrada;
+    if (minutos < 0) minutos += 24 * 60;
+    return Number((minutos / 60).toFixed(1));
+  }
+
+  /**
+   * Entrada de ayer todavía sin salida que corresponde a un turno nocturno: entró más tarde de la hora actual
+   * (así que cruzó la medianoche) y no han pasado más de MAX_HORAS_TURNO_NOCTURNO. Una entrada de ayer en la
+   * mañana que se quedó sin salida no entra aquí: se corrige como omisión, no se cierra con 20 horas.
+   */
+  private async entradaNocturnaAbierta(trabajadorId: string, hoy: Date, ahora: Date) {
+    const ayer = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() - 1));
+    const previo = await this.prisma.registros_asistencia.findFirst({
+      where: {
+        trabajador_id: trabajadorId,
+        fecha: ayer,
+        eliminado_en: null,
+        hora_entrada: { not: null },
+        hora_salida: null,
+      },
+    });
+    if (!previo?.hora_entrada) return null;
+    const minutosEntrada = previo.hora_entrada.getUTCHours() * 60 + previo.hora_entrada.getUTCMinutes();
+    const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
+    if (minutosEntrada <= minutosAhora) return null;
+    const transcurridos = 24 * 60 - minutosEntrada + minutosAhora;
+    return transcurridos <= MAX_HORAS_TURNO_NOCTURNO * 60 ? previo : null;
   }
 
   /**

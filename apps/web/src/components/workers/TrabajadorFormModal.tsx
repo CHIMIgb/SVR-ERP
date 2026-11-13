@@ -87,7 +87,7 @@ function estadoInicial(t: TrabajadorDTO | null): FormState {
       categoriaPuesto: 'Operador',
       puesto: '',
       telefono: '',
-      entrada: '07:00',
+      entrada: '08:00',
       fechaContratacion: hoyLocal(),
       proyecto: '',
       maquinaId: '',
