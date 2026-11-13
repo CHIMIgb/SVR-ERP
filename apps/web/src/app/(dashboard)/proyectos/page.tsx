@@ -48,7 +48,7 @@ const emptyForm = {
   nombre: '',
   clienteId: '',
   presupuesto: '',
-  fechaInicio: new Date().toISOString().split('T')[0],
+  fechaInicio: '',
   fechaFin: '',
   estado: 'EN_PROCESO' as NonNullable<ProyectoCreateInput['estado']>,
   progreso: '0',
@@ -63,6 +63,19 @@ const emptyFinanzasForm = {
   ingresoCobrado: '',
   gastado: '',
 };
+
+/** "30000" → "30,000" mientras se escribe (máx. 2 decimales). */
+function formatearMiles(valor: string): string {
+  const limpio = valor.replace(/,/g, '').replace(/[^\d.]/g, '');
+  const [entero, ...decimales] = limpio.split('.');
+  const conComas = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return decimales.length > 0 ? `${conComas}.${decimales.join('').slice(0, 2)}` : conComas;
+}
+
+/** "30,000.50" → 30000.5 */
+function parsearMiles(valor: string): number {
+  return parseFloat(valor.replace(/,/g, ''));
+}
 
 function estadoToValue(label: ProyectoDTO['estado']): NonNullable<ProyectoCreateInput['estado']> {
   const map: Record<ProyectoDTO['estado'], NonNullable<ProyectoCreateInput['estado']>> = {
@@ -230,7 +243,7 @@ export default function ProyectosPage() {
     setForm({
       nombre: item.nombre,
       clienteId: item.clienteId,
-      presupuesto: String(item.presupuesto),
+      presupuesto: formatearMiles(String(item.presupuesto)),
       fechaInicio: item.fechaInicio,
       fechaFin: item.fechaFin,
       estado: estadoToValue(item.estado),
@@ -272,7 +285,7 @@ export default function ProyectosPage() {
       showToast('Selecciona un cliente.', 'error');
       return false;
     }
-    const ppto = parseFloat(form.presupuesto);
+    const ppto = parsearMiles(form.presupuesto);
     if (!form.presupuesto || isNaN(ppto) || ppto <= 0) {
       showToast('Ingresa un presupuesto válido mayor a cero.', 'error');
       return false;
@@ -309,7 +322,7 @@ export default function ProyectosPage() {
     () => ({
       nombre: form.nombre.trim(),
       clienteId: form.clienteId,
-      presupuesto: parseFloat(form.presupuesto),
+      presupuesto: parsearMiles(form.presupuesto),
       fechaInicio: form.fechaInicio,
       fechaFin: form.fechaFin,
       estado: form.estado,
@@ -738,13 +751,12 @@ export default function ProyectosPage() {
 
           <ModalField label="Presupuesto (MXN)" required className="sm:col-span-2">
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
-              placeholder="1500000"
+              placeholder="30,000"
               value={form.presupuesto}
-              onChange={(e) => setForm({ ...form, presupuesto: e.target.value })}
+              onChange={(e) => setForm({ ...form, presupuesto: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
@@ -866,12 +878,12 @@ export default function ProyectosPage() {
 
           <ModalField label="Presupuesto (MXN)" required>
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
+              placeholder="30,000"
               value={form.presupuesto}
-              onChange={(e) => setForm({ ...form, presupuesto: e.target.value })}
+              onChange={(e) => setForm({ ...form, presupuesto: formatearMiles(e.target.value) })}
             />
           </ModalField>
 

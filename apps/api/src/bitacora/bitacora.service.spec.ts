@@ -55,8 +55,8 @@ describe('BitacoraService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'o1', nombre: 'Valle Sur', activo: true, eliminado_en: null }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         findMany: jest.fn().mockImplementation((args: any) => {
-          // Para findCatalogos con filtro FINALIZADA
-          if (args?.where?.estado?.not === 'FINALIZADA') {
+          // Para findCatalogos: solo obras en proceso
+          if (args?.where?.estado === 'EN_PROCESO') {
             return Promise.resolve([{ id: 'o1', nombre: 'Valle Sur', estado: 'EN_PROCESO' }]);
           }
           return Promise.resolve([{ id: 'o1', nombre: 'Valle Sur' }]);
@@ -301,18 +301,23 @@ describe('BitacoraService', () => {
       expect(result.maquinas).toHaveLength(0);
     });
 
-    it('should exclude FINALIZADA obras from catalog', async () => {
+    it('should request only EN_PROCESO obras from catalog', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       prisma.obras.findMany.mockImplementation((args: any) => {
-        if (args?.where?.estado?.not === 'FINALIZADA') {
-          // No obras returned because all are FINALIZADA
+        if (args?.where?.estado === 'EN_PROCESO') {
+          // No obras returned because all are FINALIZADA/RECIEN_INICIADA
           return Promise.resolve([]);
         }
-        return Promise.resolve([]);
+        return Promise.resolve([{ id: 'o1', nombre: 'Valle Sur' }]);
       });
 
       const result = await service.findCatalogos();
       expect(result.obras).toHaveLength(0);
+      expect(prisma.obras.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: 'EN_PROCESO' }),
+        }),
+      );
     });
   });
 });

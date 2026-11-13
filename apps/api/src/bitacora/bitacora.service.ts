@@ -381,12 +381,12 @@ export class BitacoraService {
       .filter((m) => m.fallas_mecanicas.length === 0)
       .map(({ fallas_mecanicas: _, ...rest }) => rest);
 
-    // Obras: excluye FINALIZADA
+    // Obras: solo las que están en proceso (el select de /operaciones no ofrece cerradas)
     const obras = await this.prisma.obras.findMany({
       where: {
         activo: true,
         eliminado_en: null,
-        estado: { not: 'FINALIZADA' },
+        estado: 'EN_PROCESO',
       },
       select: { id: true, nombre: true, estado: true },
       orderBy: { nombre: 'asc' },
