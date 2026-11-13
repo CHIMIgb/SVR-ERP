@@ -252,3 +252,48 @@ de retiros de F3, según el hilo) + F3/Cl3 para el estado de cuenta.
 > el crédito (monto y plazo por cliente), quién lo aprueba y qué pasa cuando
 > un cliente lo rebasa — rechazo en el POS o cobro forzado? No viene en los
 > Excel.
+
+---
+
+## 10. Decisiones asumidas por la aplicación (dudas retiradas de docs-svr-dudas — 2026-11-12)
+
+> Las dudas **asumibles por lógica** se retiraron de `docs-svr/docs-svr-dudas/`
+> para no saturar al cliente. Cada una queda aquí como **decisión por defecto
+> de la app** — si el cliente contradice alguna al responder las dudas clave,
+> se ajusta (ninguna toca el schema de fondo, salvo indicación en contrario).
+
+| # | Tema | Decisión por defecto de la app | Archivo de duda original |
+|---|---|---|---|
+| A1 | Folio del retiro | ÚNICO y no repetible; se asume que es el ticket de la báscula (se nombrará así) | PRODUCTIVIDAD d1 |
+| A2 | Operador en el viaje | La app lleva operador en cada viaje (fijo o rotante — no cambia el modelo) | PRODUCTIVIDAD d6 |
+| A3 | Tanque propio de diésel | Si existe, se agrega luego en inventario/maquinaria; sin respuesta no se construye | PRODUCTIVIDAD d9 |
+| A4 | Estado de cuenta: frecuencia | Configurable, semanal por defecto | ESTADO DE CUENTA d1 |
+| A5 | Estado de cuenta: entrega | Se registra cada entrega (impreso/WhatsApp); cliente firma o confirma | ESTADO DE CUENTA d2 |
+| A6 | Estado de cuenta: disputa de viaje | Corrección con permiso y auditoría (patrón del repo) | ESTADO DE CUENTA d5 |
+| A7 | Estado de cuenta: alcance | Se genera para todos los clientes de material | ESTADO DE CUENTA d6 |
+| A8 | Lista de precios: presentaciones | 7m / 14m³ / 30m³ / m³ se modelan como medidas de venta | LISTA DE PRECIOS d2 |
+| A9 | Lista de precios: cambios | Solo con permiso administrativo | LISTA DE PRECIOS d3 |
+| A10 | Cotizaciones: revisión interna | Sin revisión previa — el representante legal envía directo | COTIZACIONES d1 |
+| A11 | Cotizaciones: vigencia 8 días | Se marca "vencida" al pasar; no bloquea el flujo | COTIZACIONES d3 |
+| A12 | Cotizaciones: anticipar 1 semana | Nota precargada en la plantilla de condiciones | COTIZACIONES d5 |
+| A13 | Operadores externos/eventuales | Si existen, se dan de alta como trabajadores | NOMINA d2 |
+| A14 | Caja chica | Se registran vales en finanzas; el monto de resurte es dato capturable | CONTROL DE GASTOS d1 |
+| A15 | SOBRE DE AILYN | Efectivo de la representante legal para gastos — se registra como fuente de caja | CONTROL DE GASTOS d2 |
+| A16 | Gastos sin factura | Se marcan "SIN FACTURA" y quedan pendientes de comprobación | CONTROL DE GASTOS d4 |
+| A17 | Estado de cuenta de proveedor | Se genera para TODOS los proveedores | PROVEEDORES d1 |
+| A18 | Prioridad de pago a proveedores | Operación humana — la app solo ordena por antigüedad/vencimiento | PROVEEDORES d3 |
+| A19 | Notas de pago de proveedor | Pasan a estados por compra (PAGADA / PENDIENTE), no notas sueltas | PROVEEDORES d4 |
+| A20 | Saldo a favor del proveedor | Pagado de más — queda a favor para el próximo abono | EXTERNOS d3 |
+| A21 | Mínimo de abono a conciliación | Se abona con lo que alcanza; mínimo no requerido | EXTERNOS d5 |
+| A22 | Horario de la plantilla del proyecto | Global 8:00–18:00 (ya confirmado por el cliente en RRHH) | PROYECTO AILIN d2 |
+| A23 | Datos del expediente del proyecto | Obligatorios al crear: cliente, nombre; RFC/domicilio/horario opcionales después | PROYECTO AILIN d4 |
+| A24 | Entrega de efectivo | Se registra con folio y receptor (quiénes son dato capturable) | REGISTRO DE VENTAS d2 |
+| A25 | "NO HUBO EFECTIVO" | Nota del corte — día sin venta de contado; no genera registro especial | REGISTRO DE VENTAS d3 |
+| A26 | Alcance del POS | Vende lo que el catálogo tenga (no solo material por banco) | REGISTRO DE VENTAS d6 |
+
+**Dudas que SÍ quedaron en `docs-svr/docs-svr-dudas/`** (necesarias y medias):
+ver INDEX de esa carpeta — 3-6 por archivo, con las 🔴 clave marcadas por
+tema: precio del retiro, viaje↔obra, gasto a obra, flete aparte/incluido,
+qué manda para facturar, crédito del cliente (asignación/rebase), crédito de
+proveedores, qué es la conciliación, corrección post-conciliación,
+equivalencia de apodos.

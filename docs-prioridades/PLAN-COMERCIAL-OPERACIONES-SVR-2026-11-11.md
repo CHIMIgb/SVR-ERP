@@ -161,7 +161,7 @@ finiquito — viven en el doc fuera-de-alcance)*
 | Fase | Qué | Dependencia |
 |---|---|---|
 | **F1 — Fixes y reglas confirmadas de las 15 vistas** | Error 3 (checklist luces/alarmas en `/operaciones`), horómetro interno (O12), operador de lista obligatoria (O6), patio (O5), foto de máquina (O8), firma residente obligatoria (Fa2), cobro solo por bitácora (C1), multi-obra sin fricción (Pr2) | Ninguna — arrancable ya |
-| **F2 — Preguntas de seguimiento** | Enviar al cliente: F1, F2, Fa1, O1, O3, O11, I2, Cl2, P4 + el tabulador/tarifas de renta del §5 | Ninguna — puede ir en paralelo |
+| **F2 — Preguntas de seguimiento** | Enviar al cliente: F1, F2, Fa1, O1, O3, O11, I2, Cl2, P4 + el tabulador/tarifas de renta del §5. **Las dudas por documento viven en `docs-svr/docs-svr-dudas/` (solo necesarias y medias — las asumibles se retiraron y quedaron como decisiones por defecto en el §10 del análisis docs-svr)** | Ninguna — puede ir en paralelo |
 | **F3 — Cotizaciones/ventas según docs-svr** | Plantilla de cotización (condiciones de los Word), motor de retiros para `/ventas`, corte de `/ventas/corte`, estados de cuenta para `/cobranza` | Respuestas de docs-svr §5 del análisis (folio, precio, serie) |
 
 *(las fases de GPS (F3–F5 originales), Nómina/Asistencia (F6), Finiquitos (F7)
