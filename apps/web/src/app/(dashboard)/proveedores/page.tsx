@@ -6,6 +6,7 @@ import {
   Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal, CalendarClock,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { fechaEsPasada } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -398,7 +399,7 @@ export default function ProveedoresPage() {
       }
     }
     // B4: vencimiento opcional; si se captura no puede ser anterior a hoy.
-    if (ocForm.fechaVencimiento && ocForm.fechaVencimiento < new Date().toISOString().split('T')[0]) {
+    if (ocForm.fechaVencimiento && fechaEsPasada(ocForm.fechaVencimiento)) {
       showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
       return;
     }
@@ -438,7 +439,7 @@ export default function ProveedoresPage() {
       showToast('Selecciona una fecha de vencimiento.', 'error');
       return;
     }
-    if (vencimientoForm < new Date().toISOString().split('T')[0]) {
+    if (fechaEsPasada(vencimientoForm)) {
       showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
       return;
     }
@@ -693,7 +694,7 @@ export default function ProveedoresPage() {
       render: (o) => (
         <span
           className={`text-xs font-bold whitespace-nowrap ${
-            o.fechaVencimiento && o.saldo > 0 && o.fechaVencimiento < new Date().toISOString().split('T')[0]
+            o.fechaVencimiento && o.saldo > 0 && fechaEsPasada(o.fechaVencimiento)
               ? 'text-red-600'
               : 'text-ui-500'
           }`}
@@ -860,7 +861,7 @@ export default function ProveedoresPage() {
       render: (r) => (
         <span
           className={`text-xs font-bold whitespace-nowrap ${
-            r.vence && r.saldo > 0 && r.vence < new Date().toISOString().split('T')[0]
+            r.vence && r.saldo > 0 && fechaEsPasada(r.vence)
               ? 'text-red-600'
               : 'text-ui-500'
           }`}

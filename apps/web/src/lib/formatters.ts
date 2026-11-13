@@ -111,6 +111,11 @@ export function fechaLocalHoy(): string {
   ).padStart(2, '0')}`;
 }
 
+/** ¿La fecha (YYYY-MM-DD) es anterior a HOY en horario local? */
+export function fechaEsPasada(fecha: string): boolean {
+  return fecha < fechaLocalHoy();
+}
+
 /** Teléfono MX válido: exactamente 10 dígitos (ignora espacios y guiones). */
 export function telefonoEsValido(valor: string): boolean {
   return valor.replace(/\D/g, '').length === 10;
