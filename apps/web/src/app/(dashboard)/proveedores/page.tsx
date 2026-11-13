@@ -6,7 +6,7 @@ import {
   Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal, CalendarClock,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
-import { fechaEsPasada } from '@/lib/formatters';
+import { fechaEsPasada, limpiarRfc, limpiarTelefono, rfcEsValido, telefonoEsValido } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -324,9 +324,14 @@ export default function ProveedoresPage() {
       showToast('El nombre del proveedor es obligatorio.', 'error');
       return;
     }
-    // RFC validado en la UI con la misma regex del backend (mayúsculas).
+    // Teléfono opcional, pero si se captura debe ser un teléfono MX de 10 dígitos.
+    if (provForm.telefono.trim() && !telefonoEsValido(provForm.telefono)) {
+      showToast('El teléfono debe tener 10 dígitos.', 'error');
+      return;
+    }
+    // RFC opcional, con formato oficial MX (3-4 letras + 6 dígitos + homoclave).
     const rfc = provForm.rfc.trim().toUpperCase();
-    if (rfc && !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{2,3}$/.test(rfc)) {
+    if (rfc && !rfcEsValido(rfc)) {
       showToast('El RFC no tiene el formato oficial (3-4 letras + 6 dígitos + homoclave), ejemplo: TOR890101ABC. Déjalo vacío si no aplica.', 'error');
       return;
     }
@@ -1161,7 +1166,7 @@ export default function ProveedoresPage() {
               className={modalInputClass}
               placeholder="XXX000000XX0"
               value={provForm.rfc}
-              onChange={(e) => setProvForm({ ...provForm, rfc: e.target.value })}
+              onChange={(e) => setProvForm({ ...provForm, rfc: limpiarRfc(e.target.value) })}
             />
           </ModalField>
           <ModalField label="Categoría">
@@ -1183,9 +1188,9 @@ export default function ProveedoresPage() {
             <input
               type="text"
               className={modalInputClass}
-              placeholder="555-0000"
+              placeholder="Ej: 322-123-4567"
               value={provForm.telefono}
-              onChange={(e) => setProvForm({ ...provForm, telefono: e.target.value })}
+              onChange={(e) => setProvForm({ ...provForm, telefono: limpiarTelefono(e.target.value) })}
             />
           </ModalField>
           <ModalField label="Correo">
