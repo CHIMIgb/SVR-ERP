@@ -23,9 +23,10 @@ export class AuthController {
 
   /**
    * POST /api/auth/login
-   * Rate limit: 5 intentos por 15 minutos por IP (anti brute-force).
+   * Rate limit: THROTTLE_SHORT_LIMIT intentos por THROTTLE_SHORT_TTL_MIN
+   * minutos por IP (default 5 / 15 min, anti brute-force). El límite vive en
+   * el módulo — el decorator hardcodeado lo pisaba y el .env no aplicaba.
    */
-  @Throttle({ short: { limit: 5, ttl: 900000 } })
   @UseGuards(ThrottlerGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -44,8 +45,7 @@ export class AuthController {
    */
   @Throttle({ short: { limit: 3, ttl: 3600000 } })
   @UseGuards(ThrottlerGuard)
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
+  @Post('register')  @HttpCode(HttpStatus.CREATED)
   async register(
     @Body() dto: RegisterDto,
     @Req() req: Request,
@@ -74,7 +74,6 @@ export class AuthController {
 
   /**
    * POST /api/auth/logout
-   * Usa rate limit global: 60 req/min.
    * Requiere access token válido.
    */
   @UseGuards(JwtAuthGuard)
@@ -94,7 +93,6 @@ export class AuthController {
 
   /**
    * GET /api/auth/profile
-   * Usa rate limit global: 60 req/min.
    * Requiere access token válido.
    */
   @UseGuards(JwtAuthGuard)

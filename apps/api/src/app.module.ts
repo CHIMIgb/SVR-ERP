@@ -57,11 +57,6 @@ function envInt(key: string, defaultValue: number): number {
         ttl: 900000,
         limit: 30,
       },
-      {
-        name: 'long',    // General (no usado globalmente)
-        ttl: 60000,
-        limit: 60,
-      },
     ]),
     PrismaModule,
     AuthModule,

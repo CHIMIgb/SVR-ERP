@@ -95,6 +95,8 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       },
       trabajadores: {
         findFirst: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez' }),
+        // B5.12: el trabajador asignado sin cuenta enlazada → sin notificación.
+        findUnique: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez', usuario: null }),
       },
       users: {
         findUnique: jest.fn().mockResolvedValue(null),

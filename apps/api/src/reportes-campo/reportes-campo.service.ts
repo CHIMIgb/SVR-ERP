@@ -406,10 +406,12 @@ export class ReportesCampoService {
         estado: EstadoIncidente.NUEVO,
         asignado_a_id: null,
         asignado_nombre: null,
+        asignado_user_id: null,
         eliminado_en: null,
       },
       data: {
         asignado_nombre: nombre,
+        asignado_user_id: userId,
         asignado_en: new Date(),
         actualizado_por: userId,
         actualizado_en: new Date(),
@@ -786,6 +788,16 @@ export class ReportesCampoService {
       data: {
         asignado_a_id: asignadoA,
         asignado_nombre: asignadoNombre,
+        // B5.12: si el trabajador tiene cuenta enlazada, queda como responsable
+        // (para notificarle el cierre); texto libre → null.
+        asignado_user_id: asignadoA
+          ? (
+              await this.prisma.trabajadores.findUnique({
+                where: { id: asignadoA },
+                select: { usuario: { select: { id: true } } },
+              })
+            )?.usuario?.id ?? null
+          : null,
         asignado_en: new Date(),
         actualizado_por: userId,
         actualizado_en: new Date(),
@@ -958,16 +970,28 @@ export class ReportesCampoService {
       newValue: { estado: ESTADO_LABELS[dto.estado] },
     });
 
-    // B5.10: al CERRAR se avisa al asignado (si tiene); si no lo tenía, nada.
-    if (dto.estado === EstadoIncidente.CERRADO && existente.asignado_a_id) {
-      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `Cerraron el reporte ${serialized.codigo ?? ''} que tenías asignado`,
-        cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+    // B5.10: al CERRAR se avisa al asignado — trabajador con cuenta o, en su
+    // defecto, el USUARIO responsable (quien aceptó); si no hay ninguno, nada.
+    if (dto.estado === EstadoIncidente.CERRADO) {
+      if (existente.asignado_a_id) {
+        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Cerraron el reporte ${serialized.codigo ?? ''} que tenías asignado`,
+          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      } else if (existente.asignado_user_id) {
+        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Cerraron tu reporte ${serialized.codigo ?? ''}`,
+          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      }
     }
 
     return serialized;
@@ -1040,16 +1064,28 @@ export class ReportesCampoService {
     });
 
     // B5.10: actividades publicadas — se avisa a LA OTRA PARTE: si publicó el
-    // creador → el asignado; si publicó el asignado (u otro) → el creador.
-    if (userId === existente.usuario_id && existente.asignado_a_id) {
-      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
-        cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+    // creador → el asignado (trabajador con cuenta o usuario responsable); si
+    // publicó el asignado (u otro) → el creador.
+    if (userId === existente.usuario_id && (existente.asignado_a_id || existente.asignado_user_id)) {
+      if (existente.asignado_a_id) {
+        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
+          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      } else {
+        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id!, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
+          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      }
     } else if (userId !== existente.usuario_id && existente.usuario_id) {
       await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
         tipo: TipoNotificacion.INFO,

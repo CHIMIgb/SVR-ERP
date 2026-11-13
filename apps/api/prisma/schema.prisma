@@ -1543,8 +1543,12 @@ model reportes_campo {
   asignado_a_id                               String?            @db.Uuid
   asignado_en                                 DateTime?          @db.Timestamptz()
   asignado_nombre                             String?
+  /// B5.12: el USUARIO responsable (quién aceptó, o la cuenta enlazada del
+  /// trabajador asignado) — para notificarle al cerrar el reporte.
+  asignado_user_id                            String?            @db.Uuid
   cerrado_en                                  DateTime?          @db.Timestamptz()
   asignado_a                                  trabajadores?      @relation("reportes_campo_asignado_a", fields: [asignado_a_id], references: [id])
+  asignado_user                               users?             @relation("reportes_campo_asignado_user", fields: [asignado_user_id], references: [id])
   users_reportes_campo_actualizado_porTousers users?             @relation("reportes_campo_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_actualizado_por")
   users_reportes_campo_creado_porTousers      users?             @relation("reportes_campo_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_creado_por")
   users_reportes_campo_usuario_idTousers      users?             @relation("reportes_campo_usuario_idTousers", fields: [usuario_id], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_usuario")
@@ -2167,6 +2171,7 @@ model users {
   lecturas_notificaciones_lecturas_user_idTousers                                notificaciones_lecturas[]     @relation("lecturas_usuario")
   notificaciones_notificaciones_destinatarioTousers                              notificaciones[]              @relation("notificaciones_destinatario")
   trabajadores_trabajadores_cuentaTousers                                        trabajadores[]                @relation("trabajadores_cuenta")
+  reportes_campo_asignado_user_reportes_campo_asignado_userTousers               reportes_campo[]              @relation("reportes_campo_asignado_user")
 
   @@unique([numero_empleado])
 }
