@@ -11,6 +11,18 @@ import { AuditService } from '../audit/audit.service';
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * Ruta de la vista DUEÑA de cada tipo de referencia. Con este mapa, el buzón
+ * filtra por ACCESO A VISTA: si el usuario (por cualquiera de sus roles) no
+ * puede ver la vista, las notificaciones de ese tipo no le aparecen.
+ */
+const RUTA_POR_REFERENCIA: Record<string, string> = {
+  ordenes_compra: '/proveedores',
+  pagos_proveedor: '/proveedores',
+  cierres_caja: '/ventas',
+  periodos_nomina: '/nomina',
+};
+
 /** Entrada para emitir una notificación desde cualquier service del ERP. */
 export interface EmitirNotificacionInput {
   tipo: TipoNotificacion;
@@ -20,7 +32,7 @@ export interface EmitirNotificacionInput {
   referenciaId?: string;
   /** Rol destinatario; undefined/null = visible a TODOS los roles. */
   audienciaRolId?: string;
-  /** Usuario que disparó el evento (para trazabilidad creado_por). */
+  /** Usuario que disparó el evento (para trazabilidad y para NO mostrarle su propio aviso). */
   creadoPor?: string;
 }
 
@@ -59,87 +71,6 @@ export class NotificacionesService {
     }
   }
 
-  /** Buzón del usuario: audiencia "todos" + los roles del usuario. */
-  async findMine(userId: string, query: { page?: number; limit?: number } = {}) {
-    const page = query.page || 1;
-    const limit = Math.min(query.limit || 10, 100);
-
-    const roles = await this.prisma.users_roles.findMany({
-      where: { user_id: userId },
-      select: { rol_id: true },
-    });
-    const roleIds = roles.map((r) => r.rol_id);
-
-    const where = {
-      descartada: false,
-      OR: [
-        { audiencia_rol_id: null },
-        ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
-      ],
-    };
-
-    const [rows, total, noLeidas] = await Promise.all([
-      this.prisma.notificaciones.findMany({
-        where,
-        orderBy: { creado_en: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.notificaciones.count({ where }),
-      this.prisma.notificaciones.count({ where: { ...where, leido_en: null } }),
-    ]);
-
-    return {
-      items: rows.map((n) => this.serialize(n)),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
-      },
-      noLeidas,
-    };
-  }
-
-  /** Marca UNA notificación como leída (lectura compartida por rol). */
-  async marcarLeida(id: string, userId: string) {
-    const notificacion = await this.prisma.notificaciones.findUnique({
-      where: { id },
-    });
-
-    if (!notificacion) {
-      return this.fallir(
-        AuditAction.NOTIFICACION_LEIDA,
-        id,
-        'NOTIFICACION_NO_ENCONTRADA',
-        NotFoundException,
-        `Notificación con id "${id}" no encontrada`,
-        userId,
-      );
-    }
-
-    const actualizada = await this.prisma.notificaciones.update({
-      where: { id },
-      data: { leido_en: new Date() },
-    });
-
-    await this.auditService.log({
-      action: AuditAction.NOTIFICACION_LEIDA,
-      entityType: 'notificaciones',
-      entityId: id,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      actorType: 'USER',
-      actorRole: 'autenticado',
-      newValue: {
-        titulo: notificacion.titulo,
-        yaLeida: Boolean(notificacion.leido_en),
-      },
-    });
-
-    return this.serialize(actualizada);
-  }
-
   /**
    * Emite para un ROL por su NOMBRE (evita UUIDs hardcodeados en los events).
    * Best-effort doble: si el rol no existe o la emisión falla, solo loggea.
@@ -167,26 +98,150 @@ export class NotificacionesService {
     }
   }
 
-  /** Marca TODAS las notificaciones del buzón del usuario como leídas. */
-  async marcarTodas(userId: string) {
+  /**
+   * Visibilidad del buzón de un usuario (compartida por TODOS los endpoints):
+   *  1. no descartada por él (tabla `notificaciones_lecturas`),
+   *  2. no la disparó él (el actor no recibe su propio aviso),
+   *  3. audiencia: eventos para todos o para alguno de sus roles activos,
+   *  4. ACCESO A VISTA: el tipo de referencia es de una vista que puede ver.
+   */
+  private async filtroDeBuzon(userId: string) {
     const roles = await this.prisma.users_roles.findMany({
-      where: { user_id: userId },
+      where: { user_id: userId, activo: true },
       select: { rol_id: true },
     });
     const roleIds = roles.map((r) => r.rol_id);
-    const where = {
-      leido_en: null,
-      descartada: false,
-      OR: [
-        { audiencia_rol_id: null },
-        ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
-      ],
-    };
 
-    const resultado = await this.prisma.notificaciones.updateMany({
-      where,
-      data: { leido_en: new Date() },
+    const roleVistas = await this.prisma.role_vistas.findMany({
+      where: { rol_id: { in: roleIds }, puede_ver: true },
+      include: { vistas: { select: { ruta: true } } },
     });
+    const rutasVisibles = new Set(
+      roleVistas
+        .map((rv) => rv.vistas?.ruta)
+        .filter((ruta): ruta is string => Boolean(ruta)),
+    );
+    const tiposVisibles = Object.entries(RUTA_POR_REFERENCIA)
+      .filter(([, ruta]) => rutasVisibles.has(ruta))
+      .map(([tipo]) => tipo);
+
+    return {
+      roleIds,
+      where: {
+        AND: [
+          { OR: [{ creado_por: null }, { creado_por: { not: userId } }] },
+          { OR: [{ audiencia_rol_id: null }, { audiencia_rol_id: { in: roleIds } }] },
+          { OR: [{ referencia_tipo: null }, { referencia_tipo: { in: tiposVisibles } }] },
+        ],
+      },
+    };
+  }
+
+  /** Buzón del usuario: merge del contenido visible con SU estado de lectura. */
+  async findMine(userId: string, query: { page?: number; limit?: number } = {}) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 10, 100);
+
+    const { where } = await this.filtroDeBuzon(userId);
+
+    const [rows, total, lecturas] = await Promise.all([
+      this.prisma.notificaciones.findMany({
+        where,
+        orderBy: { creado_en: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.notificaciones.count({ where }),
+      // Estado por usuario de TODO lo visible (para leida/noLeidas correctos).
+      this.prisma.notificaciones_lecturas.findMany({
+        where: { user_id: userId },
+      }),
+    ]);
+
+    const lecturasPorId = new Map(lecturas.map((l) => [l.notificacion_id, l]));
+
+    return {
+      items: rows.map((n) => this.serialize(n, lecturasPorId.get(n.id))),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      noLeidas: total - lecturas.filter((l) => l.leido_en && !l.descartada).length,
+    };
+  }
+
+  /** Marca UNA notificación como leída (estado POR USUARIO). */
+  async marcarLeida(id: string, userId: string) {
+    const notificacion = await this.prisma.notificaciones.findUnique({
+      where: { id },
+    });
+
+    if (!notificacion) {
+      return this.fallir(
+        AuditAction.NOTIFICACION_LEIDA,
+        id,
+        'NOTIFICACION_NO_ENCONTRADA',
+        NotFoundException,
+        `Notificación con id "${id}" no encontrada`,
+        userId,
+      );
+    }
+
+    await this.prisma.notificaciones_lecturas.upsert({
+      where: { notificacion_id_user_id: { notificacion_id: id, user_id: userId } },
+      update: { leido_en: new Date() },
+      create: { notificacion_id: id, user_id: userId, leido_en: new Date() },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.NOTIFICACION_LEIDA,
+      entityType: 'notificaciones',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        titulo: notificacion.titulo,
+        usuario: userId,
+      },
+    });
+
+    return this.serialize(notificacion, {
+      notificacion_id: id,
+      user_id: userId,
+      leido_en: new Date(),
+      descartada: false,
+      creado_en: new Date(),
+    });
+  }
+
+  /** Marca TODAS las visibles del usuario como leídas (solo las que faltan). */
+  async marcarTodas(userId: string) {
+    const { where } = await this.filtroDeBuzon(userId);
+
+    const visibles = await this.prisma.notificaciones.findMany({
+      where,
+      select: { id: true },
+    });
+    const lecturas = await this.prisma.notificaciones_lecturas.findMany({
+      where: { user_id: userId, notificacion_id: { in: visibles.map((v) => v.id) } },
+    });
+    const yaLeidas = new Set(lecturas.filter((l) => l.leido_en).map((l) => l.notificacion_id));
+    const faltantes = visibles.filter((v) => !yaLeidas.has(v.id));
+
+    if (faltantes.length > 0) {
+      await this.prisma.notificaciones_lecturas.createMany({
+        data: faltantes.map((v) => ({
+          notificacion_id: v.id,
+          user_id: userId,
+          leido_en: new Date(),
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     await this.auditService.log({
       action: AuditAction.NOTIFICACION_LEIDA,
@@ -196,35 +251,34 @@ export class NotificacionesService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: { marcadas: resultado.count },
+      newValue: { marcadas: faltantes.length, usuario: userId },
     });
 
-    return { message: 'Notificaciones marcadas como leídas', marcadas: resultado.count };
+    return { message: 'Notificaciones marcadas como leídas', marcadas: faltantes.length };
   }
 
   /**
-   * Descarta TODAS las notificaciones del buzón del usuario (icono de basura):
-   * desaparecen del centro y NO vuelven a aparecer — la fila queda en BD con
-   * `descartada = true` para auditoría/consultas.
+   * Basura del centro: descarta SOLO para este usuario (estado por usuario) —
+   * desaparecen y no vuelven para él; el resto del rol sigue viéndolas.
    */
   async descartarTodas(userId: string) {
-    const roles = await this.prisma.users_roles.findMany({
-      where: { user_id: userId },
-      select: { rol_id: true },
-    });
-    const roleIds = roles.map((r) => r.rol_id);
-    const where = {
-      descartada: false,
-      OR: [
-        { audiencia_rol_id: null },
-        ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
-      ],
-    };
+    const { where } = await this.filtroDeBuzon(userId);
 
-    const resultado = await this.prisma.notificaciones.updateMany({
+    const visibles = await this.prisma.notificaciones.findMany({
       where,
-      data: { descartada: true },
+      select: { id: true },
     });
+
+    if (visibles.length > 0) {
+      await this.prisma.notificaciones_lecturas.createMany({
+        data: visibles.map((v) => ({
+          notificacion_id: v.id,
+          user_id: userId,
+          descartada: true,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     await this.auditService.log({
       action: AuditAction.NOTIFICACION_DESCARTADA,
@@ -234,10 +288,10 @@ export class NotificacionesService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: { descartadas: resultado.count },
+      newValue: { descartadas: visibles.length, usuario: userId },
     });
 
-    return { message: 'Notificaciones descartadas', descartadas: resultado.count };
+    return { message: 'Notificaciones descartadas', descartadas: visibles.length };
   }
 
   /** Audita un fallo de negocio y lanza la excepción correspondiente. */
@@ -267,7 +321,7 @@ export class NotificacionesService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private serialize(n: any) {
+  private serialize(n: any, lectura?: any) {
     return {
       id: n.id,
       tipo: n.tipo,
@@ -276,8 +330,8 @@ export class NotificacionesService {
       referenciaTipo: n.referencia_tipo ?? null,
       referenciaId: n.referencia_id ?? null,
       audienciaRolId: n.audiencia_rol_id ?? null,
-      leida: Boolean(n.leido_en),
-      leidoEn: n.leido_en?.toISOString?.() ?? n.leido_en,
+      leida: Boolean(lectura?.leido_en),
+      leidoEn: lectura?.leido_en?.toISOString?.() ?? null,
       creadoEn: n.creado_en?.toISOString?.() ?? n.creado_en,
     };
   }

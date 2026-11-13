@@ -25,8 +25,8 @@ export class NotificacionesController {
     @Query() query: { page?: string; limit?: string },
     @Req() req: Request,
   ) {
-    const user = req.user as { userId: string };
-    return this.notificacionesService.findMine(user.userId, {
+    const user = req.user as { id: string };
+    return this.notificacionesService.findMine(user.id, {
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
     });
@@ -35,19 +35,20 @@ export class NotificacionesController {
   /** Rutas fijas ANTES que :id/leer para que no las capture el parámetro. */
   @Patch('leer-todas')
   marcarTodas(@Req() req: Request) {
-    const user = req.user as { userId: string };
-    return this.notificacionesService.marcarTodas(user.userId);
+    const user = req.user as { id: string };
+    return this.notificacionesService.marcarTodas(user.id);
   }
 
   @Patch('descartar-todas')
   descartarTodas(@Req() req: Request) {
-    const user = req.user as { userId: string };
-    return this.notificacionesService.descartarTodas(user.userId);
+    const user = req.user as { id: string };
+    return this.notificacionesService.descartarTodas(user.id);
   }
 
   @Patch(':id/leer')
   marcarLeida(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    const user = req.user as { userId: string };
-    return this.notificacionesService.marcarLeida(id, user.userId);
+    const user = req.user as { id: string };
+    return this.notificacionesService.marcarLeida(id, user.id);
   }
 }
+
