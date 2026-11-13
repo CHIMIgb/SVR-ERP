@@ -216,6 +216,13 @@ export default function VentasPage() {
     return true;
   };
 
+  /** Cantidad ya en carrito de un material+medida (validación al teclear). */
+  const enCarritoDe = useCallback(
+    (materialId: string, unit: string) =>
+      cart.find((i) => cartLineKey(i) === `${materialId}:${unit}`)?.quantity ?? 0,
+    [cart],
+  );
+
   const updateQty = (lineKey: string, delta: number) => {
     setCart((prev) =>
       prev.flatMap((i) => {
@@ -480,7 +487,11 @@ export default function VentasPage() {
                     </div>
                   )}
                   {catalogoCargado && (
-                    <ProductPicker products={products} onAdd={addProduct} />
+                    <ProductPicker
+                      products={products}
+                      onAdd={addProduct}
+                      enCarritoDe={enCarritoDe}
+                    />
                   )}
 
                   <div className={posClasses.card}>

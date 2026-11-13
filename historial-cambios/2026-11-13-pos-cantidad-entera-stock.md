@@ -17,6 +17,11 @@ Ajustes pedidos por el cliente sobre el POS:
     toast "Stock máximo" al instante y el **input de cantidad se borra**.
     Implementado con `onAdd → boolean`: la página valida y devuelve `false`,
     el picker limpia el campo.
+  - **La validación de stock se lanza AL TECLEAR**, no solo al agregar: el
+    picker recibe `enCarritoDe(materialId, unit)` (cantidad ya en carrito) y
+    en cada dígito capturado compara contra `stock - enCarrito`; al superar,
+    toast inmediato + input borrado. El guard de "Agregar" queda como defensa
+    (doble-click).
 
 ## Verificación
 
@@ -28,5 +33,6 @@ Ajustes pedidos por el cliente sobre el POS:
 
 - La medida puede admitir cantidades fraccionarias en el futuro (m³, tonelada):
   si el negocio lo pide, se relajará el filtro a decimales con `inputMode`.
-- El toast/limpieza cubre el caso del picker; el guard dentro de `setCart` se
-  conserva como defensa ante doble-click.
+- El guard dentro de `setCart` se conserva como defensa ante doble-click.
+- El toast puede repetirse si se teclea el mismo exceso varias veces: es el
+  comportamiento pedido (avisar y borrar cada vez).

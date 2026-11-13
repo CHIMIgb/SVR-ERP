@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
+import { useToast } from '@/components/layout/Toast';
 import { productUnitPrice } from '@/lib/pos';
 import type { Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
@@ -14,13 +15,16 @@ interface ProductPickerProps {
   products: Product[];
   /** Devuelve false si supera el stock (la vista ya muestra el toast). */
   onAdd: (product: Product, unit: string, quantity: number) => boolean;
+  /** Cantidad de ese material+medida ya en el carrito (para validar al teclear). */
+  enCarritoDe: (materialId: string, unit: string) => number;
 }
 
 /**
  * Selector de producto + medida (sin scanner): elige material, unidad de
  * venta (m³, tonelada, viaje, pieza...) y cantidad.
  */
-export function ProductPicker({ products, onAdd }: ProductPickerProps) {
+export function ProductPicker({ products, onAdd, enCarritoDe }: ProductPickerProps) {
+  const { showToast } = useToast();
   // Arranca vacío como cualquier formulario — el vendedor elige material y medida.
   const [productId, setProductId] = useState('');
   const [unit, setUnit] = useState('');
@@ -90,7 +94,17 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
           inputMode="numeric"
           placeholder="0"
           value={quantity}
-          onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))}
+          onChange={(e) => {
+            const digitos = e.target.value.replace(/\D/g, '');
+            // Validación al teclear: si supera el stock disponible (stock
+            // menos lo ya en carrito de esa medida), avisa y borra el input.
+            if (product && digitos && Number(digitos) > product.stock - enCarritoDe(product.id, unit)) {
+              showToast(`Stock máximo (${product.stock} ${unit}).`, 'error');
+              setQuantity('');
+              return;
+            }
+            setQuantity(digitos);
+          }}
         />
         <div className="flex items-end">
           <Button
