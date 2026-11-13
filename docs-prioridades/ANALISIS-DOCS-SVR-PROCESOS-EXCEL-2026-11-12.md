@@ -290,6 +290,7 @@ de retiros de F3, según el hilo) + F3/Cl3 para el estado de cuenta.
 | A24 | Entrega de efectivo | Se registra con folio y receptor (quiénes son dato capturable) | REGISTRO DE VENTAS d2 |
 | A25 | "NO HUBO EFECTIVO" | Nota del corte — día sin venta de contado; no genera registro especial | REGISTRO DE VENTAS d3 |
 | A26 | Alcance del POS | Vende lo que el catálogo tenga (no solo material por banco) | REGISTRO DE VENTAS d6 |
+| A27 | Identidad del operador (apodos) | La persona lleva **nombre completo en todo el sistema** (nómina, despachos, proyectos) y el apodo queda como sobrenombre. La equivalencia apodo↔persona se resuelve al cargar los datos reales comparando nómina vs plantillas — no se pregunta al cliente. NOMINA.txt retirado de docs-svr-dudas por esta decisión (2026-11-12) | NOMINA d1 (retirada) |
 
 **Dudas que SÍ quedaron en `docs-svr/docs-svr-dudas/`** (necesarias y medias):
 ver INDEX de esa carpeta — 3-6 por archivo, con las 🔴 clave marcadas por

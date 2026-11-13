@@ -100,7 +100,7 @@ La sección con más correspondencia del documento:
 | O3 | Despachos: ¿a quién notificar al asignar? ¿cómo modificar/cancelar si la obra se adelanta o cancela? (§5) | ⚠️ Sin respuesta | Flujo de despachos |
 | O4 | **Traslados de máquinas de terceros** (§4) | ✅ | Se operan como despachos especiales en `/operaciones` (+ facturación en `/facturas`, Fa3) |
 | O5 | **Ubicación inicial de cada máquina: el patio** (§5) | ✅ | Alta con ubicación inicial patio |
-| O6 | **Operador seleccionado de lista obligatoria** (§5) | ✅ | Select sin texto libre en alta/edición (equivalencia apodo↔persona de NÓMINA.xlsx pendiente) |
+| O6 | **Operador seleccionado de lista obligatoria** (§5) | ✅ | Select sin texto libre en alta/edición — con nombre completo de la persona (apodo como sobrenombre, decisión A27 del análisis docs-svr) |
 | O7 | **Baja de máquina incorporando los documentos entregados con la baja** (§5) | ✅ | Baja con adjuntos |
 | O8 | **Foto de cada máquina: SI** + placas, serie, año, modelo (§5) | ✅ foto / ⚠️ resto | Ficha de máquina |
 | O9 | **Estado de la máquina lo actualiza el operador: "OPERADOR ES RESPONSABLE DE SU UNIDAD"** (§5) | ✅ | Reglas de permisos sobre el estado |
