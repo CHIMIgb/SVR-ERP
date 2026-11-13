@@ -4,6 +4,7 @@ import { AuditAction, AuditResult, MetodoPago } from '@prisma/client';
 import { VentasService, clearConfigCache, permiteCerrarCaja } from './ventas.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 describe('VentasService', () => {
   let service: VentasService;
@@ -196,6 +197,8 @@ describe('VentasService', () => {
         VentasService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
+        // B5.3: emisión de notificaciones mock (no se prueba aquí).
+        { provide: NotificacionesService, useValue: { emitirARol: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

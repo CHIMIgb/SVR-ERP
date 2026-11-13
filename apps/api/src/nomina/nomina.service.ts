@@ -1,9 +1,10 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { AuditAction, AuditResult, MetodoPago, Prisma } from '@prisma/client';
+import { AuditAction, AuditResult, MetodoPago, Prisma, TipoNotificacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AsistenciaService } from '../asistencia/asistencia.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { RegistrarAjusteDto } from './dto/registrar-ajuste.dto';
 import { ActualizarEstadoNominaDto } from './dto/actualizar-estado-nomina.dto';
 import { QueryPeriodoDto } from './dto/query-periodo.dto';
@@ -72,6 +73,7 @@ export class NominaService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly asistenciaService: AsistenciaService,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -425,6 +427,18 @@ export class NominaService {
       actorRole: 'autenticado',
       newValue: { actualizados: resultado.count },
     });
+
+    // B5.3: notificación a Administrativo de la nómina pagada.
+    if (resultado.count > 0) {
+      await this.notificacionesService.emitirARol('Administrativo', {
+        tipo: TipoNotificacion.INFO,
+        titulo: 'Nómina pagada',
+        cuerpo: `El periodo ${periodo.nombre ?? periodoId} quedó PAGADO (${resultado.count} nómina(s)).`,
+        referenciaTipo: 'periodos_nomina',
+        referenciaId: periodoId,
+        creadoPor: userId,
+      });
+    }
 
     return { items: await this.listarNominasDePeriodo(periodoId), actualizados: resultado.count };
   }

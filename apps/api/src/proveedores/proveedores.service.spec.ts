@@ -5,6 +5,7 @@ import { ProveedoresService } from './proveedores.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 describe('ProveedoresService', () => {
   let service: ProveedoresService;
@@ -138,6 +139,8 @@ describe('ProveedoresService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: InventarioService, useValue: mockInventario },
+        // B5.3: emisión de notificaciones mock (no se prueba aquí).
+        { provide: NotificacionesService, useValue: { emitirARol: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

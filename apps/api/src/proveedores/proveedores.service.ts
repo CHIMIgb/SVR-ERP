@@ -10,6 +10,7 @@ import {
   AuditAction,
   AuditResult,
   EstadoOrdenCompra,
+  TipoNotificacion,
 } from '@prisma/client';
 import type { proveedores as Proveedor } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,6 +25,7 @@ import { RegistrarAbonoDto } from './dto/registrar-abono.dto';
 import { QueryOrdenesCompraDto } from './dto/query-ordenes-compra.dto';
 import { RecibirOrdenCompraDto } from './dto/recibir-orden-compra.dto';
 import { InventarioService } from '../inventario/inventario.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -54,6 +56,7 @@ export class ProveedoresService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly inventarioService: InventarioService,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   /**
@@ -879,6 +882,7 @@ export class ProveedoresService {
   ) {
     const existente = await this.prisma.ordenes_compra.findFirst({
       where: { id, eliminado_en: null },
+      include: { proveedores: { select: { nombre: true } } },
     });
 
     if (!existente) {
@@ -971,6 +975,18 @@ export class ProveedoresService {
       previousValue: this.serializeOrden(existente as never),
       newValue: serialized,
     });
+
+    // B5.3: notificación a Administrativo cuando se APRUEBA una orden.
+    if (dto.estado === EstadoOrdenCompra.APROBADA) {
+      await this.notificacionesService.emitirARol('Administrativo', {
+        tipo: TipoNotificacion.ALERTA,
+        titulo: `Orden ${existente.folio} aprobada`,
+        cuerpo: `${existente.proveedores?.nombre ?? 'Proveedor'} — ${Number(existente.monto).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} comprometidos en la orden de compra.`,
+        referenciaTipo: 'ordenes_compra',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
 
     return serialized;
   }
@@ -1415,6 +1431,16 @@ export class ProveedoresService {
         fechaPago: fechaPago.toISOString(),
         metodoPago: pago.metodo_pago,
       },
+    });
+
+    // B5.3: notificación a Administrativo de cada abono registrado.
+    await this.notificacionesService.emitirARol('Administrativo', {
+      tipo: TipoNotificacion.INFO,
+      titulo: `Abono a orden ${orden.folio}`,
+      cuerpo: `${proveedor.nombre} — ${dto.monto.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} abonados (pago ${pago.codigo}).`,
+      referenciaTipo: 'pagos_proveedor',
+      referenciaId: idPago,
+      creadoPor: userId,
     });
 
     return {

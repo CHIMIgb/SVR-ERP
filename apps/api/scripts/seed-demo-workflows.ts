@@ -37,7 +37,9 @@ async function main() {
   await prisma.$connect();
   const auditContext = new AuditContextService();
   const auditService = new AuditService(prisma, auditContext);
-  const ventas = new VentasService(prisma, auditService);
+  const ventas = new VentasService(prisma, auditService, {
+    emitirARol: async () => undefined,
+  } as never);
 
   // ── 1. Apertura de caja (si falta HOY) ──
   const hoy = new Date();
