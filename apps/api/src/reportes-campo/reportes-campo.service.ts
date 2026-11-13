@@ -12,11 +12,13 @@ import {
   Prioridad,
   TipoReporteCampo,
   CategoriaReporte,
+  TipoNotificacion,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
@@ -110,6 +112,7 @@ export class ReportesCampoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   // ────────────────────────────────────────────
@@ -450,6 +453,19 @@ export class ReportesCampoService {
       newValue: { aceptadoPor: nombre, estado: ESTADO_LABELS[existente.estado as EstadoIncidente] },
     });
 
+    // B5.10: aviso al CREADOR de que su reporte fue aceptado (y por quién).
+    if (existente.usuario_id && existente.usuario_id !== userId) {
+      const nombreAceptor = (await this.nombreDeUsuario(userId)) ?? nombre;
+      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `${nombreAceptor} aceptó tu reporte ${serialized.codigo ?? ''}`,
+        cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
+
     return serialized;
   }
 
@@ -578,6 +594,16 @@ export class ReportesCampoService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serialized,
+    });
+
+    // B5.10: aviso a TODA el área del reporte (torre destino).
+    await this.notificacionesService.emitirATorre(torre, {
+      tipo: TipoNotificacion.ALERTA,
+      titulo: `Nuevo reporte ${serialized.codigo ?? ''}`,
+      cuerpo: `${(dto.prioridad ? PRIORIDAD_LABELS[dto.prioridad] : undefined) ?? 'Reporte'} — ${dto.descripcion.slice(0, 140)}`,
+      referenciaTipo: 'reportes_campo',
+      referenciaId: reporte.id,
+      creadoPor: userId,
     });
 
     return serialized;
@@ -810,6 +836,18 @@ export class ReportesCampoService {
       },
     });
 
+    // B5.10: aviso al NUEVO asignado (si es trabajador con cuenta).
+    if (asignadoA) {
+      await this.notificacionesService.emitirATrabajador(asignadoA, {
+        tipo: TipoNotificacion.ALERTA,
+        titulo: `Te asignaron el reporte ${serialized.codigo ?? ''}`,
+        cuerpo: `${PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte'} — ${existente.descripcion.slice(0, 140)}`,
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
+
     return serialized;
   }
 
@@ -920,6 +958,18 @@ export class ReportesCampoService {
       newValue: { estado: ESTADO_LABELS[dto.estado] },
     });
 
+    // B5.10: al CERRAR se avisa al asignado (si tiene); si no lo tenía, nada.
+    if (dto.estado === EstadoIncidente.CERRADO && existente.asignado_a_id) {
+      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `Cerraron el reporte ${serialized.codigo ?? ''} que tenías asignado`,
+        cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
+
     return serialized;
   }
 
@@ -988,6 +1038,28 @@ export class ReportesCampoService {
         texto: dto.texto.trim().slice(0, 120),
       },
     });
+
+    // B5.10: actividades publicadas — se avisa a LA OTRA PARTE: si publicó el
+    // creador → el asignado; si publicó el asignado (u otro) → el creador.
+    if (userId === existente.usuario_id && existente.asignado_a_id) {
+      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
+        cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    } else if (userId !== existente.usuario_id && existente.usuario_id) {
+      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `Nueva actividad en tu reporte ${existente.codigo ?? ''}`,
+        cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
 
     return {
       id: actividad.id,
@@ -1447,6 +1519,21 @@ export class ReportesCampoService {
   ): string {
     const asignado = reporte.asignado_a?.nombre ?? reporte.asignado_nombre;
     return asignado ?? reporte.usuario ?? userId;
+  }
+
+  /** Nombre completo del usuario receptor del aviso (para "quién aceptó"). */
+  private async nombreDeUsuario(userId: string): Promise<string | null> {
+    const u = await this.prisma.users.findUnique({
+      where: { id: userId },
+      include: {
+        personas_users_persona_idTopersonas: {
+          select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+        },
+      },
+    });
+    const p = u?.personas_users_persona_idTopersonas;
+    if (!p) return null;
+    return [p.nombre, p.apellido_paterno, p.apellido_materno].filter(Boolean).join(' ');
   }
 
   /**
