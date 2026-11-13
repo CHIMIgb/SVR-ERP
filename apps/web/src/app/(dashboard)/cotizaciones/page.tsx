@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatCurrency, formatFechaSolo } from '@/lib/formatters';
+import { formatCurrency, formatFechaSolo, formatearMiles, parsearMiles } from '@/lib/formatters';
 import {
   cotizacionesApi,
   clientesApi,
@@ -229,7 +229,7 @@ export default function CotizacionesPage() {
     setEditForm({
       clienteId: item.clienteId,
       descripcion: item.descripcion,
-      monto: String(item.monto),
+      monto: formatearMiles(String(item.monto)),
       fecha: item.fecha,
       condiciones: item.condiciones ?? CONDICIONES_PLANTILLA,
       items: item.items?.length
@@ -297,7 +297,7 @@ export default function CotizacionesPage() {
           precioUnitario: Number(p.precio),
         }))
       : undefined;
-    const monto = conPartidas ? totalPartidas(form.items) : Number(form.monto);
+    const monto = conPartidas ? totalPartidas(form.items) : parsearMiles(form.monto);
     if (conPartidas ? monto <= 0 : isNaN(monto) || monto <= 0) {
       showToast('Ingresa un monto válido.', 'error');
       return;
@@ -391,7 +391,7 @@ export default function CotizacionesPage() {
       }
     } else {
       // Plana (sin partidas o el usuario borró todas): monto capturado a mano.
-      monto = Number(editForm.monto);
+      monto = parsearMiles(editForm.monto);
       if (isNaN(monto) || monto <= 0) {
         showToast('Ingresa un monto válido.', 'error');
         return;
@@ -404,7 +404,7 @@ export default function CotizacionesPage() {
         clienteId: editForm.clienteId || undefined,
         descripcion: editForm.descripcion.trim(),
         monto,
-        fecha: editForm.fecha,
+        // La fecha no se toca al editar: se captura sola al crear.
         ...(editForm.condiciones.trim() ? { condiciones: editForm.condiciones.trim() } : {}),
         // Con partidas originales el reemplazo SIEMPRE va (incluso [] = plana);
         // en una plana solo se envían si el usuario añadió renglones.
@@ -713,6 +713,7 @@ export default function CotizacionesPage() {
         cancelLabel="Cancelar"
         onSubmit={handleCreate}
         isSubmitting={submitting}
+        size="full"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField label="Cliente" required className="sm:col-span-2">
@@ -739,29 +740,19 @@ export default function CotizacionesPage() {
 
           <ModalField label="Subtotal (MXN, antes de IVA)" required>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
-              placeholder="0.00"
-              min="0"
-              step="0.01"
+              placeholder="30,000"
               disabled={hayPartidasForm}
-              value={hayPartidasForm ? totalPartidas(form.items) : form.monto}
-              onChange={(e) => setForm({ ...form, monto: e.target.value })}
+              value={hayPartidasForm ? formatearMiles(String(totalPartidas(form.items))) : formatearMiles(form.monto)}
+              onChange={(e) => setForm({ ...form, monto: formatearMiles(e.target.value) })}
             />
             <p className="mt-1 text-xs text-ui-500">
               {hayPartidasForm
                 ? 'Calculado como la suma de las partidas (cantidad × precio).'
                 : 'La factura se emite por este monto + IVA 16% (se aplica al aceptar con factura).'}
             </p>
-          </ModalField>
-
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
           </ModalField>
 
           <ModalField label="Partidas (renglones de la cotización)" className="sm:col-span-2">
@@ -838,6 +829,7 @@ export default function CotizacionesPage() {
         cancelLabel="Cancelar"
         onSubmit={handleEditar}
         isSubmitting={submitting}
+        size="full"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ModalField label="Cliente" className="sm:col-span-2">
@@ -864,29 +856,19 @@ export default function CotizacionesPage() {
 
           <ModalField label="Subtotal (MXN, antes de IVA)" required>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
-              placeholder="0.00"
-              min="0"
-              step="0.01"
+              placeholder="30,000"
               disabled={hayPartidasEdit}
-              value={hayPartidasEdit ? totalPartidas(editForm.items) : editForm.monto}
-              onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
+              value={hayPartidasEdit ? formatearMiles(String(totalPartidas(editForm.items))) : formatearMiles(editForm.monto)}
+              onChange={(e) => setEditForm({ ...editForm, monto: formatearMiles(e.target.value) })}
             />
             <p className="mt-1 text-xs text-ui-500">
               {hayPartidasEdit
                 ? 'Calculado como la suma de las partidas (cantidad × precio).'
                 : 'La factura se emite por este monto + IVA 16%.'}
             </p>
-          </ModalField>
-
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={editForm.fecha}
-              onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
-            />
           </ModalField>
 
           <ModalField label="Partidas (renglones de la cotización)" className="sm:col-span-2">
@@ -956,6 +938,7 @@ export default function CotizacionesPage() {
       <Modal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
+        size="full"
       >
         <ModalHeader
           title={selected ? `Cotización ${selected.codigo ?? ''}` : 'Detalle'}

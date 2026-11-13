@@ -89,3 +89,24 @@ export function formatNumber(value: number | null | undefined, fractionDigits = 
     maximumFractionDigits: fractionDigits,
   }).format(value);
 }
+
+/** "30000.5" → "30,000.5" — separador de miles para inputs de dinero (max 2 decimales). */
+export function formatearMiles(valor: string): string {
+  const limpio = valor.replace(/,/g, '').replace(/[^\d.]/g, '');
+  const [entero, ...decimales] = limpio.split('.');
+  const conComas = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return decimales.length > 0 ? `${conComas}.${decimales.join('').slice(0, 2)}` : conComas;
+}
+
+/** "30,000.50" → 30000.5 */
+export function parsearMiles(valor: string): number {
+  return parseFloat(valor.replace(/,/g, ''));
+}
+
+/** Fecha de hoy en horario local como YYYY-MM-DD (toISOString usaría UTC). */
+export function fechaLocalHoy(): string {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
+    hoy.getDate(),
+  ).padStart(2, '0')}`;
+}
