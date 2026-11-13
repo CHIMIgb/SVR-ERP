@@ -22,6 +22,7 @@ import { FormModal, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
 import { clientesApi, type ClienteDTO } from '@/lib/api';
+import { telefonoEsValido, limpiarTelefono } from '@/lib/formatters';
 
 import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
@@ -250,6 +251,10 @@ export default function VentasPage() {
   const handleCrearCliente = useCallback(async () => {
     if (!formCliente.nombre.trim() || !formCliente.correo.trim() || !formCliente.telefono.trim()) {
       showToast('Nombre, teléfono y correo son obligatorios.', 'error');
+      return;
+    }
+    if (!telefonoEsValido(formCliente.telefono)) {
+      showToast('El teléfono debe tener 10 dígitos.', 'error');
       return;
     }
     setCreandoCliente(true);
@@ -728,7 +733,7 @@ export default function VentasPage() {
               className={modalInputClass}
               placeholder="Ej: 322-123-4567"
               value={formCliente.telefono}
-              onChange={(e) => setFormCliente({ ...formCliente, telefono: e.target.value })}
+              onChange={(e) => setFormCliente({ ...formCliente, telefono: limpiarTelefono(e.target.value) })}
             />
           </ModalField>
           <ModalField label="Correo" required>

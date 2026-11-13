@@ -120,3 +120,19 @@ export function telefonoEsValido(valor: string): boolean {
 export function limpiarTelefono(valor: string): string {
   return valor.replace(/[^\d\s\-]/g, '');
 }
+
+/**
+ * RFC mexicano válido: 3-4 letras + 6 dígitos de fecha + homoclave de 3
+ * (13 chars persona física, 12 persona moral). Acepta ñ y & en las letras.
+ */
+export function rfcEsValido(valor: string): boolean {
+  return /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(valor.trim().toUpperCase());
+}
+
+/** RFC en mayúsculas, sin caracteres ajenos al formato (para el onChange). */
+export function limpiarRfc(valor: string): string {
+  return valor
+    .toUpperCase()
+    .replace(/[^A-ZÑ&0-9]/g, '')
+    .slice(0, 13);
+}

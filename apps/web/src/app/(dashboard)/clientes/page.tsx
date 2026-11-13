@@ -20,7 +20,7 @@ import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, moda
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, telefonoEsValido, limpiarTelefono, rfcEsValido, limpiarRfc } from '@/lib/formatters';
 import {
   clientesApi,
   type ClienteDTO,
@@ -254,6 +254,17 @@ export default function ClientesPage() {
   const validateForm = () => {
     if (!form.nombre || !form.correo) {
       showToast('Nombre y correo son obligatorios.', 'error');
+      return false;
+    }
+    // Teléfono opcional, pero si se captura debe ser un teléfono MX de 10 dígitos.
+    if (form.telefono.trim() && !telefonoEsValido(form.telefono)) {
+      showToast('El teléfono debe tener 10 dígitos.', 'error');
+      return false;
+    }
+    // RFC opcional, pero si se captura debe tener formato válido (3-4 letras
+    // + 6 dígitos + homoclave de 3).
+    if (form.rfc.trim() && !rfcEsValido(form.rfc)) {
+      showToast('El RFC no tiene un formato válido (ej. AUR780101XXX).', 'error');
       return false;
     }
     return true;
@@ -699,11 +710,11 @@ export default function ClientesPage() {
               className={modalInputClass}
               placeholder="Ej: 555-9988"
               value={form.telefono}
-              onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+              onChange={(e) => setForm({ ...form, telefono: limpiarTelefono(e.target.value) })}
             />
           </ModalField>
 
-          <ModalField label="Correo" required className="sm:col-span-2">
+          <ModalField label="Correo" required>
             <input
               type="email"
               className={modalInputClass}
@@ -719,7 +730,7 @@ export default function ClientesPage() {
               className={modalInputClass}
               placeholder="Ej: AUR780101XXX"
               value={form.rfc}
-              onChange={(e) => setForm({ ...form, rfc: e.target.value })}
+              onChange={(e) => setForm({ ...form, rfc: limpiarRfc(e.target.value) })}
             />
           </ModalField>
         </div>
@@ -942,11 +953,11 @@ export default function ClientesPage() {
               className={modalInputClass}
               placeholder="Teléfono de contacto"
               value={form.telefono}
-              onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+              onChange={(e) => setForm({ ...form, telefono: limpiarTelefono(e.target.value) })}
             />
           </ModalField>
 
-          <ModalField label="Correo" required className="sm:col-span-2">
+          <ModalField label="Correo" required>
             <input
               type="email"
               className={modalInputClass}
@@ -962,7 +973,7 @@ export default function ClientesPage() {
               className={modalInputClass}
               placeholder="RFC del cliente"
               value={form.rfc}
-              onChange={(e) => setForm({ ...form, rfc: e.target.value })}
+              onChange={(e) => setForm({ ...form, rfc: limpiarRfc(e.target.value) })}
             />
           </ModalField>
         </div>
