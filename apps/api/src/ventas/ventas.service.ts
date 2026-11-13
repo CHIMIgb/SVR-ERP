@@ -290,15 +290,34 @@ export class VentasService {
       );
     }
 
-    // 1. Resolver artículos de inventario y validar medida+stock
-    const articulos = await this.prisma.articulos_inventario.findMany({
-      where: { id: { in: dto.items.map((i) => i.materialId) } },
+    // 1. Cliente del catálogo (opcional): si viene, debe existir y estar activo.
+    //    El nombre de la venta sigue siendo texto (snapshot para el ticket).
+    let clienteNombre = dto.cliente?.trim() || 'Público en general';
+    if (dto.clienteId) {
+      const cliente = await this.prisma.clientes.findFirst({
+        where: { id: dto.clienteId, activo: true, eliminado_en: null },
+        select: { empresa: true, nombre: true },
+      });
+      if (!cliente) {
+        return this.fallir(
+          AuditAction.VENTA_CREADA,
+          dto.clienteId,
+          'CLIENTE_NO_ENCONTRADO',
+          BadRequestException,
+          `Cliente con id "${dto.clienteId}" no encontrado o inactivo`,
+        );
+      }
+      clienteNombre = cliente.empresa || cliente.nombre;
+    }
+
+    // 2. Resolver artículos de inventario y validar medida+stock
+    const articulos = await this.prisma.articulos_inventario.findMany({      where: { id: { in: dto.items.map((i) => i.materialId) } },
       include: { articulos_precio: true },
     });
 
     const byId = new Map(articulos.map((m) => [m.id, m]));
 
-    // 2. Validar medidas/stock de las líneas y precio unitario
+    // 3. Validar medidas/stock de las líneas y precio unitario
     for (const item of dto.items) {
       const art = byId.get(item.materialId);
       if (!art || art.eliminado_en || !art.activo) {
@@ -342,7 +361,7 @@ export class VentasService {
       }
     }
 
-    // 3. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
+    // 4. Validar pagos (sólo métodos soportados; sin mixto/terminal/QR)
     const metodosSoportados: string[] = ['efectivo', 'tarjeta', 'transferencia'];
     for (const pago of dto.pagos) {
       if (!metodosSoportados.includes(pago.metodo)) {
@@ -379,7 +398,7 @@ export class VentasService {
     const iva = Math.round(totalCobrado * 0.16 * 100) / 100;
     const base = Math.round((totalCobrado - iva) * 100) / 100;
 
-    // 4. Ticket secuencial del día + guardar (transacción)
+    // 5. Ticket secuencial del día + guardar (transacción)
     let venta;
     try {
       venta = await this.prisma.$transaction(async (tx) => {
@@ -402,7 +421,8 @@ export class VentasService {
             ticket,
             terminal: dto.terminal ?? 'TER-01',
             caja: dto.caja ?? 'CAJA-PV',
-            cliente: dto.cliente?.trim() || 'Público en general',
+            cliente: clienteNombre,
+            cliente_id: dto.clienteId ?? null,
             cajero: dto.cajero.trim(),
             subtotal: base,
             iva,
@@ -442,7 +462,7 @@ export class VentasService {
           include: { items: true, pagos: true },
         });
 
-        // 5. Descontar stock del artículo de inventario (ATÓMICO y con guard
+        // 6. Descontar stock del artículo de inventario (ATÓMICO y con guard
         //    anti-carrera: updateMany condicional — si un cambio concurrente
         //    vació el stock, count = 0 y TODA la venta revierte; nunca stock
         //    negativo) + movimiento SALIDA con referencia VENTA_POS.
@@ -1034,6 +1054,7 @@ export class VentasService {
     terminal: string;
     caja: string;
     cliente: string;
+    cliente_id: string | null;
     cajero: string;
     subtotal: Prisma.Decimal;
     iva: Prisma.Decimal;
@@ -1060,6 +1081,7 @@ export class VentasService {
       terminal: v.terminal,
       registerNumber: v.caja,
       customer: v.cliente,
+      clienteId: v.cliente_id ?? undefined,
       cashier: v.cajero,
       subtotal: Number(v.subtotal),
       iva: Number(v.iva),

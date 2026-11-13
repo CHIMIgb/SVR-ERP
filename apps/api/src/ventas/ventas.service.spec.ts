@@ -32,6 +32,7 @@ describe('VentasService', () => {
     terminal: 'TER-01',
     caja: 'CAJA-PV',
     cliente: 'Público en general',
+    cliente_id: null,
     cajero: 'Cajero',
     subtotal: 301.72,
     iva: 48.28,
@@ -123,6 +124,9 @@ describe('VentasService', () => {
         create: jest.fn().mockImplementation(({ data }) =>
           Promise.resolve({ ...data, id: 'm1' }),
         ),
+      },
+      clientes: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       ventas: {
         findMany: jest.fn().mockResolvedValue([mockVenta]),
@@ -278,8 +282,64 @@ describe('VentasService', () => {
       });
     });
 
-    it('carrera de stock (updateMany count 0) → STOCK_INSUFICIENTE auditado FAIL', async () => {
+    it('con clienteId válido guarda cliente_id + snapshot del nombre y expone clienteId', async () => {
       const dto = {
+        cajero: 'Cajero',
+        clienteId: '550e8400-e29b-41d4-a716-446655440010',
+        items: [
+          { materialId: mockMaterial.id, medida: 'm³', cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: 'efectivo' as const, monto: 350 }],
+        metodo: 'efectivo' as const,
+      };
+      prisma.clientes.findFirst.mockResolvedValue({ empresa: 'Constructora Beta', nombre: 'Beta SA' });
+
+      const result = await service.create(dto, 'user-1');
+
+      expect(prisma.clientes.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: dto.clienteId, activo: true, eliminado_en: null }),
+        }),
+      );
+      expect(prisma.ventas.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cliente: 'Constructora Beta', // snapshot: empresa || nombre
+            cliente_id: dto.clienteId,
+          }),
+        }),
+      );
+      expect(result.clienteId).toBe(dto.clienteId);
+      expect(result.customer).toBe('Constructora Beta');
+    });
+
+    it('clienteId inexistente → CLIENTE_NO_ENCONTRADO auditado FAIL y no crea venta', async () => {
+      const dto = {
+        cajero: 'Cajero',
+        clienteId: '550e8400-e29b-41d4-a716-446655440010',
+        items: [
+          { materialId: mockMaterial.id, medida: 'm³', cantidad: 1, precioUnitario: 350 },
+        ],
+        pagos: [{ metodo: 'efectivo' as const, monto: 350 }],
+        metodo: 'efectivo' as const,
+      };
+      prisma.clientes.findFirst.mockResolvedValue(null);
+
+      await expect(service.create(dto, 'user-1')).rejects.toThrow(BadRequestException);
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.VENTA_CREADA,
+          result: AuditResult.FAIL,
+          errorCode: 'CLIENTE_NO_ENCONTRADO',
+          entityId: dto.clienteId,
+        }),
+      );
+      expect(prisma.ventas.create).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('carrera de stock (updateMany count 0) → STOCK_INSUFICIENTE auditado FAIL', async () => {      const dto = {
         cajero: 'Cajero',
         items: [
           {
