@@ -15,4 +15,5 @@ directo. Ahora se esconden solo `/m` y las rutas `/m/...`.
 - `npx tsc --noEmit` y `npx eslint` en `apps/web`: sin errores.
 - Se revisó el otro uso de `startsWith("/m")` (`lib/pwa/rol-nav.ts`): ahí además se cruza con `NAV_MOVIL`, así
   que no esconde nada de más.
-- No se probó en navegador.
+- Navegador (Chrome headless, login real como admin), a 390, 768, 1024 y 1440 px en claro y oscuro: Flota y
+  Mantenimiento aparecen en el menú, tanto en el lateral como en el menú móvil.

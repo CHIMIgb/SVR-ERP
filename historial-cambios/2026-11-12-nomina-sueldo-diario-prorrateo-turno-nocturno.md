@@ -53,7 +53,14 @@
   - Reportes de campo: buscan usuarios demo que la BD local no tiene.
   - Ventas y Proveedores: ya fallaban antes por la hora y los datos locales.
 
+- Smoke con la API corriendo y login real:
+  - Las faltas salen al sueldo entre 7 ($7,000 con 4 faltas → $4,000).
+  - Ajuste sobre una nómina pagada → 409, con FAIL `NOMINA_PAGADA` en `registro_auditoria`; al regresarla a
+    pendiente el neto no cambió.
+  - Sin token → 401.
+- Navegador (Chrome headless, login real), a 390, 768, 1024 y 1440 px en claro y oscuro: Nómina con su modal de
+  ajuste y el alta de Trabajadores, con entrada 08:00 en los 8 casos. No se desborda ni se corta nada.
+
 ## Pendientes
-- No se probó en navegador.
 - Turno nocturno: el plazo de la omisión sigue siendo a las 17:00 para todos. Para quien entra de noche, una
   entrada tarde queda vencida de inmediato. Falta definir su plazo.
