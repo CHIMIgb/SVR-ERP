@@ -23,56 +23,64 @@
 
 ## 1. ÍNDICE DE TRABAJO — arrancable SIN respuestas (2026-11-12)
 
-> Nada de esto requiere las dudas de `docs-svr/docs-svr-dudas/` (las
-> decisiones por defecto viven en el §10 del análisis docs-svr). Lo que
-> espera respuestas queda excluido al final.
+> **ALCANCE ESTRICTO — solo se corrigen estas 15 vistas:**
+> **Operaciones:** `/reportes` · `/operaciones` (bitácoras de operación) ·
+> `/criba` · `/inventario` · `/proyectos`
+> **Comercial:** `/clientes` · `/cotizaciones` · `/finanzas` · `/proveedores` ·
+> `/ventas` · `/cobranza` · `/ventas/corte` · `/facturas`
+>
+> ⚠️ Las tareas de ficha de máquina, checklist, despachos, patio y horómetro
+> viven físicamente en el módulo **Maquinaria** (`/maquinaria`) — FUERA de este
+> alcance (ver §4). Nada de este índice requiere las dudas de
+> `docs-svr/docs-svr-dudas/` (decisiones por defecto: §10 del análisis docs-svr).
 
-### A. Del propio plan — reglas ya confirmadas (F1)
+### A. Confirmadas y ya implementadas (verificar, no construir)
 
 | # | Tarea | Vista | Estado |
 |---|---|---|---|
-| A1 | FIX: checklist guarda "luces y alarmas" como correcto sin preguntarlo (O2) | `/operaciones` | ⏳ por hacer |
-| A2 | Ubicación inicial de máquina: el patio (O5) | `/operaciones` | ⏳ por hacer |
-| A3 | Operador de lista obligatoria, con **nombre completo** (O6 + decisión A27) | `/operaciones` | ⏳ por hacer |
-| A4 | Foto de cada máquina al alta (O8) | `/operaciones` | ⏳ por hacer |
-| A5 | Firma del residente gatea la facturación de bitácora (Fa2) | `/facturas` | ✅ ya implementado (workflow 02) — solo verificar |
-| A6 | El horómetro JAMÁS genera CxC; cobro solo por bitácora de renta (C1 + O12) | `/operaciones` | ✅ ya implementado — bitácoras-renta es la única vía facturable |
-| A7 | Trabajador en varias obras sin fricción (Pr2) | `/proyectos` | ✅ ya implementado (`trabajadores_proyectos`) |
+| A1 | Trabajador en varias obras sin fricción (Pr2) | `/proyectos` | ✅ ya implementado (`trabajadores_proyectos`) |
+| A2 | Firma del residente gatea la facturación de bitácora (Fa2) | `/facturas` | ✅ ya implementado (workflow 02) — solo verificar |
+| A3 | El horómetro JAMÁS genera CxC; cobro solo por bitácora de renta (C1 + O12) | `/operaciones` | ✅ ya implementado — bitácoras-renta es la única vía facturable |
 
-### B. De IMPLEMENTACIONES-A-FUTURO — sin dependencia de dudas
+### B. Pendientes dentro del alcance (de IMPLEMENTACIONES-A-FUTURO, sin dependencia de dudas)
 
 | # | Tarea | Vista(s) | Estado |
 |---|---|---|---|
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
-| B2 | **6.6: flujo proyecto→obra** — obra base automática, multi-frente, sync de estados (BD con 4 de 6 proyectos sin obra) | `/proyectos` → `/operaciones` | ⏳ |
+| B2 | **6.6: flujo proyecto→obra** — obra base automática, multi-frente, sync de estados (BD con 4 de 6 proyectos sin obra) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ⏳ |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
-| B5 | **F5: configuración POS** — horario de caja que gatee + categorías visibles | `/configuracion`, `/ventas` | ⏳ |
-| B6 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal | ⏳ |
-| B7 | 6.2: incidente resuelto → deriva mantenimiento/reporte de campo | `/operaciones` | ⏳ |
-| B8 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ⏳ |
-| B9 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ⏳ |
-| B10 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
-| B11 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
+| B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
+| B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ⏳ |
+| B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ⏳ |
+| B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
+| B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
 
 ### Orden de arranque propuesto
 
-**A1–A4** (fixes rápidos, ya confirmados) → **B2** (proyecto→obra — prerrequisito
-operativo de `/operaciones`) → **B1** (partidas — habilita facturación por
-línea) → **B3** (FK cliente en POS — prepara el crédito C3) → **B4 → B5 →
-B6** → **B7–B9** → **B10 → B11**.
+**B2** (proyecto→obra — prerrequisito operativo de `/operaciones` y
+`/inventario`) → **B1** (partidas — habilita facturación por línea y la
+plantilla de cotización) → **B3** (FK cliente en POS — prepara el crédito C3)
+→ **B4 → B5 → B6–B7** → **B8 → B9**.
 
-### ⛔ Queda FUERA de este arranque (espera respuestas de docs-svr-dudas)
+### ⛔ FUERA de este alcance (otro módulo u otra persona)
 
-- **F3 — motor de retiros**: espera la regla del precio (CLAVE 1) y el
-  amarrado a obra (CLAVE 2).
-- **Crédito en POS — validación de límite**: espera asignación/rebase
-  (CLAVE 6). La parte no bloqueante es B3.
-- **Conciliación semanal de proveedores**: espera qué es exactamente
-  (CLAVE 8) y corrección post-conciliación (CLAVE 9).
-- **Formatos de estado de cuenta (flete incluido/aparte)**: espera CLAVE 4.
-- **Desgloses de costo por proyecto** (6.8 Fase 3): espera el costeo F1
-  (¿gasto a obra o por camión? — CLAVE 3).
+- **Fichas de máquina, checklists, despachos, patio, operador de lista, foto
+  de máquina, horómetro interno** (O1–O13 del plan, antes A1–A4 del índice
+  viejo): viven en el módulo **Maquinaria** (`/maquinaria`) — NO son de las
+  15 vistas. El fix del checklist (O2) ya está implementado de punta a punta
+  con tests (verificado 2026-11-12).
+- **6.2 incidente→deriva** (`/incidentes` no está en las 15 vistas).
+- **F5 config POS**: la pantalla vive en `/configuracion` (módulo Sistema) —
+  solo el gate de `/ventas` sería de este alcance; queda pendiente de acuerdo.
+- **F3 motor de retiros**: espera la regla del precio (CLAVE 1) y el amarrado
+  a obra (CLAVE 2) — y toca `/ventas`+`/operaciones` (dentro de alcance, pero
+  bloqueado).
+- **Crédito en POS — validación de límite**: espera CLAVE 6 (la parte no
+  bloqueante es B3).
+- **Conciliación semanal de proveedores**: espera CLAVE 8 y 9.
+- **Formatos de estado de cuenta (flete)**: espera CLAVE 4.
+- **Desgloses de costo por proyecto**: espera el costeo F1 (CLAVE 3).
 
 ---
 
@@ -145,6 +153,14 @@ el formato del estado de cuenta que se le entrega al cliente — ver §2.6)*
 ---
 
 ## 4. OPERACIONES — correspondencia por vista
+
+> ⚠️ **ACLARACIÓN DE UBICACIÓN FÍSICA (2026-11-12):** la vista `/operaciones`
+> es **solo bitácoras de operación** (horas por máquina/obra, `bitacoraApi`).
+> Los puntos O1–O13 de la ficha de máquina, checklist, despachos, patio,
+> operador, foto y horómetro **viven físicamente en el módulo Maquinaria
+> (`/maquinaria`)** — no son de este alcance. De esta tabla, lo que toca
+> directamente las vistas del dueño es: bitácoras (6.1 ya implementada),
+> `Pr2` (`/proyectos`) y los reglajes de la Sección A del índice (§1).
 
 ### 3.1 /operaciones (flota: máquinas, checklists, despachos, horómetro interno)
 La sección con más correspondencia del documento:

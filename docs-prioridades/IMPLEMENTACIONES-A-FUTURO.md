@@ -17,11 +17,19 @@
 > **Las series P/F de este documento se ejecutan LUEGO** de ese plan.
 >
 > 🧵 **HILO CONDUCTOR (2026-11-12) — orden de los 3 documentos:**
+> **🎯 ALCANCE DE CORRECCIONES — solo las 15 vistas:** Operaciones (`/reportes`,
+> `/operaciones`, `/criba`, `/inventario`, `/proyectos`) + Comercial
+> (`/clientes`, `/cotizaciones`, `/finanzas`, `/proveedores`, `/ventas`,
+> `/cobranza`, `/ventas/corte`, `/facturas`). De las series de este documento,
+> las que tocan esas vistas: **P2, P3, P4, P6, P7, P8, 6.4, 6.5, 6.6, C3, §9,
+> §10, F1** — las de otros módulos (P13–P15 sistema, 6.2 incidentes, F5
+> configuración) son de otro dueño.
 > 1. **[`ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md`](./ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md)**
 >    — TERMINADO: insumo de reglas de negocio (retiros, plantilla de cotización,
 >    conciliación de proveedores) y 4 dudas bloqueantes.
 > 2. **[`PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md`](./PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md)**
->    — VIGENTE: F1 fixes → F2 preguntas → F3 retiros/cotizaciones/corte.
+>    — VIGENTE: §1 índice de trabajo arrancable sin dudas (F1 fixes → B2 → B1
+>    → B3 → B4–B6 → B7–B9 → B8–B9).
 > 3. **ESTE documento** — las series P/F se ejecutan DESPUÉS del plan comercial,
 >    empezando por las que ese plan desbloquea:
 >    **P2** (partidas) se construye junto con la plantilla de cotización de F3 ·

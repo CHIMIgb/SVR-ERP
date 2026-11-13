@@ -1,5 +1,14 @@
 # PLAN FUERA DE ALCANCE — Sistema, GPS, RRHH y Maquinaria (fuente: plan del 11-11-2026)
 
+> **🎯 ALCANCE DEL DUEÑO DE COMERCIAL/OPERACIONES (2026-11-12):** este
+> documento NO contiene trabajo de las 15 vistas en alcance
+> (Operaciones: `/reportes`, `/operaciones`, `/criba`, `/inventario`,
+> `/proyectos` — Comercial: `/clientes`, `/cotizaciones`, `/finanzas`,
+> `/proveedores`, `/ventas`, `/cobranza`, `/ventas/corte`, `/facturas`).
+> Todo lo que hay aquí es de módulos de otro dueño: Sistema (Vista A/B),
+> GPS, RRHH/nómina/finiquitos y Maquinaria (fichas de máquina, checklist,
+> despachos, patio, operador, foto, horómetro, llantas, diésel).
+
 > **Qué es este documento:** el contenido que vivía en
 > `PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md` y quedó fuera del alcance de
 > Comercial y Operaciones al recortarlo (2026-11-12). **Se conserva íntegro y
