@@ -38,7 +38,7 @@
 
 | # | Tarea | Vista | Estado |
 |---|---|---|---|
-| A1 | Trabajador en varias obras sin fricción (Pr2) | `/proyectos` | ✅ ya implementado (`trabajadores_proyectos`) |
+| A1 | Trabajador en varios proyectos sin fricción (Pr2) | `/proyectos` | ✅ ya implementado (`trabajadores_proyectos`) |
 | A2 | Firma del residente gatea la facturación de bitácora (Fa2) | `/facturas` | ✅ ya implementado (workflow 02) — solo verificar |
 | A3 | El horómetro JAMÁS genera CxC; cobro solo por bitácora de renta (C1 + O12) | `/operaciones` | ✅ ya implementado — bitácoras-renta es la única vía facturable |
 
@@ -47,7 +47,7 @@
 | # | Tarea | Vista(s) | Estado |
 |---|---|---|---|
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
-| B2 | **6.6: flujo proyecto→obra** — obra base automática, multi-frente, sync de estados (BD con 4 de 6 proyectos sin obra) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ⏳ |
+| B2 | **P15: el proyecto ES la obra** — se ELIMINA el flujo proyecto→obra (6.6: obra base, multi-frente, botón «Agregar obra», `obras[]`); se consolida la tabla `obras` en `proyectos` (`/operaciones`, `/asistencia`, bitácoras y reportes-campo pasan a `proyecto_id` + `/catalogos/proyectos`) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ⏳ |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
@@ -56,10 +56,18 @@
 | B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
 | B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
 
+> **Decisión del cliente (2026-11-12):** el sistema maneja **un solo nivel:
+> `proyectos`** — **el proyecto ES la obra**. Se elimina todo el diseño de "un
+> proyecto con una o varias obras" (obra base automática, multi-frente, botón
+> «Agregar obra», `obras[]`, sync de estados obra↔proyecto). Lo que antes era
+> B2 "flujo proyecto→obra" ahora es **P15** (consolidar `obras` en
+> `proyectos`).
+
 ### Orden de arranque propuesto
 
-**B2** (proyecto→obra — prerrequisito operativo de `/operaciones` y
-`/inventario`) → **B1** (partidas — habilita facturación por línea y la
+**B2** (consolidar `obras` en `proyectos` — el proyecto ES la obra;
+prerrequisito operativo de `/operaciones` y `/inventario`) → **B1** (partidas —
+habilita facturación por línea y la
 plantilla de cotización) → **B3** (FK cliente en POS — prepara el crédito C3)
 → **B4 → B5 → B6–B7** → **B8 → B9**.
 
@@ -74,7 +82,7 @@ plantilla de cotización) → **B3** (FK cliente en POS — prepara el crédito 
 - **F5 config POS**: la pantalla vive en `/configuracion` (módulo Sistema) —
   solo el gate de `/ventas` sería de este alcance; queda pendiente de acuerdo.
 - **F3 motor de retiros**: espera la regla del precio (CLAVE 1) y el amarrado
-  a obra (CLAVE 2) — y toca `/ventas`+`/operaciones` (dentro de alcance, pero
+  del retiro al proyecto (CLAVE 2) — y toca `/ventas`+`/operaciones` (dentro de alcance, pero
   bloqueado).
 - **Crédito en POS — validación de límite**: espera CLAVE 6 (la parte no
   bloqueante es B3).
@@ -117,7 +125,7 @@ Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuest
 ### 2.3 /facturas
 | # | Punto | Estado | Implicación |
 |---|---|---|---|
-| Fa1 | ¿Para facturar, qué dato manda: proyecto, cliente u obra? (§5 Despachos) | ⚠️ parcialmente respondida (§6) | La lectura de renta se asocia a **combinación cliente+obra** ("un cliente puede tener distintas obras") — la trazabilidad despacho→factura sigue abierta |
+| Fa1 | ¿Para facturar, qué dato manda: proyecto, cliente u obra? (§5 Despachos) | ⚠️ parcialmente respondida (§6) | La lectura de renta se asocia a **combinación cliente+proyecto** ("un cliente puede tener distintos proyectos") — la trazabilidad despacho→factura sigue abierta |
 | Fa2 | **"SI CADA NOTA DEBE ESTAR FIRMADA PARA RESPALDO DEL CLIENTE"** (§6) | ✅ | Regla dura: no se factura una bitácora de renta sin firma del residente |
 | Fa3 | **Traslados de máquinas de terceros = otro servicio que brindamos** (§4) | ✅ | Servicio facturable NUEVO (concepto en factura; cotización si aplica). docs-svr lo ejemplifica: COTIZACION 47 cobra traslado de vibrocompactador como renglón propio |
 
@@ -127,7 +135,7 @@ Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuest
 | C1 | **El horómetro del operador es SOLO información interna; el cobro EXCLUSIVAMENTE por bitácora de renta** (§6) | ✅ | Blindar anti-doble-cobro: horómetro jamás genera CxC |
 | C2 | **Tarifa por TIPO DE MÁQUINA y CLIENTE**, distinta en nocturno/festivo/extra (§6) | ✅ | Cambia el monto de la CxC nacida de bitácora (tarifas reales pendientes en §5 entregables) |
 | C3 | **El tiempo detenido en obra SE COBRA; el traslado NO** (salvo grúa/oruga baja) (§6) | ✅ | Define conceptos cobrables de la bitácora |
-| C4 | La lectura de renta se asocia a **combinación cliente + obra** (§6) | ✅ | Modelo de CxC: cliente y obra como dimensiones separadas, no una sola |
+| C4 | La lectura de renta se asocia a **combinación cliente + proyecto** (§6) | ✅ | Modelo de CxC: cliente y proyecto como dimensiones separadas, no una sola |
 
 *(la mecánica de abonos/cobro revertido de `/cobranza` no cambia; docs-svr añade
 el formato del estado de cuenta que se le entrega al cliente — ver §2.6)*
@@ -155,7 +163,7 @@ el formato del estado de cuenta que se le entrega al cliente — ver §2.6)*
 ## 4. OPERACIONES — correspondencia por vista
 
 > ⚠️ **ACLARACIÓN DE UBICACIÓN FÍSICA (2026-11-12):** la vista `/operaciones`
-> es **solo bitácoras de operación** (horas por máquina/obra, `bitacoraApi`).
+> es **solo bitácoras de operación** (horas por máquina/proyecto, `bitacoraApi`).
 > Los puntos O1–O13 de la ficha de máquina, checklist, despachos, patio,
 > operador, foto y horómetro **viven físicamente en el módulo Maquinaria
 > (`/maquinaria`)** — no son de este alcance. De esta tabla, lo que toca
@@ -191,11 +199,11 @@ La sección con más correspondencia del documento:
 ### 3.3 /proyectos
 | # | Punto | Estado | Implicación |
 |---|---|---|---|
-| Pr1 | Costo por obra (diésel + mantenimiento) — el modelo ya existe, falta F1 | ⚠️/✅ | `finanzas{ingresoCobrado, gastado}` |
-| Pr2 | **Trabajador asignado a varias obras al mismo tiempo: SI es posible** (§1) | ✅ | `trabajadores_proyectos` multi-obra sin fricción (no tratarla como caso que bloquea) |
-| Pr3 | **"¿Quién levantará las coordenadas y definirá el radio de cada obra? NECESITARIA EXPLICACION PARA PODERLO REALIZAR NOSOTROS MISMOS"** (§3) | ✅ | El cliente pide herramienta/guía para capturar coordenadas y radio por obra — vive donde se administran las obras (tras P15 = `/proyectos` o módulo GPS) |
-| Pr4 | **El radio de obra DEBE VARIAR según el tipo de obra** (§3, asistencia) | ✅ | Radio ya no es valor fijo global: campo por obra/proyecto |
-| Pr5 | Expediente del proyecto real (docs-svr: PROYECTO AILIN) | ✅ | Plantilla de obra con plantilla de trabajadores (RFC, domicilio, horario) y control de servicios por unidad — referencia funcional para `/proyectos` y `/operaciones` |
+| Pr1 | Costo por proyecto (diésel + mantenimiento) — el modelo ya existe, falta F1 | ⚠️/✅ | `finanzas{ingresoCobrado, gastado}` |
+| Pr2 | **Trabajador asignado a varios proyectos al mismo tiempo: SI es posible** (§1) | ✅ | `trabajadores_proyectos` multi-proyecto sin fricción (no tratarla como caso que bloquea) |
+| Pr3 | **"¿Quién levantará las coordenadas y definirá el radio de cada obra? NECESITARIA EXPLICACION PARA PODERLO REALIZAR NOSOTROS MISMOS"** (§3) | ✅ | El cliente pide herramienta/guía para capturar coordenadas y radio — vive en `/proyectos` (el proyecto ES la obra; P15 elimina la tabla `obras`) |
+| Pr4 | **El radio DEBE VARIAR según el tipo de proyecto** (§3, asistencia) | ✅ | Radio ya no es valor fijo global: campo por proyecto |
+| Pr5 | Expediente del proyecto real (docs-svr: PROYECTO AILIN) | ✅ | Plantilla del proyecto con plantilla de trabajadores (RFC, domicilio, horario) y control de servicios por unidad — referencia funcional para `/proyectos` y `/operaciones` |
 
 ### 3.4 /reportes y /criba
 **Barrido completo: el doc de dudas y los 12 documentos de `docs-svr/` no
@@ -218,7 +226,7 @@ Maquinaria: viven en el doc fuera-de-alcance.)*
 ## 6. Entregables del cliente que este alcance necesita (§11 filtrado)
 
 - **Tarifas de renta por hora**, por máquina o tipo de máquina (alimenta C2).
-- **Coordenadas y radio de cada obra** (alimenta Pr3/Pr4).
+- **Coordenadas y radio de cada proyecto** (alimenta Pr3/Pr4).
 - **Lista de máquinas y sus operadores** (alimenta O6/O8).
 - **Lista de máquinas con y sin GPS** (alimenta O13 y el egreso F4).
 - **Datos de contacto del proveedor de GPS** (para la renta F4 y Cl1).
@@ -232,7 +240,7 @@ finiquito — viven en el doc fuera-de-alcance)*
 
 | Fase | Qué | Dependencia |
 |---|---|---|
-| **F1 — Fixes y reglas confirmadas de las 15 vistas** | Error 3 (checklist luces/alarmas en `/operaciones`), horómetro interno (O12), operador de lista obligatoria (O6), patio (O5), foto de máquina (O8), firma residente obligatoria (Fa2), cobro solo por bitácora (C1), multi-obra sin fricción (Pr2) | Ninguna — arrancable ya |
+| **F1 — Fixes y reglas confirmadas de las 15 vistas** | Error 3 (checklist luces/alarmas en `/operaciones`), horómetro interno (O12), operador de lista obligatoria (O6), patio (O5), foto de máquina (O8), firma residente obligatoria (Fa2), cobro solo por bitácora (C1), multi-proyecto sin fricción (Pr2) | Ninguna — arrancable ya |
 | **F2 — Preguntas de seguimiento** | Enviar al cliente: F1, F2, Fa1, O1, O3, O11, I2, Cl2, P4 + el tabulador/tarifas de renta del §5. **Las dudas por documento viven en `docs-svr/docs-svr-dudas/` (solo necesarias y medias — las asumibles se retiraron y quedaron como decisiones por defecto en el §10 del análisis docs-svr)** | Ninguna — puede ir en paralelo |
 | **F3 — Cotizaciones/ventas según docs-svr** | Plantilla de cotización (condiciones de los Word), motor de retiros para `/ventas`, corte de `/ventas/corte`, estados de cuenta para `/cobranza` | Respuestas de docs-svr §5 del análisis (folio, precio, serie) |
 

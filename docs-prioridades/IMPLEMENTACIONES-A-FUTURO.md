@@ -65,7 +65,7 @@
 
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
-| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix físico espera "go") · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
+| 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix es la consolidación P15) · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
 | 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · ✅ **7. P4b** venta POS descuenta inventario — REALIZADO 2026-11-08 (guard anti-carrera + movimientos SALIDA `Venta POS`; ver §3 P4b) · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
 
 > Nota (2026-11-08): el bug `/inventario` al filtrar por categoría (`categoriaId must be
@@ -73,7 +73,7 @@
 > unificar_ventas_inventario violaban el RFC 4122; corregidos con la migración
 > `20261108000000_fix_uuids_categorias_unidades` (ver historial-cambios del día).
 
-| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6** flujo proyecto→obra (obra base automática al crear proyecto, obras múltiples — la base se retira al registrar las propias, botón contextual, sync de estados, labels) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
+| 🟠 **2 — Medios** | 10. **§10** fecha de vencimiento en CxP · 11. **6.6/P15** consolidación `obras` → `proyectos` (el proyecto ES la obra: se elimina el flujo proyecto→obra; catálogos y FKs a `proyecto_id`) · 12. **6.2** incidente resuelto → deriva mantenimiento/reporte · 13. **6.4** criba con FK a máquina/proyecto · 14. **6.7** tab trabajadores por proyecto (residuo) | §10, §6 |
 | 🔴 **3 — Difíciles** | 15. **P2** partidas → **P4** cotizaciones (depende P2) → **P7** precios por medida + stock → **C3** venta a crédito → CxC → **6.5** inventario↔criba → **6.8** desgloses por proyecto → **F5** config POS (horario+categorías) → **F1** notificaciones → **§9** conciliación por vista → **P3** cotización↔proyecto | §3, §8.4, §9, §11 |
 
 ---
@@ -136,7 +136,7 @@ relaciones:
 | Cotización → pago | `pagos` | ✅ Existe (módulo cobranza; pagos contra CxC reversible) |
 | Cotización → venta / pedido | `ventas` | ⏳ El modelo/módulo existe (POS), pero la venta a crédito aún NO nace CxC (C3) |
 | Cotización → línea/partida (`cotizacion_items`) | (no existe el modelo) | ❌ Falta (P2) |
-| Cotización → proyecto / obra | `proyectos` (no hay `proyecto_id`) | ❌ Falta (P3) |
+| Cotización → proyecto | `proyectos` (no hay `proyecto_id`) | ❌ Falta (P3) |
 | Cotización → artículo de inventario | `articulos_inventario` | ❌ Falta (P4, vía partidas) |
 
 El problema del aislamiento no es la vista frontend (que consume API real), **es que no
@@ -218,9 +218,9 @@ dónde sacar los renglones para facturar por línea ni para mover inventario.
 
 ---
 
-### P3 — Vincular cotización ↔ proyecto / obra
+### P3 — Vincular cotización ↔ proyecto
 
-**Objetivo:** cuando una cotización aceptada da paso a un **`proyectos`** (obra), poder
+**Objetivo:** cuando una cotización aceptada da paso a un **`proyectos`**, poder
 crear el proyecto desde la cotización (o referenciarla). Integra con **operaciones**.
 
 **Hoy:** `cotizaciones` no tiene `proyecto_id`; `proyectos` (línea ~1152) no referencia
@@ -234,15 +234,15 @@ cotización.
 3. **Frontend:** botón en la cotización aceptada + menú en `proyectos` para ver
    vínculo.
 
-**Impacto:** cierra el flujo comercial → operaciones (obras, hitos, bitácoras,
+**Impacto:** cierra el flujo comercial → operaciones (proyectos, hitos, bitácoras,
 reportes de campo).
 
 **Workflow entre pantallas:**
 ```
 /cotizaciones  ──(cotización "Aceptada" con proyecto_id)──►
    └─ botón «Ver proyecto» → /proyectos/{id}
-         └─ detalle del proyecto: obras[], despachos_maquina[], progreso
-              └─ desde la obra → /operaciones (bitácoras, reportes de campo)
+         └─ detalle del proyecto: despachos_maquina[], progreso
+              └─ desde el proyecto → /operaciones (bitácoras, reportes de campo)
 ```
 
 ---
@@ -558,6 +558,12 @@ el alta de siempre se AMPLÍA con la identidad móvil:
 trabajará únicamente con la tabla `proyectos`. Las dos tablas se solapan
 (obra = proyecto con otro nombre) y mantener ambas duplica datos y lógica.
 
+> **Reforzada 2026-11-12:** **el proyecto ES la obra.** Se elimina además todo el
+> diseño de "un proyecto con una o varias obras" (obra base automática,
+> multi-frente, botón «Agregar obra», `obras[]`, sync de estados) — ver §6.6.
+> Esta consolidación es la tarea **B2** del plan comercial (la primera del orden
+> de arranque).
+
 **Inventario de lo que toca `obras` hoy (a migrar/reencaminar a
 `proyectos`):**
 - **Esquema:** tabla `obras` + FK `obra_id` en `reportes_campo`,
@@ -652,7 +658,7 @@ la curva S con datos reales en vez del mock.
    Comercial           │   COTIZACIONES        │── P6 → vendedor_id (RRHH)
    (vista /cotizaciones)└──────┬──┬───────────┘
                               │  │
-                 P2 partidas  │  └──────────► P3 → PROYECTOS (operaciones/obras)
+                 P2 partidas  │  └──────────► P3 → PROYECTOS (operaciones)
                     (items)   │
                               ▼
                               │ Acepta (P1, $transaction)
@@ -715,7 +721,7 @@ la curva S con datos reales en vez del mock.
       │  ▲                    │  ▲                          │
       │  └───── proyectos ────┘  └── partidas ───► /inventario (P4)
       ▼                         │
-   /proyectos ◄─── progreso ────┘ (P3) ──► obras → /operaciones
+   /proyectos ◄─── progreso ────┘ (P3) ──► /operaciones
       │  │                              ▲
       │  └─── despachos_maquina ──► /maquinaria        /incidentes
       │                                            │        │
@@ -771,10 +777,10 @@ la curva S con datos reales en vez del mock.
         └─ reportes_campo (si es de obra)              → /reportes-campo (6.3)
 ```
 
-### 6.3 `/reportes-campo` ↔ Obras, cotizaciones & finanzas
+### 6.3 `/reportes-campo` ↔ Proyectos, cotizaciones & finanzas
 
-- **Hoy:** CRUD por API. `reportes_campo` describe avance/trabajo de un proyecto/obra.
-- **Flujo pendiente:** ligar cada reporte de campo a su **`obras`/`proyectos`** para que
+- **Hoy:** CRUD por API. `reportes_campo` describe avance/trabajo de un proyecto.
+- **Flujo pendiente:** ligar cada reporte de campo a su **`proyectos`** para que
   **alimente el `progreso`** del proyecto (`proyectos.progreso`) y, si el reporte implica
   costo, generar una **`transacciones`** de tipo egreso asociada al proyecto.
 - **Gap:** `transacciones` usa puntero polimórfico (`entidad_tipo` + `entidad_id`) **sin
@@ -793,9 +799,9 @@ la curva S con datos reales en vez del mock.
 - **Hoy:** CRUD por API (referencia viva de auditoría). `registros_criba` registra
   producción de material por turno y operador.
 - **Gap confirmado en schema:** `registros_criba` **solo** se relaciona con
-  `trabajadores` (operador). **No tiene `maquina_id` ni `obra_id`/`proyecto_id`**.
-- **Flujo pendiente:** agregar `maquina_id?` y `proyecto_id?/obra_id?` (FK) para poder
-  reportar **producción por máquina y por obra**, y cruzar con horómetro/mantenimiento.
+  `trabajadores` (operador). **No tiene `maquina_id` ni `proyecto_id`**.
+- **Flujo pendiente:** agregar `maquina_id?` y `proyecto_id?` (FK) para poder
+  reportar **producción por máquina y por proyecto**, y cruzar con horómetro/mantenimiento.
 - **Cruce con cotizaciones (P4):** el material producido en criba alimenta el inventario
   (`articulos_inventario`) que luego las cotizaciones con partidas descargan.
 
@@ -825,7 +831,7 @@ la curva S con datos reales en vez del mock.
         └─ detalle del artículo → stock + trazabilidad por artículo y obra
 ```
 
-### 6.6 `/proyectos` ↔ Clientes, obras, despachos & cotizaciones (`proyectos`, `obras`, `despachos_maquina`)
+### 6.6 `/proyectos` ↔ Clientes, despachos & cotizaciones (`proyectos`, `despachos_maquina`)
 
 - **Hoy:** CRUD por API. **Actualización 2026-11-06:** el `ProjectDetailsModal`
   ("Ver detalle") está detallado abajo; sigue filtrando mock de `@/lib/data`
@@ -843,60 +849,32 @@ la curva S con datos reales en vez del mock.
 3. Consecuencia: los proyectos se registran pero las obras no se generan → el
    catálogo de `/operaciones`/`/asistencia` queda cojo (solo obras del dump).
 
-**Flujo de datos proyecto ↔ obra — DEBE SER (diseño a implementar en 6.6):**
-1. **Crear proyecto (EN_PROCESO) → nace obra base** en la misma `$transaction`:
-   `obras` hereda `nombre` del proyecto + `proyecto_id` (FK que ya existe), activo,
-   sin ubicación (se captura después para GPS). Con guard idempotente: si al correr
-   de nuevo el proyecto ya tiene obra, no duplica (reutilizable como seed).
-2. **Obras múltiples por proyecto (multi-frente):** un proyecto puede registrar
-   varias obras (p. ej. "Fraccionamiento Valle Sur" → "calle A", "calle B").
-   **Regla del cliente (2026-11-07):** al registrar la primera obra manual del
-   proyecto, la **obra base automática (la que heredó el nombre del proyecto) se
-   retira** (soft-delete `eliminado_en` en la misma transacción) — quedan **solo la
-   obra u obras que el encargado creó**. Registro 0→N: proyecto sin obras manuales
-   muestra la base; con ≥1 manual, solo las manuales.
-3. **Ubicación del botón "Agregar obra": decisión (2026-11-07).** Va como **acción
-   contextual del proyecto** (en las acciones de fila y/o en el modal Ver Detalle,
-   como "Obras (N)"), **NO al lado del botón "Registrar proyecto"**: una obra SIEMPRE
-   nace con un `proyecto_id` — ponerla junto al registro de proyectos permitiría
-   crear obras huérfanas, que es exactamente el bug de hoy. Nace la obra → abre un
-   mini-modal desde el proyecto (nombre del frente + ubicación + radio GPS).
-   Necesita un módulo/endpoint de `obras` con los 4 checkpoints (hoy no existe
-   backend de obras).
-4. **Sincronización de estados:** al marcar proyecto FINALIZADO/PAUSADO, sus obras
-   activas toman el mismo estado en la misma transacción (incluida la base que aún
-   exista) → desaparecen del catálogo de registro de operaciones/horas (termina con
-   el caso "Puente Atizapán" apareciendo con proyecto FINALIZADO).
-5. **Catálogos con filtro por proyecto:** `GET /bitacora/catalogos` (y asistencia)
-   exponen también el `proyecto_id/proyecto nombre` de cada obra para mostrarlos
-   agrupados en el select (obra — proyecto).
-6. **Nomenclatura UI:** actualizar labels de `/proyectos` ("obra" → "proyecto") para
-   que la palabra "obra" queda reservada al frente físico — evita la confusión actual
-   del personal de campo.
-7. **Tests:** unit + integración (obra nace con proyecto, no duplica on re-run,
-   base se retira al crear primera obra manual, estados sincronizados, catálogo
-   filtrado).
+**Flujo proyecto ↔ obra — ❌ ELIMINADO (decisión del cliente, 2026-11-12):**
+el sistema maneja **un solo nivel: `proyectos`**. **El proyecto ES la obra** — no
+existe "agregar obra", ni obra base automática, ni multi-frente, ni `obras[]`, ni
+sincronización de estados obra↔proyecto. Este diseño (6.6 original) **no se
+construye**.
 
-**Impacto:** cierra el puente comercial→operación tipo contrato real: proyecto = lo
-que se factura; obra(s) = donde se ejecuta. Sin él, la operación de campo depende de
-inserts manuales (hoy).
+La consecuencia operativa descrita arriba (catálogo de `/operaciones` cojo, 4 de 6
+proyectos sin obra) se resuelve con la consolidación **P15**: las tablas que hoy
+cuelgan de `obras` (`bitacoras_operacion`, `reportes_campo`, asistencia,
+`bitacoras_renta_diaria`, nómina) pasan a `proyecto_id`, los catálogos salen de
+`/catalogos/proyectos` y la tabla `obras` se elimina. La nomenclatura de UI queda
+"proyecto" en todo el sistema.
+
+**Impacto:** el puente comercial→operación se cierra en **un solo nivel** —
+proyecto = contrato = frente donde se ejecuta. Ya no depende de inserts manuales
+en `obras`.
 
 **Flujo pendiente:**
-  - **Proyecto → Obra(s):** `proyectos` tiene `obras[]`; cerrar el flujo de creación de
-    obra desde un proyecto. **Gap confirmado en BD real (2026-11-06):** de los
-    **6 proyectos EN_PROCESO, solo 2 tienen obra** (la BD total tiene 3 obras, una en
-    un proyecto FINALIZADO). Consecuencia directa en `/operaciones`: el catálogo de
-    registros (`GET /bitacora/catalogos`, obras `estado != FINALIZADA`) solo muestra
-    3 — **no es bug de filtro, es falta de obras**. Los proyectos sin obra no reciben
-    operaciones hasta que exista la obra → cerrar este flujo (o sembrar obras) es
-    prerrequisito operativo, no cosmético. Este punto queda aclarado por completo en
-    el flujo "DEBE SER" de arriba (el seed de Tier 0 resuelve el hoy; el flujo 6.6
-    resuelve el futuro).
   - **Proyecto → Despacho de máquina:** `despachos_maquina` cruza `maquina_id +
     proyecto_id + operador_id`; alimentar el detalle del proyecto con las máquinas
     despachadas.
   - **Proyecto → Cotización (P3):** crear proyecto desde cotización aceptada.
   - **Avance/estado:** `proyectos.progreso` deriva de metas/hitos — ver **P8** §3.
+  - **Proyecto → Catálogos:** `GET /bitacora/catalogos` y asistencia leen
+    `/catalogos/proyectos` (ya existe) — con la consolidación P15 desaparece
+    `/catalogos/obras`.
 
 #### 6.6.1 Anatomía del modal "Ver detalle" (`ProjectDetailsModal.tsx`)
 
@@ -924,7 +902,7 @@ frente al plan, salud financiera y recursos humanos/flota asignados. Muestra, po
 **Workflow entre pantallas:**
 ```
 /proyectos/{id} ── detalle del proyecto:
-   ├─► obras[]            → /operaciones (bitácoras, reportes de campo)
+   ├─► bitácoras          → /operaciones (bitácoras, reportes de campo)
    ├─► despachos_maquina  → /maquinaria (máquinas despachadas por operador)
    ├─► progreso           ← /reportes-campo (6.3)
    └─► cliente_id         → /clientes (6.7)
@@ -987,18 +965,18 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 |----|-------|--------------------|--------|
 | P1 | Aceptar cot. → Factura + Cuenta por Cobrar | `/cotizaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 3, workflow 01) |
 | P2 | Partidas de cotización (`cotizacion_items`) | `/cotizaciones` (editor interno) | ⏳ Pendiente (`cotizacion_items` no existe en schema — verificado) |
-| P3 | Cotización ↔ Proyecto/obra | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
+| P3 | Cotización ↔ Proyecto | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
 | P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | **P4b ✅ Realizado 2026-11-08** (updateMany condicional anti-carrera + movimientos SALIDA `VentaPos` + test idempotencia real) · la parte de cotizaciones sigue ⏳ (depende de P2) |
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
 | P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
-| 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02). **Gap de datos 2026-11-06:** BD con solo 3 obras — 4 de 6 proyectos EN_PROCESO sin obra → flujo proyecto→obra pendiente (6.6) |
+| 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02). **Gap de datos 2026-11-06:** BD con solo 3 obras — 4 de 6 proyectos EN_PROCESO sin obra → se resuelve con la consolidación **P15** (el proyecto ES la obra) |
 | 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente (verificado: `incidentes` no deriva nada) |
 | 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente (verificado: no toca `progreso` ni `transacciones`) — **P8** propone derivar el progreso de metas cumplidas |
 | P8 | Metas de proyecto con fecha límite → progreso derivado | `/proyectos` (registro y modal) | ⏳ Pendiente (base: `hitos_progreso` existe; faltan `fecha_limite` + estado CUMPLIDA + derivación) |
 | 6.4 | Criba → máquina/obra + producción → inventario | `/criba` → `/maquinaria` → `/inventario` | ⏳ Pendiente (gap confirmado en schema: `registros_criba` solo FK a trabajadores) |
 | 6.5 | Inventario → entradas criba / salidas cotización | `/inventario` ↔ `/criba` ↔ `/cotizaciones` | ⏳ Pendiente (criba no genera movimientos) |
-| 6.6 | Proyecto → obras/despachos; modal Ver detalle (curva S, EVM, contraste oscuro) | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + detalle anatomía 6.6.1 y fix de contraste dark pendiente) |
+| 6.6 | Proyecto → despachos; modal Ver detalle (curva S, EVM, contraste oscuro). El flujo proyecto→obra está ELIMINADO (el proyecto ES la obra — ver P15) | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + detalle anatomía 6.6.1; P15 pendiente) |
 | 6.7 | Cliente → tabs consolidados | `/clientes` → (todos los tab) | ✅ **Realizado** (`GET /clientes/:id/consolidado` + tabs cuentas/facturas/cobros/cotizaciones). Falta tab de trabajadores por proyecto |
 | 6.8 | Finanzas → facturas/CxC/pagos + utilidad por proyecto | `/finanzas` ↔ `/proyectos` ↔ `/clientes` | ✅ **Realizado** (facturas/cobranza/flujo-neto). Restan los desgloses = Fase 3 de FLUJO-PROGRESO-PROYECTOS |
 | F1 | Sistema de notificaciones (modelo + API + eventos del ERP + centro en Topbar) | transversal (Topbar → `/reportes`, `/finanzas`, `/proveedores`…) | ⏳ Pendiente (no existe modelo `notificaciones` en schema — verificado; hoy el centro es front-only en memoria) |
@@ -1067,7 +1045,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 
 | Vista | Relación indirecta |
 |-------|--------------------|
-| `/proyectos` | Las obras/contratos que después se facturan y se cobran (la vista de cobranza muestra `obra`) |
+| `/proyectos` | Los proyectos/contratos que después se facturan y se cobran (la vista de cobranza muestra el proyecto) |
 | `/inventario` | Los materiales vendidos = el costo detrás de cada factura |
 | `/operaciones`, `/reportes-campo`, `/criba`, `/incidentes` | Producción diaria — sin vínculo directo con CxC |
 
@@ -1325,13 +1303,13 @@ tarea del índice que los habilita.
 
 | Vista | Insumo → Fuente | Estado | Habilitador |
 |---|---|---|---|
-| `/operaciones` | obras activas ← tabla `obras` | 🔴 BD con 3 obras; 4 proyectos EN_PROCESO sin obra | seed 4 obras (pendiente "go") + flujo proyecto→obra (Tier 2 #11) |
+| `/operaciones` | proyectos activos ← tabla `proyectos` | 🔴 BD con 3 obras; 4 proyectos EN_PROCESO sin obra | consolidación `obras` → `proyectos` (P15, Tier 2 #11) |
 | `/operaciones` | catálogo de máquinas sin fallas ← `maquinas` | ✅ 100% | — |
 | `/inventario` | salidas ← venta POS | ⏳ P4b (ventas_items ya cruza) | Tier 1 #7 |
 | `/inventario` | entradas ← producción criba | ⏳ 6.5 | Tier 3 |
 | `/criba` | FK `maquina_id`/`proyecto_id` | ⏳ 6.4 (solo FK trabajadores) | Tier 2 #13 |
 | `/proyectos` | gastos desglosados | ⏳ Fase 3 FLUJO-PROGRESO | Tier 3 (6.8) |
-| `/proyectos` | modal Ver Detalle | 🔴 mock | Tier 2 (6.6, tras flujo obra) |
+| `/proyectos` | modal Ver Detalle | 🔴 mock | Tier 2 (6.6) |
 | `/reportes` | incidente resuelto → deriva mantenimiento/reporte | ⏳ 6.2 | Tier 2 #12 |
 | `/reportes` | progreso ← metas P8 / transacciones por costo | ⏳ 6.3 | Tier 1 #8 |
 
