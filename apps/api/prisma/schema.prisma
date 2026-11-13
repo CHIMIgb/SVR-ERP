@@ -1719,6 +1719,9 @@ model trabajadores {
   fecha_contratacion                        DateTime?                     @db.Date
   vacaciones_dias                           Int?
   horas_extra_semana                        Decimal?                      @db.Decimal(6, 2)
+  /// Cuenta de acceso del trabajador (login PWA por número de empleado + PIN).
+  /// Único y nullable: no todo trabajador tiene cuenta.
+  usuario_id                                String?                       @unique @db.Uuid
   tarifa_hora_extra                         Decimal?                      @db.Decimal(10, 2)
   descuentos_semana                         Decimal?                      @db.Decimal(10, 2)
   concepto_descuento                        String?
@@ -1748,6 +1751,7 @@ model trabajadores {
   registros_asistencia                      registros_asistencia[]
   registros_criba                           registros_criba[]
   registros_mantenimiento                   registros_mantenimiento[]
+  usuario                                   users?                        @relation("trabajadores_cuenta", fields: [usuario_id], references: [id])
   users_trabajadores_actualizado_porTousers users?                        @relation("trabajadores_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_trabajadores_actualizado_por")
   users_trabajadores_creado_porTousers      users?                        @relation("trabajadores_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_trabajadores_creado_por")
   categorias_puesto                         categorias_puesto             @relation(fields: [categoria_puesto_id], references: [id])
@@ -2162,6 +2166,7 @@ model users {
   notificaciones_notificaciones_creado_porTousers                                notificaciones[]              @relation("notificaciones_creado_porTousers")
   lecturas_notificaciones_lecturas_user_idTousers                                notificaciones_lecturas[]     @relation("lecturas_usuario")
   notificaciones_notificaciones_destinatarioTousers                              notificaciones[]              @relation("notificaciones_destinatario")
+  trabajadores_trabajadores_cuentaTousers                                        trabajadores[]                @relation("trabajadores_cuenta")
 
   @@unique([numero_empleado])
 }
