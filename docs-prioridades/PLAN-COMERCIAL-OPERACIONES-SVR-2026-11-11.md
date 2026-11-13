@@ -84,6 +84,7 @@ el formato del estado de cuenta que se le entrega al cliente — ver §2.6)*
 |---|---|---|
 | `/cotizaciones` | COTIZACION 37/50 (Word) | Plantilla formal: folio, fecha, cliente, tabla concepto/cantidad/monto, condiciones fijas (**sin IVA · vigencia 8 días · turno 8 h/día · anticipar 1 semana**) y firma de la representante legal |
 | `/ventas` | PRODUCTIVIDAD.xlsx | El **retiro/viaje** es la transacción de venta real: folio, fecha, camión, obra, material, m³, precio, total; LISTA DE PRECIOS.xlsx es el tabulador por material × destino × presentación (14m³/30m³/m³/7m) |
+| `/ventas` | Requisito de crédito (análisis §9.3) | **Alta de cliente en el momento de la venta**: NO se necesita vista nueva — `/clientes` ya crea/edita clientes; lo que falta es (1) FK `ventas.cliente_id` (hoy `cliente` es texto libre "Público en general", verificado en schema — el POS no vincula la venta a un cliente real, prerrequisito del crédito C3) y (2) un mini-modal de **alta rápida de cliente dentro de `/ventas`** (nombre + teléfono mínimo, editable después en `/clientes`) para el cliente que llega sin estar registrado |
 | `/ventas/corte` | REGISTRO DE VENTAS.xlsx | El corte de caja real: totales por día y por material, "NO HUBO EFECTIVO", efectivo "ENTREGADO [fecha]" a oficina |
 
 ---

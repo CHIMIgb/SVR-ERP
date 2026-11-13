@@ -243,7 +243,13 @@ CxC → estado de cuenta al cliente → cobranza**.
 3. **POS (`/ventas`):** método de pago **CRÉDITO** que valide disponible
    contra el límite (rechazar si excede, auditar FAIL) — cliente conocido, no
    "Público en general".
-4. **Estado de cuenta del cliente** (§9.1) que refleje el consumo del crédito.
+4. **Vínculo venta↔cliente real:** agregar FK `ventas.cliente_id` (hoy
+   `cliente` es texto libre — verificado en schema) + mini-modal de **alta
+   rápida de cliente dentro de `/ventas`** (nombre + teléfono mínimo) para
+   el cliente nuevo que llega sin registro; el detalle se completa después
+   en `/clientes` — **no se necesita una vista nueva de alta de clientes**,
+   la vista `/clientes` ya existe con CRUD completo.
+5. **Estado de cuenta del cliente** (§9.1) que refleje el consumo del crédito.
 
 **A dónde cae:** **C3 de IMPLEMENTACIONES** (se construye junto con el motor
 de retiros de F3, según el hilo) + F3/Cl3 para el estado de cuenta.
