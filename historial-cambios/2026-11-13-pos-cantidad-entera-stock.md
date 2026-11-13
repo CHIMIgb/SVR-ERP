@@ -5,9 +5,13 @@
 Ajustes pedidos por el cliente sobre el POS:
 
 - **`apps/web/src/app/(dashboard)/ventas/page.tsx`** — los labels del mini-modal
-  "Nuevo Cliente" ya no traen el asterisco blanco duplicado en el texto
-  ("Nombre * *" → "Nombre"): el asterisco ROJO lo pinta el componente
+  "Nuevo Cliente" y del modal **Retiro de Efectivo** ya no traen el asterisco
+  blanco duplicado en el texto: el asterisco ROJO lo pinta el componente
   `ModalField required`.
+- **Modal Retiro de Efectivo** — el input **Monto (MXN)** pasa a `type="text"`
+  con separador de miles automático (`formatearMiles` de `lib/formatters`,
+  ya compartido con cotizaciones y proyectos); la validación usa
+  `parsearMiles`.
 - **`apps/web/src/components/pos/ProductPicker.tsx`**:
   - El input **Cantidad** pasa a `type="text"` que **solo acepta dígitos
     enteros** (`onChange` filtra con `/[^0-9]/g`) — se acaban los decimales

@@ -51,6 +51,7 @@ import type { CreateVentaInput } from '@/lib/api';
 import { generateUUID } from '@/lib/utils';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { formatearMiles, parsearMiles } from '@/lib/formatters';
 import { mensajeErrorApi } from '@/lib/api';
 
 function parseHM(s: string): { h: number; m: number } {
@@ -324,7 +325,7 @@ export default function VentasPage() {
   };
   // ── Retiros ───────────────────────────────────────────────────────────────
   const handleRetiro = async () => {
-    const monto = parseFloat(formRetiro.monto);
+    const monto = parsearMiles(formRetiro.monto);
     if (!formRetiro.concepto.trim() || !monto || monto <= 0) {
       showToast('Concepto y monto son obligatorios.', 'error');
       return;
@@ -649,7 +650,7 @@ export default function VentasPage() {
         title="Retiro de Efectivo"
         submitLabel="Registrar Retiro"
       >
-        <ModalField label="Concepto *" required>
+        <ModalField label="Concepto" required>
           <input
             className={modalInputClass}
             placeholder="Ej: Gasolina, refacción urgente..."
@@ -657,13 +658,14 @@ export default function VentasPage() {
             onChange={(e) => setFormRetiro({ ...formRetiro, concepto: e.target.value })}
           />
         </ModalField>
-        <ModalField label="Monto (MXN) *" required>
+        <ModalField label="Monto (MXN)" required>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className={modalInputClass}
             placeholder="0.00"
             value={formRetiro.monto}
-            onChange={(e) => setFormRetiro({ ...formRetiro, monto: e.target.value })}
+            onChange={(e) => setFormRetiro({ ...formRetiro, monto: formatearMiles(e.target.value) })}
           />
         </ModalField>
         <ModalField label="Autorizado por">
