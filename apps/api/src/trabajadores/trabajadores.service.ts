@@ -135,10 +135,21 @@ const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
  * fabricar un administrador con acceso total). Data-driven: si mañana se
  * crea otro rol con permisos de sistema, también queda excluido.
  */
+/**
+ * Roles asignables desde el alta de trabajadores: activos, sin eliminar y SIN
+ * permisos del módulo sistema (una cuenta de RRHH no puede fabricar un
+ * administrador, PR #18 #2). EXCEPCIÓN: `sistema.notificaciones.ver` no cuenta
+ * — el centro de alertas es de todos los roles (B5.2) y sin este ajuste el
+ * alta rechazaría a todos.
+ */
 const ROLES_ASIGNABLES_WHERE = {
   activo: true,
   eliminado_en: null,
-  role_permissions: { none: { permissions: { modulo: 'sistema' } } },
+  role_permissions: {
+    none: {
+      permissions: { modulo: 'sistema', recurso: { not: 'notificaciones' } },
+    },
+  },
 } as const;
 
 @Injectable()
@@ -665,6 +676,12 @@ export class TrabajadoresService {
       });
       await tx.users_roles.create({
         data: { id: randomUUID(), user_id: nuevoUserId, rol_id: rol.id, es_principal: true, asignado_por: userId },
+      });
+      // B5.11: enlaza la cuenta recién creada al trabajador (trabajadores.usuario_id)
+      // — la emisión de notificaciones al asignado usa este FK.
+      await tx.trabajadores.update({
+        where: { id: trabajadorId },
+        data: { usuario_id: nuevoUserId },
       });
       } // fin if (rol) — identidad PWA solo cuando el puesto lleva rol
 
