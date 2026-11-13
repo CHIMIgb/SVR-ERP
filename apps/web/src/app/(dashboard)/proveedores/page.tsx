@@ -6,7 +6,7 @@ import {
   Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal, CalendarClock,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
-import { fechaEsPasada, limpiarRfc, limpiarTelefono, rfcEsValido, telefonoEsValido } from '@/lib/formatters';
+import { fechaEsPasada, formatearMiles, limpiarRfc, limpiarTelefono, parsearMiles, rfcEsValido, telefonoEsValido } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -39,7 +39,6 @@ const ESTADO_LABEL: Record<EstadoOrdenApi, EstadoOrden> = {
 const PAGE_SIZE = 8;
 
 const CATEGORIAS: CategoriaProveedor[] = ['Refacciones', 'Combustible', 'Materiales', 'Servicios', 'Otros'];
-const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MIXTO'] as const;
 
 // ─── Estado inicial de formularios ────────────────────────────────────────────
 const emptyProvForm = {
@@ -452,7 +451,7 @@ export default function ProveedoresPage() {
   }, [vencimientoOC, vencimientoForm, showToast, refetchAll]);
 
   const handleAbono = useCallback(async () => {    if (!abonoOC) return;
-    const abono = parseFloat(abonoForm.monto);
+    const abono = parsearMiles(abonoForm.monto);
     if (!abono || abono <= 0) {
       showToast('Ingresa un monto válido.', 'error');
       return;
@@ -1455,13 +1454,12 @@ export default function ProveedoresPage() {
         )}
         <ModalField label="Monto a Abonar (MXN)" required>
           <input
-            type="number"
-            min="0"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             className={modalInputClass}
             placeholder="0.00"
             value={abonoForm.monto}
-            onChange={(e) => setAbonoForm({ ...abonoForm, monto: e.target.value })}
+            onChange={(e) => setAbonoForm({ ...abonoForm, monto: formatearMiles(e.target.value) })}
           />
         </ModalField>
         <ModalField label="Método de Pago">
@@ -1470,11 +1468,9 @@ export default function ProveedoresPage() {
             value={abonoForm.metodoPago}
             onChange={(e) => setAbonoForm({ ...abonoForm, metodoPago: e.target.value })}
           >
-            {MEDIOS_PAGO.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
+            {/* Solo efectivo (decisión del cliente): los demás métodos del
+                backend quedan fuera de la UI hasta que se definan. */}
+            <option value="EFECTIVO">EFECTIVO</option>
           </select>
         </ModalField>
       </FormModal>
