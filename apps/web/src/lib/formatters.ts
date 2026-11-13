@@ -110,3 +110,13 @@ export function fechaLocalHoy(): string {
     hoy.getDate(),
   ).padStart(2, '0')}`;
 }
+
+/** Teléfono MX válido: exactamente 10 dígitos (ignora espacios y guiones). */
+export function telefonoEsValido(valor: string): boolean {
+  return valor.replace(/\D/g, '').length === 10;
+}
+
+/** Solo dígitos, espacios y guiones (para el onChange del input teléfono). */
+export function limpiarTelefono(valor: string): string {
+  return valor.replace(/[^\d\s\-]/g, '');
+}
