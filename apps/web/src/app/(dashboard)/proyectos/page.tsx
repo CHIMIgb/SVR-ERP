@@ -11,7 +11,6 @@ import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
@@ -37,12 +36,6 @@ const ESTADOS: { value: NonNullable<ProyectoCreateInput['estado']>; label: strin
   { value: 'FINALIZADO', label: 'Finalizado' },
   { value: 'PAUSADO', label: 'Pausado' },
 ];
-
-const estadoVariant: Record<ProyectoDTO['estado'], 'primary' | 'success' | 'warning'> = {
-  'En Proceso': 'primary',
-  'Finalizado': 'success',
-  'Pausado': 'warning',
-};
 
 const emptyForm = {
   nombre: '',
@@ -464,7 +457,7 @@ export default function ProyectosPage() {
       key: 'estado',
       header: 'Estado',
       render: (item) => (
-        <Badge variant={estadoVariant[item.estado]} size="sm">{item.estado}</Badge>
+        <span className="text-sm font-semibold text-ui-700">{item.estado}</span>
       ),
     },
     {
