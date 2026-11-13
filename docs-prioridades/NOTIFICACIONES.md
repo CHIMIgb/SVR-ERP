@@ -106,7 +106,7 @@ ventas, nómina y reportes-campo).
 |---|---|---|---|---|
 | **Se crea un reporte** | `/reportes` → "Nuevo reporte" | Al crear, la torre destino del reporte | **Toda el área** del reporte | ALERTA |
 | **Alguien lo acepta** | `/reportes` → "Aceptar" | El aceptador queda como asignado | El **creador** — *"Fulano aceptó tu reporte"* | INFO |
-| **Se reasigna** | `/reportes` → "Asignar" a un trabajador | `POST /reportes-campo/:id/asignar` | El **asignado** (su cuenta) — *"Te asignaron el reporte"* | ALERTA |
+| **Se reasigna** | `/reportes` → "Asignar" a un trabajador | `POST /reportes-campo/:id/asignar` | El **nuevo asignado** (su cuenta) — *"Te asignaron el reporte"* **y el anterior** — *"El reporte fue reasignado a otra persona"* (si el asignado era un usuario que lo aceptó, a él también) | ALERTA + INFO |
 | **Se cierra** (estado **Cerrado**) | `/reportes` → cambiar estado a Cerrado | `PATCH /reportes-campo/:id` | El **asignado**, si tiene; si no, nada — *"Cerraron el reporte que tenías asignado"* | INFO |
 | **Se publican actividades** | `/reportes` → campo "Actividades" → Publicar | Si publicó el **creador** → se avisa al **asignado**; si publicó el **asignado** (u otro) → se avisa al **creador** | **La otra parte** | INFO |
 

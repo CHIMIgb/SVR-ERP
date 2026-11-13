@@ -848,12 +848,34 @@ export class ReportesCampoService {
       },
     });
 
-    // B5.10: aviso al NUEVO asignado (si es trabajador con cuenta).
-    if (asignadoA) {
+    // B5.10/B5.13: al (re)asignar se avisa al NUEVO asignado (si cambió y tiene
+    // cuenta) y al ANTERIOR, a quien le quitaron el reporte.
+    if (asignadoA && asignadoA !== existente.asignado_a_id) {
       await this.notificacionesService.emitirATrabajador(asignadoA, {
         tipo: TipoNotificacion.ALERTA,
         titulo: `Te asignaron el reporte ${serialized.codigo ?? ''}`,
         cuerpo: `${PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte'} — ${existente.descripcion.slice(0, 140)}`,
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
+    if (existente.asignado_a_id && existente.asignado_a_id !== asignadoA) {
+      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `El reporte ${serialized.codigo ?? ''} fue reasignado a otra persona`,
+        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    } else if (!existente.asignado_a_id && existente.asignado_user_id && existente.asignado_user_id !== userId) {
+      // Antes lo tenía asignado un USUARIO (lo aceptó por texto): se le avisa
+      // que el reporte fue reasignado (a quien corresponda).
+      await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `El reporte ${serialized.codigo ?? ''} que aceptaste fue reasignado a otra persona`,
+        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
         referenciaTipo: 'reportes_campo',
         referenciaId: id,
         creadoPor: userId,
