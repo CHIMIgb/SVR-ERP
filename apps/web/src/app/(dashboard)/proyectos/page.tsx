@@ -70,6 +70,14 @@ function parsearMiles(valor: string): number {
   return parseFloat(valor.replace(/,/g, ''));
 }
 
+/** Fecha de hoy en horario local como YYYY-MM-DD (toISOString usaría UTC). */
+function fechaLocalHoy(): string {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
+    hoy.getDate(),
+  ).padStart(2, '0')}`;
+}
+
 function estadoToValue(label: ProyectoDTO['estado']): NonNullable<ProyectoCreateInput['estado']> {
   const map: Record<ProyectoDTO['estado'], NonNullable<ProyectoCreateInput['estado']>> = {
     'En Proceso': 'EN_PROCESO',
@@ -226,6 +234,18 @@ export default function ProyectosPage() {
   }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
+  const handleFechaInicioChange = useCallback(
+    (valor: string) => {
+      if (valor && valor < fechaLocalHoy()) {
+        showToast('La fecha de inicio no puede ser anterior a hoy.', 'error');
+        setForm((prev) => ({ ...prev, fechaInicio: '' }));
+        return;
+      }
+      setForm((prev) => ({ ...prev, fechaInicio: valor }));
+    },
+    [showToast],
+  );
+
   const openCreate = useCallback(() => {
     setForm(emptyForm);
     setCreateOpen(true);
@@ -758,7 +778,7 @@ export default function ProyectosPage() {
               type="date"
               className={modalInputClass}
               value={form.fechaInicio}
-              onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+              onChange={(e) => handleFechaInicioChange(e.target.value)}
             />
           </ModalField>
 
@@ -910,7 +930,7 @@ export default function ProyectosPage() {
               type="date"
               className={modalInputClass}
               value={form.fechaInicio}
-              onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+              onChange={(e) => handleFechaInicioChange(e.target.value)}
             />
           </ModalField>
 
