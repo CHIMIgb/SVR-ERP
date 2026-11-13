@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard, Banknote } from 'lucide-react';
+import { Banknote } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { CASH_BILLS, CASH_COINS, getChange, SPEI_ACCOUNT } from '@/lib/pos';
+import { CASH_BILLS, CASH_COINS, getChange } from '@/lib/pos';
 import type { Payment, PaymentMethod } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
@@ -21,10 +21,11 @@ interface PaymentPanelProps {
   disabled: boolean;
 }
 
-const METHOD_OPTIONS: { label: string; value: PaymentMethod }[] = [
+const METHOD_OPTIONS: { label: string; value: PaymentMethod | 'credito'; disabled?: boolean }[] = [
   { label: 'Efectivo', value: 'efectivo' },
-  { label: 'Tarjeta', value: 'tarjeta' },
-  { label: 'Transferencia', value: 'transferencia' },
+  // C3 (venta a crédito → CxC): pendiente de definición con el cliente; el
+  // botón se muestra pero no hace nada todavía.
+  { label: 'Crédito', value: 'credito', disabled: true },
 ];
 
 export function PaymentPanel({ total, onPay, disabled }: PaymentPanelProps) {
@@ -72,10 +73,13 @@ export function PaymentPanel({ total, onPay, disabled }: PaymentPanelProps) {
           {METHOD_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => setMethod(opt.value)}
+              onClick={() => !opt.disabled && setMethod(opt.value as PaymentMethod)}
+              disabled={opt.disabled}
+              title={opt.disabled ? 'Próximamente: venta a crédito, pendiente de definición.' : undefined}
               className={cn(
                 posClasses.chipBase,
                 method === opt.value ? posClasses.chipActive : posClasses.chipInactive,
+                opt.disabled && 'opacity-50 cursor-not-allowed',
               )}
             >
               {opt.label}
@@ -124,32 +128,8 @@ export function PaymentPanel({ total, onPay, disabled }: PaymentPanelProps) {
         </div>
       )}
 
-      {/* Tarjeta */}
-      {method === 'tarjeta' && (
-        <div className={posClasses.terminalBox}>
-          <CreditCard className="w-6 h-6 text-primary mx-auto" />
-          <p className={posClasses.terminalTitle}>Terminal independiente</p>
-          <p className={posClasses.terminalText}>
-            Introduce{' '}
-            <span className={posClasses.terminalAmount}>{formatCurrency(total)}</span> en la
-            terminal de tarjetas y presiona confirmar una vez aprobado.
-          </p>
-        </div>
-      )}
-
-      {/* Transferencia */}
-      {method === 'transferencia' && (
-        <div className={posClasses.terminalBox}>
-          <Banknote className="w-6 h-6 text-primary mx-auto" />
-          <p className={posClasses.terminalTitle}>Transferencia</p>
-          <p className={posClasses.terminalText}>
-            El cliente transfiere{' '}
-            <span className={posClasses.terminalAmount}>{formatCurrency(total)}</span> a la
-            cuenta indicada y confirma.
-          </p>
-          <p className="font-mono text-xs font-black text-ui-700 mt-2">{SPEI_ACCOUNT}</p>
-        </div>
-      )}
+      {/* Tarjeta / Transferencia: retirados del POS (solo quedan efectivo;
+          crédito aparece deshabilitado hasta definir la venta a crédito C3). */}
 
       {/* Total a pagar + botón */}
       <div className="mt-auto pt-3">

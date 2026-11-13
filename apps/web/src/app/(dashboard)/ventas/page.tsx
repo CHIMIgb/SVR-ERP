@@ -665,13 +665,12 @@ export default function VentasPage() {
         subtitle="Alta rápida sin salir del punto de venta."
         submitLabel="Crear Cliente"
         isSubmitting={creandoCliente}
-        size="full"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre *" required className="sm:col-span-2">
+          <ModalField label="Nombre *" required>
             <input
               className={modalInputClass}
-              placeholder="Nombre de la persona de contacto"
+              placeholder="Nombre de contacto"
               value={formCliente.nombre}
               onChange={(e) => setFormCliente({ ...formCliente, nombre: e.target.value })}
             />
