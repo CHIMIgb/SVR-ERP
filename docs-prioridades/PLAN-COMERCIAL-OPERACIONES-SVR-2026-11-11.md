@@ -47,7 +47,7 @@
 | # | Tarea | Vista(s) | Estado |
 |---|---|---|---|
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
-| B2 | **P15: el proyecto ES la obra** — se ELIMINA el flujo proyecto→obra (6.6: obra base, multi-frente, botón «Agregar obra», `obras[]`); se consolida la tabla `obras` en `proyectos` (`/operaciones`, `/asistencia`, bitácoras y reportes-campo pasan a `proyecto_id` + `/catalogos/proyectos`) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ⏳ |
+| B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ⏳ plan por fases en §10 |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
@@ -56,18 +56,18 @@
 | B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
 | B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
 
-> **Decisión del cliente (2026-11-12):** el sistema maneja **un solo nivel:
-> `proyectos`** — **el proyecto ES la obra**. Se elimina todo el diseño de "un
-> proyecto con una o varias obras" (obra base automática, multi-frente, botón
-> «Agregar obra», `obras[]`, sync de estados obra↔proyecto). Lo que antes era
-> B2 "flujo proyecto→obra" ahora es **P15** (consolidar `obras` en
-> `proyectos`).
+> **Decisión del cliente (2026-11-12):** se conserva la tabla `obras` con
+> relación **1:1 con el proyecto**: un proyecto crea **UNA** obra (misma
+> `$transaction`, `obras.proyecto_id` único) y esa obra es la que alimenta
+> `/operaciones`, asistencia (geocerca) y bitácoras. Se **descarta** el diseño
+> multi-frente (obra base automática + botón «Agregar obra» + `obras[]`) y
+> también la consolidación de `obras` en `proyectos` (**P15 queda descartada**).
+> Plan por fases en **§10**.
 
 ### Orden de arranque propuesto
 
-**B2** (consolidar `obras` en `proyectos` — el proyecto ES la obra;
-prerrequisito operativo de `/operaciones` y `/inventario`) → **B1** (partidas —
-habilita facturación por línea y la
+**B2** (obra 1:1 con el proyecto — prerrequisito operativo de `/operaciones` y
+`/inventario`) → **B1** (partidas — habilita facturación por línea y la
 plantilla de cotización) → **B3** (FK cliente en POS — prepara el crédito C3)
 → **B4 → B5 → B6–B7** → **B8 → B9**.
 
@@ -201,8 +201,8 @@ La sección con más correspondencia del documento:
 |---|---|---|---|
 | Pr1 | Costo por proyecto (diésel + mantenimiento) — el modelo ya existe, falta F1 | ⚠️/✅ | `finanzas{ingresoCobrado, gastado}` |
 | Pr2 | **Trabajador asignado a varios proyectos al mismo tiempo: SI es posible** (§1) | ✅ | `trabajadores_proyectos` multi-proyecto sin fricción (no tratarla como caso que bloquea) |
-| Pr3 | **"¿Quién levantará las coordenadas y definirá el radio de cada obra? NECESITARIA EXPLICACION PARA PODERLO REALIZAR NOSOTROS MISMOS"** (§3) | ✅ | El cliente pide herramienta/guía para capturar coordenadas y radio — vive en `/proyectos` (el proyecto ES la obra; P15 elimina la tabla `obras`) |
-| Pr4 | **El radio DEBE VARIAR según el tipo de proyecto** (§3, asistencia) | ✅ | Radio ya no es valor fijo global: campo por proyecto |
+| Pr3 | **"¿Quién levantará las coordenadas y definirá el radio de cada obra? NECESITARIA EXPLICACION PARA PODERLO REALIZAR NOSOTROS MISMOS"** (§3) | ✅ | El cliente pide herramienta/guía para capturar coordenadas y radio — vive en la **obra 1:1 del proyecto** (`obras.lat/lng/radio_permitido_metros`, capturados desde `/proyectos` o `/asistencia`) |
+| Pr4 | **El radio DEBE VARIAR según el tipo de proyecto** (§3, asistencia) | ✅ | Radio ya no es valor fijo global: campo por **obra** (1:1 con su proyecto) |
 | Pr5 | Expediente del proyecto real (docs-svr: PROYECTO AILIN) | ✅ | Plantilla del proyecto con plantilla de trabajadores (RFC, domicilio, horario) y control de servicios por unidad — referencia funcional para `/proyectos` y `/operaciones` |
 
 ### 3.4 /reportes y /criba
@@ -226,7 +226,7 @@ Maquinaria: viven en el doc fuera-de-alcance.)*
 ## 6. Entregables del cliente que este alcance necesita (§11 filtrado)
 
 - **Tarifas de renta por hora**, por máquina o tipo de máquina (alimenta C2).
-- **Coordenadas y radio de cada proyecto** (alimenta Pr3/Pr4).
+- **Coordenadas y radio de cada obra** (alimenta Pr3/Pr4; la obra es 1:1 con su proyecto).
 - **Lista de máquinas y sus operadores** (alimenta O6/O8).
 - **Lista de máquinas con y sin GPS** (alimenta O13 y el egreso F4).
 - **Datos de contacto del proveedor de GPS** (para la renta F4 y Cl1).
@@ -284,7 +284,7 @@ y Mantenimiento/llantas/diésel (F8) viven en
         de material — este plan define si nace CxC directo o pasa por /ventas)
       · §9/§10 (conciliación bancaria / vencimiento CxP) ◄── conciliación semanal de
         proveedores externos + P4 (bloqueo de carga conciliada) de este plan
-      · el resto (6.2–6.6, P8, F1, F5, P13–P15) sin dependencia del hilo —
+      · el resto (6.2–6.6, P8, F1, F5, P13–P14) sin dependencia del hilo —
         según el orden interno de ese documento
 ```
 
@@ -292,3 +292,105 @@ y Mantenimiento/llantas/diésel (F8) viven en
 correspondiente de `IMPLEMENTACIONES-A-FUTURO.md` — no se arranca esa serie
 antes de que su habilitador de este plan exista (ej.: no construir P2 sin la
 plantilla de cotización que define QUÉ renglones lleva).
+
+---
+
+## 10. Plan de implementación B2 — la obra nace 1:1 con el proyecto (fases separadas)
+
+> **Diseño:** se conserva la tabla `obras`. Cada proyecto tiene **exactamente
+> una** obra (`obras.proyecto_id` único). No hay botón «Agregar obra», ni
+> multi-frente, ni `obras[]`, ni consolidación de `obras` en `proyectos`
+> (**P15 queda descartada**). La obra se crea sola junto con el proyecto y
+> hereda su nombre y su ubicación; la geocerca (`lat/lng/radio_permitido_metros`)
+> se captura después con el endpoint que **ya existe**
+> (`PATCH /asistencia/obras/:id/ubicacion`, permiso `rrhh.asistencia.editar`).
+>
+> **Por qué en fases:** el cambio toca datos, backend y UI. Cada fase se
+> verifica y se commitea sola para que un error no arrastre a la siguiente.
+
+**Estado real de la BD local (2026-11-12):** 9 proyectos vivos (6 EN_PROCESO) ·
+3 obras, las 3 ya 1:1 con un proyecto del mismo nombre, sin geocerca capturada ·
+3 `registros_asistencia` con `obra_id` · 0 bitácoras de operación/renta y 0
+reportes de campo con `obra_id`. **Faltan 6 obras** — incluidos 4 de los 6
+proyectos EN_PROCESO, que son la causa del catálogo cojo de `/operaciones`
+(no es un bug de filtro).
+
+### B2.1 — Datos (una sola migración, idempotente)
+
+**`apps/api/prisma/schema.prisma`:** en `model obras`, `proyecto_id` pasa a
+`@@unique([proyecto_id])` (una obra por proyecto, garantizado por la BD). Sin
+columnas nuevas — la geocerca ya vive en `obras`.
+
+**Migración** (`npx prisma migrate dev --name obras_1a1 --create-only`, SQL a
+mano, todo en una transacción):
+
+1. `CREATE UNIQUE INDEX "obras_proyecto_id_key" ON "obras"("proyecto_id");`
+2. **Backfill** — una obra por cada proyecto vivo sin obra:
+   ```sql
+   INSERT INTO obras (id, nombre, estado, proyecto_id, ubicacion, activo,
+                      creado_en, actualizado_en)
+   SELECT gen_random_uuid(),
+          p.nombre,
+          CASE p.estado WHEN 'FINALIZADO' THEN 'FINALIZADA' ELSE 'EN_PROCESO' END,
+          p.id,
+          NULLIF(concat_ws(', ', p.calle, p.colonia, p.ciudad, p.estado_ubicacion), ''),
+          true, now(), now()
+   FROM proyectos p
+   WHERE p.eliminado_en IS NULL
+     AND NOT EXISTS (SELECT 1 FROM obras o WHERE o.proyecto_id = p.id);
+   ```
+   (`codigo` y `creado_por` quedan NULL; el nombre es el del proyecto, igual
+   que las 3 obras que ya existen.)
+3. **Normalización de estados** (caso "Puente Atizapán", obra EN_PROCESO con
+   proyecto FINALIZADO): las obras de proyectos FINALIZADO pasan a FINALIZADA.
+
+**Verificación:** `count(*)` de proyectos vivos = `count(*)` de obras (9) ·
+`npx prisma migrate diff` vacío · `GET /bitacora/catalogos` devuelve 7 obras
+(los 6 EN_PROCESO + el PAUSADO; excluye FINALIZADA).
+
+**Riesgo:** la migración **inserta datos** — correr con respaldo previo
+(`pg_dump svr_erp`) y en el servidor vía `migrate deploy`, nunca re-replays del
+historial.
+
+### B2.2 — Backend (`apps/api/src/proyectos/`)
+
+| Archivo | Cambio |
+|---|---|
+| `proyectos.service.ts` → `create()` | Envolver en `this.prisma.$transaction`: `proyectos.create` + `obras.create` (mismo `nombre`, `proyecto_id`, estado mapeado, `ubicacion` compuesta con calle/colonia/ciudad/estado, `creado_por`). Si la obra falla, el proyecto no queda creado. |
+| `proyectos.service.ts` → `update()` | Misma transacción: si viene `estado`, sincronizar la obra — `FINALIZADO → FINALIZADA`, `EN_PROCESO → EN_PROCESO`, **`PAUSADO` sin cambio** (`EstadoObra` no tiene PAUSADA; si el cliente quiere ocultarla del catálogo, se agrega el valor en otra fase). |
+| `proyectos.service.ts` → `remove()` | Misma transacción: soft-delete de la obra (`eliminado_en`, `activo: false`) junto con el proyecto — sin obras huérfanas en catálogos. |
+| Auditoría | Sin acciones nuevas (`AuditAction` es enum de BD): `PROYECTO_CREADO` incluye `obraId` en `newValue` y `PROYECTO_ACTUALIZADO` incluye el estado de la obra en `previous/newValue`. No hay FAIL nuevo que auditar: no existe regla de negocio que falle (la 1:1 la garantiza el índice único). |
+
+Sin DTOs nuevos, sin endpoints nuevos, sin permisos nuevos (los `proyectos.*`
+ya existen).
+
+**Tests:**
+- Unit `proyectos.service.spec.ts`: `create` usa `$transaction` y crea la obra
+  con nombre/estado/ubicación heredados; `update` con `FINALIZADO` sincroniza
+  `FINALIZADA`; `PAUSADO` no toca la obra; `remove` soft-deletea la obra.
+- Integración `proyectos.integration.spec.ts` (BD real): el proyecto nace con
+  su obra; **un segundo `obras.create` con el mismo `proyecto_id` es rechazado
+  por el índice único (P2002)**; estado sincronizado; soft-delete en cascada;
+  `registro_auditoria` conserva `PROYECTO_CREADO` SUCCESS y el DELETE contra la
+  auditoría sigue rechazado por el trigger.
+
+### B2.3 — UI (solo lo mínimo)
+
+| Archivo | Cambio |
+|---|---|
+| `apps/web/src/app/(dashboard)/proyectos/page.tsx` | Labels del alta: "obra" → "proyecto" (la obra se crea sola; no se captura ni se agrega). Sin botón ni campo nuevo. |
+| `/operaciones` y `/asistencia` | **Sin cambios de código**: los selects ya leen `GET /bitacora/catalogos` y `asistenciaApi.obras()`; con las 6 obras del backfill quedan completos. El modal "Ubicar obra" ya escribe la geocerca de la obra 1:1. |
+
+**Verificación manual:** crear un proyecto → aparece en el catálogo de
+`/operaciones` sin pasos extra; marcarlo FINALIZADO → desaparece del catálogo.
+
+### B2.4 — Gates y cierre
+
+`npx prisma validate` + `migrate diff` vacío · `npm run test` ·
+`npm run test:integration` · `npx tsc --noEmit` (web) · `npm run lint` · smoke
+manual de `/proyectos`, `/operaciones` y `/asistencia` documentado en
+`historial-cambios/`.
+
+**Fuera de B2 (no se construye aquí):** captura de coordenadas/radio desde la
+UI de `/proyectos` (hoy se hace desde `/asistencia` — Pr3) · P8 metas/progreso ·
+P3 cotización→proyecto · la PWA (`/m/flota-obras` sigue en pausa y no se toca).
