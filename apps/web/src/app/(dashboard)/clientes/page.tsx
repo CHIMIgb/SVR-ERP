@@ -229,7 +229,7 @@ export default function ClientesPage() {
     setSelected(item);
     setForm({
       nombre: item.nombre,
-      empresa: item.empresa,
+      empresa: item.empresa ?? '',
       correo: item.correo,
       telefono: item.telefono,
       rfc: item.rfc ?? '',
@@ -252,8 +252,8 @@ export default function ClientesPage() {
 
   // ── CRUD handlers (API) ──
   const validateForm = () => {
-    if (!form.nombre || !form.empresa || !form.correo) {
-      showToast('Nombre, empresa y correo son obligatorios.', 'error');
+    if (!form.nombre || !form.correo) {
+      showToast('Nombre y correo son obligatorios.', 'error');
       return false;
     }
     return true;
@@ -265,13 +265,13 @@ export default function ClientesPage() {
     try {
       const res = await clientesApi.crear({
         nombre: form.nombre,
-        empresa: form.empresa,
+        empresa: form.empresa || undefined,
         correo: form.correo,
         telefono: form.telefono || '—',
         rfc: form.rfc || undefined,
       });
       if (res.success) {
-        showToast(`Cliente "${form.empresa}" creado exitosamente.`, 'success');
+        showToast(`Cliente "${form.empresa || form.nombre}" creado exitosamente.`, 'success');
         setCreateOpen(false);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
@@ -292,13 +292,13 @@ export default function ClientesPage() {
     try {
       const res = await clientesApi.actualizar(selected.id, {
         nombre: form.nombre,
-        empresa: form.empresa,
+        empresa: form.empresa || '',
         correo: form.correo,
         telefono: form.telefono,
         rfc: form.rfc || undefined,
       });
       if (res.success) {
-        showToast(`Cliente "${form.empresa}" actualizado exitosamente.`, 'success');
+        showToast(`Cliente "${form.empresa || form.nombre}" actualizado exitosamente.`, 'success');
         setEditOpen(false);
         setSelected(null);
         fetchData(pagination.page, search, filterValues);
@@ -319,7 +319,7 @@ export default function ClientesPage() {
     try {
       const res = await clientesApi.eliminar(selected.id);
       if (res.success) {
-        showToast(`Cliente "${selected.empresa}" eliminado exitosamente.`, 'success');
+        showToast(`Cliente "${selected.empresa || selected.nombre}" eliminado exitosamente.`, 'success');
         setDeleteOpen(false);
         setSelected(null);
         fetchData(pagination.page, search, filterValues);
@@ -415,10 +415,10 @@ export default function ClientesPage() {
       render: (item) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-secondary dark:bg-ui-200 text-white rounded-xl flex items-center justify-center font-black text-sm shrink-0">
-            {item.empresa[0]}
+            {(item.empresa || item.nombre)[0]}
           </div>
           <div className="min-w-0">
-            <div className="font-black text-ui-900 truncate">{item.empresa}</div>
+            <div className="font-black text-ui-900 truncate">{item.empresa || 'Sin empresa'}</div>
             <div className="text-xs font-bold text-primary truncate">{item.nombre}</div>
           </div>
         </div>
@@ -683,7 +683,7 @@ export default function ClientesPage() {
             />
           </ModalField>
 
-          <ModalField label="Empresa" required>
+          <ModalField label="Empresa (opcional)">
             <input
               type="text"
               className={modalInputClass}
@@ -731,7 +731,7 @@ export default function ClientesPage() {
       >
         <ModalHeader
           title="Detalle del Cliente"
-          subtitle={selected ? selected.empresa : undefined}
+          subtitle={selected ? selected.empresa ?? selected.nombre : undefined}
           onClose={() => setViewOpen(false)}
         />
         <ModalBody>
@@ -740,7 +740,7 @@ export default function ClientesPage() {
             {/* Datos generales */}
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-secondary dark:bg-ui-200 text-white rounded-xl flex items-center justify-center font-black text-lg shrink-0">
-                {selected.empresa[0]}
+                {(selected.empresa || selected.nombre)[0]}
               </div>
               <div>
                 <p className="font-black text-ui-900 text-lg leading-tight">{selected.empresa}</p>
@@ -926,7 +926,7 @@ export default function ClientesPage() {
             />
           </ModalField>
 
-          <ModalField label="Empresa" required>
+          <ModalField label="Empresa (opcional)">
             <input
               type="text"
               className={modalInputClass}

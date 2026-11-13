@@ -275,7 +275,7 @@ model clientes {
   id                                    String                   @id @db.Uuid
   codigo                                String?                  @unique
   nombre                                String
-  empresa                               String
+  empresa                               String?
   correo                                String
   telefono                              String
   activo                                Boolean                  @default(true)

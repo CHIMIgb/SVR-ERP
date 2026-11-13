@@ -128,7 +128,8 @@ export class ClientesService {
     return {
       totalClientes,
       clientesActivos,
-      empresas: empresas.length,
+      // Sin empresa no cuenta como empresa distinta.
+      empresas: empresas.filter((e) => e.empresa !== null).length,
     };
   }
 
@@ -161,7 +162,7 @@ export class ClientesService {
       data: {
         id: randomUUID(),
         nombre: dto.nombre.trim(),
-        empresa: dto.empresa.trim(),
+        empresa: dto.empresa?.trim() || null,
         correo: dto.correo.trim(),
         telefono: dto.telefono.trim(),
         rfc: dto.rfc?.trim() || null,
@@ -210,7 +211,7 @@ export class ClientesService {
       where: { id },
       data: {
         ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
-        ...(dto.empresa !== undefined && { empresa: dto.empresa.trim() }),
+        ...(dto.empresa !== undefined && { empresa: dto.empresa.trim() || null }),
         ...(dto.correo !== undefined && { correo: dto.correo.trim() }),
         ...(dto.telefono !== undefined && { telefono: dto.telefono.trim() }),
         ...(dto.rfc !== undefined && { rfc: dto.rfc?.trim() || null }),

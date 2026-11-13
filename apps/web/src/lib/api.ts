@@ -2346,7 +2346,8 @@ export interface ClienteDTO {
   id: string;
   codigo: string | null;
   nombre: string;
-  empresa: string;
+  /** Opcional: clientes sin empresa (persona física / alta rápida del POS). */
+  empresa: string | null;
   correo: string;
   telefono: string;
   rfc: string | null;
@@ -2363,7 +2364,8 @@ export interface ClientesStats {
 
 export interface ClienteCreateInput {
   nombre: string;
-  empresa: string;
+  /** Opcional: clientes sin empresa. */
+  empresa?: string;
   correo: string;
   telefono: string;
   rfc?: string;
