@@ -526,6 +526,7 @@ export class ProveedoresService {
     }
 
     const fecha = dto.fecha ? new Date(dto.fecha) : new Date();
+    const vencimiento = dto.fechaVencimiento ? new Date(dto.fechaVencimiento) : null;
     const id = randomUUID();
     const now = new Date();
 
@@ -547,6 +548,7 @@ export class ProveedoresService {
             monto: montoTotal,
             pagado: 0,
             fecha,
+            fecha_vencimiento: vencimiento,
             estado: EstadoOrdenCompra.PENDIENTE,
             creado_por: userId,
             actualizado_por: userId,
@@ -574,6 +576,7 @@ export class ProveedoresService {
             orden_compra_id: orden.id,
             monto: montoTotal,
             monto_pagado: 0,
+            fecha_vencimiento: vencimiento,
             estado: 'PENDIENTE',
             activo: true,
             actualizado_en: now,
@@ -659,14 +662,18 @@ export class ProveedoresService {
 
     const orden = await this.prisma.$transaction(async (tx) => {
       const dataMonto = montoNuevo !== undefined ? { monto: montoNuevo } : {};
+      const dataUpdate: Record<string, unknown> = {
+        ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
+        ...dataMonto,
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      };
+      if (dto.fechaVencimiento !== undefined) {
+        dataUpdate.fecha_vencimiento = new Date(dto.fechaVencimiento);
+      }
       const actualizada = await tx.ordenes_compra.update({
         where: { id },
-        data: {
-          ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
-          ...dataMonto,
-          actualizado_por: userId,
-          actualizado_en: new Date(),
-        },
+        data: dataUpdate,
       });
 
       // Reemplazar líneas de detalle (snapshot de nombre siempre preservado).
@@ -697,6 +704,20 @@ export class ProveedoresService {
           await tx.cuentas_por_pagar.update({
             where: { id: cxp.id },
             data: { monto: montoNuevo, actualizado_en: new Date() },
+          });
+        }
+      }
+
+      // B4: propagar el vencimiento corregido a la CxP SOLO si sigue abierta
+      // (saldo > 0); las CxP saldadas conservan su histórico.
+      if (dto.fechaVencimiento !== undefined) {
+        const cxp = await tx.cuentas_por_pagar.findUnique({
+          where: { orden_compra_id: id },
+        });
+        if (cxp && Number(cxp.monto_pagado) < Number(cxp.monto)) {
+          await tx.cuentas_por_pagar.update({
+            where: { id: cxp.id },
+            data: { fecha_vencimiento: new Date(dto.fechaVencimiento), actualizado_en: new Date() },
           });
         }
       }
@@ -1410,6 +1431,9 @@ export class ProveedoresService {
       pagado: Number(orden.pagado),
       saldo: Number(orden.monto) - Number(orden.pagado),
       fecha: orden.fecha?.toISOString?.() ?? orden.fecha,
+      fechaVencimiento: orden.fecha_vencimiento
+        ? (orden.fecha_vencimiento.toISOString?.().split('T')[0] ?? String(orden.fecha_vencimiento).slice(0, 10))
+        : null,
       estado: orden.estado,
       motivoCancelacion: orden.motivo_cancelacion ?? null,
       activo: orden.activo,

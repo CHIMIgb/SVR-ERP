@@ -73,6 +73,11 @@ export class CreateOrdenCompraDto {
   @IsDateString()
   fecha?: string;
 
+  /** Fecha límite de pago (B4): se propaga a la CxP que nace con la OC. Opcional. */
+  @IsOptional()
+  @IsDateString()
+  fechaVencimiento?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
