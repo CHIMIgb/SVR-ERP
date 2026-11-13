@@ -2594,6 +2594,47 @@ export const cotizacionesApi = {
 };
 
 // ────────────────────────────────────────────────────────────
+//  Notificaciones API (B5: centro del Topbar cosido al backend)
+// ────────────────────────────────────────────────────────────
+
+/** Formato que devuelve el backend (modelo `notificaciones`). */
+export interface NotificacionDTO {
+  id: string;
+  tipo: 'ALERTA' | 'INFO';
+  titulo: string;
+  cuerpo: string;
+  referenciaTipo: string | null;
+  referenciaId: string | null;
+  audienciaRolId: string | null;
+  leida: boolean;
+  leidoEn: string | null;
+  creadoEn: string;
+}
+
+export interface NotificacionesListadoDTO {
+  items: NotificacionDTO[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  noLeidas: number;
+}
+
+export const notificacionesApi = {
+  /** Buzón del usuario (audiencia todos + sus roles), paginado. */
+  listar: (params?: { page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<NotificacionesListadoDTO>(`/notificaciones${qs ? `?${qs}` : ''}`);
+  },
+
+  marcarLeida: (id: string) =>
+    apiClient.patch<NotificacionDTO>(`/notificaciones/${id}/leer`, {}),
+
+  marcarTodas: () =>
+    apiClient.patch<{ message: string; marcadas: number }>('/notificaciones/leer-todas', {}),
+};
+
+// ────────────────────────────────────────────────────────────
 //  Proveedores API (módulo proveedores: OC, abonos y CxP)
 //  Backend: apps/api/src/proveedores/
 // ────────────────────────────────────────────────────────────

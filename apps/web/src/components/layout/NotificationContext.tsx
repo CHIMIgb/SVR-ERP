@@ -1,7 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useToast } from './Toast';
+import { useAuth } from '@/hooks/useAuth';
+import { notificacionesApi, mensajeErrorApi } from '@/lib/api';
 
 export interface Notification {
   id: string;
@@ -37,85 +39,72 @@ export function useNotifications() {
   return useContext(NotificationContext);
 }
 
-const initialNotifications: Notification[] = [
-  {
-    id: "N1",
-    titulo: "Límite de Horómetro Alcanzado",
-    mensaje: "La Excavadora CAT 320 (M001) ha superado las 1,240 horas. Requiere mantenimiento preventivo en 5 hrs.",
-    tipo: "alerta",
-    fecha: "Hace 10 min",
-    leido: false
-  },
-  {
-    id: "N2",
-    titulo: "Correo: Falla Crítica Reportada",
-    mensaje: "Se envió un correo a Ricardo M. (Mecánico) por reporte de fuga en Grúa Liebherr (M003).",
-    tipo: "correo",
-    fecha: "Hace 1 hr",
-    leido: false,
-    destinatario: "Ricardo M. <mecanica@svr.com>",
-    asunto: "URGENTE: Reporte de Falla Mecánica - M003",
-    plantillaHtml: `
-      <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #334155;">
-        <div style="background-color: #ef4444; color: white; padding: 24px; text-align: center;">
-          <h1 style="margin: 0; font-size: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Alerta de Falla Crítica</h1>
-          <p style="margin: 4px 0 0 0; font-size: 12px; font-weight: 600; opacity: 0.8;">SVR ERP AUTOMATED DISPATCH</p>
-        </div>
-        <div style="padding: 24px; line-height: 1.6;">
-          <p style="margin-top: 0;">Estimado <strong>Ing. Ricardo Mendoza</strong> (Departamento de Mantenimiento),</p>
-          <p>Se ha registrado un reporte de falla mecánica crítica desde el campo que requiere atención urgente.</p>
-          
-          <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f8fafc; border-radius: 8px;">
-            <tr>
-              <td style="padding: 10px; font-weight: bold; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-transform: uppercase;">Activo / Máquina</td>
-              <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">M003 — Grúa Liebherr LTM</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; font-weight: bold; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-transform: uppercase;">Operador</td>
-              <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #0f172a;">Roberto Díaz</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; font-weight: bold; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-transform: uppercase;">Ubicación</td>
-              <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #0f172a;">Obra Toluca C2</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; font-weight: bold; font-size: 12px; color: #64748b; text-transform: uppercase;">Descripción Falla</td>
-              <td style="padding: 10px; color: #ef4444; font-weight: bold;">Fuga severa de líquido de frenos en el eje delantero.</td>
-            </tr>
-          </table>
+/** Fecha corta para la lista del Topbar (el backend manda ISO). */
+function fechaCorta(iso: string): string {
+  return new Date(iso).toLocaleString('es-MX', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
-          <p>Por favor, coordina el traslado de refacciones y el equipo mecánico lo antes posible. Puedes contactar al operador al <strong>555-8899</strong>.</p>
-          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-          <p style="font-size: 11px; text-align: center; color: #94a3b8;">
-            Este es un correo automático generado por SVR Constructora ERP. Por favor, no respondas a este mensaje.
-          </p>
-        </div>
-      </div>
-    `
-  },
-  {
-    id: "N3",
-    titulo: "Nueva Maquinaria Despachada",
-    mensaje: "El Kenworth Volteo (M004) ha sido despachado exitosamente a la obra Fraccionamiento Valle Sur.",
-    tipo: "info",
-    fecha: "Hace 3 hrs",
-    leido: true
-  }
-];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function aNotificacion(n: any): Notification {
+  return {
+    id: n.id,
+    titulo: n.titulo,
+    mensaje: n.cuerpo,
+    tipo: n.tipo === 'ALERTA' ? 'alerta' : 'info',
+    fecha: fechaCorta(n.creadoEn),
+    leido: n.leida,
+  };
+}
+
+const INTERVALO_MS = 60_000;
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const precargado = useRef(false);
 
+  const cargar = useCallback(async () => {
+    try {
+      const res = await notificacionesApi.listar({ limit: 50 });
+      if (res.success && res.data) {
+        setNotifications(res.data.items.map(aNotificacion));
+        setUnreadCount(res.data.noLeidas);
+      }
+    } catch {
+      // Sin conexión: el centro queda vacío, sin toasts de ruido.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user || precargado.current) return;
+    precargado.current = true;
+    cargar();
+    // Polling simple (sin websockets) cada 60s.
+    const intervalo = setInterval(cargar, INTERVALO_MS);
+    return () => clearInterval(intervalo);
+  }, [user, cargar]);
+
+  /**
+   * Overlay local para avisos generados EN el navegador (vistas que todavía
+   * lo usan). No persiste: las notificaciones reales las emite el backend.
+   */
   const addNotification = useCallback((notif: Omit<Notification, 'id' | 'fecha' | 'leido'>) => {
     const newNotif: Notification = {
       ...notif,
-      id: `N${Date.now()}`,
-      fecha: "Hace un momento",
+      id: `local-${Date.now()}`,
+      fecha: fechaCorta(new Date().toISOString()),
       leido: false
     };
 
     setNotifications(prev => [newNotif, ...prev]);
+    setUnreadCount(c => c + 1);
 
     // Send toast overlay too!
     const toastType = notif.tipo === 'alerta' ? 'error' : notif.tipo === 'correo' ? 'info' : 'success';
@@ -124,18 +113,26 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [showToast]);
 
   const markAsRead = useCallback((id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, leido: true } : n));
-  }, []);
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, leido: true } : n)));
+    setUnreadCount(c => Math.max(0, c - 1));
+    notificacionesApi.marcarLeida(id).then((res) => {
+      if (!res.success) showToast(mensajeErrorApi(res.error, 'No se pudo marcar la notificación.'), 'error');
+    });
+  }, [showToast]);
 
   const markAllAsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, leido: true })));
-  }, []);
+    setUnreadCount(0);
+    notificacionesApi.marcarTodas().then((res) => {
+      if (!res.success) showToast(mensajeErrorApi(res.error, 'No se pudieron marcar las notificaciones.'), 'error');
+    });
+  }, [showToast]);
 
+  /** Sin borrado en la API (se expiran después): limpia solo lo local. */
   const clearNotifications = useCallback(() => {
     setNotifications([]);
+    setUnreadCount(0);
   }, []);
-
-  const unreadCount = notifications.filter(n => !n.leido).length;
 
   return (
     <NotificationContext.Provider value={{
