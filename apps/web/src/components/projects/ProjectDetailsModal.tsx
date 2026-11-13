@@ -132,7 +132,7 @@ export default function ProjectDetailsModal({
               <EmptyState
                 icon={<BarChart2 size={32} />}
                 title="Sin registros históricos"
-                subtitle="Este proyecto aún no tiene hitos de progreso registrados."
+                subtitle="Esta obra aún no tiene hitos de progreso registrados."
                 className="py-10"
               />
             </Card>
@@ -235,7 +235,7 @@ export default function ProjectDetailsModal({
                   <EmptyState
                     icon={<Users size={28} />}
                     title="Sin personal registrado"
-                    subtitle="No hay trabajadores asignados a este proyecto."
+                    subtitle="No hay trabajadores asignados a esta obra."
                     className="py-4"
                   />
                 )}
@@ -272,7 +272,7 @@ export default function ProjectDetailsModal({
                   <EmptyState
                     icon={<Truck size={28} />}
                     title="Sin maquinaria asignada"
-                    subtitle="No hay despachos activos hacia este proyecto."
+                    subtitle="No hay despachos activos hacia esta obra."
                     className="py-4"
                   />
                 )}

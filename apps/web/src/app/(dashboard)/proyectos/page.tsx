@@ -155,7 +155,7 @@ export default function ProyectosPage() {
         setRegistros(res.data.items);
         setPagination(res.data.pagination);
       } else {
-        showToast('Error al cargar proyectos.', 'error');
+        showToast('Error al cargar las obras.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -302,7 +302,7 @@ export default function ProyectosPage() {
   // ── Validación ──
   const validateForm = useCallback(() => {
     if (!form.nombre.trim()) {
-      showToast('El nombre del proyecto es obligatorio.', 'error');
+      showToast('El nombre de la obra es obligatorio.', 'error');
       return false;
     }
     if (!form.clienteId) {
@@ -392,16 +392,16 @@ export default function ProyectosPage() {
     try {
       const res = await proyectosApi.crear(buildPayload());
       if (res.success) {
-        showToast(`Proyecto "${form.nombre}" creado exitosamente.`, 'success');
+        showToast(`Obra "${form.nombre}" creada exitosamente.`, 'success');
         setCreateOpen(false);
         setForm(emptyForm);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al crear el proyecto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la obra.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al crear el proyecto.', 'error');
+      showToast('Error de conexión al crear la obra.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -413,17 +413,17 @@ export default function ProyectosPage() {
     try {
       const res = await proyectosApi.actualizar(selectedItem.id, buildPayload());
       if (res.success) {
-        showToast(`Proyecto "${form.nombre}" actualizado exitosamente.`, 'success');
+        showToast(`Obra "${form.nombre}" actualizada exitosamente.`, 'success');
         setEditOpen(false);
         setSelectedItem(null);
         setForm(emptyForm);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al actualizar el proyecto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la obra.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al actualizar el proyecto.', 'error');
+      showToast('Error de conexión al actualizar la obra.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -481,16 +481,16 @@ export default function ProyectosPage() {
     try {
       const res = await proyectosApi.eliminar(selectedItem.id);
       if (res.success) {
-        showToast(`Proyecto "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
+        showToast(`Obra "${selectedItem.nombre}" eliminada exitosamente.`, 'success');
         setDeleteOpen(false);
         setSelectedItem(null);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al eliminar el proyecto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la obra.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al eliminar el proyecto.', 'error');
+      showToast('Error de conexión al eliminar la obra.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -500,7 +500,7 @@ export default function ProyectosPage() {
   const columns: Column<ProyectoDTO>[] = [
     {
       key: 'nombre',
-      header: 'Proyecto / Cliente',
+      header: 'Obra / Cliente',
       render: (item) => (
         <div>
           <div className="font-black text-ui-900">{item.nombre}</div>
@@ -633,13 +633,13 @@ export default function ProyectosPage() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
-        title="Gestión de Proyectos"
+        title="Gestión de Obras"
         subtitle="Control físico y financiero de obras activas."
         action={
           puedeCrear ? (
             <Button
           skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
-              Nuevo Proyecto
+              Nueva Obra
             </Button>
           ) : undefined
         }
@@ -649,7 +649,7 @@ export default function ProyectosPage() {
         <StatsCard
           icon={<FolderKanban className="w-6 h-6" />}
           value={stats.total}
-          label="Total Proyectos"
+          label="Total Obras"
           color="info"
         loading={initialLoading}
         />
@@ -674,7 +674,7 @@ export default function ProyectosPage() {
           value={search}
           onChange={handleSearchChange}
           onSearch={handleSearch}
-          placeholder="Buscar por proyecto o cliente..."
+          placeholder="Buscar por obra o cliente..."
           className="flex-1"
         />
         <Button
@@ -756,7 +756,7 @@ export default function ProyectosPage() {
             data={registros}
             loading={initialLoading}
             keyExtractor={(item) => item.id}
-            emptyText="No se encontraron proyectos que coincidan con la búsqueda."
+            emptyText="No se encontraron obras que coincidan con la búsqueda."
             maxBodyHeight="520px"
           />
         </div>
@@ -777,15 +777,15 @@ export default function ProyectosPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCancel={() => setCreateOpen(false)}
-        title="Nuevo Proyecto"
+        title="Nueva Obra"
         subtitle="Registra una nueva obra para control físico y financiero."
-        submitLabel="Crear Proyecto"
+        submitLabel="Crear Obra"
         cancelLabel="Cancelar"
         onSubmit={handleCreate}
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre del proyecto" required className="sm:col-span-2">
+          <ModalField label="Nombre de la obra" required className="sm:col-span-2">
             <input
               type="text"
               className={modalInputClass}
@@ -915,7 +915,7 @@ export default function ProyectosPage() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onCancel={() => setEditOpen(false)}
-        title="Editar Proyecto"
+        title="Editar Obra"
         subtitle={selectedItem ? `Editando: ${selectedItem.nombre}` : undefined}
         submitLabel="Guardar Cambios"
         cancelLabel="Cancelar"
@@ -923,7 +923,7 @@ export default function ProyectosPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre del proyecto" required className="sm:col-span-2">
+          <ModalField label="Nombre de la obra" required className="sm:col-span-2">
             <input
               type="text"
               className={modalInputClass}
@@ -1053,13 +1053,13 @@ export default function ProyectosPage() {
         onClose={() => setEstadoOpen(false)}
         onCancel={() => setEstadoOpen(false)}
         title="Cambiar Estado"
-        subtitle={selectedItem ? `Proyecto: ${selectedItem.nombre}` : undefined}
+        subtitle={selectedItem ? `Obra: ${selectedItem.nombre}` : undefined}
         submitLabel="Guardar Estado"
         cancelLabel="Cancelar"
         onSubmit={handleEstado}
         isSubmitting={submitting}
       >
-        <ModalField label="Estado del proyecto" required>
+        <ModalField label="Estado de la obra" required>
           <select
             className={modalSelectClass}
             value={estadoValue}
@@ -1083,7 +1083,7 @@ export default function ProyectosPage() {
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onCancel={() => setDeleteOpen(false)}
-        title="Eliminar Proyecto"
+        title="Eliminar Obra"
         subtitle="Esta acción no se puede deshacer."
         submitLabel="Sí, Eliminar"
         cancelLabel="Cancelar"
@@ -1096,7 +1096,7 @@ export default function ProyectosPage() {
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
             <p className="text-sm text-ui-700 mb-1">
-              ¿Estás seguro de eliminar este proyecto?
+              ¿Estás seguro de eliminar esta obra?
             </p>
             <p className="font-black text-ui-900 text-lg mb-2">{selectedItem.nombre}</p>
             <p className="text-xs text-ui-500">

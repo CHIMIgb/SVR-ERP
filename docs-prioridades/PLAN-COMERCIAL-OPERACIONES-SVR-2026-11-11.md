@@ -47,7 +47,7 @@
 | # | Tarea | Vista(s) | Estado |
 |---|---|---|---|
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
-| B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ✅ hecho (`83fb6198`, `c8423b02`) — faltan B2.3 (labels) y B2.4 (gates), ver §10 |
+| B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ✅ HECHA completa (`83fb6198`, `c8423b02`, B2.3/B2.4 2026-11-12) — ver §10 |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
@@ -308,15 +308,14 @@ plantilla de cotización que define QUÉ renglones lleva).
 > **Por qué en fases:** el cambio toca datos, backend y UI. Cada fase se
 > verifica y se commitea sola para que un error no arrastre a la siguiente.
 
-**Avance (2026-11-12):** B2.1 y B2.2 **hechas y verificadas**; B2.3 y B2.4
-**parciales** (detalle en cada fase).
+**Avance (2026-11-12):** **B2 completa** — las 4 fases hechas y verificadas.
 
 | Fase | Estado | Evidencia |
 |---|---|---|
 | B2.1 Datos | ✅ HECHA | `83fb6198` — índice único `obras_proyecto_id_key`, 6 obras de backfill, 9 proyectos / 9 obras / 0 huérfanas |
 | B2.2 Backend | ✅ HECHA | `c8423b02` — `$transaction` en create/update/remove, sync de estados, auditoría con `obraId`/`estadoObra`; unit 31/31, integración 14/14 |
-| B2.3 UI | ⏳ PARCIAL | `/operaciones` y `/asistencia` ya funcionan sin cambios; falta renombrar "obra" → "proyecto" en los labels del alta |
-| B2.4 Gates | ⏳ PARCIAL | `prisma validate`, `migrate diff`, `tsc` (api/web) y los tests de `src/proyectos` corridos; falta `npm run test` completo, `npm run lint` y el smoke manual de `/asistencia` |
+| B2.3 UI | ✅ HECHA | texto visible de `/proyectos` y del detalle pasa a "Obra"; sidebar renombrado con la migración `20261112050000_vista_obras`; `/operaciones` y `/asistencia` sin cambios de código |
+| B2.4 Gates | ✅ HECHA | `test` 1324/1326 (2 fallos preexistentes de `cobranza`), `tsc` limpio, `lint` con el baseline de 56, smoke real de las 3 vistas |
 
 **Desviaciones respecto al plan:** `prisma migrate dev` no puede replayar el
 historial reconstruido de esta BD, así que la migración se aplicó con
@@ -402,22 +401,39 @@ ya existen).
   `registro_auditoria` conserva `PROYECTO_CREADO` SUCCESS y el DELETE contra la
   auditoría sigue rechazado por el trigger.
 
-### B2.3 — UI (solo lo mínimo) — ⏳ PENDIENTE (parcial)
+### B2.3 — UI: el cliente llama "obra" al proyecto — ✅ HECHA (2026-11-12)
 
 | Archivo | Cambio |
 |---|---|
-| `apps/web/src/app/(dashboard)/proyectos/page.tsx` | Labels del alta: "obra" → "proyecto" (la obra se crea sola; no se captura ni se agrega). Sin botón ni campo nuevo. |
-| `/operaciones` y `/asistencia` | **Sin cambios de código**: los selects ya leen `GET /bitacora/catalogos` y `asistenciaApi.obras()`; con las 6 obras del backfill quedan completos. El modal "Ubicar obra" ya escribe la geocerca de la obra 1:1. |
+| `apps/web/src/app/(dashboard)/proyectos/page.tsx` | **Todos los textos visibles** pasan de "Proyecto" a "Obra": título de la vista ("Gestión de Obras"), botón ("Nueva Obra"), KPI ("Total Obras"), buscador, `emptyText`, columna ("Obra / Cliente"), títulos y `submitLabel` de los modales (Nueva Obra / Editar Obra / Eliminar Obra / Cambiar Estado), labels ("Nombre de la obra", "Estado de la obra"), subtítulo del modal y los toasts de crear/editar/eliminar/cargar. |
+| `apps/web/src/components/projects/ProjectDetailsModal.tsx` | Los 3 subtítulos vacíos ("Este proyecto aún no tiene hitos…", "No hay trabajadores asignados a este proyecto", "No hay despachos activos hacia este proyecto") pasan a "obra". |
+| `apps/api/prisma/migrations/20261112050000_vista_obras` | `UPDATE vistas SET nombre = 'Obras' WHERE ruta = '/proyectos'` — el sidebar toma la etiqueta de `vistas.nombre`, así que el menú dice **Obras**. |
+| `/operaciones` y `/asistencia` | **Sin cambios de código**: los selects ya leen `GET /bitacora/catalogos` y `GET /catalogos/obras`; el modal "Ubicar obra" ya escribe la geocerca de la obra 1:1. |
 
-**Verificación manual:** crear un proyecto → aparece en el catálogo de
-`/operaciones` sin pasos extra; marcarlo FINALIZADO → desaparece del catálogo.
+> **Corrección al plan original:** la primera versión de B2.3 decía renombrar
+> "obra" → "proyecto". El cliente decidió lo contrario (2026-11-12): en la UI
+> el término de negocio es **obra**; "proyecto" queda solo en la API, la BD y
+> los permisos (`proyectos.*`), sin renombrar tablas ni endpoints.
 
-### B2.4 — Gates y cierre — ⏳ PENDIENTE (parcial)
+**Verificación manual:** crear una obra → aparece en el catálogo de
+`/operaciones` sin pasos extra; marcarla FINALIZADA → desaparece del catálogo.
+
+### B2.4 — Gates y cierre — ✅ HECHA (2026-11-12)
 
 `npx prisma validate` + `migrate diff` vacío · `npm run test` ·
 `npm run test:integration` · `npx tsc --noEmit` (web) · `npm run lint` · smoke
 manual de `/proyectos`, `/operaciones` y `/asistencia` documentado en
 `historial-cambios/`.
+
+**Resultado de los gates:** `npm run test` (api) **1324 passed / 2 failed** —
+los 2 fallos son los preexistentes de `cobranza.service.spec.ts`
+(`ATRASO_GRAVE` en el CSV, ajenos a B2) · `tsc --noEmit` web limpio ·
+`npm run lint` **56 problemas (18 errores, 38 warnings)**, el mismo baseline
+preexistente; los archivos tocados solo arrastran sus 2 avisos de antes.
+**Smoke real con la API en :3001:** `/catalogos/obras` → 13 obras ·
+`/bitacora/catalogos` → 13 obras, todas `EN_PROCESO` · `/proyectos` → 16
+registros · `/auth/profile` devuelve la vista `/proyectos` con
+`nombre: "Obras"`.
 
 **Fuera de B2 (no se construye aquí):** captura de coordenadas/radio desde la
 UI de `/proyectos` (hoy se hace desde `/asistencia` — Pr3) · P8 metas/progreso ·
