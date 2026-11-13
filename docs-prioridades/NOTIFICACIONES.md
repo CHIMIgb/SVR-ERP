@@ -1,97 +1,160 @@
-# Notificaciones del ERP — quién las genera y quién las recibe
+# Notificaciones del ERP — documentación completa del sistema
 
-> **Cómo funciona (una frase):** cada evento del ERP deja **una fila** en la
-> tabla `notificaciones` dirigida a un **rol**; el centro del Topbar (campana)
-> le muestra a cada usuario solo lo que puede ver según **SU ACCESO A VISTAS**,
-> con polling cada 60 segundos. La lectura y el descarte son **por persona**.
-
-**Campos clave:**
-- `notificaciones` (contenido del evento, compartido): `tipo` (ALERTA/INFO),
-  `audiencia_rol_id` (null = todos los roles), `referencia_tipo`/`referencia_id`
-  (el objeto del evento), `creado_por` (quién lo disparó).
-- `notificaciones_lecturas` (estado **por usuario**, PK compuesta):
-  `leido_en` (cuándo lo leyó — el booleano `leida` es derivado) y
-  `descartada` (ocultar solo para mí).
-
-**Filtro de visibilidad del buzón (todo en el backend):**
-1. No descartada por el usuario.
-2. No disparada por el usuario (el actor no recibe su propio aviso).
-3. Audiencia: eventos "para todos" o para alguno de sus roles **activos**.
-4. **Acceso a vista:** el tipo de referencia es de una vista que el usuario
-   puede ver (`role_vistas.puede_ver`). Si un rol pierde el acceso a la vista,
-   esas notificaciones dejan de aparecerle sin tocar código.
+> **Cómo funciona en una frase:** cada evento del ERP deja **una fila** en la
+> tabla `notificaciones` dirigida **explícitamente** a alguien (un usuario, un
+> área/torre, un rol o todos); el centro del Topbar (campana) le muestra a
+> cada usuario solo lo dirigido a él, con polling cada 60 segundos. La
+> lectura y el descarte son **por persona**.
 
 ---
 
-## 1. Eventos que generan notificaciones HOY
+## 1. Arquitectura (cómo está implementado)
 
-| # | Evento | Vista que lo dispara | Flujo exacto (clics) | Endpoint | Audiencia (rol) | Vista que debe tener el receptor | Tipo |
-|---|--------|----------------------|----------------------|----------|------------------|---|---|
-| 1 | **Orden de compra aprobada** | `/proveedores` → tab **Órdenes de Compra** | Botón **"Aprobar"** (Pendiente) | `POST /ordenes-compra/:id/cambiar-estado` | **Administrativo** | `/proveedores` | ALERTA |
-| 2 | **Abono registrado** | `/proveedores` → botón **"Abonar"** → "Registrar Pago" | `POST /proveedores/:id/abonos` | **Administrativo** | `/proveedores` | INFO |
-| 3 | **Cierre de caja registrado** | `/ventas` → "Corte de Caja" → registrar | `POST /ventas/cierres` | **Administrador** | `/ventas` | ALERTA |
-| 4 | **Nómina pagada** | `/nomina` → "Pagar todos" | `POST /nomina/:periodoId/pagar-todos` | **Administrativo** | `/nomina` | INFO |
+### 1.1 Las dos tablas
 
-## 2. Quién ve qué HOY (según `role_vistas` real de la BD)
+**`notificaciones`** — el CONTENIDO del evento (compartido, una fila por
+evento, nunca se duplica por usuario):
 
-| Rol | Vistas visibles (relevantes) | Notificaciones que le aparecen |
-|---|---|---|
-| **Administrador** | `/proveedores`, `/ventas`, `/nomina` (y todo) | Cierres de caja (si no los registró él) |
-| **Administrativo** | `/dashboard`, `/trabajadores`, `/asistencia`, `/nomina`, `/reportes`, **`/proveedores`** (desde B5.7) | Órdenes aprobadas, abonos a proveedores, nómina pagada |
-| Residente / Técnico / Cobrador / Trabajador | ninguna de las 3 | Nada aún |
+| Campo | Qué es |
+|---|---|
+| `id`, `tipo` (ALERTA/INFO), `titulo`, `cuerpo` | El mensaje |
+| `referencia_tipo`, `referencia_id` | El objeto que lo originó (ej. `ordenes_compra` + su id) |
+| `audiencia_rol_id` | Destinatario POR ROL (null = todos) |
+| `audiencia_torre` | Destinatario POR ÁREA (enum `CategoriaReporte` — los usuarios tienen `torre`) |
+| `destinatario_user_id` | Destinatario PERSONAL (ej. "te asignaron el reporte") |
+| `creado_por` | Quién disparó el evento (NO recibe su propio aviso) |
 
-> ✅ **B5.7 (2026-11-13):** el rol **Administrativo** recibió acceso a
-> `/proveedores` (migración `20261113041000_administrativo_proveedores_vista`,
-> decisión RBAC del cliente) — sus notificaciones de órdenes y abonos ya
-> tienen receptor (verificado: el buzón de `rrhh@` muestra las 5 de
-> proveedores y no el cierre de caja, que es del Administrador). |
+**`notificaciones_lecturas`** — el ESTADO por persona (PK compuesta
+`notificacion_id + user_id`):
 
-> ⚠️ **Decisión pendiente del cliente (B5.7):** el rol **Administrativo NO
-> tiene acceso a `/proveedores`** en `role_vistas`, así que las notificaciones
-> de órdenes aprobadas y abonos hoy no tienen receptor visible (quien las
-> dispara es el actor excluido). Opciones: **(a)** dar acceso a
-> `/proveedores` a Administrativo, **(b)** dirigir esos eventos también a
-> Administrador, o **(c)** dejarlo así. Es una decisión de RBAC/negocio.
-## 3. Cómo probarlo paso a paso (5 min)
+| Campo | Qué es |
+|---|---|
+| `leido_en` | Cuándo lo leyó ESA persona (null = sin leer; el booleano `leida` es derivado) |
+| `descartada` | La ocultó con la basura (solo desaparece para ella) |
 
-1. **Genera un evento que el receptor pueda ver.** Ejemplo garantizado:
-   - Entra como **otro usuario con rol Administrador distinto** (o haz que un
-     cajero registre un cierre) — un usuario que NO dispare el evento.
-   - Cierre de caja: `/ventas` → Corte de Caja → registrar → va a
-     **Administrador**.
-   - Nómina pagada: `/nomina` → "Pagar todos" → va a **Administrativo**.
-2. **Abre la campana** con el usuario receptor: la notificación con badge de
-   no leídas.
-3. **Marca leída**: es estado TUYO — otro usuario del mismo rol sigue
-   viéndola sin leer (verifica en BD: `notificaciones_lecturas` una fila por
-   usuario con `leido_en`).
-4. **Basura**: descarta para TI y no vuelven; en BD queda
-   `descartada = true` en TU fila de lectura.
-5. Verificación en BD:
+### 1.2 El filtro del buzón (lo que ve cada usuario)
+
+Cada consulta del buzón aplica, en este orden:
+
+1. **No descartada por mí** (no existe mi fila de lectura con `descartada`).
+2. **No la disparé yo** (`creado_por ≠ yo`; el sistema no se avisa a sí mismo).
+3. **Dirigida a mí**: `destinatario_user_id = yo` **O** `audiencia_torre = mi torre`
+   **O** `audiencia_rol_id ∈ mis roles activos` **O** audiencia vacía (todos).
+
+> No depende de menús ni de vistas: el destinatario se elige **al emitir**. Si
+> mañana se cambia el RBAC de una vista, las notificaciones no se afectan.
+
+### 1.3 Los 4 checkpoints de los endpoints
+
+Módulo `apps/api/src/notificaciones/` (service exportado para que cualquier
+módulo emita):
+
+- **`GET /notificaciones`** — buzón paginado (default 10, techo 100), incluye
+  `noLeidas` (badge). JWT + blacklist + permiso.
+- **`PATCH /notificaciones/:id/leer`** — upsert de la lectura DEL usuario.
+- **`PATCH /notificaciones/leer-todas`** — crea lecturas solo de las visibles
+  que faltan (audita con el conteo).
+- **`PATCH /notificaciones/descartar-todas`** — la basura: descarta para el
+  usuario (audita con el conteo; las filas permanecen en BD).
+- **`emitir()` / `emitirARol()` / `emitirAUsuario()` / `emitirATorre()` /
+  `emitirATrabajador()`** — helpers de emisión, **best-effort**: si fallan,
+  solo loggean y NUNCA revierten el evento de negocio que los originó.
+- Mutaciones auditan SUCCESS (`NOTIFICACION_LEIDA`, `NOTIFICACION_DESCARTADA`)
+  y los fallos auditan FAIL antes de lanzar.
+
+### 1.4 Cómo se agrega un evento nuevo (receta)
+
+En el service que ya maneja el evento, **después del `auditService.log`
+SUCCESS** (best-effort, nunca dentro de la transacción de negocio):
+
+```ts
+// A un rol:      await this.notificacionesService.emitirARol('Administrativo', { tipo, titulo, cuerpo, referenciaTipo: '…', referenciaId: id, creadoPor: userId });
+// A un usuario:  await this.notificacionesService.emitirAUsuario(usuarioId, { … });
+// A un área:     await this.notificacionesService.emitirATorre(laTorre, { … });
+// A un trabajador (cuenta resuelta por nombre): await this.notificacionesService.emitirATrabajador(trabajadorId, { … });
+```
+
+Módulo a importar: `NotificacionesModule` (ya importado en proveedores,
+ventas, nómina y reportes-campo).
+
+---
+
+## 2. Eventos activos HOY (quién dispara y quién recibe)
+
+### Comercial / compras
+
+| Evento | Vista que lo dispara | Flujo (clics) | Audiencia |
+|---|---|---|---|
+| Orden de compra **aprobada** | `/proveedores` → tab Órdenes | "Aprobar" | Rol **Administrativo** |
+| **Abono registrado** | `/proveedores` → "Abonar" → Registrar Pago | `POST /proveedores/:id/abonos` | Rol **Administrativo** |
+
+### Caja
+
+| Evento | Vista | Flujo | Audiencia |
+|---|---|---|---|
+| **Cierre de caja** registrado (pendiente de aprobar) | `/ventas` → "Corte de Caja" | Registrar cierre | Rol **Administrador** |
+
+### Nómina
+
+| Evento | Vista | Flujo | Audiencia |
+|---|---|---|---|
+| **Nómina pagada** | `/nomina` → "Pagar todos" | `POST /nomina/:periodoId/pagar-todos` | Rol **Administrativo** |
+
+### Reportes de campo (los 5 flujos del SVR)
+
+| Evento | Vista | Flujo | Audiencia | Tipo |
+|---|---|---|---|---|
+| **Se crea un reporte** | `/reportes` → "Nuevo reporte" | Al crear, la torre destino del reporte | **Toda el área** del reporte | ALERTA |
+| **Alguien lo acepta** | `/reportes` → "Aceptar" | El aceptador queda como asignado | El **creador** — *"Fulano aceptó tu reporte"* | INFO |
+| **Se reasigna** | `/reportes` → "Asignar" a un trabajador | `POST /reportes-campo/:id/asignar` | El **asignado** (su cuenta) — *"Te asignaron el reporte"* | ALERTA |
+| **Se cierra** (estado **Cerrado**) | `/reportes` → cambiar estado a Cerrado | `PATCH /reportes-campo/:id` | El **asignado**, si tiene; si no, nada — *"Cerraron el reporte que tenías asignado"* | INFO |
+| **Se publican actividades** | `/reportes` → campo "Actividades" → Publicar | Si publicó el **creador** → se avisa al **asignado**; si publicó el **asignado** (u otro) → se avisa al **creador** | **La otra parte** | INFO |
+
+> Nota de negocio: el asignado de un reporte es un **TRABAJADOR** (no una
+> cuenta de usuario). Si tiene cuenta, la recibe; si no (compañero de patio
+> sin usuario), la emisión queda loggeada y no se entrega. Ver §5.
+
+## 3. Matriz "quién ve qué" hoy
+
+Con los roles reales de la BD (Administrativo ve dashboard, trabajadores,
+asistencia, nómina, reportes):
+
+| Usuario | Ve |
+|---|---|
+| **Administrador** (`admin@svr…`) | Cierres de caja + lo dirigido a él personalmente |
+| **Administrativo** (`rrhh@svr…`) | OC aprobadas, abonos, nómina pagada + lo personal |
+| Usuario con torre asignada (p. ej. MAQUINARIA) | Reportes nuevos **de su área** + lo personal |
+| Cualquiera | Nada de lo disparado por él mismo |
+
+## 4. Cómo probarlo (5 min)
+
+1. **Reportes (área):** entra con un usuario con torre (ej. técnico) →
+   `/reportes` → crea un reporte → otro usuario **de la misma torre** debe ver
+   la ALERTA en su campana.
+2. **Reportes (aceptación):** otro usuario del área **acepta** el reporte →
+   el **creador** recibe *"Fulano aceptó tu reporte"*.
+3. **Proveedores:** con `admin@` aprueba una OC pendiente → entra como
+   `rrhh@` (Administrativo) → la ve en su campana.
+4. **Caja:** con un cajero registra el cierre → `admin@` lo ve.
+5. **Nómina:** `/nomina` → "Pagar todos" → `rrhh@` la ve.
+6. Verificación en BD:
    ```sql
-   SELECT n.titulo, r.nombre AS audiencia, l.user_id, l.leido_en, l.descartada
+   SELECT n.titulo, n.audiencia_rol_id, n.audiencia_torre, n.destinatario_user_id,
+          n.creado_por, l.user_id, l.leido_en, l.descartada
    FROM notificaciones n
-   LEFT JOIN roles r ON r.id = n.audiencia_rol_id
    LEFT JOIN notificaciones_lecturas l ON l.notificacion_id = n.id
    ORDER BY n.creado_en DESC LIMIT 15;
    ```
 
-## 4. Lo que NO genera notificaciones todavía
+## 5. Limitaciones conocidas (a futuro)
 
-- **CxP/CxC por vencer o vencidas** — espera respuestas del SVR
-  (`DUDAS-VISTAS-SVR.txt` #34, #7, #5). La tubería está lista: es un
-  `emitirARol` + cron diario.
-- Correos / tipo "correo" del mock (congelado: nada lo genera).
+- **Match trabajador→cuenta por nombre**: los trabajadores no tienen FK a
+  `users`; la cuenta del asignado se resuelve por nombre completo contra
+  `personas`. Si hay dos personas con el mismo nombre, la notificación no se
+  emite (queda loggeada). A futuro: FK `users.trabajador_id`.
+- **CxP/CxC por vencer/vencidas**: esperan respuestas del SVR
+  (`DUDAS-VISTAS-SVR.txt` #34, #7, #5) — la tubería ya está lista (es un
+  `emitirARol` + cron diario).
+- Correos reales / tipo "correo" del mock: congelado (nada lo genera).
 - Los avisos locales de las vistas aún mock (asistencia, combustible,
-  horómetro) — solo viven en la sesión y no se guardan.
-
-## 5. Dónde está el código
-
-| Pieza | Archivo |
-|---|---|
-| Emisión (best-effort) + visibilidad + lecturas | `apps/api/src/notificaciones/notificaciones.service.ts` (`emitir`, `emitirARol`, `filtroDeBuzon`) |
-| Eventos conectados | `proveedores.service.ts` (cambiarEstadoOrden, registrarAbono) · `ventas.service.ts` (createCierre) · `nomina.service.ts` (pagarTodos) |
-| Endpoints | `notificaciones.controller.ts` (GET, `:id/leer`, `leer-todas`, `descartar-todas`) |
-| Centro del Topbar (polling 60s) | `apps/web/src/components/layout/NotificationContext.tsx` |
-| Cliente HTTP | `apps/web/src/lib/api.ts` → `notificacionesApi` |
-| Permiso | `sistema.notificaciones.ver` (los 6 roles) |
+  horómetro) solo viven en la sesión.
