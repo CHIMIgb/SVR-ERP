@@ -1221,7 +1221,15 @@ export default function ProveedoresPage() {
             type="date"
             className={modalInputClass}
             value={ocForm.fechaVencimiento}
-            onChange={(e) => setOcForm({ ...ocForm, fechaVencimiento: e.target.value })}
+            onChange={(e) => {
+              // Validación al ELEGIR la fecha (patrón fecha de inicio en obras).
+              if (e.target.value && fechaEsPasada(e.target.value)) {
+                showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+                setOcForm({ ...ocForm, fechaVencimiento: '' });
+                return;
+              }
+              setOcForm({ ...ocForm, fechaVencimiento: e.target.value });
+            }}
           />
           <p className="mt-1 text-xs text-ui-500">
             Opcional: día límite de pago de esta orden (queda en la cuenta por pagar).
@@ -1408,7 +1416,15 @@ export default function ProveedoresPage() {
             type="date"
             className={modalInputClass}
             value={vencimientoForm}
-            onChange={(e) => setVencimientoForm(e.target.value)}
+            onChange={(e) => {
+              // Validación al ELEGIR la fecha (patrón fecha de inicio en obras).
+              if (e.target.value && fechaEsPasada(e.target.value)) {
+                showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+                setVencimientoForm('');
+                return;
+              }
+              setVencimientoForm(e.target.value);
+            }}
           />
           <p className="mt-1 text-xs text-ui-500">
             Se propaga a la cuenta por pagar mientras esté abierta.
