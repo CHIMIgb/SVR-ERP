@@ -46,7 +46,7 @@
 
 | # | Tarea | Vista(s) | Estado |
 |---|---|---|---|
-| B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ⏳ |
+| B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ✅ HECHA completa (B1.1–B1.4, 2026-11-12) — ver §11 |
 | B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ✅ HECHA completa (`83fb6198`, `c8423b02`, B2.3/B2.4 2026-11-12) — ver §10 |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ⏳ |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
@@ -438,3 +438,34 @@ registros · `/auth/profile` devuelve la vista `/proyectos` con
 **Fuera de B2 (no se construye aquí):** captura de coordenadas/radio desde la
 UI de `/proyectos` (hoy se hace desde `/asistencia` — Pr3) · P8 metas/progreso ·
 P3 cotización→proyecto · la PWA (`/m/flota-obras` sigue en pausa y no se toca).
+
+---
+
+## 11. Plan de implementación B1 — partidas de cotización (EJECUTADO 2026-11-12)
+
+> **Diseño:** la cotización deja de ser `descripcion + monto` plano y gana
+> renglones (`cotizacion_items`: descripción / cantidad / unidad / precio
+> unitario → importe calculado en servidor) con las condiciones precargadas de
+> los Word (`docs-svr/COTIZACION 37/50.docx`). El `monto` de la cabecera se
+> **recalcula** como Σ importes cuando hay partidas; las cotizaciones viejas
+> (sin partidas) siguen funcionando igual. Al facturar, la factura hereda un
+> concepto por renglón con IVA por partida.
+
+| Fase | Estado | Evidencia |
+|---|---|---|
+| B1.1 Datos | ✅ HECHA | `a2a527ff` — tabla `cotizacion_items` (FK cascade) + `cotizaciones.condiciones`; migración `20261112060000` aplicada con `db execute` + `migrate resolve` |
+| B1.2 Backend | ✅ HECHA | `5ec239f7` — DTOs anidados, create/update transaccional con reemplazo de partidas, `facturar` por renglón (IVA por partida); unit 83/83, integración 262/263 |
+| B1.3 UI | ✅ HECHA | `2c43917d` (editor de partidas + condiciones + subtotal bloqueado) + cierre — detalle con tabla de renglones y condiciones; "Creada por" en el detalle |
+| B1.4 Gates | ✅ HECHA | `jest` 1328/1330 (2 fallos preexistentes de cobranza), `tsc` limpio, lint 56 baseline, smoke real: cotización de 3 partidas → monto 30,500 → factura FAC-2026-0003 con 3 conceptos y total 35,380 (IVA 4,880) |
+
+**Ajuste posterior pedido por el cliente (mismo día):** estado de cotización
+como texto plano (sin badges de color) y área de condiciones más grande
+(`2c43917d`), y **"Creada por"** en el detalle (backend expone el nombre del
+creador vía la relación a `personas`).
+
+**Deuda anotada:** el spec de integración de PIN acumula fallos a nivel IP
+entre corridas (bloqueo automático por IP a los 10 intentos en 15 min) → 423
+LOCKED donde espera 401; flake preexistente de auth, fuera de B1.
+
+**Fuera de B1 (no se construye aquí):** P4 bajada de inventario desde partidas
+· P3 cotización→proyecto · precios por medida (P7, tabulador LISTA DE PRECIOS).
