@@ -326,7 +326,7 @@ export class ProveedoresService {
       include: {
         ordenes_compra: {
           where: { eliminado_en: null, estado: { not: EstadoOrdenCompra.CANCELADA } },
-          select: { id: true, monto: true, pagado: true },
+          select: { id: true, monto: true, pagado: true, fecha_vencimiento: true },
         },
       },
       orderBy: { nombre: 'asc' },
@@ -336,6 +336,11 @@ export class ProveedoresService {
       const ops = p.ordenes_compra;
       const total = ops.reduce((acc, o) => acc + Number(o.monto), 0);
       const pagado = ops.reduce((acc, o) => acc + Number(o.pagado), 0);
+      // B4: el vencimiento MÁS PRÓXIMO entre las OCs con saldo (null si ninguna).
+      const proximoVencimiento = ops
+        .filter((o) => Number(o.pagado) < Number(o.monto) && o.fecha_vencimiento)
+        .map((o) => o.fecha_vencimiento!.toISOString().slice(0, 10))
+        .sort()[0] ?? null;
       return {
         proveedorId: p.id,
         proveedor: p.nombre,
@@ -343,6 +348,7 @@ export class ProveedoresService {
         total,
         pagado,
         saldo: total - pagado,
+        proximoVencimiento,
       };
     });
   }
@@ -387,6 +393,8 @@ export class ProveedoresService {
         fecha: o.fecha.toISOString(),
         folio: o.folio,
         concepto: o.descripcion,
+        // B4: fecha límite de pago de la OC (null si nunca se capturó).
+        vence: o.fecha_vencimiento?.toISOString().slice(0, 10) ?? null,
         cargo,
         abono,
         saldo: saldoCorrido,

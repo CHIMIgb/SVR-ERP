@@ -2624,6 +2624,8 @@ export interface OrdenCompraDTO {
   pagado: number;
   saldo: number;
   fecha: string; // ISO
+  /** Fecha límite de pago (B4): null si nunca se capturó. */
+  fechaVencimiento: string | null;
   estado: EstadoOrdenApi;
   motivoCancelacion: string | null;
   activo: boolean;
@@ -2649,12 +2651,16 @@ export interface EstadoCuentaResumenDTO {
   total: number;
   pagado: number;
   saldo: number;
+  /** Vencimiento más próximo entre las OCs con saldo (B4). */
+  proximoVencimiento: string | null;
 }
 
 export interface LedgerMovimientoDTO {
   fecha: string; // ISO
   folio: string;
   concepto: string;
+  /** Fecha límite de pago de la OC (B4); null si nunca se capturó. */
+  vence: string | null;
   cargo: number;
   abono: number;
   saldo: number;
@@ -2698,11 +2704,13 @@ export interface OrdenCompraCreateInput {
   proveedorId: string;
   descripcion?: string;
   fecha?: string; // YYYY-MM-DD
+  /** Fecha límite de pago (B4): se propaga a la CxP que nace con la OC. */
+  fechaVencimiento?: string;
   items: OrdenCompraItemInput[]; // monto se deriva de la suma en el backend
 }
 
 export type OrdenCompraUpdateInput = Partial<
-  Pick<OrdenCompraCreateInput, 'descripcion' | 'items'>
+  Pick<OrdenCompraCreateInput, 'descripcion' | 'items' | 'fechaVencimiento'>
 >;
 
 export interface RegistrarAbonoInput {

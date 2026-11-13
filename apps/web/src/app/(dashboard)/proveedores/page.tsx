@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, FileText, Pencil, Trash2, CreditCard, AlertCircle, XCircle, Eye, CheckCircle2,
-  Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal,
+  Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal, CalendarClock,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -68,6 +68,7 @@ const emptyProvForm = {
 const emptyOcForm = {
   proveedorId: '',
   descripcion: '',
+  fechaVencimiento: '',
   items: [] as Array<{ nombre: string; articuloId: string | null; modo: 'inventario' | 'nuevo'; cantidad: number; precioUnitario: number }>,
 };
 
@@ -116,6 +117,9 @@ export default function ProveedoresPage() {
   const [confirmCambio, setConfirmCambio] = useState<{ orden: OrdenCompraDTO; estado: 'APROBADA' | 'RECIBIDA' } | null>(null);
   const [deleteOC, setDeleteOC] = useState<OrdenCompraDTO | null>(null);
   const [detalleProv, setDetalleProv] = useState<EstadoCuentaResumenDTO | null>(null);
+  // B4: corrección del vencimiento de una OC abierta (propaga a su CxP).
+  const [vencimientoOC, setVencimientoOC] = useState<OrdenCompraDTO | null>(null);
+  const [vencimientoForm, setVencimientoForm] = useState('');
 
   // ── Helpers de datos (resumen por proveedor) ──
   const resumenPorProv = useMemo(() => {
@@ -393,6 +397,11 @@ export default function ProveedoresPage() {
         return;
       }
     }
+    // B4: vencimiento opcional; si se captura no puede ser anterior a hoy.
+    if (ocForm.fechaVencimiento && ocForm.fechaVencimiento < new Date().toISOString().split('T')[0]) {
+      showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       // Sanitización: `modo` es estado puro de UI y se descarta. Las líneas del
@@ -400,6 +409,7 @@ export default function ProveedoresPage() {
       const res = await ordenesCompraApi.crear({
         proveedorId: ocForm.proveedorId,
         descripcion: ocForm.descripcion.trim() || undefined,
+        ...(ocForm.fechaVencimiento ? { fechaVencimiento: ocForm.fechaVencimiento } : {}),
         items: ocForm.items.map((it) => ({
           ...(it.articuloId ? { articuloId: it.articuloId } : { nombre: it.nombre.trim() }),
           cantidad: it.cantidad,
@@ -421,8 +431,37 @@ export default function ProveedoresPage() {
     }
   }, [ocForm, showToast, refetchAll]);
 
-  const handleAbono = useCallback(async () => {
-    if (!abonoOC) return;
+  // B4: guardar vencimiento corregido (OC abierta) — el backend propaga a la CxP.
+  const handleVencimiento = useCallback(async () => {
+    if (!vencimientoOC) return;
+    if (!vencimientoForm) {
+      showToast('Selecciona una fecha de vencimiento.', 'error');
+      return;
+    }
+    if (vencimientoForm < new Date().toISOString().split('T')[0]) {
+      showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await ordenesCompraApi.actualizar(vencimientoOC.id, {
+        fechaVencimiento: vencimientoForm,
+      });
+      if (res.success) {
+        showToast('Vencimiento actualizado.', 'success');
+        setVencimientoOC(null);
+        refetchAll();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el vencimiento.'), 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [vencimientoOC, vencimientoForm, showToast, refetchAll]);
+
+  const handleAbono = useCallback(async () => {    if (!abonoOC) return;
     const abono = parseFloat(abonoForm.monto);
     if (!abono || abono <= 0) {
       showToast('Ingresa un monto válido.', 'error');
@@ -647,6 +686,23 @@ export default function ProveedoresPage() {
       ),
     },
     {
+      key: 'vence',
+      header: 'Vence',
+      align: 'center',
+      // B4: fecha límite de pago; en rojo si ya venció y tiene saldo.
+      render: (o) => (
+        <span
+          className={`text-xs font-bold whitespace-nowrap ${
+            o.fechaVencimiento && o.saldo > 0 && o.fechaVencimiento < new Date().toISOString().split('T')[0]
+              ? 'text-red-600'
+              : 'text-ui-500'
+          }`}
+        >
+          {o.fechaVencimiento ? o.fechaVencimiento : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'acciones',
       header: 'Acciones',
       align: 'center',
@@ -656,6 +712,19 @@ export default function ProveedoresPage() {
         const activa = o.estado === 'PENDIENTE' || o.estado === 'APROBADA';
         return (
           <div className="flex items-center justify-center gap-1">
+            {activa && puedeEditar && (
+              <Button
+                variant="info"
+                size="sm"
+                icon={<CalendarClock className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  setVencimientoForm(o.fechaVencimiento ?? '');
+                  setVencimientoOC(o);
+                }}
+              >
+                Vencimiento
+              </Button>
+            )}
             {o.saldo > 0 && puedeEditar && (
               <Button
                 variant="outline"
@@ -765,6 +834,17 @@ export default function ProveedoresPage() {
         </span>
       ),
     },
+    {
+      key: 'proximoVencimiento',
+      header: 'Próximo Vencimiento',
+      align: 'center',
+      // B4: el vencimiento más próximo entre las OCs con saldo del proveedor.
+      render: (r) => (
+        <span className="text-xs font-bold whitespace-nowrap text-ui-600">
+          {r.proximoVencimiento ?? '—'}
+        </span>
+      ),
+    },
   ];
 
   // ── Columnas DataTable: ledger detalle de un proveedor ──
@@ -772,6 +852,23 @@ export default function ProveedoresPage() {
     { key: 'fecha', header: 'Fecha', render: (r) => <span className="text-xs font-medium text-ui-500">{r.fecha.slice(0, 10)}</span> },
     { key: 'folio', header: 'Folio', render: (r) => <span className="font-black text-primary text-xs">{r.folio}</span> },
     { key: 'concepto', header: 'Concepto', render: (r) => <p className="text-xs text-ui-600 font-medium max-w-[200px] truncate">{r.concepto}</p> },
+    {
+      key: 'vence',
+      header: 'Vence',
+      align: 'center',
+      // B4: fecha límite de pago de la OC (null si nunca se capturó).
+      render: (r) => (
+        <span
+          className={`text-xs font-bold whitespace-nowrap ${
+            r.vence && r.saldo > 0 && r.vence < new Date().toISOString().split('T')[0]
+              ? 'text-red-600'
+              : 'text-ui-500'
+          }`}
+        >
+          {r.vence ?? '—'}
+        </span>
+      ),
+    },
     { key: 'cargo', header: 'Cargo', align: 'right', render: (r) => <span className="text-xs font-bold text-ui-700">{formatCurrency(r.cargo)}</span> },
     { key: 'abono', header: 'Abono', align: 'right', render: (r) => <span className="text-xs font-bold text-green-600">{formatCurrency(r.abono)}</span> },
     {
@@ -1137,6 +1234,17 @@ export default function ProveedoresPage() {
             onChange={(e) => setOcForm({ ...ocForm, descripcion: e.target.value })}
           />
         </ModalField>
+        <ModalField label="Fecha de vencimiento">
+          <input
+            type="date"
+            className={modalInputClass}
+            value={ocForm.fechaVencimiento}
+            onChange={(e) => setOcForm({ ...ocForm, fechaVencimiento: e.target.value })}
+          />
+          <p className="mt-1 text-xs text-ui-500">
+            Opcional: día límite de pago de esta orden (queda en la cuenta por pagar).
+          </p>
+        </ModalField>
         {/* Líneas de detalle del pedido (Fase 7) */}
         <div className="sm:col-span-2">
           <div className="flex items-center justify-between mb-2">
@@ -1289,10 +1397,46 @@ export default function ProveedoresPage() {
         </div>
       </FormModal>
 
+      {/* ─── Modal Vencimiento (B4) ─────────────────────────────────────── */}
+      <FormModal
+        open={!!vencimientoOC}
+        onClose={() => setVencimientoOC(null)}
+        onCancel={() => setVencimientoOC(null)}
+        title="Fecha de Vencimiento"
+        subtitle={vencimientoOC ? `Orden ${vencimientoOC.folio} — ${vencimientoOC.proveedor ?? ''}` : undefined}
+        submitLabel="Guardar Vencimiento"
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleVencimiento}
+      >
+        {vencimientoOC && (
+          <div className="bg-ui-50 rounded-xl p-4 space-y-1 text-sm mb-3">
+            <p className="font-bold text-ui-700">{vencimientoOC.proveedor ?? '—'}</p>
+            <p className="text-ui-500 text-xs">
+              {vencimientoOC.folio} — {formatCurrency(vencimientoOC.monto)} · saldo{' '}
+              {formatCurrency(vencimientoOC.saldo)}
+            </p>
+            <p className="text-ui-500 text-xs">
+              Vencimiento actual: {vencimientoOC.fechaVencimiento ?? 'sin capturar'}
+            </p>
+          </div>
+        )}
+        <ModalField label="Fecha de vencimiento" required>
+          <input
+            type="date"
+            className={modalInputClass}
+            value={vencimientoForm}
+            onChange={(e) => setVencimientoForm(e.target.value)}
+          />
+          <p className="mt-1 text-xs text-ui-500">
+            Se propaga a la cuenta por pagar mientras esté abierta.
+          </p>
+        </ModalField>
+      </FormModal>
+
       {/* ─── Modal Abono ────────────────────────────────────────────────── */}
       <FormModal
-        open={!!abonoOC}
-        onClose={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
+        open={!!abonoOC}        onClose={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
         onCancel={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
         title="Registrar Abono"
         subtitle="Aplicar un pago parcial o total a la orden."
