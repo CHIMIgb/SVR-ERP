@@ -2624,6 +2624,8 @@ export interface OrdenCompraDTO {
   pagado: number;
   saldo: number;
   fecha: string; // ISO
+  /** Quién creó la orden (patrón "Creada por"). */
+  creadoPor?: string | null;
   /** Fecha límite de pago (B4): null si nunca se capturó. */
   fechaVencimiento: string | null;
   estado: EstadoOrdenApi;

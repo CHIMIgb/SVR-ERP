@@ -485,6 +485,13 @@ export class ProveedoresService {
             where: { activo: true, eliminado_en: null },
             orderBy: { creado_en: 'asc' },
           },
+          users_ordenes_compra_creado_porTousers: {
+            select: {
+              personas_users_persona_idTopersonas: {
+                select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+              },
+            },
+          },
         },
         orderBy: [{ fecha: 'desc' }, { folio: 'desc' }],
         skip: (page - 1) * limit,
@@ -1478,6 +1485,7 @@ export class ProveedoresService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serializeOrden(orden: any) {
+    const creador = orden.users_ordenes_compra_creado_porTousers?.personas_users_persona_idTopersonas;
     return {
       id: orden.id,
       folio: orden.folio,
@@ -1488,6 +1496,12 @@ export class ProveedoresService {
       pagado: Number(orden.pagado),
       saldo: Number(orden.monto) - Number(orden.pagado),
       fecha: orden.fecha?.toISOString?.() ?? orden.fecha,
+      // Quién creó la orden (patrón "Creada por"; null en filas viejas o mocks).
+      creadoPor: creador
+        ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+            .filter(Boolean)
+            .join(' ')
+        : null,
       fechaVencimiento: orden.fecha_vencimiento
         ? (orden.fecha_vencimiento.toISOString?.().split('T')[0] ?? String(orden.fecha_vencimiento).slice(0, 10))
         : null,

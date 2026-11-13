@@ -626,7 +626,14 @@ export default function ProveedoresPage() {
 
   // ── Columnas DataTable: órdenes ──
   const ordenColumns: Column<OrdenCompraDTO>[] = [
-    { key: 'folio', header: 'Folio', render: (o) => <span className="font-black text-primary text-xs">{o.folio}</span> },
+    { key: 'folio', header: 'Folio', render: (o) => (
+      <div>
+        <span className="font-black text-primary text-xs">{o.folio}</span>
+        {o.creadoPor && (
+          <p className="text-[10px] font-medium text-ui-400">por {o.creadoPor}</p>
+        )}
+      </div>
+    ) },
     {
       key: 'proveedor',
       header: 'Proveedor',
