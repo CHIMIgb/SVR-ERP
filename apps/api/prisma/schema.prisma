@@ -1051,7 +1051,7 @@ model obras {
   registros_asistencia               registros_asistencia[]
   reportes_campo                     reportes_campo[]
 
-  @@index([proyecto_id])
+  @@unique([proyecto_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
