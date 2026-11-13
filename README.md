@@ -272,6 +272,33 @@ Mantenimiento) quedaron desactivados por la migración
 | **Cobrador** (60) | Cobranza de criba y punto de venta | (sin puesto con torre → Administrativo) |
 | **Trabajador** (20) | Personal de campo sin área: operadores, choferes… | Operador → *(sin torre)*, Chofer → *(sin torre)* |
 
+### Trabajadores demo del sistema (2026-11-13)
+
+Además de los 8 originales del seed, hay **9 trabajadores demo** — uno por
+cada puesto del catálogo, cubriendo los 5 roles y las 6 torres. Todos con
+**cuenta de acceso enlazada** (`trabajadores.usuario_id`, B5.11) y
+**número de empleado**; sueldos demo ($5,000 fiscal / $3,500 efectivo,
+Mixto), entrada 07:00. Su **PIN es temporal** (24 h desde el alta del
+13-nov) — para entrar como ellos hay que reiniciar/cambiar el PIN desde
+admin, o esperar la expiración y usar el reinicio.
+
+| Nombre | Puesto (catálogo) | Torre | N.º empleado |
+|---|---|---|---|
+| Ricardo Amaya Delgado | Ingeniero Residente | **RESIDENTE** | RES-015 |
+| Sofía Herrera Nieves | Encargada de RRHH | **ADMINISTRATIVO** | ADM-003 |
+| Gerardo Palafox Marín | Administrativo de Oficina | **ADMINISTRATIVO** | ADM-004 |
+| Roberto Cárdenas Solís | Mecánico de Flota | **MECANICO** | TEC-019 |
+| Hugo Ramírez Cota | Técnico Diésel | **DIESEL** | TEC-020 |
+| Iván Barrios Zamudio | Soldador Certificado | **SOLDADOR** | TEC-021 |
+| Erick Tapia Ledesma | Mantenimiento de Patio | **MANTENIMIENTO** | TEC-022 |
+| Óscar Vega Angulo | Chofer de Volteo | (sin torre) | TRA-99416 |
+| Misael Duarte Robles | Operador de Criba | (sin torre) | TRA-99417 |
+
+Estos 9 son los receptores de prueba de las **notificaciones de reportes**
+(ver `docs-prioridades/NOTIFICACIONES.md`): un reporte creado en una torre
+les llega a todos los usuarios de esa torre; el asignado recibe avisos de
+aceptación, reasignación y cierre.
+
 **⚠️ Vigilancia de permisos (regla para agregar el permiso #107 y siguientes):**
 los permisos son granulares por `(modulo, recurso, accion)` — a día de hoy hay
 106 y funcionan porque no hay duplicados. Al agregar uno NUEVO (o al construir
