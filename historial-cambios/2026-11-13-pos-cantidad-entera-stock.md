@@ -1,0 +1,32 @@
+# 2026-11-13 — POS: labels con solo asterisco rojo, cantidad entera y bloqueo por stock
+
+## Qué se hizo
+
+Ajustes pedidos por el cliente sobre el POS:
+
+- **`apps/web/src/app/(dashboard)/ventas/page.tsx`** — los labels del mini-modal
+  "Nuevo Cliente" ya no traen el asterisco blanco duplicado en el texto
+  ("Nombre * *" → "Nombre"): el asterisco ROJO lo pinta el componente
+  `ModalField required`.
+- **`apps/web/src/components/pos/ProductPicker.tsx`**:
+  - El input **Cantidad** pasa a `type="text"` que **solo acepta dígitos
+    enteros** (`onChange` filtra con `/[^0-9]/g`) — se acaban los decimales
+    tipo "0.5" en el picker.
+  - Al agregar una cantidad que **supera el stock** disponible (considerando
+    lo que ya hay en el carrito de ese material+medida), la vista muestra el
+    toast "Stock máximo" al instante y el **input de cantidad se borra**.
+    Implementado con `onAdd → boolean`: la página valida y devuelve `false`,
+    el picker limpia el campo.
+
+## Verificación
+
+- `npx tsc --noEmit` (web): limpio.
+- `npx eslint` de los 2 archivos: sin hallazgos.
+- Sin smoke visual (sin navegador).
+
+## Pendientes / riesgos
+
+- La medida puede admitir cantidades fraccionarias en el futuro (m³, tonelada):
+  si el negocio lo pide, se relajará el filtro a decimales con `inputMode`.
+- El toast/limpieza cubre el caso del picker; el guard dentro de `setCart` se
+  conserva como defensa ante doble-click.

@@ -189,12 +189,20 @@ export default function VentasPage() {
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
   // ── Carrito ──────────────────────────────────────────────────────────────
-  const addProduct = (product: Product, unit: string, quantity: number) => {
+  // Devuelve false si supera el stock (con toast inmediato) para que el
+  // ProductPicker borre el input de cantidad.
+  const addProduct = (product: Product, unit: string, quantity: number): boolean => {
     const qty = Math.floor(Math.max(1, quantity));
+    const lineKey = `${product.id}:${unit}`;
+    const enCarrito = cart.find((i) => cartLineKey(i) === lineKey)?.quantity ?? 0;
+    if (enCarrito + qty > product.stock) {
+      showToast(`Stock máximo (${product.stock} ${unit}).`, 'error');
+      return false;
+    }
     setCart((prev) => {
-      const lineKey = `${product.id}:${unit}`;
       const existing = prev.find((i) => cartLineKey(i) === lineKey);
       if (existing) {
+        // Defensa extra contra doble-click: el precheck de arriba ya validó.
         if (existing.quantity + qty > product.stock) {
           showToast(`Stock máximo (${product.stock} ${unit}).`, 'error');
           return prev;
@@ -205,6 +213,7 @@ export default function VentasPage() {
       }
       return [...prev, { product, unit, quantity: qty }];
     });
+    return true;
   };
 
   const updateQty = (lineKey: string, delta: number) => {
@@ -667,7 +676,7 @@ export default function VentasPage() {
         isSubmitting={creandoCliente}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre *" required>
+          <ModalField label="Nombre" required>
             <input
               className={modalInputClass}
               placeholder="Nombre de contacto"
@@ -683,7 +692,7 @@ export default function VentasPage() {
               onChange={(e) => setFormCliente({ ...formCliente, empresa: e.target.value })}
             />
           </ModalField>
-          <ModalField label="Teléfono *" required>
+          <ModalField label="Teléfono" required>
             <input
               className={modalInputClass}
               placeholder="Ej: 322-123-4567"
@@ -691,7 +700,7 @@ export default function VentasPage() {
               onChange={(e) => setFormCliente({ ...formCliente, telefono: e.target.value })}
             />
           </ModalField>
-          <ModalField label="Correo *" required>
+          <ModalField label="Correo" required>
             <input
               className={modalInputClass}
               placeholder="correo@ejemplo.com"

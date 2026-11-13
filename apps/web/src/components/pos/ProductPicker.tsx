@@ -12,7 +12,8 @@ import { formatCurrency } from '@svr-erp/shared/utils/currency';
 
 interface ProductPickerProps {
   products: Product[];
-  onAdd: (product: Product, unit: string, quantity: number) => void;
+  /** Devuelve false si supera el stock (la vista ya muestra el toast). */
+  onAdd: (product: Product, unit: string, quantity: number) => boolean;
 }
 
 /**
@@ -42,7 +43,8 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
   const handleAdd = () => {
     if (!product) return;
     const qty = Math.max(1, Math.floor(Number(quantity) || 1));
-    onAdd(product, unit, qty);
+    const ok = onAdd(product, unit, qty);
+    if (!ok) setQuantity('');
   };
 
   if (products.length === 0) {
@@ -84,12 +86,11 @@ export function ProductPicker({ products, onAdd }: ProductPickerProps) {
         />
         <Input
           label="Cantidad"
-          type="number"
-          min={1}
+          type="text"
           inputMode="numeric"
           placeholder="0"
           value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
+          onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))}
         />
         <div className="flex items-end">
           <Button
