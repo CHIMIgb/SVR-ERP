@@ -148,10 +148,14 @@ asistencia, nómina, reportes):
 
 ## 5. Limitaciones conocidas (a futuro)
 
-- **Match trabajador→cuenta por nombre**: los trabajadores no tienen FK a
-  `users`; la cuenta del asignado se resuelve por nombre completo contra
-  `personas`. Si hay dos personas con el mismo nombre, la notificación no se
-  emite (queda loggeada). A futuro: FK `users.trabajador_id`.
+- ~~**Match trabajador→cuenta por nombre**~~ **RESUELTO (B5.11):** la tabla
+  `trabajadores` tiene el FK **`usuario_id`** (único, nullable) a su cuenta de
+  acceso — la emisión al asignado es **exacta** (una consulta). El backfill de
+  la migración enlazó por nombre las cuentas con coincidencia única (2 en esta
+  BD); los trabajadores sin cuenta enlazada no generan notificación (queda
+  loggeada). El enlazado de cuentas nuevas se hace **al crear la cuenta del
+  trabajador** (flujo de alta de la PWA/administración — el FK ya está listo
+  para ese alta).
 - **CxP/CxC por vencer/vencidas**: esperan respuestas del SVR
   (`DUDAS-VISTAS-SVR.txt` #34, #7, #5) — la tubería ya está lista (es un
   `emitirARol` + cron diario).

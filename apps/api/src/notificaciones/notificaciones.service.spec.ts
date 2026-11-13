@@ -50,12 +50,10 @@ describe('NotificacionesService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'rol-administrativo' }),
       },
       trabajadores: {
-        findUnique: jest.fn().mockResolvedValue({ nombre: 'Juan Perez' }),
-      },
-      personas: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'persona-1', nombre: 'Juan', apellido_paterno: 'Perez', apellido_materno: null },
-        ]),
+        findUnique: jest.fn().mockResolvedValue({
+          nombre: 'Juan Perez',
+          usuario: { id: 'user-del-trabajador' },
+        }),
       },
     };
 
@@ -135,10 +133,13 @@ describe('NotificacionesService', () => {
       expect(prisma.notificaciones.create).not.toHaveBeenCalled();
     });
 
-    it('emitirATrabajador resuelve su cuenta por nombre y emite personal', async () => {
+    it('emitirATrabajador usa el FK usuario_id y emite personal', async () => {
       await service.emitirATrabajador('trab-1', { tipo: TipoNotificacion.INFO, titulo: 'Te asignaron', cuerpo: 'X' });
-      expect(prisma.users.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { persona_id: 'persona-1' } }),
+      expect(prisma.trabajadores.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'trab-1' },
+          include: { usuario: { select: { id: true } } },
+        }),
       );
       expect(prisma.notificaciones.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -147,17 +148,8 @@ describe('NotificacionesService', () => {
       );
     });
 
-    it('emitirATrabajador sin cuenta de usuario NO emite', async () => {
-      prisma.users.findFirst.mockResolvedValue(null);
-      await service.emitirATrabajador('trab-1', { tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' });
-      expect(prisma.notificaciones.create).not.toHaveBeenCalled();
-    });
-
-    it('emitirATrabajador con nombre ambiguo NO emite', async () => {
-      prisma.personas.findMany.mockResolvedValue([
-        { id: 'p1', nombre: 'Juan', apellido_paterno: 'Perez', apellido_materno: null },
-        { id: 'p2', nombre: 'Juan', apellido_paterno: 'Perez', apellido_materno: null },
-      ]);
+    it('emitirATrabajador sin cuenta enlazada NO emite', async () => {
+      prisma.trabajadores.findUnique.mockResolvedValue({ nombre: 'Juan Perez', usuario: null });
       await service.emitirATrabajador('trab-1', { tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' });
       expect(prisma.notificaciones.create).not.toHaveBeenCalled();
     });

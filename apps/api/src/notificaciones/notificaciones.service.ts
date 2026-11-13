@@ -86,51 +86,27 @@ export class NotificacionesService {
   }
 
   /**
-   * Emite al TRABAJADOR asignado (es Trabajador, no User). Los trabajadores
-   * NO tienen FK a cuentas de usuario: se resuelve su cuenta por nombre
-   * contra `personas` (best-effort; sin match único, no se emite y queda
-   * loggeado).
+   * Emite al TRABAJADOR asignado (es Trabajador, no User): usa el FK
+   * `trabajadores.usuario_id` (exacto); si el trabajador no tiene cuenta
+   * enlazada, no se emite y queda loggeado.
    */
   async emitirATrabajador(trabajadorId: string, input: Omit<EmitirNotificacionInput, 'destinatarioUserId'>): Promise<void> {
     try {
       const trabajador = await this.prisma.trabajadores.findUnique({
         where: { id: trabajadorId },
-        select: { nombre: true },
+        include: { usuario: { select: { id: true } } },
       });
       if (!trabajador) {
         this.logger.warn(`No se emitió "${input.titulo}": trabajador ${trabajadorId} no encontrado`);
         return;
       }
-      // Match por nombre completo (nombre + apellidos de la persona).
-      const primeraPalabra = trabajador.nombre.split(' ')[0];
-      const candidatos = await this.prisma.personas.findMany({
-        where: { nombre: { contains: primeraPalabra, mode: 'insensitive' } },
-        select: { id: true, nombre: true, apellido_paterno: true, apellido_materno: true },
-      });
-      const coincidencias = candidatos.filter(
-        (p) =>
-          [p.nombre, p.apellido_paterno, p.apellido_materno]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase() === trabajador.nombre.trim().toLowerCase(),
-      );
-      if (coincidencias.length !== 1) {
+      if (!trabajador.usuario) {
         this.logger.warn(
-          `No se emitió "${input.titulo}": no se identificó una cuenta única para el trabajador "${trabajador.nombre}" (${coincidencias.length} coincidencias)`,
+          `No se emitió "${input.titulo}": el trabajador "${trabajador.nombre}" no tiene cuenta enlazada (trabajadores.usuario_id)`,
         );
         return;
       }
-      const user = await this.prisma.users.findFirst({
-        where: { persona_id: coincidencias[0].id },
-        select: { id: true },
-      });
-      if (!user) {
-        this.logger.warn(
-          `No se emitió "${input.titulo}": el trabajador "${trabajador.nombre}" no tiene cuenta de usuario`,
-        );
-        return;
-      }
-      await this.emitirAUsuario(user.id, input);
+      await this.emitirAUsuario(trabajador.usuario.id, input);
     } catch (error) {
       this.logger.warn(
         `No se pudo resolver el trabajador ${trabajadorId} para "${input.titulo}": ${error instanceof Error ? error.message : error}`,
