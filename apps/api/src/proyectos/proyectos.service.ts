@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import {
   Prisma,
   EstadoProyecto,
+  EstadoObra,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
@@ -44,6 +45,33 @@ export class ProyectosService {
       errorCode,
     });
     throw new ConflictException(message);
+  }
+
+  /**
+   * La obra es 1:1 con el proyecto: hereda su nombre, su estado y su ubicación.
+   * `EstadoObra` no tiene PAUSADA — un proyecto pausado deja la obra EN_PROCESO.
+   */
+  private estadoObraDe(estado: EstadoProyecto): EstadoObra {
+    return estado === EstadoProyecto.FINALIZADO
+      ? EstadoObra.FINALIZADA
+      : EstadoObra.EN_PROCESO;
+  }
+
+  private ubicacionDe(direccion: {
+    calle?: string | null;
+    colonia?: string | null;
+    ciudad?: string | null;
+    estadoUbicacion?: string | null;
+  }): string | null {
+    const partes = [
+      direccion.calle,
+      direccion.colonia,
+      direccion.ciudad,
+      direccion.estadoUbicacion,
+    ]
+      .map((parte) => parte?.trim())
+      .filter(Boolean);
+    return partes.length > 0 ? partes.join(', ') : null;
   }
 
   // ────────────────────────────────────────────
@@ -125,28 +153,48 @@ export class ProyectosService {
       throw new BadRequestException('La fecha de fin no puede ser anterior a la de inicio');
     }
 
-    const proyecto = await this.prisma.proyectos.create({
-      data: {
-        id: randomUUID(),
-        nombre: dto.nombre.trim(),
-        cliente_id: dto.clienteId,
-        presupuesto: dto.presupuesto,
-        progreso: dto.progreso ?? 0,
-        estado: dto.estado ?? EstadoProyecto.EN_PROCESO,
-        ingreso_cobrado: dto.ingresoCobrado ?? 0,
-        gastado: dto.gastado ?? 0,
-        fecha_inicio: new Date(dto.fechaInicio),
-        fecha_fin: new Date(dto.fechaFin),
-        calle: dto.calle?.trim() ?? null,
-        colonia: dto.colonia?.trim() ?? null,
-        ciudad: dto.ciudad?.trim() ?? null,
-        estado_ubicacion: dto.estadoUbicacion?.trim() ?? null,
-        codigo_postal: dto.codigoPostal ?? null,
-        creado_por: userId,
-        actualizado_por: userId,
-        actualizado_en: new Date(),
-      },
-      include: PROYECTO_INCLUDE,
+    const estado = dto.estado ?? EstadoProyecto.EN_PROCESO;
+
+    // El proyecto y su obra nacen juntos o no nace ninguno (índice único 1:1).
+    const { proyecto, obraId } = await this.prisma.$transaction(async (tx) => {
+      const proyecto = await tx.proyectos.create({
+        data: {
+          id: randomUUID(),
+          nombre: dto.nombre.trim(),
+          cliente_id: dto.clienteId,
+          presupuesto: dto.presupuesto,
+          progreso: dto.progreso ?? 0,
+          estado,
+          ingreso_cobrado: dto.ingresoCobrado ?? 0,
+          gastado: dto.gastado ?? 0,
+          fecha_inicio: new Date(dto.fechaInicio),
+          fecha_fin: new Date(dto.fechaFin),
+          calle: dto.calle?.trim() ?? null,
+          colonia: dto.colonia?.trim() ?? null,
+          ciudad: dto.ciudad?.trim() ?? null,
+          estado_ubicacion: dto.estadoUbicacion?.trim() ?? null,
+          codigo_postal: dto.codigoPostal ?? null,
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+        include: PROYECTO_INCLUDE,
+      });
+
+      const obra = await tx.obras.create({
+        data: {
+          id: randomUUID(),
+          nombre: proyecto.nombre,
+          estado: this.estadoObraDe(estado),
+          proyecto_id: proyecto.id,
+          ubicacion: this.ubicacionDe(dto),
+          creado_por: userId,
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+      });
+
+      return { proyecto, obraId: obra.id };
     });
 
     const serialized = this.serialize(proyecto);
@@ -159,7 +207,7 @@ export class ProyectosService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      newValue: serialized,
+      newValue: { ...serialized, obraId },
     });
 
     return serialized;
@@ -210,11 +258,45 @@ export class ProyectosService {
       actualizado_por: userId,
     };
 
-    const proyecto = await this.prisma.proyectos.update({
-      where: { id },
-      data,
-      include: PROYECTO_INCLUDE,
-    });
+    const { proyecto, estadoObraPrevio, estadoObra } = await this.prisma.$transaction(
+      async (tx) => {
+        const obra = await tx.obras.findFirst({
+          where: { proyecto_id: id, eliminado_en: null },
+        });
+
+        const proyecto = await tx.proyectos.update({
+          where: { id },
+          data,
+          include: PROYECTO_INCLUDE,
+        });
+
+        // La obra es el espejo del proyecto: nombre y estado (PAUSADO no existe en EstadoObra).
+        const obraData: Prisma.obrasUncheckedUpdateInput = {
+          ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
+          ...(dto.estado !== undefined &&
+            dto.estado !== EstadoProyecto.PAUSADO && {
+              estado: this.estadoObraDe(dto.estado),
+            }),
+        };
+        const obraActualizada =
+          obra && Object.keys(obraData).length > 0
+            ? await tx.obras.update({
+                where: { id: obra.id },
+                data: {
+                  ...obraData,
+                  actualizado_por: userId,
+                  actualizado_en: new Date(),
+                },
+              })
+            : obra;
+
+        return {
+          proyecto,
+          estadoObraPrevio: obra?.estado ?? null,
+          estadoObra: obraActualizada?.estado ?? null,
+        };
+      },
+    );
 
     const serialized = this.serialize(proyecto);
 
@@ -226,8 +308,8 @@ export class ProyectosService {
       actorUserId: userId,
       actorType: 'USER',
       actorRole: 'autenticado',
-      previousValue: this.serialize(existente as never),
-      newValue: serialized,
+      previousValue: { ...this.serialize(existente as never), estadoObra: estadoObraPrevio },
+      newValue: { ...serialized, estadoObra },
     });
 
     return serialized;
@@ -310,9 +392,21 @@ export class ProyectosService {
       );
     }
 
-    await this.prisma.proyectos.update({
-      where: { id },
-      data: { eliminado_en: new Date(), activo: false },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.proyectos.update({
+        where: { id },
+        data: { eliminado_en: new Date(), activo: false },
+      });
+      // La obra 1:1 se va con su proyecto: no quedan obras huérfanas en catálogos.
+      await tx.obras.updateMany({
+        where: { proyecto_id: id, eliminado_en: null },
+        data: {
+          eliminado_en: new Date(),
+          activo: false,
+          actualizado_por: userId,
+          actualizado_en: new Date(),
+        },
+      });
     });
 
     await this.auditService.log({

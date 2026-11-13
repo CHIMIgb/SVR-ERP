@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { EstadoProyecto, AuditAction, AuditResult } from '@prisma/client';
+import { EstadoProyecto, EstadoObra, AuditAction, AuditResult } from '@prisma/client';
 import { ProyectosService } from './proyectos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -55,6 +55,19 @@ describe('ProyectosService', () => {
       cuentas_por_cobrar: {
         count: jest.fn().mockResolvedValue(0),
       },
+      obras: {
+        create: jest
+          .fn()
+          .mockResolvedValue({ id: 'obra-1', estado: EstadoObra.EN_PROCESO }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'obra-1', estado: EstadoObra.EN_PROCESO }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ id: 'obra-1', estado: EstadoObra.FINALIZADA }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -159,6 +172,44 @@ describe('ProyectosService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should create the 1:1 obra with name, estado and ubicacion inherited', async () => {
+      await service.create(
+        {
+          ...createDto,
+          calle: 'Av. Juárez 100',
+          colonia: 'Centro',
+          ciudad: 'Tepic',
+          estadoUbicacion: 'Nayarit',
+        },
+        'user-1',
+      );
+
+      const obraData = prisma.obras.create.mock.calls[0][0].data;
+      expect(obraData.nombre).toBe(mockProyecto.nombre);
+      expect(obraData.proyecto_id).toBe(mockProyecto.id);
+      expect(obraData.estado).toBe(EstadoObra.EN_PROCESO);
+      expect(obraData.ubicacion).toBe('Av. Juárez 100, Centro, Tepic, Nayarit');
+      expect(obraData.creado_por).toBe('user-1');
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should map FINALIZADO to obra FINALIZADA', async () => {
+      await service.create({ ...createDto, estado: EstadoProyecto.FINALIZADO }, 'user-1');
+      expect(prisma.obras.create.mock.calls[0][0].data.estado).toBe(
+        EstadoObra.FINALIZADA,
+      );
+    });
+
+    it('should include obraId in PROYECTO_CREADO newValue', async () => {
+      await service.create(createDto, 'user-1');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PROYECTO_CREADO,
+          newValue: expect.objectContaining({ obraId: 'obra-1' }),
+        }),
+      );
+    });
   });
 
   describe('update', () => {
@@ -199,6 +250,42 @@ describe('ProyectosService', () => {
         service.update(mockProyecto.id, { fechaFin: '2024-01-01' }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should sync obra to FINALIZADA when proyecto becomes FINALIZADO', async () => {
+      await service.update(
+        mockProyecto.id,
+        { estado: EstadoProyecto.FINALIZADO },
+        'user-1',
+      );
+      expect(prisma.obras.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'obra-1' },
+          data: expect.objectContaining({ estado: EstadoObra.FINALIZADA }),
+        }),
+      );
+    });
+
+    it('should not touch the obra when proyecto becomes PAUSADO', async () => {
+      await service.update(mockProyecto.id, { estado: EstadoProyecto.PAUSADO }, 'user-1');
+      expect(prisma.obras.update).not.toHaveBeenCalled();
+    });
+
+    it('should rename the obra when the proyecto is renamed', async () => {
+      await service.update(mockProyecto.id, { nombre: 'Valle Sur Fase II' }, 'user-1');
+      expect(prisma.obras.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ nombre: 'Valle Sur Fase II' }),
+        }),
+      );
+    });
+
+    it('should not fail when the proyecto has no obra', async () => {
+      prisma.obras.findFirst.mockResolvedValue(null);
+      await expect(
+        service.update(mockProyecto.id, { estado: EstadoProyecto.FINALIZADO }, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.obras.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('remove', () => {
@@ -234,6 +321,16 @@ describe('ProyectosService', () => {
           entityId: mockProyecto.id,
           result: AuditResult.FAIL,
           errorCode: 'PROYECTO_CON_CXC_ABIERTAS',
+        }),
+      );
+    });
+
+    it('should soft delete the 1:1 obra with the proyecto', async () => {
+      await service.remove(mockProyecto.id, 'user-1');
+      expect(prisma.obras.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { proyecto_id: mockProyecto.id, eliminado_en: null },
+          data: expect.objectContaining({ activo: false }),
         }),
       );
     });
