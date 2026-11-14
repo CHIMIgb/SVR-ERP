@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatCurrency, formatFechaSolo, formatearMiles, parsearMiles } from '@/lib/formatters';
+import { formatCurrency, formatFechaSolo, formatearMiles, parsearMiles, fechaLocalHoy } from '@/lib/formatters';
 import {
   cotizacionesApi,
   clientesApi,
@@ -56,7 +56,7 @@ const emptyForm = {
   clienteId: '',
   descripcion: '',
   monto: '',
-  fecha: new Date().toISOString().split('T')[0],
+  fecha: fechaLocalHoy(),
   condiciones: CONDICIONES_PLANTILLA,
   items: [emptyPartida] as { descripcion: string; cantidad: string; unidad: string; precio: string }[],
 };

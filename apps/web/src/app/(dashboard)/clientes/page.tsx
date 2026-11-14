@@ -20,7 +20,7 @@ import { FormModal, Modal, ModalHeader, ModalBody, ModalFooter, ModalField, moda
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatCurrency, telefonoEsValido, limpiarTelefono, rfcEsValido, limpiarRfc } from '@/lib/formatters';
+import { formatCurrency, telefonoEsValido, limpiarTelefono, rfcEsValido, limpiarRfc, fechaLocalHoy } from '@/lib/formatters';
 import {
   clientesApi,
   type ClienteDTO,
@@ -48,7 +48,7 @@ const emptyForm = {
 const emptyCotizacionForm = {
   descripcion: '',
   monto: '',
-  fecha: new Date().toISOString().split('T')[0],
+  fecha: fechaLocalHoy(),
 };
 
 export default function ClientesPage() {

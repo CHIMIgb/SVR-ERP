@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
+import { fechaLocalHoy } from '@/lib/formatters';
 import { ventasApi, TurnoConfig, CierreVentaDTO } from '@/lib/api';
 import {
   BUSINESS_INFO,
@@ -190,7 +191,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
 
   // ── Arqueo ──────────────────────────────────────────────────────────────
   const initial = Number(openingAmount) || 0;
-  const hoyIso = new Date().toISOString().split('T')[0];
+  const hoyIso = fechaLocalHoy();
   const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
   const totalRetirements = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
   const expectedCash = round2(initial + metodos.efectivo - totalRetirements);

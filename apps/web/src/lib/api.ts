@@ -12,6 +12,7 @@ import {
 } from '@svr-erp/shared';
 
 import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
+import { fechaLocalHoy } from '@/lib/formatters';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -1817,7 +1818,7 @@ export const finanzasApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `finanzas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `finanzas-${fechaLocalHoy()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -3082,7 +3083,7 @@ export const cobranzaApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cobranza-por-proyecto-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `cobranza-por-proyecto-${fechaLocalHoy()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -3238,7 +3239,7 @@ export const facturasApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `facturas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `facturas-${fechaLocalHoy()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   },

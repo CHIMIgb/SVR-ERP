@@ -22,7 +22,7 @@ import { FormModal, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
 import { clientesApi, type ClienteDTO } from '@/lib/api';
-import { telefonoEsValido, limpiarTelefono } from '@/lib/formatters';
+import { telefonoEsValido, limpiarTelefono, fechaLocalHoy } from '@/lib/formatters';
 
 import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
@@ -375,7 +375,7 @@ export default function VentasPage() {
   // ── Métricas del día ──────────────────────────────────────────────────────
   const ventasHoy = sales.filter((s) => isToday(s.createdAt));
   const totalHoy = ventasHoy.reduce((sum, s) => sum + s.total, 0);
-  const hoyIso = new Date().toISOString().split('T')[0];
+  const hoyIso = fechaLocalHoy();
   const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
   const totalRetirosHoy = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
   // Ingresos del día netos: se descuentan los retiros/gastos del turno (efectivo).
