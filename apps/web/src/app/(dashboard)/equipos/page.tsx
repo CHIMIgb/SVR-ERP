@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { UsersRound, UserPlus, Eye, UserMinus, RefreshCw, UserX } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { UsersRound, UserPlus, Eye, UserMinus, RefreshCw, UserX, SlidersHorizontal } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { Pagination } from '@/components/ui/Pagination';
 import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalSelectClass, Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
@@ -42,6 +44,13 @@ export default function EquiposPage() {
   const [jefeElegido, setJefeElegido] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Búsqueda / filtros / paginación (client-side, patrón /inventario) ──
+  const PAGE_SIZE = 10;
+  const [search, setSearch] = useState('');
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/equipos');
   const puedeEditar = vista?.puedeEditar ?? false;
@@ -73,6 +82,38 @@ export default function EquiposPage() {
   }, [fetchData]);
 
   const totalAsignaciones = data.equipos.reduce((sum, e) => sum + e.subordinados.length, 0);
+
+  // ── Filtrado/paginación client-side ──
+  const equiposFiltrados = useMemo(
+    () =>
+      data.equipos.filter((e) => {
+        const q = search.trim().toLowerCase();
+        if (q && !`${e.nombre ?? ''} ${e.email} ${e.numeroEmpleado ?? ''}`.toLowerCase().includes(q)) return false;
+        if (filterValues.area && (e.torre ?? '') !== filterValues.area) return false;
+        if (filterValues.uso === 'con-trabajadores' && e.subordinados.length === 0) return false;
+        if (filterValues.uso === 'sin-trabajadores' && e.subordinados.length > 0) return false;
+        return true;
+      }),
+    [data.equipos, search, filterValues],
+  );
+
+  const sinJefeFiltrados = useMemo(
+    () =>
+      data.sinJefe.filter((m) => {
+        const q = search.trim().toLowerCase();
+        if (q && !`${m.nombre ?? ''} ${m.email} ${m.numeroEmpleado ?? ''}`.toLowerCase().includes(q)) return false;
+        if (filterValues.area && (m.torre ?? '') !== filterValues.area) return false;
+        return true;
+      }),
+    [data.sinJefe, search, filterValues],
+  );
+
+  const equiposPagina = useMemo(
+    () => equiposFiltrados.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [equiposFiltrados, page],
+  );
+
+  const resetPage = useCallback(() => setPage(1), []);
 
   // ── Acciones (PATCH /usuarios/:id/jefe, audita JEFE_ASIGNADO) ──
   const cambiarJefe = useCallback(async (usuarioId: string, jefeUserId: string | null, mensajeOk: string) => {
@@ -235,18 +276,77 @@ export default function EquiposPage() {
         />
       </div>
 
+      {/* Búsqueda + Filtros (patrón /inventario) */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <SearchBar
+          value={search}
+          onChange={(v) => { setSearch(v); resetPage(); }}
+          onSearch={() => resetPage()}
+          placeholder="Buscar residente, trabajador o número de empleado..."
+          className="flex-1"
+        />
+        <Button
+          variant={showFilters ? 'primary' : 'secondary'}
+          size="md"
+          icon={<SlidersHorizontal className="w-4 h-4" />}
+          onClick={() => setShowFilters(prev => !prev)}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <span className="whitespace-nowrap">Filtros</span>
+        </Button>
+      </div>
+
+      {showFilters && (
+        <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            <div className="flex flex-col gap-1 w-full sm:w-auto">
+              <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Área</label>
+              <select
+                value={filterValues.area || ''}
+                onChange={(e) => { setFilterValues({ ...filterValues, area: e.target.value }); resetPage(); }}
+                className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Todas</option>
+                {Object.entries(TORRE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 w-full sm:w-auto">
+              <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Equipo</label>
+              <select
+                value={filterValues.uso || ''}
+                onChange={(e) => { setFilterValues({ ...filterValues, uso: e.target.value }); resetPage(); }}
+                className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Todos</option>
+                <option value="con-trabajadores">Con trabajadores</option>
+                <option value="sin-trabajadores">Sin trabajadores</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
         <div className="relative">
           <RefreshOverlay show={refreshing && !initialLoading} />
           <DataTable
             columns={columns}
-            data={data.equipos}
+            data={equiposPagina}
             loading={initialLoading}
             keyExtractor={(equipo) => equipo.usuarioId}
-            emptyText="No hay residentes con equipo todavía — al dar de alta un residente aparece aquí."
+            emptyText="No se encontraron residentes que coincidan con la búsqueda."
             maxBodyHeight="500px"
           />
         </div>
+        <Pagination
+          currentPage={page}
+          totalPages={Math.max(Math.ceil(equiposFiltrados.length / PAGE_SIZE), 1)}
+          totalRecords={equiposFiltrados.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+        />
       </div>
 
       {/* ═══════════════════════════════════════════
@@ -327,7 +427,7 @@ export default function EquiposPage() {
         onSubmit={handleAsignar}
         isSubmitting={submitting}
       >
-        {data.sinJefe.length === 0 ? (
+        {sinJefeFiltrados.length === 0 ? (
           <p className="text-sm text-ui-500 text-center py-4">
             No hay usuarios sin jefe — todos ya tienen equipo asignado.
           </p>
@@ -339,7 +439,7 @@ export default function EquiposPage() {
               onChange={(e) => setTrabajadorElegido(e.target.value)}
             >
               <option value="">Seleccionar...</option>
-              {data.sinJefe.map((m) => (
+              {sinJefeFiltrados.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nombre ?? m.email} · {m.roles.join(', ') || 'Sin rol'}
                 </option>
