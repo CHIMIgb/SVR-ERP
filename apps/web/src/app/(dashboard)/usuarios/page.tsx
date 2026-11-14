@@ -21,7 +21,7 @@ import {
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
-import { formatDate } from '@/lib/formatters';
+import { formatDate, limpiarTelefono, telefonoEsValido } from '@/lib/formatters';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -254,6 +254,10 @@ export default function UsuariosPage() {
       showToast('Elige el área del usuario.', 'error');
       return;
     }
+    if (form.telefono && !telefonoEsValido(form.telefono)) {
+      showToast('El teléfono debe tener exactamente 10 dígitos.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await usuariosApi.crear({
@@ -297,6 +301,10 @@ export default function UsuariosPage() {
     }
     if (form.password && form.password.length < 8) {
       showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
+      return;
+    }
+    if (form.telefono && !telefonoEsValido(form.telefono)) {
+      showToast('El teléfono debe tener exactamente 10 dígitos.', 'error');
       return;
     }
     setSubmitting(true);
@@ -440,7 +448,7 @@ export default function UsuariosPage() {
                 Editar
               </Button>
               <Button
-                variant={item.activo ? 'secondary' : 'success'}
+                variant={item.activo ? 'danger' : 'success'}
                 size="sm"
                 icon={item.activo ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
                 onClick={(e) => { e.stopPropagation(); openEstado(item); }}
@@ -774,7 +782,7 @@ function CapturaUsuario({
           className={modalInputClass}
           placeholder="Ej: 322-123-4567"
           value={form.telefono}
-          onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+          onChange={(e) => setForm({ ...form, telefono: limpiarTelefono(e.target.value) })}
         />
       </ModalField>
 
