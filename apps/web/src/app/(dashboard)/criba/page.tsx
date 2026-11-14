@@ -61,12 +61,6 @@ function colorEficiencia(ef: number): 'success' | 'warning' | 'error' {
   return 'error';
 }
 
-const materialDot: Record<string, string> = {
-  'Criba fina': 'bg-amber-500',
-  'Criba gruesa': 'bg-orange-500',
-  'Arena lavada': 'bg-teal-500',
-};
-
 export default function CribaPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -509,7 +503,7 @@ export default function CribaPage() {
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="Criba"
-        subtitle="Producción diaria por turno — material producido y enviado al banco."
+        subtitle="Producción diaria por turno — material producido y enviado."
         action={
           puedeCrear ? (
             <Button
@@ -565,10 +559,7 @@ export default function CribaPage() {
             <Card key={tipo} padding="sm" className="space-y-3">
               {/* Encabezado: material + eficiencia */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${materialDot[tipo]}`} />
-                  <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
-                </div>
+                <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
                 <span className="font-semibold text-ui-600 text-sm">
                   {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `Efic. ${ef}%`}
                 </span>
@@ -722,7 +713,7 @@ export default function CribaPage() {
         onClose={() => setCreateOpen(false)}
         onCancel={() => setCreateOpen(false)}
         title="Registrar Turno de Criba"
-        subtitle="Captura la producción del turno: material producido y enviado al banco."
+        subtitle="Captura la producción del turno: material producido y enviado."
         submitLabel="Registrar Turno"
         cancelLabel="Cancelar"
         onSubmit={handleCreate}
