@@ -54,7 +54,7 @@
 | B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ✅ HECHA completa (B6.1–B6.4, 2026-11-14) — ver §14 |
 | B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ✅ HECHA completa (B7.1–B7.4, 2026-11-14) — ver §15 |
 | B8 | ~~P8: metas de progreso con fecha límite~~ ⛔ **DESCARTADA** (2026-11-14 — decisión del cliente: no complicar las cosas) | — | ⛔ |
-| B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
+| B9 | P6: `vendedor_id` real | `/cotizaciones` | ✅ HECHA completa (`ab983e8d`, `b86d78bc`, 2026-11-14) — ver historial-cambios |
 
 > **Decisión del cliente (2026-11-12):** se conserva la tabla `obras` con
 > relación **1:1 con el proyecto**: un proyecto crea **UNA** obra (misma

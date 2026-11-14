@@ -934,7 +934,7 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | P3 | Cotización ↔ Proyecto | `/cotizaciones` → `/proyectos` → `/operaciones` | ⏳ Pendiente |
 | P4 | Bajada de inventario por líneas + **descuento por venta POS (P4b)** | `/cotizaciones` → `/inventario` · `/ventas` → `/inventario` | **P4b ✅ Realizado 2026-11-08** (updateMany condicional anti-carrera + movimientos SALIDA `VentaPos` + test idempotencia real) · la parte de cotizaciones sigue ⏳ (depende de P2) |
 | P5 | Pagos → abono a la CxC | `/finanzas`/cobranza → `/clientes` | ✅ **Realizado** (Fases 1-2, workflow 03) |
-| P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ⏳ Pendiente (grep `vendedor_id`: cero usos en el API) |
+| P6 | Vendedor real + catálogos | `/cotizaciones` → `/trabajadores` | ✅ **Realizado** (2026-11-14, B9: `ab983e8d` + `b86d78bc`; vendedor = usuario que captura, filtro + columna en `/cotizaciones`, backfill 5 filas) |
 | P7 | Edición de precios por medida de venta (POS ↔ Inventario) | `/inventario` ↔ `/ventas` | ⏳ Pendiente (hoy bloqueado; requiere sincronización medida base ↔ `precio_unitario`) |
 | 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02). **Gap de datos 2026-11-06:** BD con solo 3 obras — 4 de 6 proyectos EN_PROCESO sin obra → se resuelve con la obra 1:1 (**B2** del plan comercial) |
 | 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente (verificado: `incidentes` no deriva nada) |
