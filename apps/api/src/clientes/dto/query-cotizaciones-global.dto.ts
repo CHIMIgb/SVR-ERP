@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EstadoCotizacion } from '@prisma/client';
 
@@ -18,6 +18,11 @@ export class QueryCotizacionesGlobalDto {
   @IsOptional()
   @IsString()
   clienteId?: string;
+
+  /** B9/P6: filtro por vendedor (usuario que capturó la cotización). */
+  @IsOptional()
+  @IsString()
+  vendedorId?: string;
 
   @IsOptional()
   @Type(() => Number)

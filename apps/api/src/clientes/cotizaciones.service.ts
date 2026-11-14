@@ -28,6 +28,17 @@ const ESTADO_LABELS: Record<EstadoCotizacion, string> = {
   [EstadoCotizacion.RECHAZADA]: 'Rechazada',
 };
 
+/** Include del vendedor (persona) para serializar su nombre completo (B9/P6). */
+const VENDEDOR_INCLUDE = {
+  users_cotizaciones_vendedor_idTousers: {
+    select: {
+      personas_users_persona_idTopersonas: {
+        select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+      },
+    },
+  },
+} satisfies Prisma.cotizacionesInclude;
+
 /**
  * Máximo de intentos para asignar el folio secuencial FAC-YYYY-NNNN.
  * Dos facturaciones concurrentes pueden generar el mismo `codigo` (count+1);
@@ -172,6 +183,8 @@ export class CotizacionesService {
       condiciones: dto.condiciones?.trim() || null,
       fecha: new Date(dto.fecha),
       estado: EstadoCotizacion.PENDIENTE,
+      // B9/P6: vendedor = el usuario logueado que captura la cotización (JWT).
+      vendedor_id: userId,
       creado_por: userId,
       actualizado_por: userId,
       actualizado_en: new Date(),
@@ -182,9 +195,13 @@ export class CotizacionesService {
       ? await this.prisma.$transaction((tx: Prisma.TransactionClient) =>
           tx.cotizaciones.create({
             data: { ...base, items: { create: partidas.items } },
+            include: VENDEDOR_INCLUDE,
           }),
         )
-      : await this.prisma.cotizaciones.create({ data: base });
+      : await this.prisma.cotizaciones.create({
+          data: base,
+          include: VENDEDOR_INCLUDE,
+        });
 
     const serialized = this.serialize(cotizacion);
     if (partidas) serialized.items = partidas.items.map((item) => this.serializeItem(item));
@@ -239,6 +256,10 @@ export class CotizacionesService {
       where.cliente_id = query.clienteId;
     }
 
+    if (query.vendedorId) {
+      where.vendedor_id = query.vendedorId;
+    }
+
     const [rows, total] = await Promise.all([
       this.prisma.cotizaciones.findMany({
         where,
@@ -247,6 +268,7 @@ export class CotizacionesService {
         take: limit,
         include: {
           clientes: { select: { id: true, nombre: true, empresa: true } },
+          ...VENDEDOR_INCLUDE,
         },
       }),
       this.prisma.cotizaciones.count({ where }),
@@ -279,6 +301,7 @@ export class CotizacionesService {
             },
           },
         },
+        ...VENDEDOR_INCLUDE,
       },
     });
 
@@ -512,6 +535,41 @@ export class CotizacionesService {
       aceptadas,
       rechazadas,
       montoAceptado: Number(agregado._sum.monto ?? 0),
+    };
+  }
+
+  // ────────────────────────────────────────────
+  //  CATÁLOGOS (vendedores para el filtro del listado)
+  // ────────────────────────────────────────────
+  /**
+   * B9/P6: usuarios activos como opciones del filtro "Vendedor".
+   * No existe rol "Vendedor" en el RBAC, así que el catálogo es de
+   * usuarios activos — el vendedor real de cada cotización es quien
+   * la capturó (se asigna en create desde el JWT).
+   */
+  async findCatalogos() {
+    const vendedores = await this.prisma.users.findMany({
+      where: { activo: true, eliminado_en: null },
+      select: {
+        id: true,
+        personas_users_persona_idTopersonas: {
+          select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+        },
+      },
+      orderBy: { persona_id: 'asc' },
+    });
+
+    return {
+      vendedores: vendedores.map((u) => ({
+        id: u.id,
+        nombre: [
+          u.personas_users_persona_idTopersonas?.nombre,
+          u.personas_users_persona_idTopersonas?.apellido_paterno,
+          u.personas_users_persona_idTopersonas?.apellido_materno,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      })),
     };
   }
 
@@ -787,6 +845,7 @@ export class CotizacionesService {
     const base = this.serialize(cotizacion);
     const cliente = cotizacion.clientes;
     const creador = cotizacion.users_cotizaciones_creado_porTousers?.personas_users_persona_idTopersonas;
+    const vendedor = cotizacion.users_cotizaciones_vendedor_idTousers?.personas_users_persona_idTopersonas;
     return {
       ...base,
       clienteNombre: cliente?.nombre ?? null,
@@ -795,6 +854,11 @@ export class CotizacionesService {
       clienteCorreo: cliente?.correo ?? null,
       creadoPor: creador
         ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+            .filter(Boolean)
+            .join(' ')
+        : null,
+      vendedorNombre: vendedor
+        ? [vendedor.nombre, vendedor.apellido_paterno, vendedor.apellido_materno]
             .filter(Boolean)
             .join(' ')
         : null,
@@ -807,6 +871,7 @@ export class CotizacionesService {
       id: cotizacion.id,
       codigo: cotizacion.codigo ?? null,
       clienteId: cotizacion.cliente_id,
+      vendedorId: cotizacion.vendedor_id ?? null,
       descripcion: cotizacion.descripcion,
       monto: Number(cotizacion.monto),
       condiciones: cotizacion.condiciones ?? null,

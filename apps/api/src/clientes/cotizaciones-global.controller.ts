@@ -53,6 +53,18 @@ export class CotizacionesGlobalController {
   }
 
   /**
+   * GET /api/cotizaciones/catalogos
+   * Vendedores (usuarios activos) para el filtro del listado. B9/P6.
+   * Va antes de `:id` para que Nest no lo trate como id.
+   * Permiso: comercial.cotizaciones.ver
+   */
+  @RequirePermission('comercial', 'cotizaciones', 'ver')
+  @Get('catalogos')
+  findCatalogos() {
+    return this.cotizacionesService.findCatalogos();
+  }
+
+  /**
    * GET /api/cotizaciones/:id
    * Detalle de una cotización con datos del cliente.
    * Permiso: comercial.cotizaciones.ver

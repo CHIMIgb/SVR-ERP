@@ -47,6 +47,18 @@ describe('CotizacionesService', () => {
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { monto: 125000 } }),
       },
+      users: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'user-1',
+            personas_users_persona_idTopersonas: {
+              nombre: 'Carlos',
+              apellido_paterno: 'SVR',
+              apellido_materno: null,
+            },
+          },
+        ]),
+      },
       // mock base: cada test que factura lo sobrescribe con mockImplementation.
       $transaction: jest.fn(),
     };
@@ -144,6 +156,11 @@ describe('CotizacionesService', () => {
         }),
       );
     });
+    it('should set vendedor_id from the logged-in user (B9/P6)', async () => {
+      await service.create(mockClienteId, createDto, 'user-1');
+      const data = prisma.cotizaciones.create.mock.calls[0][0].data;
+      expect(data.vendedor_id).toBe('user-1');
+    });
   });
 
   describe('findAll (global)', () => {
@@ -171,6 +188,23 @@ describe('CotizacionesService', () => {
       expect(args.where.estado).toBe(EstadoCotizacion.ACEPTADA);
       expect(args.where.cliente_id).toBe(mockClienteId);
       expect(args.where.OR).toEqual(expect.any(Array));
+    });
+
+    it('should forward vendedorId filter and include vendedor persona (B9/P6)', async () => {
+      await service.findAll({ vendedorId: 'user-1' } as never);
+      const args = prisma.cotizaciones.findMany.mock.calls[0][0];
+      expect(args.where.vendedor_id).toBe('user-1');
+      expect(args.include.users_cotizaciones_vendedor_idTousers).toBeDefined();
+    });
+  });
+
+  describe('findCatalogos', () => {
+    it('should return vendedores as active users with full name', async () => {
+      const result = await service.findCatalogos();
+      expect(prisma.users.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { activo: true, eliminado_en: null } }),
+      );
+      expect(result.vendedores).toEqual([{ id: 'user-1', nombre: 'Carlos SVR' }]);
     });
   });
 

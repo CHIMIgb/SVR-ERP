@@ -202,6 +202,41 @@ describe('Cotizaciones Audit (Real DB)', () => {
     });
   });
 
+  describe('VENDEDOR (B9/P6)', () => {
+    it('debe asignar vendedor = usuario logueado al crear y filtrar por él', async () => {
+      const cliente = await createCliente();
+      const cotizacion = await service.create(
+        cliente.id,
+        { descripcion: `Vendedor ${TEST_ID}`, monto: 750, fecha: '2026-08-22' },
+        ACTOR_USER_ID,
+      );
+
+      // Persistido y devuelto en el create
+      expect(cotizacion.vendedorId).toBe(ACTOR_USER_ID);
+
+      // El detalle trae el nombre del vendedor (persona del usuario)
+      const detalle = await service.findOne(cotizacion.id);
+      expect(detalle.vendedorId).toBe(ACTOR_USER_ID);
+      expect(detalle.vendedorNombre).toBeTruthy();
+
+      // El filtro por vendedor la encuentra
+      const filtradas = await service.findAll({
+        page: 1,
+        limit: 100,
+        vendedorId: ACTOR_USER_ID,
+      });
+      const encontrada = filtradas.items.find((i) => i.id === cotizacion.id);
+      expect(encontrada).toBeDefined();
+      expect(encontrada!.vendedorNombre).toBeTruthy();
+
+      // El catálogo de vendedores incluye al usuario admin
+      const catalogos = await service.findCatalogos();
+      const admin = catalogos.vendedores.find((v) => v.id === ACTOR_USER_ID);
+      expect(admin).toBeDefined();
+      expect(admin!.nombre).toBeTruthy();
+    });
+  });
+
   describe('COTIZACION_ACTUALIZADA (cambio de estado)', () => {
     it('debe cambiar el estado y registrar COTIZACION_ACTUALIZADA con previous/new estado', async () => {
       const cliente = await createCliente();
