@@ -28,11 +28,13 @@ export interface TabsProps {
   onChange?: (key: string) => void;
   children: React.ReactNode;
   className?: string;
+  /** Grupo compacto (w-fit, como el de conciliación-bancaria) en vez de ancho completo. */
+  compact?: boolean;
   /** Nombre accesible del grupo de pestañas (lectores de pantalla). */
   ariaLabel?: string;
 }
 
-export function Tabs({ tabs, defaultTab, value, onChange, children, className, ariaLabel }: TabsProps) {
+export function Tabs({ tabs, defaultTab, value, onChange, children, className, compact, ariaLabel }: TabsProps) {
   const [internalKey, setInternalKey] = useState(defaultTab || tabs[0]?.key || '');
   const activeKey = value !== undefined ? value : internalKey;
 
@@ -44,7 +46,7 @@ export function Tabs({ tabs, defaultTab, value, onChange, children, className, a
   return (
     <TabsContext.Provider value={{ activeKey, onChange: handleChange }}>
       <div className={cn('space-y-4', className)}>
-        <div className={tabsClasses.list} role="group" aria-label={ariaLabel}>
+        <div className={cn(tabsClasses.list, compact && 'w-fit')} role="group" aria-label={ariaLabel}>
           {tabs.map((tab) => (
             <button
               key={tab.key}

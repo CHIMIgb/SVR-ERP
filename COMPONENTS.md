@@ -1371,6 +1371,7 @@ import { Tabs, TabPanel } from '@/components/ui/Tabs';
 | `value` | `string` | `undefined` | Key de la tab activa (controlado) |
 | `onChange` | `(key: string) => void` | `undefined` | Callback al cambiar de tab |
 | `children` | `React.ReactNode` | *(requerido)* | Contenido (debe incluir `TabPanel`) |
+| `compact` | `boolean` | `false` | Grupo de pestañas compacto (`w-fit`) — no estira la barra a todo el ancho (estilo conciliación-bancaria) |
 
 #### Props de TabPanel
 
@@ -1407,6 +1408,12 @@ import { Tabs, TabPanel } from '@/components/ui/Tabs';
   </TabPanel>
 </Tabs>
 ```
+
+**Variante compacta** (`compact`): el grupo de pestañas se achica al
+contenido (`w-fit`) en vez de estirarse a todo el ancho — el estilo de la
+barra de conciliación-bancaria. Úsalo cuando las pestañas cambian solo la
+tabla debajo y quieres la barra junto a la tabla, no como separador de
+secciones a ancho completo.
 
 #### Ejemplo avanzado
 

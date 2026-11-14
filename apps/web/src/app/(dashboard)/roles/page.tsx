@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, ShieldCheck, Users, Pencil, Trash2, Eye, Lock, Unlock,
-  LogOut, KeyRound, X, CheckCircle2, AlertCircle,
+  LogOut, KeyRound, X, CheckCircle2, AlertCircle, SlidersHorizontal,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { Pagination } from '@/components/ui/Pagination';
 import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
@@ -78,6 +80,17 @@ export default function RolesPage() {
   const [pinTemporalMostrado, setPinTemporalMostrado] = useState<string | null>(null);
   const [sesionesOpen, setSesionesOpen] = useState(false);
 
+  // ── Búsqueda / filtros / paginación (client-side, patrón /inventario) ──
+  const PAGE_SIZE = 10;
+  const [searchRoles, setSearchRoles] = useState('');
+  const [filterValuesRoles, setFilterValuesRoles] = useState<Record<string, string>>({});
+  const [showFiltersRoles, setShowFiltersRoles] = useState(false);
+  const [pageRoles, setPageRoles] = useState(1);
+  const [searchUsuarios, setSearchUsuarios] = useState('');
+  const [filterValuesUsuarios, setFilterValuesUsuarios] = useState<Record<string, string>>({});
+  const [showFiltersUsuarios, setShowFiltersUsuarios] = useState(false);
+  const [pageUsuarios, setPageUsuarios] = useState(1);
+
   // ── Permisos RBAC ──
   const vista = user?.vistas?.find(v => v.ruta === '/roles');
   const puedeCrear = vista?.puedeCrear ?? false;
@@ -110,6 +123,40 @@ export default function RolesPage() {
   useEffect(() => {
     fetchRoles();
   }, [fetchRoles]);
+
+  // ── KPIs y datos filtrados/paginados (client-side) ──
+  const rolesFiltrados = useMemo(() => {
+    const q = searchRoles.trim().toLowerCase();
+    return roles.filter((r) => {
+      if (q && !`${r.nombre} ${r.descripcion ?? ''}`.toLowerCase().includes(q)) return false;
+      if (filterValuesRoles.area && (r.torre ?? '') !== filterValuesRoles.area) return false;
+      if (filterValuesRoles.uso === 'con-usuarios' && r.usuarios === 0) return false;
+      if (filterValuesRoles.uso === 'sin-uso' && r.usuarios > 0) return false;
+      return true;
+    });
+  }, [roles, searchRoles, filterValuesRoles]);
+
+  const usuariosFiltrados = useMemo(() => {
+    const q = searchUsuarios.trim().toLowerCase();
+    return usuarios.filter((u) => {
+      if (q && !`${u.nombre ?? ''} ${u.email} ${u.numeroEmpleado ?? ''}`.toLowerCase().includes(q)) return false;
+      if (filterValuesUsuarios.area && (u.torre ?? '') !== filterValuesUsuarios.area) return false;
+      if (filterValuesUsuarios.pin && u.pinEstado !== filterValuesUsuarios.pin) return false;
+      return true;
+    });
+  }, [usuarios, searchUsuarios, filterValuesUsuarios]);
+
+  const rolesPagina = useMemo(
+    () => rolesFiltrados.slice((pageRoles - 1) * PAGE_SIZE, pageRoles * PAGE_SIZE),
+    [rolesFiltrados, pageRoles],
+  );
+  const usuariosPagina = useMemo(
+    () => usuariosFiltrados.slice((pageUsuarios - 1) * PAGE_SIZE, pageUsuarios * PAGE_SIZE),
+    [usuariosFiltrados, pageUsuarios],
+  );
+
+  const resetPageRoles = useCallback(() => setPageRoles(1), []);
+  const resetPageUsuarios = useCallback(() => setPageUsuarios(1), []);
 
   // ── Usuarios (solo lectura, para la ficha 360) ──
   const fetchUsuarios = useCallback(async () => {
@@ -582,21 +629,185 @@ export default function RolesPage() {
       <PageHeader
         title="Gestión de Identidad"
         subtitle="Roles, vistas, permisos, áreas, PIN y sesiones — la vista de solo lectura para la mesa de ayuda."
+        action={
+          tab === 'roles' && puedeCrear ? (
+            <Button
+              skeleton={initialLoading}
+              variant="primary"
+              icon={<Plus className="w-5 h-5" />}
+              onClick={openCreate}
+            >
+              Nuevo Rol
+            </Button>
+          ) : undefined
+        }
       />
 
-      <StatsCard
-        icon={<ShieldCheck className="w-6 h-6" />}
-        value={`${roles.length} roles`}
-        label="Roles del Sistema"
-        color="info"
-        loading={initialLoading}
-      />
+      {/* KPIs por tab */}
+      {tab === 'roles' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+          <StatsCard
+            icon={<ShieldCheck className="w-6 h-6" />}
+            value={`${roles.length} roles`}
+            label="Roles del Sistema"
+            color="info"
+            loading={initialLoading}
+          />
+          <StatsCard
+            icon={<Users className="w-6 h-6" />}
+            value={`${roles.reduce((s, r) => s + r.usuarios, 0)} usuarios`}
+            label="Usuarios con Acceso"
+            color="neutral"
+            loading={initialLoading}
+          />
+          <StatsCard
+            icon={<AlertCircle className="w-6 h-6" />}
+            value={`${roles.filter((r) => !r.esSistema && r.usuarios === 0).length} sin uso`}
+            label="Roles Sin Usuarios"
+            color="neutral"
+            loading={initialLoading}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+          <StatsCard
+            icon={<Users className="w-6 h-6" />}
+            value={`${usuarios.length} usuarios`}
+            label="Usuarios con Cuenta"
+            color="info"
+            loading={!usuariosLoaded}
+          />
+          <StatsCard
+            icon={<AlertCircle className="w-6 h-6" />}
+            value={`${usuarios.filter((u) => u.roles.length === 0).length} sin rol`}
+            label="Sin Rol Asignado"
+            color="neutral"
+            loading={!usuariosLoaded}
+          />
+          <StatsCard
+            icon={<CheckCircle2 className="w-6 h-6" />}
+            value={`${usuarios.reduce((s, u) => s + u.sesiones.length, 0)} activas`}
+            label="Sesiones Activas"
+            color="neutral"
+            loading={!usuariosLoaded}
+          />
+        </div>
+      )}
 
-      {/* Tabs */}
+      {/* Búsqueda + Filtros (patrón /inventario) */}
+      {tab === 'roles' ? (
+        <>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <SearchBar
+              value={searchRoles}
+              onChange={(v) => { setSearchRoles(v); resetPageRoles(); }}
+              onSearch={() => resetPageRoles()}
+              placeholder="Buscar rol por nombre o descripción..."
+              className="flex-1"
+            />
+            <Button
+              variant={showFiltersRoles ? 'primary' : 'secondary'}
+              size="md"
+              icon={<SlidersHorizontal className="w-4 h-4" />}
+              onClick={() => setShowFiltersRoles(prev => !prev)}
+              className="shrink-0 whitespace-nowrap"
+            >
+              <span className="whitespace-nowrap">Filtros</span>
+            </Button>
+          </div>
+          {showFiltersRoles && (
+            <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                  <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Área</label>
+                  <select
+                    value={filterValuesRoles.area || ''}
+                    onChange={(e) => { setFilterValuesRoles({ ...filterValuesRoles, area: e.target.value }); resetPageRoles(); }}
+                    className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                  >
+                    <option value="">Todas</option>
+                    {Object.entries(TORRE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                  <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Uso</label>
+                  <select
+                    value={filterValuesRoles.uso || ''}
+                    onChange={(e) => { setFilterValuesRoles({ ...filterValuesRoles, uso: e.target.value }); resetPageRoles(); }}
+                    className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                  >
+                    <option value="">Todos</option>
+                    <option value="con-usuarios">Con usuarios</option>
+                    <option value="sin-uso">Sin uso</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <SearchBar
+              value={searchUsuarios}
+              onChange={(v) => { setSearchUsuarios(v); resetPageUsuarios(); }}
+              onSearch={() => resetPageUsuarios()}
+              placeholder="Buscar por nombre, correo o número de empleado..."
+              className="flex-1"
+            />
+            <Button
+              variant={showFiltersUsuarios ? 'primary' : 'secondary'}
+              size="md"
+              icon={<SlidersHorizontal className="w-4 h-4" />}
+              onClick={() => setShowFiltersUsuarios(prev => !prev)}
+              className="shrink-0 whitespace-nowrap"
+            >
+              <span className="whitespace-nowrap">Filtros</span>
+            </Button>
+          </div>
+          {showFiltersUsuarios && (
+            <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                  <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Área</label>
+                  <select
+                    value={filterValuesUsuarios.area || ''}
+                    onChange={(e) => { setFilterValuesUsuarios({ ...filterValuesUsuarios, area: e.target.value }); resetPageUsuarios(); }}
+                    className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                  >
+                    <option value="">Todas</option>
+                    {Object.entries(TORRE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                  <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Estado PIN</label>
+                  <select
+                    value={filterValuesUsuarios.pin || ''}
+                    onChange={(e) => { setFilterValuesUsuarios({ ...filterValuesUsuarios, pin: e.target.value }); resetPageUsuarios(); }}
+                    className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                  >
+                    <option value="">Todos</option>
+                    <option value="NORMAL">PIN normal</option>
+                    <option value="TEMPORAL">PIN temporal vigente</option>
+                    <option value="BLOQUEADO">PIN bloqueado</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tabs compactos */}
       <Tabs
+        compact
         tabs={[
-          { key: 'roles', label: 'Roles', icon: <ShieldCheck className="w-4 h-4" /> },
-          { key: 'usuarios', label: 'Usuarios', icon: <Users className="w-4 h-4" /> },
+          { key: 'roles', label: 'Roles', icon: <ShieldCheck className="w-4 h-4" />, count: tab === 'roles' ? undefined : roles.length },
+          { key: 'usuarios', label: 'Usuarios', icon: <Users className="w-4 h-4" />, count: tab === 'usuarios' ? undefined : usuariosLoaded ? usuarios.length : undefined },
         ]}
         value={tab}
         onChange={(key) => {
@@ -609,29 +820,24 @@ export default function RolesPage() {
       >
         <TabPanel tabKey="roles">
         <div className="space-y-3">
-          <div className="flex justify-end">
-            {puedeCrear ? (
-              <Button
-                skeleton={initialLoading}
-                variant="primary"
-                icon={<Plus className="w-5 h-5" />}
-                onClick={openCreate}
-              >
-                Nuevo Rol
-              </Button>
-            ) : undefined}
-          </div>
           <div className="relative">
             <RefreshOverlay show={refreshing && !initialLoading} />
             <DataTable
               columns={columnsRoles}
-              data={roles}
+              data={rolesPagina}
               loading={initialLoading}
               keyExtractor={(rol) => rol.id}
-              emptyText="No hay roles."
+              emptyText="No se encontraron roles que coincidan con la búsqueda."
               maxBodyHeight="500px"
             />
           </div>
+          <Pagination
+            currentPage={pageRoles}
+            totalPages={Math.max(Math.ceil(rolesFiltrados.length / PAGE_SIZE), 1)}
+            totalRecords={rolesFiltrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPageRoles}
+          />
         </div>
         </TabPanel>
         <TabPanel tabKey="usuarios">
@@ -642,13 +848,20 @@ export default function RolesPage() {
           <div className="relative">
             <DataTable
               columns={columnsUsuarios}
-              data={usuarios}
+              data={usuariosPagina}
               loading={usuariosLoading || !usuariosLoaded}
               keyExtractor={(u) => u.id}
-              emptyText="No se encontraron usuarios."
+              emptyText="No se encontraron usuarios que coincidan con la búsqueda."
               maxBodyHeight="500px"
             />
           </div>
+          <Pagination
+            currentPage={pageUsuarios}
+            totalPages={Math.max(Math.ceil(usuariosFiltrados.length / PAGE_SIZE), 1)}
+            totalRecords={usuariosFiltrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPageUsuarios}
+          />
         </div>
         </TabPanel>
       </Tabs>
