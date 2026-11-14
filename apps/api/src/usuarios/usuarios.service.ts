@@ -574,7 +574,7 @@ export class UsuariosService {
       include: {
         users_roles_users_roles_user_idTousers: {
           where: { activo: true },
-          include: { roles: { select: { nombre: true } } },
+          include: { roles: { select: { nombre: true, es_sistema: true } } },
         },
       },
     });
@@ -585,6 +585,20 @@ export class UsuariosService {
         'USUARIO_NO_ENCONTRADO',
         NotFoundException,
         `Usuario con id "${id}" no encontrado`,
+      );
+    }
+
+    // El rol Administrador (es_sistema) JAMÁS se reasigna desde la app:
+    // quitárselo al único admin dejaría el ERP sin gobierno (candado total).
+    if (
+      user.users_roles_users_roles_user_idTousers.some((ur) => ur.roles.es_sistema)
+    ) {
+      return this.fallir(
+        AuditAction.ROL_ASIGNADO,
+        id,
+        'ROL_SISTEMA_PROTEGIDO',
+        ForbiddenException,
+        'El rol Administrador del sistema no se puede cambiar',
       );
     }
 

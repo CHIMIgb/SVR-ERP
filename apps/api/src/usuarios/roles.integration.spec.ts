@@ -383,5 +383,40 @@ describe('Roles — Gestión de Identidad (Real DB)', () => {
       });
       expect(fail).not.toBeNull();
     });
+
+    it('no permite cambiar el rol del Administrador (es_sistema) → FAIL + ROL_SISTEMA_PROTEGIDO', async () => {
+      const adminSeed = await prisma.users.findFirst({
+        where: {
+          eliminado_en: null,
+          users_roles_users_roles_user_idTousers: {
+            some: { activo: true, roles: { es_sistema: true } },
+          },
+        },
+        select: { id: true },
+      });
+      expect(adminSeed).not.toBeNull();
+
+      const rolZZ3 = await crearRol('-cambio');
+      await expect(
+        usuariosService.cambiarRol(adminSeed!.id, { rolId: rolZZ3.id }, ACTOR_USER_ID),
+      ).rejects.toThrow(ForbiddenException);
+
+      // El rol del admin sigue intacto
+      const activos = await prisma.users_roles.findMany({
+        where: { user_id: adminSeed!.id, activo: true },
+        include: { roles: { select: { es_sistema: true } } },
+      });
+      expect(activos.some((ur) => ur.roles.es_sistema)).toBe(true);
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.ROL_ASIGNADO,
+          result: AuditResult.FAIL,
+          error_code: 'ROL_SISTEMA_PROTEGIDO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+    });
   });
 });

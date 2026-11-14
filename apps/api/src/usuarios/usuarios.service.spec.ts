@@ -567,6 +567,21 @@ describe('UsuariosService', () => {
   });
 
   describe('cambiarRol (mono-rol)', () => {
+    it('rol Administrador (es_sistema) no se reasigna → FAIL + ROL_SISTEMA_PROTEGIDO', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        users_roles_users_roles_user_idTousers: [
+          { activo: true, roles: { nombre: 'Administrador', es_sistema: true } },
+        ],
+      });
+      await expect(
+        service.cambiarRol(USER_ID, { rolId: 'rol-nuevo' }, ACTOR),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.users_roles.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'ROL_SISTEMA_PROTEGIDO' }),
+      );
+    });
     it('cambia el rol en transacción y audita el cambio', async () => {
       prisma.users.findFirst.mockResolvedValue({
         id: USER_ID,
