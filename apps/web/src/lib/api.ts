@@ -3350,3 +3350,102 @@ export const gpsApi = {
   /** Genera el siguiente ping de cada máquina y evalúa cruces de geocerca. */
   simular: () => apiClient.post<SimulacionGpsDTO>('/gps/simular', {}),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Usuarios API (vista /usuarios — módulo Sistema, solo Administrador)
+// ────────────────────────────────────────────────────────────
+
+export interface UsuarioRoleDTO {
+  id: string;
+  nombre: string;
+  esPrincipal: boolean;
+}
+
+export interface UsuarioDTO {
+  id: string;
+  personaId: string;
+  nombre: string | null;
+  email: string;
+  activo: boolean;
+  torre: string | null;
+  /** Número de empleado si la persona tiene identidad PWA (alta de Trabajadores). */
+  numeroEmpleado: string | null;
+  roles: UsuarioRoleDTO[];
+  /** NORMAL / TEMPORAL (PIN vigente 24h) / BLOQUEADO (intentos al tope). */
+  pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO';
+  creadoEn: string;
+}
+
+export interface UsuariosStats {
+  total: number;
+  activos: number;
+  conIdentidad: number;
+  bloqueados: number;
+}
+
+export interface UsuariosCatalogos {
+  roles: { id: string; nombre: string; nivel: number; torre: string | null }[];
+  personas: { id: string; nombre: string }[];
+}
+
+export interface UsuarioCreateInput {
+  /** Persona del catálogo (si no viene, se crea una con nombre/apellidos). */
+  personaId?: string;
+  nombre?: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  email: string;
+  password: string;
+  rolId: string;
+  torre?: string;
+}
+
+export interface UsuarioUpdateInput {
+  email?: string;
+  activo?: boolean;
+  torre?: string;
+}
+
+export const usuariosApi = {
+  /** Listado paginado con búsqueda y filtros (rol, estado). */
+  listar: (params?: {
+    search?: string;
+    rolId?: string;
+    estado?: 'activo' | 'inactivo';
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.rolId) searchParams.set('rolId', params.rolId);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<UsuarioDTO>>(`/usuarios${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Métricas para las tarjetas. */
+  stats: () => apiClient.get<UsuariosStats>('/usuarios/stats'),
+
+  /** Roles asignables + personas sin cuenta de acceso. */
+  catalogos: () => apiClient.get<UsuariosCatalogos>('/usuarios/catalogos'),
+
+  /** Crear usuario de escritorio (email + contraseña + rol). */
+  crear: (data: UsuarioCreateInput) => apiClient.post<UsuarioDTO>('/usuarios', data),
+
+  /** Editar email, estado y área. */
+  actualizar: (id: string, data: UsuarioUpdateInput) =>
+    apiClient.patch<UsuarioDTO>(`/usuarios/${id}`, data),
+
+  /** Baja de usuario (soft delete + cierre de sesiones). */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/usuarios/${id}`),
+
+  /** Asignar un rol (opcionalmente como principal). */
+  asignarRol: (id: string, data: { rolId: string; esPrincipal?: boolean }) =>
+    apiClient.post<{ message: string }>(`/usuarios/${id}/roles`, data),
+
+  /** Revocar un rol activo. */
+  revocarRol: (id: string, rolId: string) =>
+    apiClient.delete<{ message: string }>(`/usuarios/${id}/roles/${rolId}`),
+};
