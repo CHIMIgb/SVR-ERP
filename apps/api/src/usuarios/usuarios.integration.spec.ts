@@ -114,14 +114,14 @@ describe('Usuarios (Real DB)', () => {
   };
 
   /** Crea un usuario real vía el service (quedan en createdUsers para limpiar). */
-  const crearUsuario = async (emailSuffix = '') => {
+  const crearUsuario = async (emailSuffix = '', rolId?: string) => {
     const persona = await crearPersona();
     const creado = await service.create(
       {
         personaId: persona.id,
         email: `zz-usr-${TEST_ID}-${randomUUID().slice(0, 4)}${emailSuffix}@test.mx`,
         password: 'passwordSegura1',
-        rolId: rolZZ.id,
+        rolId: rolId ?? rolZZ.id,
       },
       ACTOR_USER_ID,
     );
@@ -400,7 +400,14 @@ describe('Usuarios (Real DB)', () => {
 
   describe('EQUIPOS (jefe_user_id, JEFE_ASIGNADO)', () => {
     it('asigna, re-asigna y des-asigna jefe con auditoría real y findEquipos lo refleja', async () => {
-      const jefe = await crearUsuario();
+      // La tabla de /equipos SOLO lista residentes (decisión del cliente) —
+      // el jefe de prueba usa el rol real 'Residente'.
+      const rolResidente = await prisma.roles.findFirst({
+        where: { nombre: 'Residente', activo: true, eliminado_en: null },
+        select: { id: true },
+      });
+      expect(rolResidente).not.toBeNull();
+      const jefe = await crearUsuario('-jefe', rolResidente!.id);
       const sub = await crearUsuario();
 
       // Asignar

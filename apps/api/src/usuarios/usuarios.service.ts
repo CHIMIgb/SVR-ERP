@@ -559,8 +559,9 @@ export class UsuariosService {
   //  EQUIPOS (vista /equipos — P11: jefe↔trabajador)
   // ────────────────────────────────────────────
   /**
-   * Equipos: por cada "jefe" (usuario con rol Residente o con subordinados)
-   * su lista de subordinados, y los candidatos sin jefe.
+   * Equipos: SOLO usuarios con rol **Residente** (decisión del cliente,
+   * 2026-11-14 — la tabla carga únicamente residentes), cada uno con su
+   * lista de subordinados, y los candidatos sin jefe.
    * Confirmado por el cliente (P10): vínculo usuario↔usuario; un jefe puede
    * tener subordinados de CUALQUIER rol.
    */
@@ -569,14 +570,9 @@ export class UsuariosService {
       where: {
         eliminado_en: null,
         activo: true,
-        OR: [
-          {
-            users_roles_users_roles_user_idTousers: {
-              some: { activo: true, roles: { nombre: 'Residente' } },
-            },
-          },
-          { subordinados: { some: { eliminado_en: null } } },
-        ],
+        users_roles_users_roles_user_idTousers: {
+          some: { activo: true, roles: { nombre: 'Residente' } },
+        },
       },
       include: {
         personas_users_persona_idTopersonas: true,
