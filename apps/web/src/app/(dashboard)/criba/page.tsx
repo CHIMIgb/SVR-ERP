@@ -10,7 +10,6 @@ import { StatsCard } from '@/components/ui/StatsCard';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
@@ -41,17 +40,6 @@ const TURNOS: { value: TurnoCribaApi; label: 'Matutino' | 'Vespertino' }[] = [
   { value: 'MATUTINO', label: 'Matutino' },
   { value: 'VESPERTINO', label: 'Vespertino' },
 ];
-
-const materialVariant: Record<string, 'warning' | 'primary' | 'info'> = {
-  'Criba fina': 'warning',
-  'Criba gruesa': 'primary',
-  'Arena lavada': 'info',
-};
-
-const turnoVariant: Record<RegistroCribaDTO['turno'], 'warning' | 'info'> = {
-  Matutino: 'warning',
-  Vespertino: 'info',
-};
 
 const emptyForm = {
   fecha: fechaLocalHoy(),
@@ -404,9 +392,8 @@ export default function CribaPage() {
     {
       key: 'turno',
       header: 'Turno',
-      render: (item) => (
-        <Badge variant={turnoVariant[item.turno]} size="sm" dot>{item.turno}</Badge>
-      ),
+      // Solo texto, sin badge (decisión del cliente).
+      render: (item) => <span className="font-semibold text-ui-600">{item.turno}</span>,
     },
     {
       key: 'operador',
@@ -434,11 +421,8 @@ export default function CribaPage() {
     {
       key: 'tipoMaterial',
       header: 'Material',
-      render: (item) => (
-        <Badge variant={materialVariant[item.tipoMaterial] ?? 'neutral'} size="sm" dot>
-          {item.tipoMaterial}
-        </Badge>
-      ),
+      // Solo texto, sin badge (decisión del cliente).
+      render: (item) => <span className="font-semibold text-ui-600">{item.tipoMaterial}</span>,
     },
     {
       key: 'materialProducido',
@@ -454,9 +438,10 @@ export default function CribaPage() {
       key: 'materialAlBanco',
       header: 'Al banco',
       align: 'right',
+      // Sin verde: mismo neutro que "Producido" (decisión del cliente).
       render: (item) => (
-        <span className="font-black text-green-700">
-          {item.materialAlBanco} <span className="text-green-400 font-bold text-xs">m³</span>
+        <span className="font-black text-ui-900">
+          {item.materialAlBanco} <span className="text-ui-400 font-bold text-xs">m³</span>
         </span>
       ),
     },
@@ -472,13 +457,12 @@ export default function CribaPage() {
       key: 'eficiencia',
       header: 'Efic.',
       align: 'right',
+      // Solo texto, sin badge de color (decisión del cliente).
       render: (item) => {
         const ef = item.materialProducido > 0
           ? Math.round((item.materialAlBanco / item.materialProducido) * 100)
           : 0;
-        return (
-          <Badge variant={colorEficiencia(ef)} size="sm">{ef}%</Badge>
-        );
+        return <span className="font-black text-ui-900">{ef}%</span>;
       },
     },
     {
@@ -585,9 +569,9 @@ export default function CribaPage() {
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${materialDot[tipo]}`} />
                   <span className="font-black text-ui-800 text-sm truncate">{tipo}</span>
                 </div>
-                <Badge size="sm" variant={initialLoading ? 'neutral' : colorEficiencia(ef)}>
+                <span className="font-semibold text-ui-600 text-sm">
                   {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `Efic. ${ef}%`}
-                </Badge>
+                </span>
               </div>
 
               {/* Tres métricas del material */}
@@ -601,14 +585,14 @@ export default function CribaPage() {
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Al banco</p>
-                  <p className="text-base font-black text-green-700">
+                  <p className="text-base font-black text-ui-900">
                     {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : alBanco}
                   </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-ui-400 uppercase tracking-widest">Merma</p>
-                  <p className={`text-base font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-900'}`}>
+                  <p className="text-base font-black text-ui-900">
                     {initialLoading ? <Loader2 className="w-5 h-5 mx-auto text-primary animate-spin" /> : merma}
                   </p>
                   <p className="text-[9px] text-ui-400 font-bold">m³</p>
@@ -620,7 +604,7 @@ export default function CribaPage() {
                 <span className="text-[10px] font-black text-ui-500 uppercase tracking-widest">
                   Merma del material
                 </span>
-                <span className={`text-xs font-black ${mermaPct >= 30 ? 'text-red-600' : mermaPct >= 10 ? 'text-yellow-600' : 'text-ui-700'}`}>
+                <span className="text-xs font-black text-ui-700">
                   {initialLoading ? <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" /> : `${merma} m³ · ${mermaPct}%`}
                 </span>
               </div>
