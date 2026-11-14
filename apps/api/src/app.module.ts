@@ -28,6 +28,7 @@ import { ProveedoresModule } from './proveedores/proveedores.module';
 import { CobranzaModule } from './cobranza/cobranza.module';
 import { FacturasModule } from './facturas/facturas.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
+import { UsuariosModule } from './usuarios/usuarios.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -87,6 +88,7 @@ function envInt(key: string, defaultValue: number): number {
     CobranzaModule,
     FacturasModule,
     NotificacionesModule,
+    UsuariosModule,
   ],
   providers: [
     // NO ThrottlerGuard global — solo en AuthController
