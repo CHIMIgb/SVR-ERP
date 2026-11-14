@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
@@ -136,14 +137,6 @@ export default function RolesPage() {
   }, [showToast]);
 
   const usuariosRef = useRef(false);
-
-  const abrirTabUsuarios = useCallback(() => {
-    setTab('usuarios');
-    if (!usuariosRef.current) {
-      usuariosRef.current = true;
-      fetchUsuarios();
-    }
-  }, [fetchUsuarios]);
 
   // ── Handlers de roles ──
   const openCreate = useCallback(() => {
@@ -600,26 +593,21 @@ export default function RolesPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2">
-        <Button
-          variant={tab === 'roles' ? 'primary' : 'secondary'}
-          size="md"
-          icon={<ShieldCheck className="w-4 h-4" />}
-          onClick={() => setTab('roles')}
-        >
-          Roles
-        </Button>
-        <Button
-          variant={tab === 'usuarios' ? 'primary' : 'secondary'}
-          size="md"
-          icon={<Users className="w-4 h-4" />}
-          onClick={abrirTabUsuarios}
-        >
-          Usuarios
-        </Button>
-      </div>
-
-      {tab === 'roles' ? (
+      <Tabs
+        tabs={[
+          { key: 'roles', label: 'Roles', icon: <ShieldCheck className="w-4 h-4" /> },
+          { key: 'usuarios', label: 'Usuarios', icon: <Users className="w-4 h-4" /> },
+        ]}
+        value={tab}
+        onChange={(key) => {
+          setTab(key as typeof tab);
+          if (key === 'usuarios' && !usuariosRef.current) {
+            usuariosRef.current = true;
+            fetchUsuarios();
+          }
+        }}
+      >
+        <TabPanel tabKey="roles">
         <div className="space-y-3">
           <div className="flex justify-end">
             {puedeCrear ? (
@@ -645,7 +633,8 @@ export default function RolesPage() {
             />
           </div>
         </div>
-      ) : (
+        </TabPanel>
+        <TabPanel tabKey="usuarios">
         <div className="space-y-3">
           <p className="text-xs text-ui-500 font-medium">
             Solo lectura — los datos del usuario (nombre, correo, área, alta) se editan en la vista Usuarios.
@@ -661,7 +650,8 @@ export default function RolesPage() {
             />
           </div>
         </div>
-      )}
+        </TabPanel>
+      </Tabs>
 
       {/* ═══════════════════════════════════════════
           MODALES — ROLES
