@@ -35,6 +35,12 @@ export class CreateUsuarioDto {
   @MaxLength(60)
   apellidoMaterno?: string;
 
+  /** Teléfono de la persona (opcional). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  telefono?: string;
+
   /** Correo de acceso a la app de escritorio (único). */
   @IsString()
   @MaxLength(200)

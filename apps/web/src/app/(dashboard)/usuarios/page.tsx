@@ -48,10 +48,10 @@ const PIN_LABELS: Record<UsuarioDTO['pinEstado'], string> = {
 
 // ── Form defaults ──
 const emptyCreateForm = {
-  personaId: '',
   nombre: '',
   apellidoPaterno: '',
   apellidoMaterno: '',
+  telefono: '',
   email: '',
   password: '',
   rolId: '',
@@ -241,29 +241,29 @@ export default function UsuariosPage() {
 
   // ── CRUD Handlers ──
   const handleCreate = useCallback(async () => {
-    const usaPersonaExistente = Boolean(createForm.personaId);
-    if (!createForm.email || !createForm.password || !createForm.rolId) {
-      showToast('El correo, la contraseña y el rol son obligatorios.', 'error');
+    if (!createForm.nombre.trim()) {
+      showToast('El nombre de la persona es obligatorio.', 'error');
       return;
     }
-    if (!usaPersonaExistente && !createForm.nombre.trim()) {
-      showToast('Selecciona una persona del catálogo o captura el nombre de la nueva.', 'error');
+    if (!createForm.email || !createForm.password || !createForm.rolId) {
+      showToast('El correo, la contraseña, el rol y el área son obligatorios.', 'error');
+      return;
+    }
+    if (!createForm.torre) {
+      showToast('Elige el área del usuario.', 'error');
       return;
     }
     setSubmitting(true);
     try {
       const res = await usuariosApi.crear({
-        ...(usaPersonaExistente
-          ? { personaId: createForm.personaId }
-          : {
-              nombre: createForm.nombre,
-              apellidoPaterno: createForm.apellidoPaterno || undefined,
-              apellidoMaterno: createForm.apellidoMaterno || undefined,
-            }),
+        nombre: createForm.nombre,
+        apellidoPaterno: createForm.apellidoPaterno || undefined,
+        apellidoMaterno: createForm.apellidoMaterno || undefined,
+        telefono: createForm.telefono || undefined,
         email: createForm.email,
         password: createForm.password,
         rolId: createForm.rolId,
-        ...(createForm.torre ? { torre: createForm.torre } : {}),
+        torre: createForm.torre,
       });
       if (res.success) {
         showToast(`Usuario "${createForm.email}" creado.`, 'success');
@@ -614,50 +614,45 @@ export default function UsuariosPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Persona" required>
-            <select
-              className={modalSelectClass}
-              value={createForm.personaId}
-              onChange={(e) => setCreateForm({ ...createForm, personaId: e.target.value })}
-            >
-              <option value="">Nueva persona (captura abajo)...</option>
-              {catalogos.personas.map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </select>
+          <ModalField label="Nombre" required>
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Nombre(s)"
+              value={createForm.nombre}
+              onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })}
+            />
           </ModalField>
 
-          {createForm.personaId === '' ? (
-            <>
-              <ModalField label="Nombre" required>
-                <input
-                  type="text"
-                  className={modalInputClass}
-                  placeholder="Nombre(s)"
-                  value={createForm.nombre}
-                  onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })}
-                />
-              </ModalField>
-              <ModalField label="Apellido Paterno">
-                <input
-                  type="text"
-                  className={modalInputClass}
-                  placeholder="Apellido paterno"
-                  value={createForm.apellidoPaterno}
-                  onChange={(e) => setCreateForm({ ...createForm, apellidoPaterno: e.target.value })}
-                />
-              </ModalField>
-              <ModalField label="Apellido Materno">
-                <input
-                  type="text"
-                  className={modalInputClass}
-                  placeholder="Apellido materno"
-                  value={createForm.apellidoMaterno}
-                  onChange={(e) => setCreateForm({ ...createForm, apellidoMaterno: e.target.value })}
-                />
-              </ModalField>
-            </>
-          ) : null}
+          <ModalField label="Apellido Paterno">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Apellido paterno"
+              value={createForm.apellidoPaterno}
+              onChange={(e) => setCreateForm({ ...createForm, apellidoPaterno: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Apellido Materno">
+            <input
+              type="text"
+              className={modalInputClass}
+              placeholder="Apellido materno"
+              value={createForm.apellidoMaterno}
+              onChange={(e) => setCreateForm({ ...createForm, apellidoMaterno: e.target.value })}
+            />
+          </ModalField>
+
+          <ModalField label="Número de Teléfono">
+            <input
+              type="tel"
+              className={modalInputClass}
+              placeholder="Ej: 322-123-4567"
+              value={createForm.telefono}
+              onChange={(e) => setCreateForm({ ...createForm, telefono: e.target.value })}
+            />
+          </ModalField>
 
           <ModalField label="Correo Electrónico" required>
             <input
@@ -692,13 +687,13 @@ export default function UsuariosPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Área (opcional)">
+          <ModalField label="Área" required>
             <select
               className={modalSelectClass}
               value={createForm.torre}
               onChange={(e) => setCreateForm({ ...createForm, torre: e.target.value })}
             >
-              <option value="">La del rol</option>
+              <option value="">Seleccionar...</option>
               {TORRES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}

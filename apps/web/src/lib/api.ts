@@ -3394,6 +3394,7 @@ export interface UsuarioCreateInput {
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
+  telefono?: string;
   email: string;
   password: string;
   rolId: string;

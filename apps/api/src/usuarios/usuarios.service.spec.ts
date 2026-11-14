@@ -131,8 +131,13 @@ describe('UsuariosService', () => {
     it('crea usuario con persona nueva y audit SUCCESS', async () => {
       prisma.users.findFirst.mockResolvedValue(null); // email libre
       const result = await service.create(
-        { ...dtoBase, nombre: 'Ana' },
+        { ...dtoBase, nombre: 'Ana', telefono: '55-1111-2222' },
         ACTOR,
+      );
+      expect(prisma.personas.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ nombre: 'Ana', telefono: '55-1111-2222' }),
+        }),
       );
       expect(prisma.personas.create).toHaveBeenCalled();
       const userData = prisma.users.create.mock.calls[0][0].data;

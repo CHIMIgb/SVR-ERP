@@ -226,6 +226,7 @@ export class UsuariosService {
           nombre: dto.nombre.trim(),
           apellido_paterno: dto.apellidoPaterno?.trim() || null,
           apellido_materno: dto.apellidoMaterno?.trim() || null,
+          telefono: dto.telefono?.trim() || null,
           creado_por: userId,
           actualizado_por: userId,
           actualizado_en: new Date(),
