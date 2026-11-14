@@ -1056,19 +1056,26 @@ export default function RolesPage() {
               {/* Datos base */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <ModalField label="Rol (mono-rol)">
-                  <select
-                    className={modalSelectClass}
-                    value={ficha.roles[0]?.id ?? ''}
-                    disabled={!puedeEditar}
-                    onChange={(e) => handleCambiarRol(ficha.id, e.target.value)}
-                  >
-                    <option value="">Seleccionar...</option>
-                    {roles
-                      .filter((r) => !r.esSistema)
-                      .map((r) => (
-                        <option key={r.id} value={r.id}>{r.nombre}</option>
-                      ))}
-                  </select>
+                  {ficha.roles.some((r) => r.esSistema) ? (
+                    <p className="text-sm font-bold text-ui-700 flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-ui-400" />
+                      {ficha.roles[0].nombre}
+                    </p>
+                  ) : (
+                    <select
+                      className={modalSelectClass}
+                      value={ficha.roles[0]?.id ?? ''}
+                      disabled={!puedeEditar}
+                      onChange={(e) => handleCambiarRol(ficha.id, e.target.value)}
+                    >
+                      <option value="">Seleccionar...</option>
+                      {roles
+                        .filter((r) => !r.esSistema)
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>{r.nombre}</option>
+                        ))}
+                    </select>
+                  )}
                 </ModalField>
                 <ModalField label="Área">
                   <p className="text-sm font-bold text-ui-700">
@@ -1110,14 +1117,16 @@ export default function RolesPage() {
                         Desbloquear cuenta
                       </Button>
                     )}
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      icon={<LogOut className="w-3.5 h-3.5" />}
-                      onClick={() => setSesionesOpen(true)}
-                    >
-                      Cerrar sesiones ({ficha.sesiones.length})
-                    </Button>
+                    {ficha.id !== user?.id && (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        icon={<LogOut className="w-3.5 h-3.5" />}
+                        onClick={() => setSesionesOpen(true)}
+                      >
+                        Cerrar sesiones ({ficha.sesiones.length})
+                      </Button>
+                    )}
                   </div>
                   {pinTemporalMostrado && (
                     <div className="mt-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 rounded-lg p-3 flex items-center gap-3">

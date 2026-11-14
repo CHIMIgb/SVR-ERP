@@ -3567,7 +3567,7 @@ export interface IdentidadUsuarioDTO {
   activo: boolean;
   torre: string | null;
   numeroEmpleado: string | null;
-  roles: { id: string; nombre: string; nivel: number }[];
+  roles: { id: string; nombre: string; nivel: number; esSistema: boolean }[];
   jefe: { id: string; nombre: string | null } | null;
   pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO';
   vistas: VistaRolDTO[];

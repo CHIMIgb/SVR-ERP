@@ -447,17 +447,19 @@ export default function UsuariosPage() {
               >
                 Editar
               </Button>
-              <Button
-                variant={item.activo ? 'danger' : 'success'}
-                size="sm"
-                icon={item.activo ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
-                onClick={(e) => { e.stopPropagation(); openEstado(item); }}
-              >
-                {item.activo ? 'Desactivar' : 'Activar'}
-              </Button>
+              {item.id !== user?.id && (
+                <Button
+                  variant={item.activo ? 'danger' : 'success'}
+                  size="sm"
+                  icon={item.activo ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                  onClick={(e) => { e.stopPropagation(); openEstado(item); }}
+                >
+                  {item.activo ? 'Desactivar' : 'Activar'}
+                </Button>
+              )}
             </>
           )}
-          {puedeEliminar && (
+          {puedeEliminar && item.id !== user?.id && (
             <Button
               variant="danger"
               size="sm"

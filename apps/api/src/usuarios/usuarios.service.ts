@@ -671,7 +671,7 @@ export class UsuariosService {
         personas_users_persona_idTopersonas: true,
         users_roles_users_roles_user_idTousers: {
           where: { activo: true },
-          include: { roles: { select: { id: true, nombre: true, nivel: true } } },
+          include: { roles: { select: { id: true, nombre: true, nivel: true, es_sistema: true } } },
         },
         jefe: {
           include: { personas_users_persona_idTopersonas: true },
@@ -731,6 +731,7 @@ export class UsuariosService {
         id: ur.roles.id,
         nombre: ur.roles.nombre,
         nivel: ur.roles.nivel,
+        esSistema: ur.roles.es_sistema,
       })),
       jefe: user.jefe
         ? {
