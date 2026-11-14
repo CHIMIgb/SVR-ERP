@@ -172,6 +172,19 @@ o elimina sin autorización explícita.
 Al crear o refactorizar vistas, reemplazar estos patrones manuales
 por sus componentes equivalentes. **Nunca re-implementar lo que ya existe.**
 
+**REGLA DURA — respetar la documentación de componentes reutilizables
+(`COMPONENTS.md`, raíz del repo):** toda vista usa el kit
+`src/components/ui/*` siguiendo SU documentación en `COMPONENTS.md` —
+variantes, props, tamaños, y cuándo usar / cuándo NO usar cada componente
+(ej. la acción de ver/leer en columnas de acciones va con
+`variant="info"` + icono `Eye`, el pie de un modal de solo lectura lleva
+`<ModalFooter>` con botón Cerrar `variant="secondary"`, los loaders usan
+el patrón documentado en la sección de componentes, etc.). Antes de
+construir o editar una vista, CONSULTAR `COMPONENTS.md`; desviarse del
+componente documentado es Request Changes. Si el componente no existe,
+se crea nuevo en `src/components/ui/` (con patrón `.tsx` + `.styles.ts`
++ `index.ts`) y se documenta en `COMPONENTS.md` en el mismo cambio.
+
 | Patrón manual existente | Componente a usar | Import |
 |------------------------|-------------------|--------|
 | `text-3xl font-black tracking-tight text-slate-900` en headers | `<PageHeader title="..." />` | `@/components/ui/PageHeader` |

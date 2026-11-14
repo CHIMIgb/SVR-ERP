@@ -164,7 +164,7 @@ export default function EquiposPage() {
       render: (equipo) => (
         <div className="flex items-center justify-end gap-1">
           <Button
-            variant="secondary"
+            variant="info"
             size="sm"
             icon={<Eye className="w-3.5 h-3.5" />}
             onClick={(e) => {
