@@ -694,6 +694,69 @@ export default function RolesPage() {
         </div>
       )}
 
+      {/* Tabs compactos */}
+      <Tabs
+        compact
+        tabs={[
+          { key: 'roles', label: 'Roles', icon: <ShieldCheck className="w-4 h-4" />, count: tab === 'roles' ? undefined : roles.length },
+          { key: 'usuarios', label: 'Usuarios', icon: <Users className="w-4 h-4" />, count: tab === 'usuarios' ? undefined : usuariosLoaded ? usuarios.length : undefined },
+        ]}
+        value={tab}
+        onChange={(key) => {
+          setTab(key as typeof tab);
+          if (key === 'usuarios' && !usuariosRef.current) {
+            usuariosRef.current = true;
+            fetchUsuarios();
+          }
+        }}
+      >
+        <TabPanel tabKey="roles">
+        <div className="space-y-3">
+          <div className="relative">
+            <RefreshOverlay show={refreshing && !initialLoading} />
+            <DataTable
+              columns={columnsRoles}
+              data={rolesPagina}
+              loading={initialLoading}
+              keyExtractor={(rol) => rol.id}
+              emptyText="No se encontraron roles que coincidan con la búsqueda."
+              maxBodyHeight="500px"
+            />
+          </div>
+          <Pagination
+            currentPage={pageRoles}
+            totalPages={Math.max(Math.ceil(rolesFiltrados.length / PAGE_SIZE), 1)}
+            totalRecords={rolesFiltrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPageRoles}
+          />
+        </div>
+        </TabPanel>
+        <TabPanel tabKey="usuarios">
+        <div className="space-y-3">
+          <p className="text-xs text-ui-500 font-medium">
+            Solo lectura — los datos del usuario (nombre, correo, área, alta) se editan en la vista Usuarios.
+          </p>
+          <div className="relative">
+            <DataTable
+              columns={columnsUsuarios}
+              data={usuariosPagina}
+              loading={usuariosLoading || !usuariosLoaded}
+              keyExtractor={(u) => u.id}
+              emptyText="No se encontraron usuarios que coincidan con la búsqueda."
+              maxBodyHeight="500px"
+            />
+          </div>
+          <Pagination
+            currentPage={pageUsuarios}
+            totalPages={Math.max(Math.ceil(usuariosFiltrados.length / PAGE_SIZE), 1)}
+            totalRecords={usuariosFiltrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPageUsuarios}
+          />
+        </div>
+        </TabPanel>
+      </Tabs>
       {/* Búsqueda + Filtros (patrón /inventario) */}
       {tab === 'roles' ? (
         <>
@@ -802,69 +865,6 @@ export default function RolesPage() {
         </>
       )}
 
-      {/* Tabs compactos */}
-      <Tabs
-        compact
-        tabs={[
-          { key: 'roles', label: 'Roles', icon: <ShieldCheck className="w-4 h-4" />, count: tab === 'roles' ? undefined : roles.length },
-          { key: 'usuarios', label: 'Usuarios', icon: <Users className="w-4 h-4" />, count: tab === 'usuarios' ? undefined : usuariosLoaded ? usuarios.length : undefined },
-        ]}
-        value={tab}
-        onChange={(key) => {
-          setTab(key as typeof tab);
-          if (key === 'usuarios' && !usuariosRef.current) {
-            usuariosRef.current = true;
-            fetchUsuarios();
-          }
-        }}
-      >
-        <TabPanel tabKey="roles">
-        <div className="space-y-3">
-          <div className="relative">
-            <RefreshOverlay show={refreshing && !initialLoading} />
-            <DataTable
-              columns={columnsRoles}
-              data={rolesPagina}
-              loading={initialLoading}
-              keyExtractor={(rol) => rol.id}
-              emptyText="No se encontraron roles que coincidan con la búsqueda."
-              maxBodyHeight="500px"
-            />
-          </div>
-          <Pagination
-            currentPage={pageRoles}
-            totalPages={Math.max(Math.ceil(rolesFiltrados.length / PAGE_SIZE), 1)}
-            totalRecords={rolesFiltrados.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPageRoles}
-          />
-        </div>
-        </TabPanel>
-        <TabPanel tabKey="usuarios">
-        <div className="space-y-3">
-          <p className="text-xs text-ui-500 font-medium">
-            Solo lectura — los datos del usuario (nombre, correo, área, alta) se editan en la vista Usuarios.
-          </p>
-          <div className="relative">
-            <DataTable
-              columns={columnsUsuarios}
-              data={usuariosPagina}
-              loading={usuariosLoading || !usuariosLoaded}
-              keyExtractor={(u) => u.id}
-              emptyText="No se encontraron usuarios que coincidan con la búsqueda."
-              maxBodyHeight="500px"
-            />
-          </div>
-          <Pagination
-            currentPage={pageUsuarios}
-            totalPages={Math.max(Math.ceil(usuariosFiltrados.length / PAGE_SIZE), 1)}
-            totalRecords={usuariosFiltrados.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPageUsuarios}
-          />
-        </div>
-        </TabPanel>
-      </Tabs>
 
       {/* ═══════════════════════════════════════════
           MODALES — ROLES
