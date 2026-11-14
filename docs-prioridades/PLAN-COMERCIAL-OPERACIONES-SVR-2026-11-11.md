@@ -53,7 +53,7 @@
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ✅ HECHA completa (B5.1–B5.13, 2026-11-13/14) — ver §13 y `NOTIFICACIONES.md` |
 | B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ✅ HECHA completa (B6.1–B6.4, 2026-11-14) — ver §14 |
 | B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ✅ HECHA completa (B7.1–B7.4, 2026-11-14) — ver §15 |
-| B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
+| B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ **SIGUIENTE** |
 | B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
 
 > **Decisión del cliente (2026-11-12):** se conserva la tabla `obras` con
