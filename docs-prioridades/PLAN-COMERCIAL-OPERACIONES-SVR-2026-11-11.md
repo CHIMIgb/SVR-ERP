@@ -49,8 +49,8 @@
 | B1 | **P2: partidas de cotización** (`cotizacion_items`) + plantilla según los Word (concepto/cantidad/monto, condiciones precargadas) | `/cotizaciones` | ✅ HECHA completa (B1.1–B1.4, 2026-11-12) — ver §11 |
 | B2 | **6.6: obra 1:1 con el proyecto** — el proyecto nace con **UNA** obra en la misma `$transaction` (guard idempotente) + sync de estados; se retira el diseño multi-frente y el botón «Agregar obra». Incluye sembrar la obra faltante de los proyectos activos (BD: 3 obras / 6 proyectos EN_PROCESO) | `/proyectos` → alimenta `/operaciones` y `/inventario` | ✅ HECHA completa (`83fb6198`, `c8423b02`, B2.3/B2.4 2026-11-12) — ver §10 |
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ✅ HECHA completa (B3.1–B3.4, 2026-11-13) — ver §12 |
-| B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ⏳ |
-| B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ⏳ |
+| B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ✅ HECHA completa (B4.1–B4.4, 2026-11-13) — ver §12 |
+| B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ✅ HECHA completa (B5.1–B5.13, 2026-11-13/14) — ver §13 y `NOTIFICACIONES.md` |
 | B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ⏳ |
 | B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ⏳ |
 | B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
@@ -498,3 +498,42 @@ integración deberían fijar su propio horario (como los unit con `TURNO_*`).
 
 **Fuera de B3 (no se construye aquí):** C3 venta a crédito → CxC desde el POS ·
 historial de compras por cliente en /clientes (depende de este `cliente_id`).
+
+---
+
+## 13. Plan de implementación B5 — notificaciones funcionales (EJECUTADO 2026-11-13/14)
+
+> **Diseño final (con los ajustes del cliente durante la prueba):** una fila
+> por evento con **destinatarios explícitos elegidos al emitir** (usuario /
+> torre(área) / rol / todos) — sin depender de menús ni vistas; lectura y
+> descarte **por persona** en la tabla puente `notificaciones_lecturas`;
+> el actor no recibe su propio aviso. Documentación completa de uso y
+> prueba: `docs-prioridades/NOTIFICACIONES.md`.
+
+| Fase | Estado | Evidencia |
+|---|---|---|
+| B5.1 BD | ✅ HECHA | `0009d0ed` — tabla `notificaciones` (enum ALERTA/INFO, audiencia por rol) |
+| B5.2 Backend | ✅ HECHA | `4c3f7bc8` — módulo con `emitir` best-effort + buzón paginado + permiso #107 `sistema.notificaciones.ver` (los 6 roles) + `AuditAction.NOTIFICACION_LEIDA` |
+| B5.3 Eventos | ✅ HECHA | `e251ceca` — OC aprobada, abono registrado, cierre de caja pendiente, nómina pagada |
+| B5.4 Frontend | ✅ HECHA | `01b584a5` — centro del Topbar cosido al API (polling 60s, badge, marcar leídas); mock eliminado |
+
+**Ajustes posteriores durante la prueba (cada uno su commit):**
+- `2c43917d`/`59340c62` estado sin badges, condiciones más amplias, subtotal
+  con comas, fecha automática, modales anchos (cotizaciones) · `f13e9679`
+  compensación del scrollbar en todos los modales.
+- `30c14f50`+`f4a667ca` **lectura/descarte por persona** (`notificaciones_lecturas`)
+  y **buzón por destinatario explícito** (usuario/torre/rol/todos, sin role_vistas)
+  — el actor no recibe su propio aviso (B5.9).
+- `5ca3a547`+`c8923f9a` **FK `trabajadores.usuario_id`** (exacto para el
+  asignado; backfill por nombre único enlazó las cuentas existentes) ·
+  `b605288a` los **5 flujos de reportes** (creación→área, aceptación→creador,
+  reasignación→anterior+`8a7fbee8`→nuevo, cierre→asignado, actividades→la otra
+  parte) · `b42653f6` fix del cierre (el asignado por texto ahora notifica vía
+  `reportes_campo.asignado_user_id`) + limpieza del rate limiting (límite de
+  login hardcodeado que pisaba el .env; throttler `long` muerto).
+- `35c40d42` (revertido por `ca071464`): acceso a /proveedores para
+  Administrativo — sustituido por los destinatarios explícitos.
+
+**Pendiente de decisiones del SVR** (dudas #34/#7/#5 de
+`DUDAS-VISTAS-SVR.txt`): evento de CxP/CxC por vencer/vencidas (alertas y
+estado "VENCIDA") — la tubería está lista (`emitirARol` + cron pendiente).
