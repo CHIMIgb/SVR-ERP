@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
@@ -40,11 +39,6 @@ const emptyForm = {
   precioUnitario: '',
 };
 
-const emptyOrderForm = {
-  cantidad: '',
-  motivo: '',
-};
-
 export default function InventarioPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -70,11 +64,9 @@ export default function InventarioPage() {
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [orderOpen, setOrderOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ArticuloInventarioDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [orderForm, setOrderForm] = useState(emptyOrderForm);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Permisos RBAC ──
@@ -87,6 +79,13 @@ export default function InventarioPage() {
   // (articulos_precio) que se gestionan por separado, su precio unitario
   // base no se edita desde aquí.
   const esMaterialDeVenta = selectedItem?.codigo?.startsWith('MAT-') ?? false;
+  // Artículos cuyo stock se alimenta de la PRODUCCIÓN DE CRIBA
+  // (catálogo materiales_criba): el nombre y el stock no se editan a mano —
+  // solo el envío de criba toca el stock.
+  // shortcut: por nombres del catálogo sembrado; si se agregan materiales de
+  // criba nuevos o se renombran, actualizar aquí o exponer el catálogo por API.
+  const NOMBRES_CRIBA = ['Criba fina', 'Criba gruesa', 'Arena lavada'];
+  const esDeCriba = esMaterialDeVenta && NOMBRES_CRIBA.includes(selectedItem?.nombre ?? '');
 
   // ── Cargar catálogos (una sola vez) ──
   useEffect(() => {
@@ -243,12 +242,7 @@ export default function InventarioPage() {
     setEditOpen(true);
   }, []);
 
-  const openOrder = useCallback((item: ArticuloInventarioDTO) => {
-    setSelectedItem(item);
-    const sugerencia = Math.max(1, item.stockMinimo - item.stock + 10);
-    setOrderForm({ cantidad: String(sugerencia), motivo: '' });
-    setOrderOpen(true);
-  }, []);
+  // ── CRUD ──
 
   const openDelete = useCallback((item: ArticuloInventarioDTO) => {
     setSelectedItem(item);
@@ -330,35 +324,6 @@ export default function InventarioPage() {
     }
   }, [selectedItem, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  const handleOrder = useCallback(async () => {
-    if (!selectedItem || !orderForm.cantidad) {
-      showToast('La cantidad a pedir es obligatoria.', 'error');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await inventarioApi.movimiento({
-        articuloId: selectedItem.id,
-        tipo: 'ENTRADA',
-        cantidad: Number(orderForm.cantidad),
-        motivo: orderForm.motivo || `Orden de compra - ${selectedItem.nombre}`,
-      });
-      if (res.success) {
-        showToast(`Entrada de ${orderForm.cantidad} unidades registrada para "${selectedItem.nombre}".`, 'success');
-        setOrderOpen(false);
-        setSelectedItem(null);
-        fetchData(pagination.page, search, filterValues);
-        fetchStats();
-      } else {
-        showToast(mensajeErrorApi(res.error, 'Error al registrar entrada.'), 'error');
-      }
-    } catch {
-      showToast('Error de conexión al registrar entrada.', 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [selectedItem, orderForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
-
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
@@ -435,16 +400,6 @@ export default function InventarioPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
-          {puedeEditar && (
-            <Button
-              variant="info"
-              size="sm"
-              icon={<ShoppingCart className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); openOrder(item); }}
-            >
-              Pedir
-            </Button>
-          )}
           {puedeEditar && (
             <Button
               variant="warning"
@@ -753,55 +708,6 @@ export default function InventarioPage() {
       </FormModal>
 
       <FormModal
-        open={orderOpen}
-        onClose={() => setOrderOpen(false)}
-        onCancel={() => setOrderOpen(false)}
-        title="Registrar Entrada de Inventario"
-        subtitle={selectedItem ? `Artículo: ${selectedItem.nombre}` : undefined}
-        submitLabel="Registrar Entrada"
-        cancelLabel="Cancelar"
-        onSubmit={handleOrder}
-        isSubmitting={submitting}
-      >
-        {selectedItem && (
-          <div className="space-y-4">
-            <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-black text-ui-900">{selectedItem.nombre}</p>
-                  <p className="text-xs text-ui-500">{selectedItem.categoria} — {selectedItem.proveedor}</p>
-                </div>
-                <Badge variant={selectedItem.stock <= selectedItem.stockMinimo ? 'error' : 'success'} size="sm">
-                  Stock: {selectedItem.stock} {selectedItem.unidad}
-                </Badge>
-              </div>
-            </div>
-
-            <ModalField label="Cantidad a Entrar" required>
-              <input
-                type="number"
-                className={modalInputClass}
-                placeholder="10"
-                min="1"
-                value={orderForm.cantidad}
-                onChange={(e) => setOrderForm({ ...orderForm, cantidad: e.target.value })}
-              />
-            </ModalField>
-
-            <ModalField label="Motivo / Referencia">
-              <input
-                type="text"
-                className={modalInputClass}
-                placeholder="Número de orden interno, proveedor, etc."
-                value={orderForm.motivo}
-                onChange={(e) => setOrderForm({ ...orderForm, motivo: e.target.value })}
-              />
-            </ModalField>
-          </div>
-        )}
-      </FormModal>
-
-      <FormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onCancel={() => setEditOpen(false)}
@@ -820,7 +726,13 @@ export default function InventarioPage() {
               placeholder="Nombre del artículo"
               value={form.nombre}
               onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+              readOnly={esDeCriba}
             />
+            {esDeCriba && (
+              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                Material de producción de criba; su nombre lo administra el catálogo de criba.
+              </p>
+            )}
           </ModalField>
 
           <ModalField label="Código">
@@ -880,7 +792,13 @@ export default function InventarioPage() {
               placeholder="0"
               value={form.stock}
               onChange={(e) => setForm({ ...form, stock: e.target.value.replace(/[^\d]/g, '') })}
+              readOnly={esDeCriba}
             />
+            {esDeCriba && (
+              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                El stock de este material solo sube al enviar la producción de criba al inventario.
+              </p>
+            )}
           </ModalField>
 
           <ModalField label="Stock Mínimo">
