@@ -156,27 +156,29 @@ describe('CribaService', () => {
       );
     });
 
-    it('B6: con maquinaId/proyectoId guarda los FKs (mocks de máquina y proyecto)', async () => {
-      prisma.maquinas = { findFirst: jest.fn().mockResolvedValue({ id: 'm-1', nombre: 'Criba 1' }) };
+    it('B6: con maquinaId (código)/proyectoId guarda los UUIDs reales', async () => {
+      prisma.maquinas = {
+        findFirst: jest.fn().mockResolvedValue({ id: 'uuid-maquina', codigo: 'M001', nombre: 'Criba 1' }),
+      };
       prisma.proyectos = {
         findFirst: jest.fn().mockResolvedValue({ id: 'p-1', nombre: 'Obra Norte', estado: 'EN_PROCESO' }),
       };
       const result = await service.create(
-        { ...createDto, maquinaId: 'm-1', proyectoId: 'p-1' },
+        { ...createDto, maquinaId: 'M001', proyectoId: 'p-1' },
         'user-1',
       );
 
       const data = prisma.registros_criba.create.mock.calls[0][0].data;
-      expect(data.maquina_id).toBe('m-1');
+      expect(data.maquina_id).toBe('uuid-maquina'); // el FK guarda el UUID
       expect(data.proyecto_id).toBe('p-1');
-      expect(result.maquinaId).toBe('m-1');
+      expect(result.maquinaId).toBe('m-1'); // serialize expone el código
       expect(result.proyectoId).toBe('p-1');
     });
 
     it('B6: maquinaId inexistente → MAQUINA_NO_ENCONTRADA con audit FAIL', async () => {
       prisma.maquinas = { findFirst: jest.fn().mockResolvedValue(null) };
       await expect(
-        service.create({ ...createDto, maquinaId: 'm-x' }, 'user-1'),
+        service.create({ ...createDto, maquinaId: 'M999' }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -208,10 +210,10 @@ describe('CribaService', () => {
       );
     });
 
-    it('B6: findAll aplica los filtros maquinaId y proyectoId', async () => {
-      await service.findAll({ maquinaId: 'm-1', proyectoId: 'p-1' });
+    it('B6: findAll aplica los filtros maquinaId (código) y proyectoId', async () => {
+      await service.findAll({ maquinaId: 'M001', proyectoId: 'p-1' });
       const where = prisma.registros_criba.findMany.mock.calls[0][0].where;
-      expect(where.maquina_id).toBe('m-1');
+      expect(where.maquinas).toEqual({ codigo: 'M001' });
       expect(where.proyecto_id).toBe('p-1');
     });
 

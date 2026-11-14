@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsIn, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsIn, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Turno } from '@prisma/client';
 import { MATERIALES_CRIBA } from './create-registro-criba.dto';
@@ -16,9 +16,10 @@ export class QueryRegistrosCribaDto {
   @IsIn(MATERIALES_CRIBA)
   tipoMaterial?: string;
 
-  /** B6: filtro por máquina que produjo. */
+  /** B6: filtro por máquina (código, ej. M001). */
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @MaxLength(30)
   maquinaId?: string;
 
   /** B6: filtro por proyecto de destino. */

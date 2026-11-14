@@ -88,9 +88,9 @@ export class CribaService {
       where.tipo_material = query.tipoMaterial;
     }
 
-    // B6: filtros por máquina y proyecto.
+    // B6: filtro por máquina (código, patrón despachos) y proyecto (id).
     if (query.maquinaId) {
-      where.maquina_id = query.maquinaId;
+      where.maquinas = { codigo: query.maquinaId };
     }
     if (query.proyectoId) {
       where.proyecto_id = query.proyectoId;
@@ -445,11 +445,11 @@ export class CribaService {
     return trabajador.id;
   }
 
-  /** B6: valida que la máquina exista y esté activa. */
+  /** B6: valida la máquina por CÓDIGO (patrón despachos: el select del front envía el código). */
   private async resolverMaquina(maquinaId: string, action: AuditAction, entityId?: string): Promise<string> {
     const maquina = await this.prisma.maquinas.findFirst({
-      where: { id: maquinaId, eliminado_en: null },
-      select: { id: true, nombre: true },
+      where: { codigo: maquinaId, eliminado_en: null },
+      select: { id: true, codigo: true, nombre: true },
     });
     if (!maquina) {
       return this.fallir(
@@ -457,7 +457,7 @@ export class CribaService {
         entityId ?? null,
         'MAQUINA_NO_ENCONTRADA',
         BadRequestException,
-        `Máquina con id "${maquinaId}" no encontrada`,
+        `Máquina con código "${maquinaId}" no encontrada`,
       );
     }
     return maquina.id;
