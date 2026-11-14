@@ -404,6 +404,8 @@ export interface InventarioCatalogos {
   categorias: CatalogoItem[];
   proveedores: CatalogoItem[];
   unidades: CatalogoUnidad[];
+  /** B7: materiales de criba con su artículo de inventario enlazado (por id). */
+  materialesCriba: { id: string; nombre: string; articuloId: string | null }[];
 }
 
 export interface PaginatedResponse<T> {
@@ -1956,6 +1958,8 @@ export interface CribaStats {
 
 export interface CribaCatalogos {
   trabajadores: { id: string; nombre: string }[];
+  /** B7: materiales de criba con su artículo de inventario enlazado (por id). */
+  materiales: { id: string; nombre: string; articuloId: string | null }[];
 }
 
 export interface CribaCreateInput {

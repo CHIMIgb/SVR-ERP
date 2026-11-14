@@ -72,6 +72,9 @@ describe('CribaService', () => {
           nombre: 'Criba fina',
           articulo_id: 'art-criba',
         }),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'mc-1', nombre: 'Criba fina', articulo_id: 'art-criba' },
+        ]),
       },
       maquinas: { findFirst: jest.fn().mockResolvedValue(null) },
       proyectos: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -374,10 +377,13 @@ describe('CribaService', () => {
   });
 
   describe('findCatalogos', () => {
-    it('should return trabajadores catalog', async () => {
+    it('should return trabajadores and materiales with articuloId', async () => {
       const result = await service.findCatalogos();
       expect(result).toHaveProperty('trabajadores');
       expect(result.trabajadores).toHaveLength(1);
+      expect(result.materiales).toEqual([
+        { id: 'mc-1', nombre: 'Criba fina', articuloId: 'art-criba' },
+      ]);
     });
   });
 });

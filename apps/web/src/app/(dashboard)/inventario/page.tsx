@@ -50,6 +50,7 @@ export default function InventarioPage() {
     categorias: [],
     proveedores: [],
     unidades: [],
+    materialesCriba: [],
   });
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,12 +81,12 @@ export default function InventarioPage() {
   // base no se edita desde aquí.
   const esMaterialDeVenta = selectedItem?.codigo?.startsWith('MAT-') ?? false;
   // Artículos cuyo stock se alimenta de la PRODUCCIÓN DE CRIBA
-  // (catálogo materiales_criba): el nombre y el stock no se editan a mano —
-  // solo el envío de criba toca el stock.
-  // shortcut: por nombres del catálogo sembrado; si se agregan materiales de
-  // criba nuevos o se renombran, actualizar aquí o exponer el catálogo por API.
-  const NOMBRES_CRIBA = ['Criba fina', 'Criba gruesa', 'Arena lavada'];
-  const esDeCriba = esMaterialDeVenta && NOMBRES_CRIBA.includes(selectedItem?.nombre ?? '');
+  // (catálogo materiales_criba por API): el nombre y el stock no se editan a
+  // mano — solo el envío de criba toca el stock. El cruce es por ID del
+  // artículo enlazado, nunca por nombre.
+  const esDeCriba = catalogos.materialesCriba.some(
+    (m) => m.articuloId !== null && m.articuloId === selectedItem?.id,
+  );
 
   // ── Cargar catálogos (una sola vez) ──
   useEffect(() => {

@@ -202,6 +202,21 @@ describe('Criba Audit (Real DB)', () => {
     });
   });
 
+  describe('findCatalogos', () => {
+    it('debe devolver materiales con su articuloId enlazado', async () => {
+      const catalogos = await service.findCatalogos();
+
+      expect(catalogos.materiales.length).toBeGreaterThanOrEqual(1);
+      const propia = catalogos.materiales.find((m) => m.id === MATERIAL_ID);
+      expect(propia).toBeDefined();
+      expect(propia?.nombre).toBe('Criba fina');
+      // Enlazado al artículo de inventario seedeado (cruce por id, nunca por nombre)
+      expect(propia?.articuloId).toBe(ARTICULO_CRIBA_ID);
+      // La forma del catálogo es solo ids y nombres
+      expect(Object.keys(propia ?? {}).sort()).toEqual(['articuloId', 'id', 'nombre']);
+    });
+  });
+
   // ────────────────────────────────────────────────
   //  B7.2 — ENVÍO A INVENTARIO
   // ────────────────────────────────────────────────

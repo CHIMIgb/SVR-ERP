@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   Plus, Package, ArrowUpRight, Clock, Gauge,
   Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, PackagePlus,
@@ -33,8 +33,6 @@ import { mensajeErrorApi } from '@/lib/api';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
-
-const MATERIALES = ['Criba fina', 'Criba gruesa', 'Arena lavada'] as const;
 
 // Turno: el formulario/filtro usa el enum de la API; la UI muestra la etiqueta.
 const TURNOS: { value: TurnoCribaApi; label: 'Matutino' | 'Vespertino' }[] = [
@@ -74,14 +72,27 @@ export default function CribaPage() {
 
   // ── Estado de datos ──
   const [registros, setRegistros] = useState<RegistroCribaDTO[]>([]);
-  const [catalogos, setCatalogos] = useState<CribaCatalogos>({ trabajadores: [] });
+  const [catalogos, setCatalogos] = useState<CribaCatalogos>({
+    trabajadores: [],
+    materiales: [],
+  });
   // B6: catálogos para los selects de Máquina y Proyecto (EN_PROCESO).
   const [maquinas, setMaquinas] = useState<Maquina[]>([]);
   const [proyectosCriba, setProyectosCriba] = useState<{ id: string; nombre: string }[]>([]);
-  // B7: catálogo de materiales de criba.
-  const [materialesCriba, setMaterialesCriba] = useState<
-    { id: string; nombre: string; stock: number }[]
-  >([]);
+  // B7: stock de los artículos de inventario (se cruza con el catálogo de
+  // materiales por articuloId — nunca por nombre).
+  const [articulosStock, setArticulosStock] = useState<{ id: string; stock: number }[]>([]);
+  // B7: materiales de criba desde el catálogo por API, con el stock del
+  // artículo de inventario enlazado.
+  const materialesCriba = useMemo(
+    () =>
+      catalogos.materiales.map((m) => ({
+        id: m.id,
+        nombre: m.nombre,
+        stock: articulosStock.find((a) => a.id === m.articuloId)?.stock,
+      })),
+    [catalogos.materiales, articulosStock],
+  );
   const [stats, setStats] = useState({
     totalProducido: 0,
     totalAlBanco: 0,
@@ -123,17 +134,14 @@ export default function CribaPage() {
     reportesCampoApi.proyectos().then((res) => {
       if (res.success && res.data) setProyectosCriba(res.data);
     });
-    // B7: materiales de criba desde el catálogo (con stock del artículo enlazado).
+    // B7: stock de los artículos de inventario (se cruza por articuloId,
+    // el material del catálogo manda — nada de listas de nombres).
     inventarioApi
       .listar({ limit: 100 })
       .then((res) => {
         if (!res.success || !res.data) return;
-        setMaterialesCriba(
-          res.data.items
-            .filter((a) =>
-              ['Criba fina', 'Criba gruesa', 'Arena lavada'].includes(a.nombre),
-            )
-            .map((a) => ({ id: a.id, nombre: a.nombre, stock: a.stock })),
+        setArticulosStock(
+          res.data.items.map((a) => ({ id: a.id, stock: a.stock })),
         );
       });
   }, []);
@@ -611,14 +619,16 @@ export default function CribaPage() {
         />
       </div>
 
-      {/* Resumen por material — fila 2 (con merma en m³ y %) */}
+      {/* Resumen por material — fila 2 (con merma en m³ y %). Los nombres
+          vienen del catálogo por API (renombre en catálogo se propaga solo). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[...MATERIALES].map((tipo) => {
-          const m = stats.porMaterial.find((p) => p.tipo === tipo);
-          const producido = m?.producido ?? 0;
-          const alBanco = m?.alBanco ?? 0;
-          const merma = m?.merma ?? 0;
-          const ef = m?.ef ?? 0;
+        {materialesCriba.map((m) => {
+          const tipo = m.nombre;
+          const mm = stats.porMaterial.find((p) => p.tipo === tipo);
+          const producido = mm?.producido ?? 0;
+          const alBanco = mm?.alBanco ?? 0;
+          const merma = mm?.merma ?? 0;
+          const ef = mm?.ef ?? 0;
           const mermaPct = producido > 0 ? Math.round((merma / producido) * 100) : 0;
           return (
             <Card key={tipo} padding="sm" className="space-y-3">

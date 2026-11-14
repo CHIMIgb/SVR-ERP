@@ -504,7 +504,7 @@ export class InventarioService {
   //  CATÁLOGOS (categorías, proveedores, unidades)
   // ────────────────────────────────────────────
   async findCatalogos() {
-    const [categorias, proveedores, unidades] = await Promise.all([
+    const [categorias, proveedores, unidades, materialesCriba] = await Promise.all([
       this.prisma.categorias_inventario.findMany({
         where: { activo: true },
         select: { id: true, nombre: true },
@@ -520,9 +520,24 @@ export class InventarioService {
         select: { id: true, codigo: true, nombre: true },
         orderBy: { nombre: 'asc' },
       }),
+      // Materiales de criba con su artículo enlazado — por id, para bloquear
+      // la edición manual de lo que produce la criba.
+      this.prisma.materiales_criba.findMany({
+        select: { id: true, nombre: true, articulo_id: true },
+        orderBy: { nombre: 'asc' },
+      }),
     ]);
 
-    return { categorias, proveedores, unidades };
+    return {
+      categorias,
+      proveedores,
+      unidades,
+      materialesCriba: materialesCriba.map((m) => ({
+        id: m.id,
+        nombre: m.nombre,
+        articuloId: m.articulo_id,
+      })),
+    };
   }
 
   // ────────────────────────────────────────────

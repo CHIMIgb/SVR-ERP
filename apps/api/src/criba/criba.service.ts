@@ -425,7 +425,21 @@ export class CribaService {
       orderBy: { nombre: 'asc' },
     });
 
-    return { trabajadores };
+    // B7: catálogo de materiales de criba con su artículo de inventario
+    // enlazado — fuente de verdad por id (nada de nombres hardcodeados).
+    const materiales = await this.prisma.materiales_criba.findMany({
+      select: { id: true, nombre: true, articulo_id: true },
+      orderBy: { nombre: 'asc' },
+    });
+
+    return {
+      trabajadores,
+      materiales: materiales.map((m) => ({
+        id: m.id,
+        nombre: m.nombre,
+        articuloId: m.articulo_id,
+      })),
+    };
   }
 
   // ────────────────────────────────────────────

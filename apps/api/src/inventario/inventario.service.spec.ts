@@ -30,12 +30,18 @@ describe('InventarioService', () => {
     },
     categorias_inventario: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     proveedores: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     unidades_medida: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
+    },
+    materiales_criba: {
+      findMany: jest.fn(),
     },
     movimientos_inventario: {
       findMany: jest.fn(),
@@ -323,6 +329,26 @@ describe('InventarioService', () => {
       await expect(
         service.aplicarEntrada(mockTx as never, params),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findCatalogos', () => {
+    it('should return catalogos including materialesCriba with articuloId', async () => {
+      mockPrisma.categorias_inventario.findMany.mockResolvedValue([mockCategoria]);
+      mockPrisma.proveedores.findMany.mockResolvedValue([mockProveedor]);
+      mockPrisma.unidades_medida.findMany.mockResolvedValue([mockUnidad]);
+      mockPrisma.materiales_criba.findMany.mockResolvedValue([
+        { id: 'mc-1', nombre: 'Criba fina', articulo_id: 'a1' },
+      ]);
+
+      const result = await service.findCatalogos();
+
+      expect(result.categorias).toEqual([mockCategoria]);
+      expect(result.proveedores).toEqual([mockProveedor]);
+      expect(result.unidades).toEqual([mockUnidad]);
+      expect(result.materialesCriba).toEqual([
+        { id: 'mc-1', nombre: 'Criba fina', articuloId: 'a1' },
+      ]);
     });
   });
 });
