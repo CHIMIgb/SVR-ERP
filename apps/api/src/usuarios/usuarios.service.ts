@@ -1048,6 +1048,7 @@ export class UsuariosService {
         id: ur.roles.id,
         nombre: ur.roles.nombre,
         esPrincipal: ur.es_principal,
+        esSistema: ur.roles.es_sistema,
       }));
 
     let pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO' = 'NORMAL';

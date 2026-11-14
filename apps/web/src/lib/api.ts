@@ -3359,6 +3359,8 @@ export interface UsuarioRoleDTO {
   id: string;
   nombre: string;
   esPrincipal: boolean;
+  /** true = rol Administrador (es_sistema): correo y rol no se editan. */
+  esSistema: boolean;
 }
 
 export interface UsuarioDTO {

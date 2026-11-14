@@ -654,6 +654,8 @@ export default function UsuariosPage() {
           setForm={setForm}
           roles={catalogos.roles}
           esEdicion
+          bloqueado={Boolean(selectedItem?.roles.some((r) => r.esSistema))}
+          rolActual={selectedItem?.roles[0] ? { id: selectedItem.roles[0].id, nombre: selectedItem.roles[0].nombre } : null}
         />
         {selectedItem && selectedItem.pinEstado !== 'NORMAL' && (
           <p className="mt-3 text-[10px] font-medium text-amber-600">
@@ -734,17 +736,24 @@ export default function UsuariosPage() {
  * Captura compartida de crear/editar (decisión del cliente: MISMA captura).
  * En edición la contraseña es opcional (vacía = conservar la actual) y el
  * rol se cambia con el mismo select (mono-rol, PATCH /usuarios/:id/rol).
+ * `bloqueado` (usuario con rol es_sistema): correo y rol fijos — la muralla
+ * final es el backend (cambiarRol → ROL_SISTEMA_PROTEGIDO).
  */
 function CapturaUsuario({
   form,
   setForm,
   roles,
   esEdicion = false,
+  bloqueado = false,
+  rolActual = null,
 }: {
   form: typeof emptyForm;
   setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
   roles: UsuariosCatalogos['roles'];
   esEdicion?: boolean;
+  bloqueado?: boolean;
+  /** Rol actual del usuario (se muestra aunque no esté en el catálogo). */
+  rolActual?: { id: string; nombre: string } | null;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -794,6 +803,7 @@ function CapturaUsuario({
           className={modalInputClass}
           placeholder="usuario@svr-constructora.com"
           value={form.email}
+          readOnly={bloqueado}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
         />
       </ModalField>
@@ -812,12 +822,16 @@ function CapturaUsuario({
         <select
           className={modalSelectClass}
           value={form.rolId}
+          disabled={bloqueado}
           onChange={(e) => setForm({ ...form, rolId: e.target.value })}
         >
           <option value="">Seleccionar...</option>
           {roles.map((r) => (
             <option key={r.id} value={r.id}>{r.nombre}</option>
           ))}
+          {rolActual && !roles.some((r) => r.id === rolActual.id) && (
+            <option value={rolActual.id}>{rolActual.nombre}</option>
+          )}
         </select>
       </ModalField>
 
