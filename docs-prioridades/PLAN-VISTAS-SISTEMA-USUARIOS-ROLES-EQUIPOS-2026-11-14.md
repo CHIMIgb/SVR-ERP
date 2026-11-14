@@ -267,8 +267,10 @@ documentado. **No se pushea ni se abre PR sin orden explícita.**
    ya genera número + PIN (§1.1). Recomendación: se queda ahí y `/usuarios`
    solo la muestra/reinicia. Si el cliente quiere crear trabajadores desde
    `/usuarios`, se conecta a la MISMA lógica del service (sin duplicar).
-2. **Auditoría del jefe**: ¿dejar `USUARIO_ACTUALIZADO` con metadata (sin
-   migración de enum, recomendado) o agregar literal `JEFE_ASIGNADO`?
+2. **Auditoría del jefe**: ~~¿dejar `USUARIO_ACTUALIZADO` con metadata o
+   agregar literal `JEFE_ASIGNADO`?~~ ✅ **RESPUESTA DEL CLIENTE
+   (2026-11-14): acción literal `JEFE_ASIGNADO` con migración de enum** —
+   aplicada en la Fase 2 (`20261114020000_equipos_enum_jefe`).
 3. **¿La vista `/roles` edita los roles** (nombre/nivel/área) o solo los
    asigna? Los permisos `sistema.roles.*` existen; recomendación: incluir
    el CRUD como sub-fase 3b.

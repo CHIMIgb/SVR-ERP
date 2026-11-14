@@ -3449,3 +3449,44 @@ export const usuariosApi = {
   revocarRol: (id: string, rolId: string) =>
     apiClient.delete<{ message: string }>(`/usuarios/${id}/roles/${rolId}`),
 };
+
+// ────────────────────────────────────────────────────────────
+//  Equipos API (vista /equipos — residentes ↔ sus empleados, solo Administrador)
+// ────────────────────────────────────────────────────────────
+
+/** Fila resumen de un miembro (subordinado o candidato sin jefe). */
+export interface MiembroEquipoDTO {
+  id: string;
+  nombre: string | null;
+  email: string;
+  torre: string | null;
+  numeroEmpleado: string | null;
+  roles: string[];
+}
+
+export interface EquipoDTO {
+  usuarioId: string;
+  nombre: string | null;
+  email: string;
+  torre: string | null;
+  numeroEmpleado: string | null;
+  roles: string[];
+  subordinados: MiembroEquipoDTO[];
+}
+
+export interface EquiposDTO {
+  equipos: EquipoDTO[];
+  sinJefe: MiembroEquipoDTO[];
+}
+
+export const equiposApi = {
+  /** Jefes con su equipo + candidatos sin jefe. */
+  listar: () => apiClient.get<EquiposDTO>('/equipos'),
+
+  /** Asignar / re-asignar / des-asignar jefe (null des-asigna). */
+  asignarJefe: (usuarioId: string, jefeUserId: string | null) =>
+    apiClient.patch<{ message: string; jefeUserId: string | null }>(
+      `/usuarios/${usuarioId}/jefe`,
+      { jefeUserId },
+    ),
+};
