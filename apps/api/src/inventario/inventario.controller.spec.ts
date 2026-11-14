@@ -29,13 +29,6 @@ describe('InventarioController', () => {
     create: jest.fn().mockResolvedValue(mockResult.items[0]),
     update: jest.fn().mockResolvedValue(mockResult.items[0]),
     remove: jest.fn().mockResolvedValue({ message: 'Artículo eliminado exitosamente' }),
-    crearMovimiento: jest.fn().mockResolvedValue({
-      articuloId: 'a1',
-      tipo: 'ENTRADA',
-      cantidad: 10,
-      stockAnterior: 12,
-      stockResultante: 22,
-    }),
     findCatalogos: jest.fn().mockResolvedValue({
       categorias: [{ id: 'c1', nombre: 'Refacciones' }],
       proveedores: [{ id: 'p1', nombre: 'CAT México' }],
@@ -115,21 +108,6 @@ describe('InventarioController', () => {
       const result = await controller.remove('a1', req as never);
       expect(result.message).toContain('eliminado');
       expect(service.remove).toHaveBeenCalledWith('a1', 'user-1');
-    });
-  });
-
-  describe('crearMovimiento', () => {
-    it('should create a stock movement passing userId', async () => {
-      const dto = {
-        articuloId: 'a1',
-        tipo: 'ENTRADA' as const,
-        cantidad: 10,
-      };
-      const req = { user: { id: 'user-1' } };
-      const result = await controller.crearMovimiento(dto, req as never);
-      expect(result.tipo).toBe('ENTRADA');
-      expect(result.stockResultante).toBe(22);
-      expect(service.crearMovimiento).toHaveBeenCalledWith(dto, 'user-1');
     });
   });
 

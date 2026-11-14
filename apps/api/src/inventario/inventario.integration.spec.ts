@@ -34,7 +34,6 @@ describe('Inventario Audit (Real DB)', () => {
 
   // IDs de artículos creados durante los tests (para limpieza)
   const createdArticuloIds: string[] = [];
-  const createdMovimientoIds: string[] = [];
 
   // ── Setup ──────────────────────────────────────────────────
 
@@ -83,12 +82,6 @@ describe('Inventario Audit (Real DB)', () => {
       await prisma.movimientos_inventario.deleteMany({
         where: { articulo_id: { in: createdArticuloIds } },
       });
-    }
-
-    if (createdMovimientoIds.length > 0) {
-      await prisma.movimientos_inventario.deleteMany({
-        where: { id: { in: createdMovimientoIds } },
-      }).catch(() => {});
     }
 
     if (createdArticuloIds.length > 0) {
@@ -238,110 +231,6 @@ describe('Inventario Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
       expect(audits[0].previous_value).toBeDefined();
-    });
-  });
-
-  describe('MOVIMIENTO_REGISTRADO — ENTRADA', () => {
-    it('debe registrar movimiento ENTRADA y guardar auditoría', async () => {
-      const dto = createDto({ stock: 10 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
-      createdArticuloIds.push(articulo.id);
-
-      await service.crearMovimiento(
-        { articuloId: articulo.id, tipo: 'ENTRADA', cantidad: 5 },
-        ACTOR_USER_ID,
-      );
-
-      const audits = await findAudits('MOVIMIENTO_REGISTRADO', articulo.id);
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-      expect(audits[0].result).toBe('SUCCESS');
-
-      // Verify the movement was saved
-      const movs = await prisma.movimientos_inventario.findMany({
-        where: { articulo_id: articulo.id },
-      });
-      expect(movs).toHaveLength(1);
-      expect(movs[0].tipo).toBe('ENTRADA');
-      expect(Number(movs[0].stock_resultante)).toBe(15);
-      createdMovimientoIds.push(movs[0].id);
-    });
-  });
-
-  describe('MOVIMIENTO_REGISTRADO — SALIDA', () => {
-    it('debe registrar movimiento SALIDA y guardar auditoría', async () => {
-      const dto = createDto({ stock: 20 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
-      createdArticuloIds.push(articulo.id);
-
-      await service.crearMovimiento(
-        { articuloId: articulo.id, tipo: 'SALIDA', cantidad: 3 },
-        ACTOR_USER_ID,
-      );
-
-      const audits = await findAudits('MOVIMIENTO_REGISTRADO', articulo.id);
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-
-      const movs = await prisma.movimientos_inventario.findMany({
-        where: { articulo_id: articulo.id },
-      });
-      expect(movs).toHaveLength(1);
-      expect(movs[0].tipo).toBe('SALIDA');
-      expect(Number(movs[0].stock_resultante)).toBe(17);
-      createdMovimientoIds.push(movs[0].id);
-    });
-  });
-
-  describe('STOCK_BAJO_DETECTADO por SALIDA', () => {
-    it('debe detectar stock bajo cuando una SALIDA cruza el umbral', async () => {
-      const dto = createDto({ stock: 10, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
-      createdArticuloIds.push(articulo.id);
-
-      // stock=10 → SALIDA de 8 → stock=2 ≤ 5
-      await service.crearMovimiento(
-        { articuloId: articulo.id, tipo: 'SALIDA', cantidad: 8 },
-        ACTOR_USER_ID,
-      );
-
-      const audits = await findAudits('STOCK_BAJO_DETECTADO', articulo.id);
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe('STOCK_BAJO_RESUELTO por ENTRADA', () => {
-    it('debe resolver stock bajo cuando una ENTRADA supera el umbral', async () => {
-      const dto = createDto({ stock: 2, stockMinimo: 5 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
-      createdArticuloIds.push(articulo.id);
-
-      // stock=2 (bajo) → ENTRADA de 5 → stock=7 > 5
-      await service.crearMovimiento(
-        { articuloId: articulo.id, tipo: 'ENTRADA', cantidad: 5 },
-        ACTOR_USER_ID,
-      );
-
-      const audits = await findAudits('STOCK_BAJO_RESUELTO', articulo.id);
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe('STOCK_INSUFICIENTE', () => {
-    it('debe registrar STOCK_INSUFICIENTE cuando SALIDA excede stock', async () => {
-      const dto = createDto({ stock: 3 });
-      const articulo = await service.create(dto, ACTOR_USER_ID);
-      createdArticuloIds.push(articulo.id);
-
-      await expect(
-        service.crearMovimiento(
-          { articuloId: articulo.id, tipo: 'SALIDA', cantidad: 50 },
-          ACTOR_USER_ID,
-        ),
-      ).rejects.toThrow();
-
-      const audits = await findAudits('STOCK_INSUFICIENTE', articulo.id);
-      expect(audits.length).toBeGreaterThanOrEqual(1);
-      expect(audits[0].result).toBe('FAIL');
-      expect(audits[0].error_code).toBe('INSUFFICIENT_STOCK');
     });
   });
 });

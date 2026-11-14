@@ -427,15 +427,6 @@ export interface ArticuloCreateInput {
   precioUnitario: number;
 }
 
-export interface MovimientoInput {
-  articuloId: string;
-  tipo: 'ENTRADA' | 'SALIDA';
-  cantidad: number;
-  motivo?: string;
-  referenciaTipo?: string;
-  referenciaId?: string;
-}
-
 export const inventarioApi = {
   /** Listar artículos con búsqueda, filtros y paginación */
   listar: (params?: {
@@ -474,16 +465,6 @@ export const inventarioApi = {
   /** Eliminar un artículo (soft delete) */
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/inventario/${id}`),
-
-  /** Registrar movimiento de stock */
-  movimiento: (data: MovimientoInput) =>
-    apiClient.post<{
-      articuloId: string;
-      tipo: string;
-      cantidad: number;
-      stockAnterior: number;
-      stockResultante: number;
-    }>('/inventario/movimiento', data),
 
   /** Estadísticas del inventario */
   stats: () =>

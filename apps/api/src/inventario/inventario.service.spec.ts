@@ -282,109 +282,6 @@ describe('InventarioService', () => {
     });
   });
 
-  describe('crearMovimiento', () => {
-    it('should register ENTRADA and log MOVIMIENTO_REGISTRADO', async () => {
-      const result = await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'ENTRADA',
-          cantidad: 10,
-        },
-        'user-1',
-      );
-
-      expect(result.tipo).toBe('ENTRADA');
-      expect(result.stockResultante).toBe(22); // 12 + 10
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'MOVIMIENTO_REGISTRADO',
-          actorUserId: 'user-1',
-        }),
-      );
-    });
-
-    it('should register SALIDA and log MOVIMIENTO_REGISTRADO', async () => {
-      const result = await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'SALIDA',
-          cantidad: 5,
-        },
-        'user-1',
-      );
-
-      expect(result.tipo).toBe('SALIDA');
-      expect(result.stockResultante).toBe(7); // 12 - 5
-    });
-
-    it('should detect stock threshold crossing on SALIDA', async () => {
-      // stock=12, minimo=5 → SALIDA de 10 → stock=2 (below 5)
-      await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'SALIDA',
-          cantidad: 10,
-        },
-        'user-1',
-      );
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'STOCK_BAJO_DETECTADO',
-        }),
-      );
-    });
-
-    it('should detect stock resolution on ENTRADA', async () => {
-      const lowStock = { ...mockArticulo, stock: 2, stock_minimo: 5 };
-      mockPrisma.articulos_inventario.findFirst.mockResolvedValue(lowStock);
-
-      // stock=2 (bajo) → ENTRADA de 5 → stock=7 (above 5)
-      await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'ENTRADA',
-          cantidad: 5,
-        },
-        'user-1',
-      );
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'STOCK_BAJO_RESUELTO',
-        }),
-      );
-    });
-
-    it('should throw BadRequestException for insufficient stock', async () => {
-      await expect(
-        service.crearMovimiento(
-          {
-            articuloId: mockArticulo.id,
-            tipo: 'SALIDA',
-            cantidad: 100,
-          },
-          'user-1',
-        ),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockAudit.logFailure).toHaveBeenCalledWith(
-        expect.objectContaining({
-          errorCode: 'INSUFFICIENT_STOCK',
-        }),
-      );
-    });
-
-    it('should throw NotFoundException for non-existent article', async () => {
-      mockPrisma.articulos_inventario.findFirst.mockResolvedValue(null);
-      await expect(
-        service.crearMovimiento(
-          { articuloId: 'bad', tipo: 'ENTRADA', cantidad: 1 },
-          'user-1',
-        ),
-      ).rejects.toThrow(NotFoundException);
-    });
-  });
 
   describe('aplicarEntrada', () => {
     const params = {
@@ -419,21 +316,6 @@ describe('InventarioService', () => {
           }),
         }),
       );
-    });
-
-    it('should delegate from crearMovimiento ENTRADA using $transaction callback', async () => {
-      const result = await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'ENTRADA',
-          cantidad: 10,
-        },
-        'user-1',
-      );
-
-      expect(result.stockResultante).toBe(22); // 12 + 10
-      // La delegación ocurre dentro del callback del tx (no en el array principal).
-      expect(mockTx.articulos_inventario.update).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when tx article does not exist', async () => {

@@ -18,7 +18,6 @@ import { InventarioService } from './inventario.service';
 import { CreateArticuloDto } from './dto/create-articulo.dto';
 import { UpdateArticuloDto } from './dto/update-articulo.dto';
 import { QueryArticulosDto } from './dto/query-articulos.dto';
-import { CreateMovimientoDto } from './dto/create-movimiento.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -111,20 +110,5 @@ export class InventarioController {
   ) {
     const user = req.user as { id: string };
     return this.inventarioService.remove(id, user.id);
-  }
-
-  /**
-   * POST /api/inventario/movimiento
-   * Registrar movimiento de stock (entrada/salida).
-   */
-  @RequirePermission('operaciones', 'inventario', 'editar')
-  @Post('movimiento')
-  @HttpCode(HttpStatus.CREATED)
-  async crearMovimiento(
-    @Body() dto: CreateMovimientoDto,
-    @Req() req: Request,
-  ) {
-    const user = req.user as { id: string };
-    return this.inventarioService.crearMovimiento(dto, user.id);
   }
 }
