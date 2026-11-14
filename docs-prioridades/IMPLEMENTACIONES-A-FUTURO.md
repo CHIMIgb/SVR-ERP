@@ -21,7 +21,7 @@
 > `/operaciones`, `/criba`, `/inventario`, `/proyectos`) + Comercial
 > (`/clientes`, `/cotizaciones`, `/finanzas`, `/proveedores`, `/ventas`,
 > `/cobranza`, `/ventas/corte`, `/facturas`). De las series de este documento,
-> las que tocan esas vistas: **P2, P3, P4, P6, P7, P8, 6.4, 6.5, 6.6, C3, §9,
+> las que tocan esas vistas: **P2, P3, P4, P6, P7, 6.4, 6.5, 6.6, C3, §9,
 > §10, F1** — las de otros módulos (P13–P14 sistema, 6.2 incidentes, F5
 > configuración) son de otro dueño.
 > 1. **[`ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md`](./ANALISIS-DOCS-SVR-PROCESOS-EXCEL-2026-11-12.md)**
@@ -29,7 +29,7 @@
 >    conciliación de proveedores) y 4 dudas bloqueantes.
 > 2. **[`PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md`](./PLAN-COMERCIAL-OPERACIONES-SVR-2026-11-11.md)**
 >    — VIGENTE: §1 índice de trabajo arrancable sin dudas (F1 fixes → B2 → B1
->    → B3 → B4–B6 → B7–B9 → B8–B9).
+>    → B3 → B4–B6 → B7–B9).
 > 3. **ESTE documento** — las series P/F se ejecutan DESPUÉS del plan comercial,
 >    empezando por las que ese plan desbloquea:
 >    **P2** (partidas) se construye junto con la plantilla de cotización de F3 ·
@@ -47,7 +47,7 @@
 | §0 | Fases ejecutadas — ciclo de dinero |
 | §1 | Resumen ejecutivo |
 | §2 | Diagnóstico técnico actual (`cotizaciones`, integraciones) |
-| §3 | Flujos pendientes: **P1** cotización→factura→CxC · **P2** partidas · **P3** cotización↔proyecto · **P4** bajada de inventario (**+ descuento por venta POS**) · **P5** pagos a CxC · **P6** vendedor real · **P7** precios por medida (**+ editor fácil para encargados**) · **P8** metas de progreso con fecha límite |
+| §3 | Flujos pendientes: **P1** cotización→factura→CxC · **P2** partidas · **P3** cotización↔proyecto · **P4** bajada de inventario (**+ descuento por venta POS**) · **P5** pagos a CxC · **P6** vendedor real · **P7** precios por medida (**+ editor fácil para encargados**) |
 | §4 | Diagrama de la cadena de valor objetivo |
 | §5 | Validación y riesgos |
 | §6 | Mapa de integración de vistas (6.1–6.8) |
@@ -66,7 +66,7 @@
 | Tier | Tareas (de la más fácil a la más difícil) | Sección |
 |------|-------------------------------------------|---------|
 | 🟢 **0 — Triviales** | ✅ **1. Diagnóstico** /operaciones 3-vs-6 (causa: 4 proyectos sin obra — el fix es la obra 1:1 = **B2** del plan comercial) · ✅ **2. Contraste dark** modal Ver Detalle · ✅ **3. F2 loaders/skeletons** (ver §11 F2/§7) · ✅ **4. F3 toasts con `details`** (ver §11 F3/§7) · ✅ **5. F4 matriz de flujos de datos** (ver §11 F4) | 6.6, 6.6.1, §11 F2–F4 |
-| 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · ✅ **7. P4b** venta POS descuenta inventario — REALIZADO 2026-11-08 (guard anti-carrera + movimientos SALIDA `Venta POS`; ver §3 P4b) · 8. **P8** metas de progreso con fecha límite · 9. **P6** vendedor real | §11 F6, §3 |
+| 🟡 **1 — Fáciles-medios** | ✅ **6. F6 seeds demo de workflows** — REALIZADO 2026-11-08 (`seed-demo-workflows.ts` + data fix `turno_cierre`; ver §11 F6) · ✅ **7. P4b** venta POS descuenta inventario — REALIZADO 2026-11-08 (guard anti-carrera + movimientos SALIDA `Venta POS`; ver §3 P4b) · 8. **P8** ⛔ DESCARTADA (2026-11-14 — decisión del cliente) · 9. **P6** vendedor real | §11 F6, §3 |
 
 > Nota (2026-11-08): el bug `/inventario` al filtrar por categoría (`categoriaId must be
 > a UUID`) se resolvió — los IDs pseudo-UUID de las categorías/unidades del seed de
@@ -594,56 +594,12 @@ revisión de cada módulo afectado; NO se ejecuta en la base de la PWA.
 
 ---
 
-### P8 — Metas de progreso del proyecto con fechas límite (idea del cliente)
+### P8 — Metas de progreso del proyecto con fechas límite
 
-**Objetivo:** el progreso del proyecto deja de ser un número manual capturado a mano.
-Al registrar un proyecto (o después, desde "Ver detalle") se capturan **metas a
-cumplir, cada una con su fecha límite**; conforme se marcan **CUMPLIDAS**, el
-`proyectos.progreso` se llena proporcionalmente al peso de cada meta.
-
-**Estado verificado en schema:** el modelo `hitos_progreso` **YA EXISTE** y hoy solo
-alimenta (en el mock) la curva S del modal: `proyecto_id`, `nombre`, `descripcion`,
-`periodo`, `fecha`, `planificado`/`real` (Decimal 5,2). Le faltan exactamente las
-piezas de "meta": `fecha_limite` y el estado de cumplimiento.
-
-**Cómo se aplicará (diseño sobre lo existente, sin modelo nuevo):**
-1. **Schema:** ampliar `hitos_progreso` con `fecha_limite` (Date?, nullable) y
-   `estado` (`PENDIENTE`/`CUMPLIDA`, default PENDIENTE). El `planificado` de la meta
-   es el **% objetivo acumulado** al cumplirla (misma escala que `proyectos.progreso`
-   0–100). Migración con defaults para las filas existentes.
-2. **Derivación del progreso (regla central):**
-   - Proyecto **con metas** → `progreso` = % del planificado de la última meta
-     CUMPLIDA (o suma ponderada si hay pesos) — **derivado, no editable a mano**.
-   - Proyecto **sin metas** → captura manual como hoy (comportamiento actual sin
-     romper nada).
-   - Al marcar una meta CUMPLIDA: en la misma `$transaction` — transición condicional
-     `PENDIENTE → CUMPLIDA` (estado leído contra dobles → `CONFLICTO_CONCURRENCIA`
-     en doble-marca), update de `proyectos.progreso`, e insert del punto real en
-     `hitos_progreso` del periodo (para la curva S). Todo audita SUCCESS/FAIL.
-3. **Fecha límite:** la meta que pasó su `fecha_limite` sigue PENDIENTE → badge
-   "Vencida" en el modal (dato derivado, no estado persistido).
-4. **Frontend (modal Ver detalle, 6.6.1):** sección "Metas del proyecto" con la lista
-   (nombre, fecha límite, % objetivo, estado) + botón «Marcar cumplida» por RBAC
-   `puede_editar`; en el registro/edición del proyecto una tabla para dar de alta las
-   metas. Badge histórico de metas vencidas en la página de proyectos.
-5. **Cruce con 6.3 (futuro):** los reportes-campo con avance pueden sugerir
-   auto-marcar la meta correspondiente; nunca auto-cumplirla sin confirmación humana.
-6. **Tests:** unit (transición condicional, doble marca → 409, progreso
-   recalculado) + integración real (marcar meta cumple → fila SUCCESS en
-   `registro_auditoria`, `proyectos.progreso` actualizado, punto de curva S creado).
-
-**Impacto:** combinación con FLUJO-PROGRESO-PROYECTOS (6.3): la fuente de la verdad
-del progreso pasa de "capturado" a "derivado de metas cumplidas", y el modal obtiene
-la curva S con datos reales en vez del mock.
-
-**Workflow entre pantallas:**
-```
-/proyectos ──(crear/editar proyecto → tabla de metas con fecha límite)──►
-   └─ modal Ver detalle ──(«Marcar cumplida»)──►
-      └─ $transaction: meta PENDIENTE→CUMPLIDA (condicional)
-           ├─► proyectos.progreso recalculado (página de proyectos)
-           └─► punto real en curva S del modal (6.6.1)
-```
+⛔ **DESCARTADA (2026-11-14 — decisión del cliente):** se quita para no
+complicar las cosas. El progreso del proyecto queda como captura manual
+en `/proyectos` (comportamiento actual). La tabla `hitos_progreso` se
+conserva tal como está (curva S del modal, hoy mock).
 
 ---
 
@@ -883,7 +839,6 @@ con `obra_id`).
     proyecto_id + operador_id`; alimentar el detalle del proyecto con las máquinas
     despachadas.
   - **Proyecto → Cotización (P3):** crear proyecto desde cotización aceptada.
-  - **Avance/estado:** `proyectos.progreso` deriva de metas/hitos — ver **P8** §3.
   - **Captura de coordenadas/radio desde `/proyectos`** (Pr3): hoy se hace desde
     el modal "Ubicar obra" de `/asistencia`.
 
@@ -984,7 +939,6 @@ ProjectDetailsModal: migrar de mock a API real (hito previo)
 | 6.1 | Bitácora renta cerrada → CxC + firma | `/operaciones` → `/finanzas` → `/clientes` | ✅ **Realizado** (Fase 4, workflow 02). **Gap de datos 2026-11-06:** BD con solo 3 obras — 4 de 6 proyectos EN_PROCESO sin obra → se resuelve con la obra 1:1 (**B2** del plan comercial) |
 | 6.2 | Incidente resuelto → mantenimiento / reporte campo | `/incidentes` → `/mantenimiento` / `/reportes-campo` | ⏳ Pendiente (verificado: `incidentes` no deriva nada) |
 | 6.3 | Reporte campo → progreso proyecto + transacción | `/reportes-campo` → `/proyectos` → `/finanzas` | ⏳ Pendiente (verificado: no toca `progreso` ni `transacciones`) — **P8** propone derivar el progreso de metas cumplidas |
-| P8 | Metas de proyecto con fecha límite → progreso derivado | `/proyectos` (registro y modal) | ⏳ Pendiente (base: `hitos_progreso` existe; faltan `fecha_limite` + estado CUMPLIDA + derivación) |
 | 6.4 | Criba → máquina/obra + producción → inventario | `/criba` → `/maquinaria` → `/inventario` | ⏳ Pendiente (gap confirmado en schema: `registros_criba` solo FK a trabajadores) |
 | 6.5 | Inventario → entradas criba / salidas cotización | `/inventario` ↔ `/criba` ↔ `/cotizaciones` | ⏳ Pendiente (criba no genera movimientos) |
 | 6.6 | Proyecto → obra 1:1 (nace con el proyecto, sync de estados) → despachos; modal Ver detalle (curva S, EVM, contraste oscuro) | `/proyectos` ↔ `/operaciones` ↔ `/maquinaria` | ⏳ Pendiente (modal sigue en mock; + detalle anatomía 6.6.1; B2 pendiente) |
@@ -1322,7 +1276,7 @@ tarea del índice que los habilita.
 | `/proyectos` | gastos desglosados | ⏳ Fase 3 FLUJO-PROGRESO | Tier 3 (6.8) |
 | `/proyectos` | modal Ver Detalle | 🔴 mock | Tier 2 (6.6) |
 | `/reportes` | incidente resuelto → deriva mantenimiento/reporte | ⏳ 6.2 | Tier 2 #12 |
-| `/reportes` | progreso ← metas P8 / transacciones por costo | ⏳ 6.3 | Tier 1 #8 |
+| `/reportes` | progreso ← transacciones por costo | ⏳ 6.3 | Tier 1 #8 |
 
 **COMERCIAL**
 

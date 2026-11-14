@@ -53,7 +53,7 @@
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ✅ HECHA completa (B5.1–B5.13, 2026-11-13/14) — ver §13 y `NOTIFICACIONES.md` |
 | B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ✅ HECHA completa (B6.1–B6.4, 2026-11-14) — ver §14 |
 | B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ✅ HECHA completa (B7.1–B7.4, 2026-11-14) — ver §15 |
-| B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ **SIGUIENTE** |
+| B8 | ~~P8: metas de progreso con fecha límite~~ ⛔ **DESCARTADA** (2026-11-14 — decisión del cliente: no complicar las cosas) | — | ⛔ |
 | B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
 
 > **Decisión del cliente (2026-11-12):** se conserva la tabla `obras` con
@@ -69,7 +69,7 @@
 **B2** (obra 1:1 con el proyecto — prerrequisito operativo de `/operaciones` y
 `/inventario`) → **B1** (partidas — habilita facturación por línea y la
 plantilla de cotización) → **B3** (FK cliente en POS — prepara el crédito C3)
-→ **B4 → B5 → B6–B7** → **B8 → B9**.
+→ **B4 → B5 → B6–B7** → **B9**.
 
 ### ⛔ FUERA de este alcance (otro módulo u otra persona)
 
@@ -252,7 +252,7 @@ y Mantenimiento/llantas/diésel (F8) viven en
 
 ## 8. Vínculo con IMPLEMENTACIONES-A-FUTURO.md y el doc fuera-de-alcance
 
-> **NOTA de prioridad:** las series **P** (P2 partidas, P6 vendedor, P8 metas…)
+> **NOTA de prioridad:** las series **P** (P2 partidas, P6 vendedor…)
 > y **F** de `IMPLEMENTACIONES-A-FUTURO.md` siguen vigentes como hoja de ruta,
 > pero **este plan las pospone**: primero se ejecutan las correcciones y
 > decisiones de las 15 vistas (§2–§6 de este documento).
@@ -284,7 +284,7 @@ y Mantenimiento/llantas/diésel (F8) viven en
         de material — este plan define si nace CxC directo o pasa por /ventas)
       · §9/§10 (conciliación bancaria / vencimiento CxP) ◄── conciliación semanal de
         proveedores externos + P4 (bloqueo de carga conciliada) de este plan
-      · el resto (6.2–6.6, P8, F1, F5, P13–P14) sin dependencia del hilo —
+      · el resto (6.2–6.6, F1, F5, P13–P14) sin dependencia del hilo —
         según el orden interno de ese documento
 ```
 
@@ -436,7 +436,7 @@ registros · `/auth/profile` devuelve la vista `/proyectos` con
 `nombre: "Obras"`.
 
 **Fuera de B2 (no se construye aquí):** captura de coordenadas/radio desde la
-UI de `/proyectos` (hoy se hace desde `/asistencia` — Pr3) · P8 metas/progreso ·
+UI de `/proyectos` (hoy se hace desde `/asistencia` — Pr3) ·
 P3 cotización→proyecto · la PWA (`/m/flota-obras` sigue en pausa y no se toca).
 
 ---
