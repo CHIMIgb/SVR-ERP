@@ -711,7 +711,7 @@ export class UsuariosService {
           })
         : Promise.resolve([]),
       this.prisma.sessions.findMany({
-        where: { user_id: id, activa: true },
+        where: { user_id: id, activa: true, expira_en: { gt: new Date() } },
         orderBy: { ultima_actividad: 'desc' },
       }),
     ]);
@@ -759,7 +759,9 @@ export class UsuariosService {
       })),
       sesiones: sesiones.map((s) => ({
         id: s.id,
-        dispositivo: s.dispositivo,
+        // Fallback: los logins de escritorio no llenan `dispositivo` — mostrar
+        // "Web" con el user_agent que sí se guarda, nunca "Desconocido" a ciegas.
+        dispositivo: s.dispositivo ?? (s.user_agent ? 'Web' : 'Desconocido'),
         ubicacion: s.ubicacion,
         ip: s.ip_address,
         iniciadaEn: s.iniciada_en.toISOString(),

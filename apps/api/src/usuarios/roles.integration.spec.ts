@@ -316,7 +316,8 @@ describe('Roles — Gestión de Identidad (Real DB)', () => {
 
       const usuario = await crearUsuarioConRol(rol.id);
 
-      // Sesión activa real
+      // Sesión activa real + una vencida que sigue marcada activa (la ficha
+      // solo cuenta sesiones realmente vivas: expira_en > ahora).
       const sesion = await prisma.sessions.create({
         data: {
           id: randomUUID(),
@@ -328,6 +329,17 @@ describe('Roles — Gestión de Identidad (Real DB)', () => {
         },
       });
       createdSessions.push(sesion.id);
+      const sesionVencida = await prisma.sessions.create({
+        data: {
+          id: randomUUID(),
+          user_id: usuario.id,
+          refresh_token_jti: randomUUID(),
+          activa: true,
+          expira_en: new Date(Date.now() - 1000),
+          actualizado_en: new Date(),
+        },
+      });
+      createdSessions.push(sesionVencida.id);
       await prisma.refresh_tokens.create({
         data: {
           id: randomUUID(),
@@ -338,16 +350,16 @@ describe('Roles — Gestión de Identidad (Real DB)', () => {
         },
       });
 
-      // Ficha 360
+      // Ficha 360: solo la sesión viva
       const ficha = await usuariosService.findIdentidad(usuario.id);
       expect(ficha.roles[0].id).toBe(rol.id);
       expect(ficha.vistas.some((v) => v.vistaId === vistasBD[0].id && v.puedeVer)).toBe(true);
       expect(ficha.permisos.some((p) => p.id === permisoBD!.id)).toBe(true);
       expect(ficha.sesiones).toHaveLength(1);
 
-      // Cierre masivo
+      // Cierre masivo: cierra TODAS las activas (viva + vencida) y limpia
       const resultado = await usuariosService.cierreSesiones(usuario.id, ACTOR_USER_ID);
-      expect(resultado.message).toContain('1');
+      expect(resultado.message).toContain('2');
 
       const sesionCerrada = await prisma.sessions.findUnique({ where: { id: sesion.id } });
       expect(sesionCerrada!.activa).toBe(false);
@@ -366,7 +378,7 @@ describe('Roles — Gestión de Identidad (Real DB)', () => {
         orderBy: { timestamp: 'desc' },
       });
       expect((audit!.metadata as Record<string, unknown>).modo).toBe('masivo');
-      expect((audit!.metadata as Record<string, unknown>).sesiones).toBe(1);
+      expect((audit!.metadata as Record<string, unknown>).sesiones).toBe(2);
     });
 
     it('no permite cerrar las propias sesiones con FAIL', async () => {
