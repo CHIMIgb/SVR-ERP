@@ -52,7 +52,7 @@
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ✅ HECHA completa (B4.1–B4.4, 2026-11-13) — ver §12 |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ✅ HECHA completa (B5.1–B5.13, 2026-11-13/14) — ver §13 y `NOTIFICACIONES.md` |
 | B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ✅ HECHA completa (B6.1–B6.4, 2026-11-14) — ver §14 |
-| B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ⏳ |
+| B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ✅ HECHA completa (B7.1–B7.4, 2026-11-14) — ver §15 |
 | B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
 | B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
 
@@ -559,3 +559,26 @@ estado "VENCIDA") — la tubería está lista (`emitirARol` + cron pendiente).
 **Fuera de B6 (no se construye aquí):** B7 (entradas de criba → inventario,
 transacción) · KPIs de producción por máquina (el listado filtrable ya
 responde).
+
+---
+
+## 15. Plan de implementación B7 — criba → inventario (EJECUTADO 2026-11-14)
+
+> **Diseño (6.5 + propuesta del cliente):** un **catálogo de materiales de
+> criba** (`materiales_criba`: Criba fina / Criba gruesa / Arena lavada) —
+> cada material enlaza a su **artículo de inventario** por id. El registro de
+> criba enlaza al material (`material_criba_id`) y el envío a inventario usa
+> ese id (exacto, sin match por nombre). La cantidad que entra = **material
+> al banco** (el producido incluye merma). El envío es un **botón explícito
+> por registro**, con guard anti-doble-envío en la misma transacción.
+
+| Fase | Estado | Evidencia |
+|---|---|---|
+| B7.1 BD | ✅ HECHA | `dd06efeb` — tabla `materiales_criba` (seed 3 materiales + artículo "Arena de río" renombrado a "Arena lavada"), `material_criba_id` FK + `inventario_en`, backfill 8/8 registros |
+| B7.2 Backend | ✅ HECHA | `e5fdaebb` — `materialId` en DTOs (snapshot `tipo_material`), **`POST /criba/:id/inventario`** con transacción (`aplicarEntrada` + guard anti-doble) y auditoría; unit 40/40, integración 9/9 |
+| B7.3 UI | ✅ HECHA | `141042f3` — select "Material" del catálogo (con stock), botón "A inventario" con confirmación, columna "Inventario", filtro por material |
+| B7.4 Gates | ✅ HECHA | `tsc` limpio, smoke real: enviar → **stock sube 118 → 173**, movimiento trazable, segundo envío rechazado (CONFLICT), filtro `materialId` ✓ |
+
+**Fuera de B7 (no se construye aquí):** CRUD de materiales de criba (agregar
+material nuevo = fila del catálogo) · KPIs por material ya existentes ·
+salidas de inventario por cotizaciones (P4).
