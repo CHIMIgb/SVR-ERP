@@ -927,6 +927,7 @@ model maquinas {
   rastreo_gps                           rastreo_gps[]
   registros_mantenimiento               registros_mantenimiento[]
   reportes_campo                        reportes_campo[]
+  registros_criba                       registros_criba[]            @relation("registros_criba_maquina")
 
   @@index([estado])
   @@index([operador_id])
@@ -1335,6 +1336,7 @@ model proyectos {
   trabajadores_proyectos                 trabajadores_proyectos[]
   cuentas_por_cobrar                     cuentas_por_cobrar[]
   reportes_campo                         reportes_campo[]
+  registros_criba                        registros_criba[]            @relation("registros_criba_proyecto")
 
   @@index([estado], map: "idx_proyectos_estado")
   @@index([cliente_id])
@@ -1469,6 +1471,10 @@ model registros_criba {
   fecha                                        DateTime      @db.Date
   turno                                        Turno
   operador_id                                  String?       @db.Uuid
+  /// B6: máquina que produjo y proyecto de destino (opcionales; nullable para
+  /// los registros previos).
+  maquina_id                                   String?       @db.Uuid
+  proyecto_id                                  String?       @db.Uuid
   tipo_material                                String
   material_producido                           Decimal       @db.Decimal(10, 2)
   horas_trabajadas                             Decimal       @db.Decimal(6, 2)
@@ -1483,8 +1489,12 @@ model registros_criba {
   users_registros_criba_actualizado_porTousers users?        @relation("registros_criba_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_registros_criba_actualizado_por")
   users_registros_criba_creado_porTousers      users?        @relation("registros_criba_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_registros_criba_creado_por")
   trabajadores                                 trabajadores? @relation(fields: [operador_id], references: [id])
+  maquinas                                     maquinas?     @relation("registros_criba_maquina", fields: [maquina_id], references: [id])
+  proyectos                                    proyectos?    @relation("registros_criba_proyecto", fields: [proyecto_id], references: [id])
 
   @@index([fecha])
+  @@index([maquina_id])
+  @@index([proyecto_id])
 }
 
 model registros_mantenimiento {
