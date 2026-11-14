@@ -250,6 +250,7 @@ export default function EquiposPage() {
         <ModalHeader
           title={`Equipo de ${selectedEquipo?.nombre ?? 'residente'}`}
           subtitle={`${selectedEquipo?.subordinados.length ?? 0} trabajador(es) — alcance de /reportes`}
+          onClose={() => setVerOpen(false)}
         />
         <ModalBody>
           {!selectedEquipo || selectedEquipo.subordinados.length === 0 ? (
@@ -302,7 +303,7 @@ export default function EquiposPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setVerOpen(false)}>Cerrar</Button>
+          <Button variant="warning" onClick={() => setVerOpen(false)}>Cerrar</Button>
         </ModalFooter>
       </Modal>
 
