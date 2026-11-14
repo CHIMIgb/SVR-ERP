@@ -160,9 +160,9 @@ export default function EquiposPage() {
     {
       key: 'acciones',
       header: 'Acciones',
-      align: 'right',
+      align: 'center',
       render: (equipo) => (
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-center gap-1">
           <Button
             variant="info"
             size="sm"
@@ -177,7 +177,7 @@ export default function EquiposPage() {
           </Button>
           {puedeEditar && (
             <Button
-              variant="primary"
+              variant="success"
               size="sm"
               icon={<UserPlus className="w-3.5 h-3.5" />}
               onClick={(e) => {
@@ -303,7 +303,7 @@ export default function EquiposPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="warning" onClick={() => setVerOpen(false)}>Cerrar</Button>
+          <Button variant="primary" onClick={() => setVerOpen(false)}>Cerrar</Button>
         </ModalFooter>
       </Modal>
 
