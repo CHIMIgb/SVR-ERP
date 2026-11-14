@@ -2495,6 +2495,9 @@ export interface CotizacionDTO {
   items?: CotizacionItemDTO[];
   /** Nombre del usuario que creó la cotización (solo en el detalle). */
   creadoPor?: string | null;
+  /** B9/P6: vendedor = usuario que capturó la cotización (null en registros legados). */
+  vendedorId?: string | null;
+  vendedorNombre?: string | null;
   // Campos del cliente (solo presentes en el listado/detalle global)
   clienteNombre?: string | null;
   clienteEmpresa?: string | null;
@@ -2558,6 +2561,7 @@ export const cotizacionesApi = {
     search?: string;
     estado?: EstadoCotizacionApi;
     clienteId?: string;
+    vendedorId?: string;
     page?: number;
     limit?: number;
   }) => {
@@ -2565,6 +2569,7 @@ export const cotizacionesApi = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.estado) searchParams.set('estado', params.estado);
     if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.vendedorId) searchParams.set('vendedorId', params.vendedorId);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();
@@ -2580,6 +2585,12 @@ export const cotizacionesApi = {
   /** Estadísticas para las tarjetas. */
   stats: () =>
     apiClient.get<CotizacionesStats>('/cotizaciones/stats'),
+
+  /** B9/P6: vendedores (usuarios activos) para el filtro del listado. */
+  vendedores: () =>
+    apiClient.get<{ vendedores: { id: string; nombre: string }[] }>(
+      '/cotizaciones/catalogos',
+    ),
 
   /** Cambiar estado (Aceptada / Rechazada); motivoRechazo es obligatorio al rechazar. */
   cambiarEstado: (id: string, data: { estado: EstadoCotizacionApi; motivoRechazo?: string }) =>

@@ -81,6 +81,8 @@ export default function CotizacionesPage() {
   const [cotizaciones, setCotizaciones] = useState<CotizacionDTO[]>([]);
   const [stats, setStats] = useState<CotizacionesStats>(emptyStats);
   const [clientes, setClientes] = useState<ClienteDTO[]>([]);
+  // B9/P6: catálogo de vendedores para el filtro.
+  const [vendedores, setVendedores] = useState<{ id: string; nombre: string }[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoaded = useRef(false);
@@ -116,6 +118,10 @@ export default function CotizacionesPage() {
     clientesApi.listar({ limit: 100 }).then((res) => {
       if (res.success && res.data) setClientes(res.data.items);
     });
+    // B9/P6: vendedores (usuarios activos) para el filtro del listado.
+    cotizacionesApi.vendedores().then((res) => {
+      if (res.success && res.data) setVendedores(res.data.vendedores);
+    });
   }, []);
 
   // ── Cargar datos ──
@@ -130,6 +136,7 @@ export default function CotizacionesPage() {
         search: searchVal || undefined,
         estado: filters?.estado as EstadoCotizacionApi | undefined,
         clienteId: filters?.clienteId || undefined,
+        vendedorId: filters?.vendedorId || undefined,
         page,
         limit: PAGE_SIZE,
       });
@@ -174,6 +181,10 @@ export default function CotizacionesPage() {
   if (filterValues.clienteId) {
     const cl = clientes.find(c => c.id === filterValues.clienteId);
     activeFilters.push({ key: 'clienteId', label: 'Cliente', value: cl?.empresa ?? filterValues.clienteId });
+  }
+  if (filterValues.vendedorId) {
+    const v = vendedores.find(x => x.id === filterValues.vendedorId);
+    activeFilters.push({ key: 'vendedorId', label: 'Vendedor', value: v?.nombre ?? filterValues.vendedorId });
   }
 
   // ── Handlers de filtros ──
@@ -491,6 +502,13 @@ export default function CotizacionesPage() {
       ),
     },
     {
+      key: 'vendedor',
+      header: 'Vendedor',
+      render: (item) => (
+        <span className="font-semibold text-ui-600">{item.vendedorNombre ?? '—'}</span>
+      ),
+    },
+    {
       key: 'estado',
       header: 'Estado',
       render: (item) => estadoBadge(item.estado),
@@ -675,6 +693,19 @@ export default function CotizacionesPage() {
                 <option value="">Todos</option>
                 {clientes.map((c) => (
                   <option key={c.id} value={c.id}>{c.empresa}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 w-full sm:w-64">
+              <label className="text-[10px] font-black text-ui-500 uppercase tracking-widest">Vendedor</label>
+              <select
+                value={filterValues.vendedorId || ''}
+                onChange={(e) => handleFilterChange('vendedorId', e.target.value)}
+                className="h-10 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Todos</option>
+                {vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
                 ))}
               </select>
             </div>
@@ -988,6 +1019,13 @@ export default function CotizacionesPage() {
                   <div>
                     <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Creada por</p>
                     <p className="text-sm font-bold text-ui-700">{selected.creadoPor ?? '—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <User className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest">Vendedor</p>
+                    <p className="text-sm font-bold text-ui-700">{selected.vendedorNombre ?? '—'}</p>
                   </div>
                 </div>
               </div>
