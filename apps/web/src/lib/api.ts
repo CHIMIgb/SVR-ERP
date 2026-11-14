@@ -3462,6 +3462,14 @@ export const usuariosApi = {
   /** Activar / desactivar cuenta (cierra sesiones al desactivar). */
   cambiarEstado: (id: string, activo: boolean) =>
     apiClient.patch<{ message: string }>(`/usuarios/${id}/estado`, { activo }),
+
+  /** Ficha 360 (vista /roles — solo lectura). */
+  identidad: (id: string) =>
+    apiClient.get<IdentidadUsuarioDTO>(`/usuarios/${id}/identidad`),
+
+  /** Cierre masivo de sesiones (mesa de ayuda). */
+  cerrarSesiones: (id: string) =>
+    apiClient.post<{ message: string }>(`/usuarios/${id}/sesiones/cierre`, {}),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -3503,4 +3511,122 @@ export const equiposApi = {
       `/usuarios/${usuarioId}/jefe`,
       { jefeUserId },
     ),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Roles API (vista /roles — Gestión de Identidad, solo Administrador)
+// ────────────────────────────────────────────────────────────
+
+export interface RolDTO {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  nivel: number;
+  torre: string | null;
+  esSistema: boolean;
+  activo: boolean;
+  usuarios: number;
+  vistas: number;
+  permisos: number;
+}
+
+export interface VistaRolDTO {
+  vistaId: string;
+  ruta: string;
+  nombre: string;
+  orden: number;
+  puedeVer: boolean;
+  puedeCrear: boolean;
+  puedeEditar: boolean;
+  puedeEliminar: boolean;
+  puedeExportar: boolean;
+}
+
+export interface PermisoDTO {
+  id: string;
+  modulo: string;
+  recurso: string;
+  accion: string;
+  asignado?: boolean;
+}
+
+export interface SesionDTO {
+  id: string;
+  dispositivo: string | null;
+  ubicacion: string | null;
+  ip: string | null;
+  iniciadaEn: string;
+  ultimaActividad: string;
+}
+
+/** Ficha 360 de un usuario (solo lectura + mesa de ayuda). */
+export interface IdentidadUsuarioDTO {
+  id: string;
+  nombre: string | null;
+  email: string;
+  activo: boolean;
+  torre: string | null;
+  numeroEmpleado: string | null;
+  roles: { id: string; nombre: string; nivel: number }[];
+  jefe: { id: string; nombre: string | null } | null;
+  pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO';
+  vistas: VistaRolDTO[];
+  permisos: PermisoDTO[];
+  sesiones: SesionDTO[];
+}
+
+export interface VistasRolInput {
+  vistas: {
+    vistaId: string;
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+    puedeExportar: boolean;
+  }[];
+}
+
+export const rolesApi = {
+  /** Catálogo de roles con conteos. */
+  catalogo: () => apiClient.get<{ items: RolDTO[] }>('/roles'),
+
+  /** Crear rol. */
+  crear: (data: { nombre: string; descripcion?: string; nivel?: number; torre?: string }) =>
+    apiClient.post<RolDTO>('/roles', data),
+
+  /** Editar rol (el rol es_sistema no se edita). */
+  actualizar: (id: string, data: { nombre?: string; descripcion?: string; nivel?: number; torre?: string; activo?: boolean }) =>
+    apiClient.patch<{ id: string; nombre: string }>(`/roles/${id}`, data),
+
+  /** Baja de rol (no procede con usuarios asignados). */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/roles/${id}`),
+
+  /** Todas las vistas con los flags del rol. */
+  vistas: (id: string) =>
+    apiClient.get<{ rolId: string; rolNombre: string | null; vistas: VistaRolDTO[] }>(
+      `/roles/${id}/vistas`,
+    ),
+
+  /** Upsert de los flags de vistas del rol. */
+  actualizarVistas: (id: string, data: VistasRolInput) =>
+    apiClient.patch<{ message: string }>(`/roles/${id}/vistas`, data),
+
+  /** Matriz de permisos (asignado true/false). */
+  permisos: (id: string) =>
+    apiClient.get<{ rolId: string; permisos: PermisoDTO[] }>(`/roles/${id}/permisos`),
+
+  /** Agregar/quitar permisos del rol. */
+  actualizarPermisos: (id: string, data: { agregar?: string[]; quitar?: string[] }) =>
+    apiClient.patch<{ message: string }>(`/roles/${id}/permisos`, data),
+};
+
+// Mesa de ayuda de PIN (vive en auth/pin — se reusa tal cual).
+export const pinMesaAyudaApi = {
+  /** Genera un PIN temporal de 24 h (se muestra UNA VEZ). */
+  reiniciar: (userId: string) =>
+    apiClient.post<{ message: string; pinTemporal: string }>('/auth/pin/reinicio', { userId }),
+
+  /** Desbloquea la cuenta tras 5 intentos fallidos. */
+  desbloquear: (userId: string) =>
+    apiClient.post<{ message: string }>('/auth/pin/desbloqueo', { userId }),
 };
