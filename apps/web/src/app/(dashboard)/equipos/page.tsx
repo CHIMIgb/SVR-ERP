@@ -1,19 +1,26 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { UsersRound, UserPlus, UserMinus, RefreshCw, UserX } from 'lucide-react';
+import { UsersRound, UserPlus, Eye, UserMinus, RefreshCw, UserX } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { FormModal, ModalField, modalSelectClass } from '@/components/ui/Modal';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { Card } from '@/components/ui/Card';
+import { FormModal, ModalField, modalSelectClass, Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import { equiposApi, type EquipoDTO, type EquiposDTO, type MiembroEquipoDTO } from '@/lib/api';
 import { mensajeErrorApi } from '@/lib/api';
+
+const TORRE_LABELS: Record<string, string> = {
+  ADMINISTRATIVO: 'Administrativo',
+  RESIDENTE: 'Residente',
+  MECANICO: 'Mecánico',
+  SOLDADOR: 'Soldador',
+  DIESEL: 'Diésel',
+  MANTENIMIENTO: 'Mantenimiento',
+};
 
 export default function EquiposPage() {
   const { user } = useAuth();
@@ -25,11 +32,13 @@ export default function EquiposPage() {
   const hasLoaded = useRef(false);
 
   // ── Modales de acción ──
+  const [verOpen, setVerOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const [selectedMiembro, setSelectedMiembro] = useState<MiembroEquipoDTO | null>(null);
   const [selectedEquipo, setSelectedEquipo] = useState<EquipoDTO | null>(null);
+  const [selectedMiembro, setSelectedMiembro] = useState<MiembroEquipoDTO | null>(null);
+  const [trabajadorElegido, setTrabajadorElegido] = useState('');
   const [jefeElegido, setJefeElegido] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -84,14 +93,15 @@ export default function EquiposPage() {
   }, [showToast, fetchData]);
 
   const handleAsignar = useCallback(() => {
-    if (!selectedMiembro || !jefeElegido) return;
-    const equipo = data.equipos.find((e) => e.usuarioId === jefeElegido);
+    if (!selectedEquipo || !trabajadorElegido) return;
+    const trabajador = data.sinJefe.find((m) => m.id === trabajadorElegido);
+    if (!trabajador) return;
     cambiarJefe(
-      selectedMiembro.id,
-      jefeElegido,
-      `${selectedMiembro.nombre ?? 'El usuario'} asignado al equipo de ${equipo?.nombre ?? 'el jefe'}.`,
+      trabajador.id,
+      selectedEquipo.usuarioId,
+      `${trabajador.nombre ?? 'El trabajador'} asignado al equipo de ${selectedEquipo.nombre ?? 'el residente'}.`,
     ).then(() => setAssignOpen(false));
-  }, [selectedMiembro, jefeElegido, data.equipos, cambiarJefe]);
+  }, [selectedEquipo, trabajadorElegido, data.sinJefe, cambiarJefe]);
 
   const handleReasignar = useCallback(() => {
     if (!selectedMiembro || !jefeElegido) return;
@@ -103,7 +113,7 @@ export default function EquiposPage() {
     cambiarJefe(
       selectedMiembro.id,
       jefeElegido,
-      `${selectedMiembro.nombre ?? 'El usuario'} re-asignado al equipo de ${equipo?.nombre ?? 'el jefe'}.`,
+      `${selectedMiembro.nombre ?? 'El usuario'} re-asignado al equipo de ${equipo?.nombre ?? 'el residente'}.`,
     ).then(() => setReassignOpen(false));
   }, [selectedMiembro, jefeElegido, selectedEquipo, data.equipos, cambiarJefe, showToast]);
 
@@ -116,51 +126,75 @@ export default function EquiposPage() {
     ).then(() => setRemoveOpen(false));
   }, [selectedMiembro, cambiarJefe]);
 
-  // ── Selects de jefe ──
-  const opcionesJefe = (excluirUsuarioId?: string) =>
-    data.equipos
-      .filter((e) => e.usuarioId !== excluirUsuarioId)
-      .map((e) => ({ value: e.usuarioId, label: `${e.nombre ?? e.email}${e.roles.length ? ` (${e.roles[0]})` : ''}` }));
-
-  const MiembroRow = ({ m, equipo }: { m: MiembroEquipoDTO; equipo: EquipoDTO }) => (
-    <div className="flex items-center justify-between gap-3 py-2 border-b border-ui-100 last:border-0">
-      <div className="min-w-0">
-        <p className="text-sm font-bold text-ui-800 truncate">{m.nombre ?? m.email}</p>
-        <p className="text-[10px] font-semibold text-ui-400">
-          {m.roles.join(', ') || 'Sin rol'}
-          {m.numeroEmpleado ? ` · ${m.numeroEmpleado}` : ''}
-        </p>
-      </div>
-      {puedeEditar && (
-        <div className="flex items-center gap-1 shrink-0">
+  // ── Columnas de DataTable ──
+  const columns: Column<EquipoDTO>[] = [
+    {
+      key: 'residente',
+      header: 'Residente',
+      render: (equipo) => (
+        <div>
+          <div className="font-black text-ui-900">{equipo.nombre ?? equipo.email}</div>
+          <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">
+            {equipo.roles.join(', ') || 'Sin rol'}
+            {equipo.numeroEmpleado ? ` · ${equipo.numeroEmpleado}` : ''}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'area',
+      header: 'Área',
+      render: (equipo) => (
+        <span className="text-xs font-semibold text-ui-600">
+          {equipo.torre ? (TORRE_LABELS[equipo.torre] ?? equipo.torre) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'trabajadores',
+      header: 'Trabajadores',
+      render: (equipo) => (
+        <span className="font-black text-ui-900">{equipo.subordinados.length}</span>
+      ),
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'right',
+      render: (equipo) => (
+        <div className="flex items-center justify-end gap-1">
           <Button
             variant="secondary"
             size="sm"
-            icon={<RefreshCw className="w-3 h-3" />}
-            onClick={() => {
-              setSelectedMiembro(m);
+            icon={<Eye className="w-3.5 h-3.5" />}
+            onClick={(e) => {
+              e.stopPropagation();
               setSelectedEquipo(equipo);
-              setJefeElegido('');
-              setReassignOpen(true);
+              setVerOpen(true);
             }}
           >
-            Reasignar
+            Ver equipo
           </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            icon={<UserMinus className="w-3 h-3" />}
-            onClick={() => {
-              setSelectedMiembro(m);
-              setRemoveOpen(true);
-            }}
-          >
-            Quitar
-          </Button>
+          {puedeEditar && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<UserPlus className="w-3.5 h-3.5" />}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedEquipo(equipo);
+                setVerOpen(false);
+                setTrabajadorElegido('');
+                setAssignOpen(true);
+              }}
+            >
+              Asignar
+            </Button>
+          )}
         </div>
-      )}
-    </div>
-  );
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -172,7 +206,7 @@ export default function EquiposPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <StatsCard
           icon={<UsersRound className="w-6 h-6" />}
-          value={`${data.equipos.length} jefes`}
+          value={`${data.equipos.length} residentes`}
           label="Residentes con Equipo"
           color="info"
           loading={initialLoading}
@@ -193,60 +227,39 @@ export default function EquiposPage() {
         />
       </div>
 
-      <div className="relative space-y-6">
-        <RefreshOverlay show={refreshing && !initialLoading} />
-
-        {initialLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <Skeleton variant="card" />
-            <Skeleton variant="card" />
-            <Skeleton variant="card" />
-          </div>
-        ) : data.equipos.length === 0 ? (
-          <EmptyState
-            icon={<UsersRound className="w-10 h-10" />}
-            title="Sin equipos armados"
-            subtitle="Asigna trabajadores a un residente desde la sección de abajo."
+      <div className="space-y-3">
+        <div className="relative">
+          <RefreshOverlay show={refreshing && !initialLoading} />
+          <DataTable
+            columns={columns}
+            data={data.equipos}
+            loading={initialLoading}
+            keyExtractor={(equipo) => equipo.usuarioId}
+            emptyText="No hay residentes con equipo todavía — al dar de alta un residente aparece aquí."
+            maxBodyHeight="500px"
           />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-            {data.equipos.map((equipo) => (
-              <Card key={equipo.usuarioId}>
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0">
-                    <p className="font-black text-ui-900 truncate">{equipo.nombre ?? equipo.email}</p>
-                    <p className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">
-                      {equipo.roles.join(', ') || 'Sin rol'}
-                      {equipo.numeroEmpleado ? ` · ${equipo.numeroEmpleado}` : ''}
-                    </p>
-                  </div>
-                  <span className="text-xs font-black text-ui-500 shrink-0">
-                    {equipo.subordinados.length}
-                  </span>
-                </div>
-                {equipo.subordinados.length === 0 ? (
-                  <p className="text-xs text-ui-500 py-3 text-center">Equipo vacío — asigna desde abajo.</p>
-                ) : (
-                  <div>
-                    {equipo.subordinados.map((m) => (
-                      <MiembroRow key={m.id} m={m} equipo={equipo} />
-                    ))}
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
+        </div>
+      </div>
 
-        {/* ── Candidatos sin jefe ── */}
-        {!initialLoading && data.sinJefe.length > 0 && (
-          <Card>
-            <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-3">
-              Sin jefe asignado ({data.sinJefe.length})
+      {/* ═══════════════════════════════════════════
+          MODALES
+          ═══════════════════════════════════════════ */}
+
+      {/* Ver equipo (solo lectura con acciones por trabajador) */}
+      <Modal open={verOpen} onClose={() => setVerOpen(false)} size="lg">
+        <ModalHeader
+          title={`Equipo de ${selectedEquipo?.nombre ?? 'residente'}`}
+          subtitle={`${selectedEquipo?.subordinados.length ?? 0} trabajador(es) — alcance de /reportes`}
+        />
+        <ModalBody>
+          {!selectedEquipo || selectedEquipo.subordinados.length === 0 ? (
+            <p className="text-sm text-ui-500 text-center py-6">
+              Equipo vacío — usa el botón «Asignar» de la tabla.
             </p>
+          ) : (
             <div>
-              {data.sinJefe.map((m) => (
-                <div key={m.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2 border-b border-ui-100 last:border-0">
+              {selectedEquipo.subordinados.map((m) => (
+                <div key={m.id} className="flex items-center justify-between gap-3 py-2.5 border-b border-ui-100 last:border-0">
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-ui-800 truncate">{m.nombre ?? m.email}</p>
                     <p className="text-[10px] font-semibold text-ui-400">
@@ -255,68 +268,84 @@ export default function EquiposPage() {
                     </p>
                   </div>
                   {puedeEditar && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <select
-                        className="h-9 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
-                        value=""
-                        onChange={(e) => {
-                          if (!e.target.value) return;
-                          const equipo = data.equipos.find((x) => x.usuarioId === e.target.value);
-                          cambiarJefe(
-                            m.id,
-                            e.target.value,
-                            `${m.nombre ?? 'El usuario'} asignado al equipo de ${equipo?.nombre ?? 'el jefe'}.`,
-                          );
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon={<RefreshCw className="w-3 h-3" />}
+                        onClick={() => {
+                          setSelectedMiembro(m);
+                          setVerOpen(false);
+                          setJefeElegido('');
+                          setReassignOpen(true);
                         }}
                       >
-                        <option value="">Asignar a...</option>
-                        {opcionesJefe(m.id).map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
+                        Reasignar
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        icon={<UserMinus className="w-3 h-3" />}
+                        onClick={() => {
+                          setSelectedMiembro(m);
+                          setVerOpen(false);
+                          setRemoveOpen(true);
+                        }}
+                      >
+                        Quitar
+                      </Button>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-          </Card>
-        )}
-      </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setVerOpen(false)}>Cerrar</Button>
+        </ModalFooter>
+      </Modal>
 
-      {/* ═══════════════════════════════════════════
-          MODALES
-          ═══════════════════════════════════════════ */}
-
+      {/* Asignar trabajador (elige de los candidatos sin jefe) */}
       <FormModal
         open={assignOpen}
         onClose={() => setAssignOpen(false)}
         onCancel={() => setAssignOpen(false)}
-        title="Asignar a un equipo"
-        subtitle={selectedMiembro?.nombre ?? selectedMiembro?.email}
+        title="Asignar trabajador"
+        subtitle={`Al equipo de ${selectedEquipo?.nombre ?? 'residente'}`}
         submitLabel="Asignar"
         cancelLabel="Cancelar"
         onSubmit={handleAsignar}
         isSubmitting={submitting}
       >
-        <ModalField label="Jefe / Residente" required>
-          <select
-            className={modalSelectClass}
-            value={jefeElegido}
-            onChange={(e) => setJefeElegido(e.target.value)}
-          >
-            <option value="">Seleccionar...</option>
-            {opcionesJefe(selectedMiembro?.id).map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </ModalField>
+        {data.sinJefe.length === 0 ? (
+          <p className="text-sm text-ui-500 text-center py-4">
+            No hay usuarios sin jefe — todos ya tienen equipo asignado.
+          </p>
+        ) : (
+          <ModalField label="Trabajador (sin jefe)" required>
+            <select
+              className={modalSelectClass}
+              value={trabajadorElegido}
+              onChange={(e) => setTrabajadorElegido(e.target.value)}
+            >
+              <option value="">Seleccionar...</option>
+              {data.sinJefe.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre ?? m.email} · {m.roles.join(', ') || 'Sin rol'}
+                </option>
+              ))}
+            </select>
+          </ModalField>
+        )}
       </FormModal>
 
+      {/* Re-asignar trabajador */}
       <FormModal
         open={reassignOpen}
         onClose={() => setReassignOpen(false)}
         onCancel={() => setReassignOpen(false)}
-        title="Re-asignar de equipo"
+        title="Re-asignar trabajador"
         subtitle={
           selectedMiembro
             ? `${selectedMiembro.nombre ?? selectedMiembro.email} — hoy en el equipo de ${selectedEquipo?.nombre ?? '—'}`
@@ -327,20 +356,23 @@ export default function EquiposPage() {
         onSubmit={handleReasignar}
         isSubmitting={submitting}
       >
-        <ModalField label="Nuevo jefe / residente" required>
+        <ModalField label="Nuevo residente" required>
           <select
             className={modalSelectClass}
             value={jefeElegido}
             onChange={(e) => setJefeElegido(e.target.value)}
           >
             <option value="">Seleccionar...</option>
-            {opcionesJefe(selectedMiembro?.id).map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
+            {data.equipos
+              .filter((e) => e.usuarioId !== selectedEquipo?.usuarioId)
+              .map((e) => (
+                <option key={e.usuarioId} value={e.usuarioId}>{e.nombre ?? e.email}</option>
+              ))}
           </select>
         </ModalField>
       </FormModal>
 
+      {/* Quitar del equipo */}
       <FormModal
         open={removeOpen}
         onClose={() => setRemoveOpen(false)}
