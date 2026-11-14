@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Plus, Package, ArrowUpRight, Clock, Gauge,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Loader2, PackagePlus,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -20,6 +20,7 @@ import {
   cribaApi,
   maquinasApi,
   reportesCampoApi,
+  inventarioApi,
   type RegistroCribaDTO,
   type CribaCreateInput,
   type CribaStats,
@@ -47,7 +48,7 @@ const emptyForm = {
   operadorId: '',
   maquinaId: '',
   proyectoId: '',
-  tipoMaterial: '',
+  materialId: '',
   materialProducido: '',
   horasTrabajadas: '',
   materialAlBanco: '',
@@ -77,6 +78,10 @@ export default function CribaPage() {
   // B6: catálogos para los selects de Máquina y Proyecto (EN_PROCESO).
   const [maquinas, setMaquinas] = useState<Maquina[]>([]);
   const [proyectosCriba, setProyectosCriba] = useState<{ id: string; nombre: string }[]>([]);
+  // B7: catálogo de materiales de criba.
+  const [materialesCriba, setMaterialesCriba] = useState<
+    { id: string; nombre: string; stock: number }[]
+  >([]);
   const [stats, setStats] = useState({
     totalProducido: 0,
     totalAlBanco: 0,
@@ -99,6 +104,8 @@ export default function CribaPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<RegistroCribaDTO | null>(null);
+  // B7: registro pendiente de confirmación de envío a inventario.
+  const [enviarId, setEnviarId] = useState<RegistroCribaDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
@@ -116,6 +123,19 @@ export default function CribaPage() {
     reportesCampoApi.proyectos().then((res) => {
       if (res.success && res.data) setProyectosCriba(res.data);
     });
+    // B7: materiales de criba desde el catálogo (con stock del artículo enlazado).
+    inventarioApi
+      .listar({ limit: 100 })
+      .then((res) => {
+        if (!res.success || !res.data) return;
+        setMaterialesCriba(
+          res.data.items
+            .filter((a) =>
+              ['Criba fina', 'Criba gruesa', 'Arena lavada'].includes(a.nombre),
+            )
+            .map((a) => ({ id: a.id, nombre: a.nombre, stock: a.stock })),
+        );
+      });
   }, []);
 
   // ── Cargar datos ──
@@ -129,7 +149,7 @@ export default function CribaPage() {
       const res = await cribaApi.listar({
         search: searchVal || undefined,
         turno: filters?.turno as TurnoCribaApi | undefined,
-        tipoMaterial: filters?.tipoMaterial || undefined,
+        materialId: filters?.materialId || undefined,
         maquinaId: filters?.maquinaId || undefined,
         proyectoId: filters?.proyectoId || undefined,
         page,
@@ -168,8 +188,9 @@ export default function CribaPage() {
     const t = TURNOS.find((x) => x.value === filterValues.turno);
     activeFilters.push({ key: 'turno', label: 'Turno', value: t?.label ?? filterValues.turno });
   }
-  if (filterValues.tipoMaterial) {
-    activeFilters.push({ key: 'tipoMaterial', label: 'Material', value: filterValues.tipoMaterial });
+  if (filterValues.materialId) {
+    const m = materialesCriba.find((x) => x.id === filterValues.materialId);
+    activeFilters.push({ key: 'materialId', label: 'Material', value: m?.nombre ?? filterValues.materialId });
   }
   if (filterValues.maquinaId) {
     const m = maquinas.find((x) => x.id === filterValues.maquinaId);
@@ -190,10 +211,10 @@ export default function CribaPage() {
       placeholder: 'Todos',
     },
     {
-      key: 'tipoMaterial',
+      key: 'materialId',
       label: 'Material',
       type: 'select',
-      options: MATERIALES.map((m) => ({ value: m, label: m })),
+      options: materialesCriba.map((m) => ({ value: m.id, label: m.nombre })),
       placeholder: 'Todos',
     },
     {
@@ -256,7 +277,7 @@ export default function CribaPage() {
       operadorId: item.operadorId ?? '',
       maquinaId: item.maquinaId ?? '',
       proyectoId: item.proyectoId ?? '',
-      tipoMaterial: item.tipoMaterial,
+      materialId: item.materialId ?? '',
       materialProducido: String(item.materialProducido),
       horasTrabajadas: String(item.horasTrabajadas),
       materialAlBanco: String(item.materialAlBanco),
@@ -275,7 +296,7 @@ export default function CribaPage() {
     if (!form.fecha) return 'La fecha es obligatoria.';
     if (!form.turno) return 'Selecciona un turno.';
     if (!form.operadorId) return 'Selecciona un operador.';
-    if (!form.tipoMaterial) return 'Selecciona un material.';
+    if (!form.materialId) return 'Selecciona un material.';
     if (!esDecimalValido(form.materialProducido, 0.01)) {
       return 'Ingresa un material producido válido mayor a cero.';
     }
@@ -299,7 +320,7 @@ export default function CribaPage() {
     operadorId: form.operadorId || undefined,
     maquinaId: form.maquinaId || undefined,
     proyectoId: form.proyectoId || undefined,
-    tipoMaterial: form.tipoMaterial,
+    materialId: form.materialId,
     materialProducido: parsearMiles(form.materialProducido),
     horasTrabajadas: parsearMiles(form.horasTrabajadas),
     materialAlBanco: parsearMiles(form.materialAlBanco),
@@ -307,6 +328,26 @@ export default function CribaPage() {
   }), [form]);
 
   // ── CRUD ──
+  // B7.3: confirmar el envío de la producción al inventario.
+  const handleEnviarInventario = useCallback(async () => {
+    if (!enviarId) return;
+    setSubmitting(true);
+    try {
+      const res = await cribaApi.enviarInventario(enviarId.id);
+      if (res.success) {
+        showToast('Producción enviada al inventario.', 'success');
+        setEnviarId(null);
+        fetchData(pagination.page, search, filterValues);
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo enviar al inventario.'), 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [enviarId, showToast, fetchData, pagination.page, search, filterValues]);
+
   const handleCreate = useCallback(async () => {
     const invalid = validateForm();
     if (invalid) {
@@ -423,6 +464,16 @@ export default function CribaPage() {
       render: (item) => <span className="font-semibold text-ui-600">{item.tipoMaterial}</span>,
     },
     {
+      key: 'inventarioEn',
+      header: 'Inventario',
+      // B7: fecha de envío al inventario; '—' si aún no se envía.
+      render: (item) => (
+        <span className="text-xs font-medium whitespace-nowrap text-ui-500">
+          {item.inventarioEn ? formatFechaSolo(item.inventarioEn) : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'materialProducido',
       header: 'Producido',
       align: 'right',
@@ -478,6 +529,16 @@ export default function CribaPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
+          {puedeEditar && !item.inventarioEn && item.materialId && item.materialAlBanco > 0 && (
+            <Button
+              variant="success"
+              size="sm"
+              icon={<PackagePlus className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); setEnviarId(item); }}
+            >
+              A inventario
+            </Button>
+          )}
           {puedeEditar && (
             <Button
               variant="warning"
@@ -783,14 +844,19 @@ export default function CribaPage() {
           <ModalField label="Material" required>
             <select
               className={modalSelectClass}
-              value={form.tipoMaterial}
-              onChange={(e) => setForm({ ...form, tipoMaterial: e.target.value })}
+              value={form.materialId}
+              onChange={(e) => setForm({ ...form, materialId: e.target.value })}
             >
               <option value="">Seleccionar material...</option>
-              {MATERIALES.map((m) => (
-                <option key={m} value={m}>{m}</option>
+              {materialesCriba.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}{m.stock !== undefined ? ` — stock ${m.stock} m³` : ''}
+                </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-ui-500">
+              Material del catálogo de criba (al enviar al inventario entra al stock).
+            </p>
           </ModalField>
 
           <ModalField label="Horas trabajadas" required hint="Duración del turno en horas.">
@@ -909,14 +975,19 @@ export default function CribaPage() {
           <ModalField label="Material" required>
             <select
               className={modalSelectClass}
-              value={form.tipoMaterial}
-              onChange={(e) => setForm({ ...form, tipoMaterial: e.target.value })}
+              value={form.materialId}
+              onChange={(e) => setForm({ ...form, materialId: e.target.value })}
             >
               <option value="">Seleccionar material...</option>
-              {MATERIALES.map((m) => (
-                <option key={m} value={m}>{m}</option>
+              {materialesCriba.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}{m.stock !== undefined ? ` — stock ${m.stock} m³` : ''}
+                </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-ui-500">
+              Material del catálogo de criba (al enviar al inventario entra al stock).
+            </p>
           </ModalField>
 
           <ModalField label="Horas trabajadas" required>
@@ -984,6 +1055,36 @@ export default function CribaPage() {
             </p>
             <p className="text-xs text-ui-500">
               {selectedItem.operador || 'Sin operador'} · {selectedItem.tipoMaterial}
+            </p>
+          </div>
+        )}
+      </FormModal>
+
+      {/* B7.3: confirmar envío de la producción al inventario */}
+      <FormModal
+        open={!!enviarId}
+        onClose={() => setEnviarId(null)}
+        onCancel={() => setEnviarId(null)}
+        title="Enviar al Inventario"
+        subtitle="La producción (al banco) entra al stock del material."
+        submitLabel="Enviar al Inventario"
+        cancelLabel="Cancelar"
+        onSubmit={handleEnviarInventario}
+        isSubmitting={submitting}
+      >
+        {enviarId && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-14 h-14 bg-green-100 dark:bg-green-500/10 rounded-full flex items-center justify-center mb-4">
+              <PackagePlus className="w-7 h-7 text-green-600" />
+            </div>
+            <p className="text-sm text-ui-700 mb-1">
+              ¿Enviar la producción de este turno al inventario?
+            </p>
+            <p className="font-black text-ui-900 text-lg mb-2">
+              {enviarId.material} · {enviarId.materialAlBanco} m³
+            </p>
+            <p className="text-xs text-ui-500">
+              {formatFechaSolo(enviarId.fecha)} · {enviarId.turno} · {enviarId.operador || 'Sin operador'}
             </p>
           </div>
         )}

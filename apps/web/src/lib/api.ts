@@ -1940,6 +1940,9 @@ export interface RegistroCribaDTO {
   turno: 'Matutino' | 'Vespertino';
   operadorId: string | null;
   operador: string | null;
+  materialId: string | null;
+  material: string | null;
+  inventarioEn: string | null;
   maquinaId: string | null;
   maquina: string | null;
   proyectoId: string | null;
@@ -1981,7 +1984,8 @@ export interface CribaCreateInput {
   /** B6: máquina y proyecto de la producción (opcionales). */
   maquinaId?: string;
   proyectoId?: string;
-  tipoMaterial: string;
+  /** B7: material del catálogo de criba. */
+  materialId: string;
   materialProducido: number;
   horasTrabajadas: number;
   materialAlBanco: number;
@@ -1993,7 +1997,7 @@ export const cribaApi = {
   listar: (params?: {
     search?: string;
     turno?: TurnoCribaApi;
-    tipoMaterial?: string;
+    materialId?: string;
     fechaDesde?: string;
     fechaHasta?: string;
     maquinaId?: string;
@@ -2004,7 +2008,7 @@ export const cribaApi = {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set('search', params.search);
     if (params?.turno) searchParams.set('turno', params.turno);
-    if (params?.tipoMaterial) searchParams.set('tipoMaterial', params.tipoMaterial);
+    if (params?.materialId) searchParams.set('materialId', params.materialId);
     if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
     if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
     if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
@@ -2032,6 +2036,10 @@ export const cribaApi = {
   /** Crear un registro de turno */
   crear: (data: CribaCreateInput) =>
     apiClient.post<RegistroCribaDTO>('/criba', data),
+
+  /** B7: enviar la producción del registro al inventario (transacción). */
+  enviarInventario: (id: string) =>
+    apiClient.post<RegistroCribaDTO>(`/criba/${id}/inventario`, {}),
 
   /** Actualizar un registro de turno */
   actualizar: (id: string, data: Partial<CribaCreateInput>) =>
