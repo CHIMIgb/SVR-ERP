@@ -15,7 +15,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatFechaSolo, fechaLocalHoy } from '@/lib/formatters';
+import { formatFechaSolo, fechaLocalHoy, formatearMiles, parsearMiles, esDecimalValido } from '@/lib/formatters';
 import {
   cribaApi,
   maquinasApi,
@@ -43,11 +43,11 @@ const TURNOS: { value: TurnoCribaApi; label: 'Matutino' | 'Vespertino' }[] = [
 
 const emptyForm = {
   fecha: fechaLocalHoy(),
-  turno: 'MATUTINO' as TurnoCribaApi,
+  turno: '',
   operadorId: '',
   maquinaId: '',
   proyectoId: '',
-  tipoMaterial: 'Criba fina' as string,
+  tipoMaterial: '',
   materialProducido: '',
   horasTrabajadas: '',
   materialAlBanco: '',
@@ -273,32 +273,36 @@ export default function CribaPage() {
   // ── Validación ──
   const validateForm = useCallback((): string | null => {
     if (!form.fecha) return 'La fecha es obligatoria.';
+    if (!form.turno) return 'Selecciona un turno.';
     if (!form.operadorId) return 'Selecciona un operador.';
-    const producido = parseFloat(form.materialProducido);
-    if (!form.materialProducido || isNaN(producido) || producido <= 0) {
+    if (!form.tipoMaterial) return 'Selecciona un material.';
+    if (!esDecimalValido(form.materialProducido, 0.01)) {
       return 'Ingresa un material producido válido mayor a cero.';
     }
-    const horas = parseFloat(form.horasTrabajadas);
-    if (!form.horasTrabajadas || isNaN(horas) || horas <= 0 || horas > 24) {
-      return 'Ingresa las horas trabajadas del turno (máx. 24).';
+    if (!esDecimalValido(form.horasTrabajadas, 0.1, 24)) {
+      return 'Ingresa las horas trabajadas del turno (0.1 a 24).';
     }
-    const alBanco = parseFloat(form.materialAlBanco);
-    if (isNaN(alBanco) || alBanco < 0 || alBanco > producido) {
-      return 'El material al banco no puede ser negativo ni mayor a lo producido.';
+    if (!esDecimalValido(form.materialAlBanco, 0)) {
+      return 'El material al banco no puede ser negativo.';
+    }
+    const producido = parsearMiles(form.materialProducido);
+    const alBanco = parsearMiles(form.materialAlBanco);
+    if (alBanco > producido) {
+      return 'El material al banco no puede ser mayor a lo producido.';
     }
     return null;
   }, [form]);
 
   const buildInput = useCallback((): CribaCreateInput => ({
     fecha: form.fecha,
-    turno: form.turno,
+    turno: form.turno as TurnoCribaApi,
     operadorId: form.operadorId || undefined,
     maquinaId: form.maquinaId || undefined,
     proyectoId: form.proyectoId || undefined,
     tipoMaterial: form.tipoMaterial,
-    materialProducido: parseFloat(form.materialProducido),
-    horasTrabajadas: parseFloat(form.horasTrabajadas),
-    materialAlBanco: parseFloat(form.materialAlBanco),
+    materialProducido: parsearMiles(form.materialProducido),
+    horasTrabajadas: parsearMiles(form.horasTrabajadas),
+    materialAlBanco: parsearMiles(form.materialAlBanco),
     observaciones: form.observaciones.trim() || undefined,
   }), [form]);
 
@@ -720,28 +724,20 @@ export default function CribaPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
-          </ModalField>
-
           <ModalField label="Turno" required>
             <select
               className={modalSelectClass}
               value={form.turno}
               onChange={(e) => setForm({ ...form, turno: e.target.value as TurnoCribaApi })}
             >
+              <option value="">Seleccionar turno...</option>
               {TURNOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
           </ModalField>
 
-          <ModalField label="Operador" required className="sm:col-span-2">
+          <ModalField label="Operador" required>
             <select
               className={modalSelectClass}
               value={form.operadorId}
@@ -790,6 +786,7 @@ export default function CribaPage() {
               value={form.tipoMaterial}
               onChange={(e) => setForm({ ...form, tipoMaterial: e.target.value })}
             >
+              <option value="">Seleccionar material...</option>
               {MATERIALES.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
@@ -798,35 +795,34 @@ export default function CribaPage() {
 
           <ModalField label="Horas trabajadas" required hint="Duración del turno en horas.">
             <input
-              type="number"
-              min="0"
-              step="0.5"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="8"
               value={form.horasTrabajadas}
-              onChange={(e) => setForm({ ...form, horasTrabajadas: e.target.value })}
+              onChange={(e) => setForm({ ...form, horasTrabajadas: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
           <ModalField label="Material producido (m³)" required>
             <input
-              type="number"
-              min="0"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="320"
               value={form.materialProducido}
-              onChange={(e) => setForm({ ...form, materialProducido: e.target.value })}
+              onChange={(e) => setForm({ ...form, materialProducido: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
           <ModalField label="Material al banco (m³)" required hint="No puede exceder lo producido.">
             <input
-              type="number"
-              min="0"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="290"
               value={form.materialAlBanco}
-              onChange={(e) => setForm({ ...form, materialAlBanco: e.target.value })}
+              onChange={(e) => setForm({ ...form, materialAlBanco: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
@@ -854,28 +850,20 @@ export default function CribaPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Fecha" required>
-            <input
-              type="date"
-              className={modalInputClass}
-              value={form.fecha}
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            />
-          </ModalField>
-
           <ModalField label="Turno" required>
             <select
               className={modalSelectClass}
               value={form.turno}
               onChange={(e) => setForm({ ...form, turno: e.target.value as TurnoCribaApi })}
             >
+              <option value="">Seleccionar turno...</option>
               {TURNOS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
           </ModalField>
 
-          <ModalField label="Operador" required className="sm:col-span-2">
+          <ModalField label="Operador" required>
             <select
               className={modalSelectClass}
               value={form.operadorId}
@@ -924,6 +912,7 @@ export default function CribaPage() {
               value={form.tipoMaterial}
               onChange={(e) => setForm({ ...form, tipoMaterial: e.target.value })}
             >
+              <option value="">Seleccionar material...</option>
               {MATERIALES.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
@@ -932,32 +921,31 @@ export default function CribaPage() {
 
           <ModalField label="Horas trabajadas" required>
             <input
-              type="number"
-              min="0"
-              step="0.5"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               value={form.horasTrabajadas}
-              onChange={(e) => setForm({ ...form, horasTrabajadas: e.target.value })}
+              onChange={(e) => setForm({ ...form, horasTrabajadas: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
           <ModalField label="Material producido (m³)" required>
             <input
-              type="number"
-              min="0"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               value={form.materialProducido}
-              onChange={(e) => setForm({ ...form, materialProducido: e.target.value })}
+              onChange={(e) => setForm({ ...form, materialProducido: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
           <ModalField label="Material al banco (m³)" required hint="No puede exceder lo producido.">
             <input
-              type="number"
-              min="0"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               value={form.materialAlBanco}
-              onChange={(e) => setForm({ ...form, materialAlBanco: e.target.value })}
+              onChange={(e) => setForm({ ...form, materialAlBanco: formatearMiles(e.target.value) })}
             />
           </ModalField>
 

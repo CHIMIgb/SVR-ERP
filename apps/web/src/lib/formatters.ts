@@ -104,6 +104,17 @@ export function parsearMiles(valor: string): number {
   return parseFloat(valor.replace(/,/g, ''));
 }
 
+/**
+ * Valida un número decimal capturado con `formatearMiles` (acepta comas):
+ * no vacío, numérico, >= min y (si se da) <= max. Para cantidades y horas
+ * de formularios (criba, etc.).
+ */
+export function esDecimalValido(valor: string, min: number, max?: number): boolean {
+  const n = parsearMiles(valor);
+  if (isNaN(n) || n < min) return false;
+  return max === undefined ? true : n <= max;
+}
+
 /** Fecha de hoy en horario local como YYYY-MM-DD (toISOString usaría UTC). */
 export function fechaLocalHoy(): string {
   const hoy = new Date();
