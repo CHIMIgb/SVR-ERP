@@ -293,3 +293,95 @@ documentado. **No se pushea ni se abre PR sin orden explícita.**
   existente; sin `next/dynamic` (no hay code splitting en el repo).
 - Deuda de permisos: si mañana se quiere que Administrativo gestione
   usuarios, basta asignar los permisos ya existentes — el diseño no cambia.
+
+---
+
+## 9. Detalle de construcción — Fase 3: `/roles` (Gestión de Identidad)
+
+> Analizado el 2026-11-14 contra BD y código real. Respuestas del cliente ya
+> registradas: `/roles` **asigna Y edita** roles; acceso solo Administrador;
+> mono-rol en todo el sistema.
+
+### 9.1 Estado verificado (lo que existe hoy)
+
+- `role_permissions` (178 filas): PK compuesta `(rol_id, permiso_id)`, sin
+  timestamps → agregar/quitar es insert/delete directo.
+- `role_vistas` (99 filas): flags `puede_ver/crear/editar/eliminar/exportar`
+  por `(rol, vista)`.
+- 107 permisos, 39 vistas, 168 sesiones activas hoy. La relación
+  `users.sessions[]` existe.
+- **Enum de auditoría sin acciones de roles-catálogo**: solo existen
+  `ROL_ASIGNADO`/`ROL_REVOCADO` (que hablan de usuarios↔roles). CRUD de
+  roles requiere valores nuevos (§9.2-A).
+- Endpoints de PIN listos para reuso: `POST /auth/pin/reinicio` devuelve
+  `{ message, pinTemporal }` (el PIN temporal se muestra UNA VEZ — la
+  respuesta ya viene así del backend) y `POST /auth/pin/desbloqueo`; ambos
+  con permiso `sistema.usuarios.editar`. El estado del PIN se deriva de
+  `users` (intentos ≥ 5 / `pin_temporal_hasta`) — no hace falta llamar a
+  `pin.service` para la ficha.
+- Permisos existentes y exclusivos de admin: `sistema.roles.{ver,crear,
+  editar,eliminar}`, `sistema.permisos.{ver,editar}` (verificado en
+  `role_permissions`: 1 solo rol los tiene).
+
+### 9.2 Construcción
+
+**A. Migración (1 sola):**
+- 5 valores nuevos en `enum AuditAction`: `ROL_CREADO`, `ROL_ACTUALIZADO`,
+  `ROL_ELIMINADO`, `VISTAS_ROL_ACTUALIZADAS`, `PERMISOS_ROL_ACTUALIZADOS`
+  (cliente ya aprobó migraciones de enum con `JEFE_ASIGNADO`; alternativa
+  lean: solo 3 y reusar `ROL_ACTUALIZADO` con `metadata.campo` para
+  vistas/permisos — se elige con el cliente).
+- Vista `/roles` (id `bb000006-...-0007`, orden 54, icono `ShieldCheck`) +
+  `role_vistas` SOLO Administrador.
+
+**B. API — service/controller `roles` dentro del módulo `usuarios`:**
+
+| Endpoint | Permiso | Auditoría (acción / FAIL) |
+|---|---|---|
+| `GET /roles` (catálogo: nivel, torre, `es_sistema`, conteo usuarios y vistas/permisos) | `sistema.roles.ver` | — |
+| `POST /roles` (nombre único, nivel, torre, descripcion) | `sistema.roles.crear` | `ROL_CREADO` / `NOMBRE_DUPLICADO` (P2002) |
+| `PATCH /roles/:id` (nombre, descripcion, nivel, torre, activo) | `sistema.roles.editar` | `ROL_ACTUALIZADO` / `ROL_SISTEMA_PROTEGIDO` |
+| `DELETE /roles/:id` | `sistema.roles.eliminar` | `ROL_ELIMINADO` / `ROL_SISTEMA_PROTEGIDO`, `ROL_EN_USO` (usuarios asignados) |
+| `GET /roles/:id/vistas` (todas las vistas con flags del rol) | `sistema.permisos.ver` | — |
+| `PATCH /roles/:id/vistas` (flags por vista) | `sistema.permisos.editar` | `VISTAS_ROL_ACTUALIZADAS` / `ROL_SISTEMA_PROTEGIDO` |
+| `GET /roles/:id/permisos` (matriz por módulo) | `sistema.permisos.ver` | — |
+| `PATCH /roles/:id/permisos` (agregar/quitar permiso_ids) | `sistema.permisos.editar` | `PERMISOS_ROL_ACTUALIZADOS` / `ROL_SISTEMA_PROTEGIDO` |
+| `GET /usuarios/:id/identidad` (ficha 360) | `sistema.usuarios.ver` | — |
+| `POST /usuarios/:id/sesiones/cierre` | `sistema.usuarios.editar` | `SESION_CERRADA` (`metadata {modo:'masivo', sesiones}`) / `NO_PUEDE_CERRAR_SUS_PROPIAS_SESIONES` |
+
+Guards transversales del catálogo de roles: el rol `es_sistema`
+(**Administrador**) es **solo lectura en todo** (no editar campos, ni
+vistas/permisos, ni eliminar) — es la columna vertebral del acceso.
+
+**Ficha 360** (`GET /usuarios/:id/identidad`): usuario (persona, correo,
+área, jefe, número de empleado), rol único, **vistas con flags** y
+**permisos por módulo** heredados de sus roles, estado de PIN derivado, y
+**sesiones activas** (dispositivo, ubicación, IP, última actividad).
+
+**C. Web — vista `/roles` con dos pestañas:**
+
+- **Tab "Usuarios" (ficha 360):** tabla de usuarios (misma fuente que
+  `/usuarios`) → al elegir uno, panel/modal con su ficha: rol (select que
+  llama a `PATCH /usuarios/:id/rol` del módulo de usuarios), vistas y
+  permisos heredados (solo lectura), área, jefe, estado de PIN y sesiones
+  activas; acciones de mesa de ayuda: **Reiniciar PIN** (modal que muestra
+  el PIN temporal UNA VEZ), **Desbloquear**, **Cerrar sesiones**
+  (confirmación).
+- **Tab "Roles":** tabla de roles (nombre, nivel, área, usuarios,
+  `es_sistema`) + crear/editar/eliminar con modal; por rol: **Vistas**
+  (modal con checkboxes por vista y sus 5 flags) y **Permisos** (modal con
+  matriz por módulo). El rol Administrador se muestra con candado
+  (solo lectura).
+
+**D. Entregas:** commit 1 (migración: enum + vista), commit 2 (API +
+tests de los 3 tipos), commit 3 (web). Gates: `tsc` web+api, `jest`,
+eslint, smoke real, historiales por commit.
+
+### 9.3 Preguntas al cliente (bloquean el arranque de Fase 3)
+
+1. **Enum de auditoría**: ¿los 5 valores literales (propuestos arriba) o la
+   versión lean de 3 con metadata? (Recomendado: los 5 — historial claro.)
+2. **Ficha 360**: ¿panel/modal dentro de la tab Usuarios (propuesto) o
+   vista aparte?
+3. La ficha 360 es de **lectura + mesa de ayuda**; editar los datos del
+   usuario (nombre, correo, área...) sigue en `/usuarios` — ¿ok?
