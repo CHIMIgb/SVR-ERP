@@ -51,7 +51,7 @@
 | B3 | **FK `ventas.cliente_id`** + mini-modal de alta rápida de cliente en el POS (análisis §9.3 punto 4 — decisión de diseño, no requiere duda) | `/ventas` | ✅ HECHA completa (B3.1–B3.4, 2026-11-13) — ver §12 |
 | B4 | **§10: fecha de vencimiento en CxP** — campo en OC → propagación a CxP → UI estado de cuenta | `/proveedores`, `/finanzas` | ✅ HECHA completa (B4.1–B4.4, 2026-11-13) — ver §12 |
 | B5 | **F1: notificaciones funcionales** (modelo `notificaciones` + eventos del ERP + centro del Topbar cosido a API) | transversal (las 15 vistas) | ✅ HECHA completa (B5.1–B5.13, 2026-11-13/14) — ver §13 y `NOTIFICACIONES.md` |
-| B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ⏳ |
+| B6 | 6.4: FK `maquina_id`/`proyecto_id` en criba | `/criba` | ✅ HECHA completa (B6.1–B6.4, 2026-11-14) — ver §14 |
 | B7 | 6.5: inventario ↔ criba (entradas desde producción) | `/inventario` | ⏳ |
 | B8 | P8: metas de progreso con fecha límite (deriva `proyectos.progreso`) | `/proyectos` | ⏳ |
 | B9 | P6: `vendedor_id` real | `/cotizaciones` | ⏳ |
@@ -537,3 +537,25 @@ historial de compras por cliente en /clientes (depende de este `cliente_id`).
 **Pendiente de decisiones del SVR** (dudas #34/#7/#5 de
 `DUDAS-VISTAS-SVR.txt`): evento de CxP/CxC por vencer/vencidas (alertas y
 estado "VENCIDA") — la tubería está lista (`emitirARol` + cron pendiente).
+
+---
+
+## 14. Plan de implementación B6 — máquina y proyecto en criba (EJECUTADO 2026-11-14)
+
+> **Diseño (6.4 de IMPLEMENTACIONES-A-FUTURO):** los registros de criba
+> atribuyen su producción a una **máquina** y a un **proyecto** (ambos
+> opcionales — los registros previos quedan intactos). El proyecto debe estar
+> **EN_PROCESO** (mismo criterio que reportes/obras). La máquina se envía por
+> **CÓDIGO** (`M001`) — el patrón que despachos ya usa — y el backend la
+> resuelve al UUID real para el FK.
+
+| Fase | Estado | Evidencia |
+|---|---|---|
+| B6.1 BD | ✅ HECHA | `29ec23e6` — `maquina_id` + `proyecto_id` (FKs SET NULL, índices, back-relations) |
+| B6.2 Backend | ✅ HECHA | `43dd394d` + fix `90791f75` — DTOs, validadores con audit FAIL (`MAQUINA_NO_ENCONTRADA`, `PROYECTO_NO_EN_PROCESO`), filtros, serialize |
+| B6.3 UI | ✅ HECHA | `b4e0d4b2` — selects en alta/edición, columnas en la tabla, filtros con chips |
+| B6.4 Gates | ✅ HECHA | unit **39/39** + integración **6/6**, `tsc` limpio, smoke real: registro con `M001` → FK UUID en BD y filtros por código/proyecto ✓ |
+
+**Fuera de B6 (no se construye aquí):** B7 (entradas de criba → inventario,
+transacción) · KPIs de producción por máquina (el listado filtrable ya
+responde).
