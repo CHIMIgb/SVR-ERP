@@ -303,6 +303,23 @@ hacer; el **puesto** (`categorias_puesto.torre`) decide el área: se escribe en
 usa el SUFIJO MÁXIMO (no conteo). Detalle y gráfica: README "Estructura
 organacional".
 
+**⚠️ Regla dura — Zona horaria: UNA sola fuente (.env)**
+
+La zona horaria oficial de la empresa (`America/Mexico_City`) vive **SOLO en
+los `.env`** — **PROHIBIDO hardcodearla en código**:
+
+- **API** (`apps/api/.env`): `TZ` + `TIMEZONE` (los usa `hoyEnZona()`/
+  `inicioDelDiaEnZona()` de `common/validacion.ts`; `main.ts` solo los
+  aplica, sin fallbacks hardcodeados).
+- **Web** (`apps/web/.env`): `NEXT_PUBLIC_TZ` (lo lee `APP_TIMEZONE` en
+  `lib/formatters.ts`).
+
+**PROHIBIDO capturar "hoy" con `new Date().toISOString().split('T')[0]`** —
+UTC a partir de las 6 p.m. guarda/muestra el día SIGUIENTE (bug real del
+12-nov). Usar `hoyEnZona()` (API) o `fechaLocalHoy()` (web, en
+`lib/formatters.ts`). Los comparadores de fecha pura (`sumarDias` con
+`T00:00:00Z`) sí son correctos.
+
 **⚠️ Vigilancia de permisos (regla dura — permiso #107 y siguientes):**
 los permisos son granulares por `(modulo, recurso, accion)` — hoy 106, sin
 duplicados. Al agregar uno NUEVO o al construir la Vista B:

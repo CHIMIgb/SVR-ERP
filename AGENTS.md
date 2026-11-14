@@ -309,6 +309,30 @@ de RRHH) y **Técnico** (absorbió Tecnico Mecanico/Soldador/Diesel/Mantenimient
 — viejos roles desactivados). El detalle completo (roles, puestos, torres y
 gráfica) está en el README, sección "Estructura organizacional".
 
+#### ⚠️ Regla dura — Zona horaria: UNA sola fuente (.env)
+
+La zona horaria oficial de la empresa (`America/Mexico_City`, Nayarit Costa
+Sur) vive **SOLO en los archivos `.env`** — **PROHIBIDO hardcodearla en
+cualquier otro archivo de código**:
+
+- **API** (`apps/api/.env`): `TZ=America/Mexico_City` (+ `TIMEZONE`, que usan
+  `hoyEnZona()`/`inicioDelDiaEnZona()` de `common/validacion.ts`).
+- **Web** (`apps/web/.env`): `NEXT_PUBLIC_TZ=America/Mexico_City` → la lee
+  `APP_TIMEZONE` en `lib/formatters.ts`.
+
+**PROHIBIDO capturar "hoy" con `new Date().toISOString().split('T')[0]`** —
+`toISOString()` convierte a UTC y a partir de las 6 p.m. guarda/muestra el
+día SIGUIENTE (bug real del 12-nov: registrando a las 11 p.m. se guardó el
+13-nov). Usar:
+
+- **API:** `hoyEnZona()` (de `common/validacion.ts`).
+- **Web:** `fechaLocalHoy()` (de `lib/formatters.ts`).
+
+Los **comparadores de fecha puros** (ej. `sumarDias` con `T00:00:00Z` sobre
+un string `YYYY-MM-DD`) sí son correctos: son aritmética de fechas pura, no
+conversión de zona. Lo que prohíbe la regla es capturar "hoy" o mostrar
+fechas por UTC.
+
 #### ⚠️ Vigilancia de permisos (regla dura al agregar el permiso #107 y siguientes)
 
 Los permisos son granulares por `(modulo, recurso, accion)` — hoy 106, sin

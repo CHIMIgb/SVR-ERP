@@ -12,8 +12,8 @@ export const TELEFONO_VALIDO = /^(?=(?:\D*\d){7})[0-9+()\s-]+$/;
 /** `@Transform` para quitar espacios a los extremos antes de validar largo y formato. */
 export const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
-/** Hoy en la zona de la empresa, como "YYYY-MM-DD". */
-export function hoyEnZona(timeZone = process.env.TIMEZONE || 'America/Mexico_City'): string {
+/** Hoy en la zona de la empresa, como "YYYY-MM-DD". La zona vive SOLO en .env (TIMEZONE). */
+export function hoyEnZona(timeZone = process.env.TIMEZONE): string {
   return new Date().toLocaleDateString('en-CA', { timeZone });
 }
 
@@ -33,7 +33,7 @@ export function sumarDiasFecha(fecha: string, dias: number): string {
  * Instante (en UTC) en que empieza el día `fecha` ("YYYY-MM-DD") en la zona de la empresa.
  * En México es las 06:00 UTC: cortar el día a medianoche UTC mete las 6 p.m.–12 a.m. del día anterior.
  */
-export function inicioDelDiaEnZona(fecha: string, timeZone = process.env.TIMEZONE || 'America/Mexico_City'): Date {
+export function inicioDelDiaEnZona(fecha: string, timeZone = process.env.TIMEZONE): Date {
   const medianocheUtc = new Date(`${fecha.slice(0, 10)}T00:00:00Z`);
   const partes = Object.fromEntries(
     new Intl.DateTimeFormat('en-US', {

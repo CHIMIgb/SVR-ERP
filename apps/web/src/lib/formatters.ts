@@ -1,11 +1,13 @@
 /**
  * Utilidades de formateo centralizadas para SVR-ERP.
  *
- * Todas las fechas/horas se muestran en la zona horaria oficial de la empresa:
- * Nayarit Costa Sur => America/Mexico_City.
+ * REGLA: la zona horaria vive SOLO en el .env — `NEXT_PUBLIC_TZ` en
+ * `apps/web/.env` (la API usa `TZ`/`TIMEZONE` en `apps/api/.env`).
+ * PROHIBIDO hardcodear 'America/Mexico_City' en código. Si el .env no la
+ * define, se usa la zona del equipo del usuario.
  */
 
-export const APP_TIMEZONE = 'America/Mexico_City';
+export const APP_TIMEZONE = process.env.NEXT_PUBLIC_TZ;
 
 function toDate(value: Date | string | number | null | undefined): Date | null {
   if (value === null || value === undefined) return null;
@@ -64,8 +66,7 @@ export function formatTime(
  * Formatea una fecha PURA sin hora (ej. "2026-08-23" de una columna
  * `@db.Date`) sin pasar por conversión de zona horaria. A diferencia de
  * `formatDate()`, que interpreta el string como medianoche UTC y por eso
- * puede mostrar el día anterior al convertir a `America/Mexico_City`
- * (UTC-6), esto solo reordena los mismos dígitos.
+ * puede mostrar el día anterior al convertirlo a la zona del .env
  */
 export function formatFechaSolo(value: string | null | undefined): string {
   if (!value) return '';
