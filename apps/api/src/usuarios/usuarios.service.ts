@@ -876,6 +876,11 @@ export class UsuariosService {
             .filter(Boolean)
             .join(' ')
         : null,
+      /** Nombre de pila de la persona (para el form de editar). */
+      personaNombre: persona?.nombre ?? null,
+      apellidoPaterno: persona?.apellido_paterno ?? null,
+      apellidoMaterno: persona?.apellido_materno ?? null,
+      telefono: persona?.telefono ?? null,
       email: u.email,
       activo: u.activo,
       torre: (u.torre as CategoriaReporte | null) ?? null,

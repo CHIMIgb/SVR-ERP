@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, UserCog, Users, CheckCircle2, KeyRound, UserX,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Power, PowerOff,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
@@ -18,7 +18,6 @@ import {
   usuariosApi,
   type UsuarioDTO,
   type UsuariosCatalogos,
-  type UsuarioRoleDTO,
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
@@ -47,7 +46,8 @@ const PIN_LABELS: Record<UsuarioDTO['pinEstado'], string> = {
 };
 
 // ── Form defaults ──
-const emptyCreateForm = {
+// Crear y editar comparten la MISMA captura (decisión del cliente).
+const emptyForm = {
   nombre: '',
   apellidoPaterno: '',
   apellidoMaterno: '',
@@ -55,12 +55,6 @@ const emptyCreateForm = {
   email: '',
   password: '',
   rolId: '',
-  torre: '',
-};
-
-const emptyEditForm = {
-  email: '',
-  activo: 'true',
   torre: '',
 };
 
@@ -86,11 +80,9 @@ export default function UsuariosPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [estadoOpen, setEstadoOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<UsuarioDTO | null>(null);
-  const [createForm, setCreateForm] = useState(emptyCreateForm);
-  const [editForm, setEditForm] = useState(emptyEditForm);
-  const [rolesEdit, setRolesEdit] = useState<UsuarioRoleDTO[]>([]);
-  const [nuevoRolId, setNuevoRolId] = useState('');
+  const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Permisos RBAC ──
@@ -218,19 +210,23 @@ export default function UsuariosPage() {
 
   // ── Handlers de modales ──
   const openCreate = useCallback(() => {
-    setCreateForm(emptyCreateForm);
+    setForm(emptyForm);
     setCreateOpen(true);
   }, []);
 
+  // Editar: MISMA captura que crear (persona + correo + rol + área).
   const openEdit = useCallback((item: UsuarioDTO) => {
     setSelectedItem(item);
-    setEditForm({
+    setForm({
+      nombre: item.personaNombre ?? '',
+      apellidoPaterno: item.apellidoPaterno ?? '',
+      apellidoMaterno: item.apellidoMaterno ?? '',
+      telefono: item.telefono ?? '',
       email: item.email,
-      activo: String(item.activo),
+      password: '',
+      rolId: item.roles[0]?.id ?? '',
       torre: item.torre ?? '',
     });
-    setRolesEdit(item.roles);
-    setNuevoRolId('');
     setEditOpen(true);
   }, []);
 
@@ -239,34 +235,39 @@ export default function UsuariosPage() {
     setDeleteOpen(true);
   }, []);
 
+  const openEstado = useCallback((item: UsuarioDTO) => {
+    setSelectedItem(item);
+    setEstadoOpen(true);
+  }, []);
+
   // ── CRUD Handlers ──
   const handleCreate = useCallback(async () => {
-    if (!createForm.nombre.trim()) {
+    if (!form.nombre.trim()) {
       showToast('El nombre de la persona es obligatorio.', 'error');
       return;
     }
-    if (!createForm.email || !createForm.password || !createForm.rolId) {
+    if (!form.email || !form.password || !form.rolId) {
       showToast('El correo, la contraseña, el rol y el área son obligatorios.', 'error');
       return;
     }
-    if (!createForm.torre) {
+    if (!form.torre) {
       showToast('Elige el área del usuario.', 'error');
       return;
     }
     setSubmitting(true);
     try {
       const res = await usuariosApi.crear({
-        nombre: createForm.nombre,
-        apellidoPaterno: createForm.apellidoPaterno || undefined,
-        apellidoMaterno: createForm.apellidoMaterno || undefined,
-        telefono: createForm.telefono || undefined,
-        email: createForm.email,
-        password: createForm.password,
-        rolId: createForm.rolId,
-        torre: createForm.torre,
+        nombre: form.nombre,
+        apellidoPaterno: form.apellidoPaterno || undefined,
+        apellidoMaterno: form.apellidoMaterno || undefined,
+        telefono: form.telefono || undefined,
+        email: form.email,
+        password: form.password,
+        rolId: form.rolId,
+        torre: form.torre,
       });
       if (res.success) {
-        showToast(`Usuario "${createForm.email}" creado.`, 'success');
+        showToast(`Usuario "${form.email}" creado.`, 'success');
         setCreateOpen(false);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
@@ -278,20 +279,37 @@ export default function UsuariosPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [createForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+  }, [form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleEdit = useCallback(async () => {
     if (!selectedItem) return;
-    if (!editForm.email) {
-      showToast('El correo es obligatorio.', 'error');
+    if (!form.nombre.trim()) {
+      showToast('El nombre de la persona es obligatorio.', 'error');
+      return;
+    }
+    if (!form.email || !form.rolId) {
+      showToast('El correo, el rol y el área son obligatorios.', 'error');
+      return;
+    }
+    if (!form.torre) {
+      showToast('Elige el área del usuario.', 'error');
+      return;
+    }
+    if (form.password && form.password.length < 8) {
+      showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
       return;
     }
     setSubmitting(true);
     try {
       const res = await usuariosApi.actualizar(selectedItem.id, {
-        email: editForm.email,
-        activo: editForm.activo === 'true',
-        ...(editForm.torre ? { torre: editForm.torre } : { torre: undefined }),
+        nombre: form.nombre,
+        apellidoPaterno: form.apellidoPaterno || undefined,
+        apellidoMaterno: form.apellidoMaterno || undefined,
+        telefono: form.telefono || undefined,
+        email: form.email,
+        password: form.password || undefined,
+        rolId: form.rolId,
+        torre: form.torre,
       });
       if (res.success) {
         showToast('Usuario actualizado.', 'success');
@@ -306,7 +324,7 @@ export default function UsuariosPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedItem, editForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+  }, [selectedItem, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
@@ -328,41 +346,25 @@ export default function UsuariosPage() {
     }
   }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
-  // ── Roles (se aplican al instante, el backend los audita) ──
-  const handleAgregarRol = useCallback(async () => {
-    if (!selectedItem || !nuevoRolId) return;
-    try {
-      const res = await usuariosApi.asignarRol(selectedItem.id, { rolId: nuevoRolId });
-      if (res.success) {
-        const rol = catalogos.roles.find(r => r.id === nuevoRolId);
-        setRolesEdit((prev) => [
-          ...prev,
-          { id: nuevoRolId, nombre: rol?.nombre ?? 'Rol', esPrincipal: false },
-        ]);
-        setNuevoRolId('');
-        showToast(res.data?.message ?? 'Rol asignado.', 'success');
-      } else {
-        showToast(mensajeErrorApi(res.error, 'No se pudo asignar el rol.'), 'error');
-      }
-    } catch {
-      showToast('Error de conexión al asignar el rol.', 'error');
-    }
-  }, [selectedItem, nuevoRolId, catalogos.roles, showToast]);
-
-  const handleRevocarRol = useCallback(async (rolId: string) => {
+  const handleEstado = useCallback(async () => {
     if (!selectedItem) return;
+    setSubmitting(true);
     try {
-      const res = await usuariosApi.revocarRol(selectedItem.id, rolId);
+      const res = await usuariosApi.cambiarEstado(selectedItem.id, !selectedItem.activo);
       if (res.success) {
-        setRolesEdit((prev) => prev.filter((r) => r.id !== rolId));
-        showToast(res.data?.message ?? 'Rol revocado.', 'success');
+        showToast(res.data?.message ?? 'Estado actualizado.', 'success');
+        setEstadoOpen(false);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'No se pudo revocar el rol.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'No se pudo cambiar el estado.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al revocar el rol.', 'error');
+      showToast('Error de conexión al cambiar el estado.', 'error');
+    } finally {
+      setSubmitting(false);
     }
-  }, [selectedItem, showToast]);
+  }, [selectedItem, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   // ── Columnas de DataTable ──
   const columns: Column<UsuarioDTO>[] = [
@@ -378,7 +380,7 @@ export default function UsuariosPage() {
     },
     {
       key: 'roles',
-      header: 'Roles',
+      header: 'Rol',
       render: (item) => (
         <span className="font-semibold text-ui-600">
           {item.roles.map((r) => r.nombre).join(', ') || '—'}
@@ -428,14 +430,24 @@ export default function UsuariosPage() {
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
           {puedeEditar && (
-            <Button
-              variant="warning"
-              size="sm"
-              icon={<Pencil className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); openEdit(item); }}
-            >
-              Editar
-            </Button>
+            <>
+              <Button
+                variant="warning"
+                size="sm"
+                icon={<Pencil className="w-3.5 h-3.5" />}
+                onClick={(e) => { e.stopPropagation(); openEdit(item); }}
+              >
+                Editar
+              </Button>
+              <Button
+                variant={item.activo ? 'secondary' : 'success'}
+                size="sm"
+                icon={item.activo ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                onClick={(e) => { e.stopPropagation(); openEstado(item); }}
+              >
+                {item.activo ? 'Desactivar' : 'Activar'}
+              </Button>
+            </>
           )}
           {puedeEliminar && (
             <Button
@@ -613,93 +625,7 @@ export default function UsuariosPage() {
         onSubmit={handleCreate}
         isSubmitting={submitting}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre" required>
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Nombre(s)"
-              value={createForm.nombre}
-              onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Apellido Paterno">
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Apellido paterno"
-              value={createForm.apellidoPaterno}
-              onChange={(e) => setCreateForm({ ...createForm, apellidoPaterno: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Apellido Materno">
-            <input
-              type="text"
-              className={modalInputClass}
-              placeholder="Apellido materno"
-              value={createForm.apellidoMaterno}
-              onChange={(e) => setCreateForm({ ...createForm, apellidoMaterno: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Número de Teléfono">
-            <input
-              type="tel"
-              className={modalInputClass}
-              placeholder="Ej: 322-123-4567"
-              value={createForm.telefono}
-              onChange={(e) => setCreateForm({ ...createForm, telefono: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Correo Electrónico" required>
-            <input
-              type="email"
-              className={modalInputClass}
-              placeholder="usuario@svr-constructora.com"
-              value={createForm.email}
-              onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Contraseña" required>
-            <input
-              type="password"
-              className={modalInputClass}
-              placeholder="Mínimo 8 caracteres"
-              value={createForm.password}
-              onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Rol Principal" required>
-            <select
-              className={modalSelectClass}
-              value={createForm.rolId}
-              onChange={(e) => setCreateForm({ ...createForm, rolId: e.target.value })}
-            >
-              <option value="">Seleccionar...</option>
-              {catalogos.roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.nombre}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Área" required>
-            <select
-              className={modalSelectClass}
-              value={createForm.torre}
-              onChange={(e) => setCreateForm({ ...createForm, torre: e.target.value })}
-            >
-              <option value="">Seleccionar...</option>
-              {TORRES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </ModalField>
-        </div>
+        <CapturaUsuario form={form} setForm={setForm} roles={catalogos.roles} />
       </FormModal>
 
       <FormModal
@@ -713,99 +639,54 @@ export default function UsuariosPage() {
         onSubmit={handleEdit}
         isSubmitting={submitting}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Correo Electrónico" required>
-            <input
-              type="email"
-              className={modalInputClass}
-              value={editForm.email}
-              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Estado" required>
-            <select
-              className={modalSelectClass}
-              value={editForm.activo}
-              onChange={(e) => setEditForm({ ...editForm, activo: e.target.value })}
-            >
-              <option value="true">Activo</option>
-              <option value="false">Inactivo</option>
-            </select>
-          </ModalField>
-
-          <ModalField label="Área">
-            <select
-              className={modalSelectClass}
-              value={editForm.torre}
-              onChange={(e) => setEditForm({ ...editForm, torre: e.target.value })}
-            >
-              <option value="">La del rol</option>
-              {TORRES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </ModalField>
-        </div>
-
-        {puedeEditar && (
-          <div className="mt-4 border border-ui-200 rounded-xl p-4">
-            <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-2">
-              Roles del usuario
-            </p>
-            {rolesEdit.length === 0 && (
-              <p className="text-xs text-ui-500 mb-2">Sin roles activos.</p>
-            )}
-            {rolesEdit.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {rolesEdit.map((r) => (
-                  <span
-                    key={r.id}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-ui-100 text-ui-700 text-xs font-semibold"
-                  >
-                    {r.nombre}
-                    {r.esPrincipal && <span className="text-[10px] text-ui-500">(principal)</span>}
-                    <button
-                      onClick={() => handleRevocarRol(r.id)}
-                      className="ml-0.5 hover:text-red-600 transition-colors"
-                      aria-label={`Revocar rol ${r.nombre}`}
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <select
-                className={modalSelectClass}
-                value={nuevoRolId}
-                onChange={(e) => setNuevoRolId(e.target.value)}
-              >
-                <option value="">Agregar rol...</option>
-                {catalogos.roles
-                  .filter((r) => !rolesEdit.some((ur) => ur.id === r.id))
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>{r.nombre}</option>
-                  ))}
-              </select>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Plus className="w-3.5 h-3.5" />}
-                disabled={!nuevoRolId}
-                onClick={handleAgregarRol}
-              >
-                Agregar
-              </Button>
-            </div>
-          </div>
-        )}
-
+        <CapturaUsuario
+          form={form}
+          setForm={setForm}
+          roles={catalogos.roles}
+          esEdicion
+        />
         {selectedItem && selectedItem.pinEstado !== 'NORMAL' && (
           <p className="mt-3 text-[10px] font-medium text-amber-600">
             {PIN_LABELS[selectedItem.pinEstado]} — el reinicio del PIN se hace en Gestión de Identidad.
           </p>
+        )}
+      </FormModal>
+
+      {/* Estado: activar / desactivar con confirmación */}
+      <FormModal
+        open={estadoOpen}
+        onClose={() => setEstadoOpen(false)}
+        onCancel={() => setEstadoOpen(false)}
+        title={selectedItem?.activo ? 'Desactivar Usuario' : 'Activar Usuario'}
+        subtitle="Esta acción se registra en el historial de auditoría."
+        submitLabel={selectedItem?.activo ? 'Sí, Desactivar' : 'Activar'}
+        cancelLabel="Cancelar"
+        onSubmit={handleEstado}
+        isSubmitting={submitting}
+      >
+        {selectedItem && (
+          <div className="flex flex-col items-center text-center py-4">
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${selectedItem.activo ? 'bg-amber-100 dark:bg-amber-500/15' : 'bg-green-100 dark:bg-green-500/15'}`}>
+              {selectedItem.activo ? (
+                <PowerOff className="w-7 h-7 text-amber-500" />
+              ) : (
+                <Power className="w-7 h-7 text-green-500" />
+              )}
+            </div>
+            <p className="text-sm text-ui-700 mb-1">
+              {selectedItem.activo ? '¿Desactivar la cuenta de?' : '¿Activar la cuenta de?'}
+            </p>
+            <p className="font-black text-ui-900 text-lg mb-2">{selectedItem.nombre ?? selectedItem.email}</p>
+            {selectedItem.activo ? (
+              <p className="text-xs text-ui-500">
+                Sus sesiones activas se cerrarán y no podrá iniciar sesión hasta reactivarla.
+              </p>
+            ) : (
+              <p className="text-xs text-ui-500">
+                Volverá a poder iniciar sesión con su correo y contraseña.
+              </p>
+            )}
+          </div>
         )}
       </FormModal>
 
@@ -835,6 +716,113 @@ export default function UsuariosPage() {
           </div>
         )}
       </FormModal>
+    </div>
+  );
+}
+
+/**
+ * Captura compartida de crear/editar (decisión del cliente: MISMA captura).
+ * En edición la contraseña es opcional (vacía = conservar la actual) y el
+ * rol se cambia con el mismo select (mono-rol, PATCH /usuarios/:id/rol).
+ */
+function CapturaUsuario({
+  form,
+  setForm,
+  roles,
+  esEdicion = false,
+}: {
+  form: typeof emptyForm;
+  setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
+  roles: UsuariosCatalogos['roles'];
+  esEdicion?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <ModalField label="Nombre" required>
+        <input
+          type="text"
+          className={modalInputClass}
+          placeholder="Nombre(s)"
+          value={form.nombre}
+          onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+        />
+      </ModalField>
+
+      <ModalField label="Apellido Paterno">
+        <input
+          type="text"
+          className={modalInputClass}
+          placeholder="Apellido paterno"
+          value={form.apellidoPaterno}
+          onChange={(e) => setForm({ ...form, apellidoPaterno: e.target.value })}
+        />
+      </ModalField>
+
+      <ModalField label="Apellido Materno">
+        <input
+          type="text"
+          className={modalInputClass}
+          placeholder="Apellido materno"
+          value={form.apellidoMaterno}
+          onChange={(e) => setForm({ ...form, apellidoMaterno: e.target.value })}
+        />
+      </ModalField>
+
+      <ModalField label="Número de Teléfono">
+        <input
+          type="tel"
+          className={modalInputClass}
+          placeholder="Ej: 322-123-4567"
+          value={form.telefono}
+          onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+        />
+      </ModalField>
+
+      <ModalField label="Correo Electrónico" required>
+        <input
+          type="email"
+          className={modalInputClass}
+          placeholder="usuario@svr-constructora.com"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+        />
+      </ModalField>
+
+      <ModalField label={esEdicion ? 'Contraseña (opcional)' : 'Contraseña'} required={!esEdicion}>
+        <input
+          type="password"
+          className={modalInputClass}
+          placeholder={esEdicion ? 'Déjala vacía para conservar la actual' : 'Mínimo 8 caracteres'}
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+        />
+      </ModalField>
+
+      <ModalField label="Rol Principal" required>
+        <select
+          className={modalSelectClass}
+          value={form.rolId}
+          onChange={(e) => setForm({ ...form, rolId: e.target.value })}
+        >
+          <option value="">Seleccionar...</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>{r.nombre}</option>
+          ))}
+        </select>
+      </ModalField>
+
+      <ModalField label="Área" required>
+        <select
+          className={modalSelectClass}
+          value={form.torre}
+          onChange={(e) => setForm({ ...form, torre: e.target.value })}
+        >
+          <option value="">Seleccionar...</option>
+          {TORRES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      </ModalField>
     </div>
   );
 }

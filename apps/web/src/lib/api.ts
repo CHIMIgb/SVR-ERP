@@ -3364,7 +3364,13 @@ export interface UsuarioRoleDTO {
 export interface UsuarioDTO {
   id: string;
   personaId: string;
+  /** Nombre completo (para mostrar). */
   nombre: string | null;
+  /** Nombre de pila + apellidos separados (para el form de editar). */
+  personaNombre: string | null;
+  apellidoPaterno: string | null;
+  apellidoMaterno: string | null;
+  telefono: string | null;
   email: string;
   activo: boolean;
   torre: string | null;
@@ -3402,8 +3408,15 @@ export interface UsuarioCreateInput {
 }
 
 export interface UsuarioUpdateInput {
+  nombre?: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  telefono?: string;
   email?: string;
-  activo?: boolean;
+  /** Contraseña nueva — vacía/ausente conserva la actual. */
+  password?: string;
+  /** Mono-rol: cambiar el rol único del usuario. */
+  rolId?: string;
   torre?: string;
 }
 
@@ -3442,13 +3455,13 @@ export const usuariosApi = {
   /** Baja de usuario (soft delete + cierre de sesiones). */
   eliminar: (id: string) => apiClient.delete<{ message: string }>(`/usuarios/${id}`),
 
-  /** Asignar un rol (opcionalmente como principal). */
-  asignarRol: (id: string, data: { rolId: string; esPrincipal?: boolean }) =>
-    apiClient.post<{ message: string }>(`/usuarios/${id}/roles`, data),
+  /** Cambiar el ROL ÚNICO del usuario (mono-rol). */
+  cambiarRol: (id: string, rolId: string) =>
+    apiClient.patch<{ message: string }>(`/usuarios/${id}/rol`, { rolId }),
 
-  /** Revocar un rol activo. */
-  revocarRol: (id: string, rolId: string) =>
-    apiClient.delete<{ message: string }>(`/usuarios/${id}/roles/${rolId}`),
+  /** Activar / desactivar cuenta (cierra sesiones al desactivar). */
+  cambiarEstado: (id: string, activo: boolean) =>
+    apiClient.patch<{ message: string }>(`/usuarios/${id}/estado`, { activo }),
 };
 
 // ────────────────────────────────────────────────────────────
