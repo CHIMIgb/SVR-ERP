@@ -717,55 +717,7 @@ export default function RolesPage() {
       >
         <TabPanel tabKey="roles">
         <div className="space-y-3">
-          <div className="relative">
-            <RefreshOverlay show={refreshing && !initialLoading} />
-            <DataTable
-              columns={columnsRoles}
-              data={rolesPagina}
-              loading={initialLoading}
-              keyExtractor={(rol) => rol.id}
-              emptyText="No se encontraron roles que coincidan con la búsqueda."
-              maxBodyHeight="500px"
-            />
-          </div>
-          <Pagination
-            currentPage={pageRoles}
-            totalPages={Math.max(Math.ceil(rolesFiltrados.length / PAGE_SIZE), 1)}
-            totalRecords={rolesFiltrados.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPageRoles}
-          />
-        </div>
-        </TabPanel>
-        <TabPanel tabKey="usuarios">
-        <div className="space-y-3">
-          <p className="text-xs text-ui-500 font-medium">
-            Solo lectura — los datos del usuario (nombre, correo, área, alta) se editan en la vista Usuarios.
-          </p>
-          <div className="relative">
-            <DataTable
-              columns={columnsUsuarios}
-              data={usuariosPagina}
-              loading={usuariosLoading || !usuariosLoaded}
-              keyExtractor={(u) => u.id}
-              emptyText="No se encontraron usuarios que coincidan con la búsqueda."
-              maxBodyHeight="500px"
-            />
-          </div>
-          <Pagination
-            currentPage={pageUsuarios}
-            totalPages={Math.max(Math.ceil(usuariosFiltrados.length / PAGE_SIZE), 1)}
-            totalRecords={usuariosFiltrados.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPageUsuarios}
-          />
-        </div>
-        </TabPanel>
-      </Tabs>
-      {/* Búsqueda + Filtros (patrón /inventario) */}
-      {tab === 'roles' ? (
-        <>
-          <div className="flex flex-col sm:flex-row gap-3">
+<div className="flex flex-col sm:flex-row gap-3">
             <SearchBar
               value={searchRoles}
               onChange={(v) => { setSearchRoles(v); resetPageRoles(); }}
@@ -814,10 +766,29 @@ export default function RolesPage() {
               </div>
             </div>
           )}
-        </>
-      ) : (
-        <>
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative">
+            <RefreshOverlay show={refreshing && !initialLoading} />
+            <DataTable
+              columns={columnsRoles}
+              data={rolesPagina}
+              loading={initialLoading}
+              keyExtractor={(rol) => rol.id}
+              emptyText="No se encontraron roles que coincidan con la búsqueda."
+              maxBodyHeight="500px"
+            />
+          </div>
+          <Pagination
+            currentPage={pageRoles}
+            totalPages={Math.max(Math.ceil(rolesFiltrados.length / PAGE_SIZE), 1)}
+            totalRecords={rolesFiltrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPageRoles}
+          />
+        </div>
+        </TabPanel>
+        <TabPanel tabKey="usuarios">
+        <div className="space-y-3">
+<div className="flex flex-col sm:flex-row gap-3">
             <SearchBar
               value={searchUsuarios}
               onChange={(v) => { setSearchUsuarios(v); resetPageUsuarios(); }}
@@ -867,9 +838,29 @@ export default function RolesPage() {
               </div>
             </div>
           )}
-        </>
-      )}
-
+          <p className="text-xs text-ui-500 font-medium">
+            Solo lectura — los datos del usuario (nombre, correo, área, alta) se editan en la vista Usuarios.
+          </p>
+          <div className="relative">
+            <DataTable
+              columns={columnsUsuarios}
+              data={usuariosPagina}
+              loading={usuariosLoading || !usuariosLoaded}
+              keyExtractor={(u) => u.id}
+              emptyText="No se encontraron usuarios que coincidan con la búsqueda."
+              maxBodyHeight="500px"
+            />
+          </div>
+          <Pagination
+            currentPage={pageUsuarios}
+            totalPages={Math.max(Math.ceil(usuariosFiltrados.length / PAGE_SIZE), 1)}
+            totalRecords={usuariosFiltrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPageUsuarios}
+          />
+        </div>
+        </TabPanel>
+      </Tabs>
 
       {/* ═══════════════════════════════════════════
           MODALES — ROLES
