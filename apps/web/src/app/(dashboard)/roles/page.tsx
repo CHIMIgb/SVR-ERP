@@ -1159,10 +1159,10 @@ export default function RolesPage() {
                     {ficha.vistas.map((v) => (
                       <span key={v.vistaId} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-ui-100 text-ui-700 text-[10px] font-bold">
                         {v.nombre}
-                        {v.puedeCrear && <span className="text-ui-400">C</span>}
-                        {v.puedeEditar && <span className="text-ui-400">E</span>}
-                        {v.puedeEliminar && <span className="text-ui-400">X</span>}
-                        {v.puedeExportar && <span className="text-ui-400">Ex</span>}
+                        {v.puedeCrear && <span className="text-ui-400" title="Crear">C</span>}
+                        {v.puedeEditar && <span className="text-ui-400" title="Editar">E</span>}
+                        {v.puedeEliminar && <span className="text-ui-400" title="Eliminar">X</span>}
+                        {v.puedeExportar && <span className="text-ui-400" title="Exportar">Ex</span>}
                       </span>
                     ))}
                   </div>
@@ -1177,17 +1177,26 @@ export default function RolesPage() {
                 {ficha.permisos.length === 0 ? (
                   <p className="text-xs text-ui-500">Sin permisos asignados.</p>
                 ) : (
-                  <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-none">
+                  <div className="max-h-48 overflow-y-auto scrollbar-none space-y-2.5">
                     {Object.entries(
-                      ficha.permisos.reduce<Record<string, string[]>>((acc, p) => {
-                        (acc[p.modulo] = acc[p.modulo] ?? []).push(`${p.recurso}·${p.accion}`);
+                      ficha.permisos.reduce<Record<string, PermisoDTO[]>>((acc, p) => {
+                        (acc[p.modulo] = acc[p.modulo] ?? []).push(p);
                         return acc;
                       }, {}),
                     ).map(([modulo, lista]) => (
-                      <p key={modulo} className="text-xs text-ui-700">
-                        <span className="font-black uppercase text-[10px] text-ui-500">{modulo}: </span>
-                        {lista.join(', ')}
-                      </p>
+                      <div key={modulo}>
+                        <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-1">
+                          {modulo} ({lista.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {lista.map((p) => (
+                            <span key={p.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-ui-100 text-ui-700 text-[10px] font-bold">
+                              {p.recurso}
+                              <span className="text-ui-400">· {p.accion}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -1201,7 +1210,7 @@ export default function RolesPage() {
                 {ficha.sesiones.length === 0 ? (
                   <p className="text-xs text-ui-500">Sin sesiones activas.</p>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="max-h-60 overflow-y-auto scrollbar-none space-y-1.5">
                     {ficha.sesiones.map((s) => (
                       <div key={s.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-ui-100 last:border-0">
                         <p className="text-xs font-bold text-ui-800 truncate">
