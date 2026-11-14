@@ -18,6 +18,7 @@ import { UsuariosService } from './usuarios.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { AsignarRolDto } from './dto/asignar-rol.dto';
+import { AsignarJefeDto } from './dto/asignar-jefe.dto';
 import { QueryUsuariosDto } from './dto/query-usuarios.dto';
 
 /**
@@ -117,6 +118,23 @@ export class UsuariosController {
   ) {
     const user = req.user as { id: string };
     return this.usuariosService.asignarRol(id, dto, user.id);
+  }
+
+  /**
+   * PATCH /api/usuarios/:id/jefe
+   * Asignar / re-asignar / des-asignar jefe (vista /equipos, P11).
+   * Audita la acción literal JEFE_ASIGNADO.
+   * Permiso: sistema.usuarios.editar
+   */
+  @RequirePermission('sistema', 'usuarios', 'editar')
+  @Patch(':id/jefe')
+  asignarJefe(
+    @Param('id') id: string,
+    @Body() dto: AsignarJefeDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.usuariosService.asignarJefe(id, dto, user.id);
   }
 
   /**

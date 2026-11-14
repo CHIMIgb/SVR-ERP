@@ -344,6 +344,132 @@ describe('UsuariosService', () => {
     });
   });
 
+  describe('findEquipos', () => {
+    const jefeRow = {
+      id: 'user-jefe',
+      email: 'residente@test.mx',
+      torre: 'RESIDENTE',
+      numero_empleado: 'RES-001',
+      personas_users_persona_idTopersonas: { nombre: 'Resi', apellido_paterno: 'Dente', apellido_materno: null },
+      users_roles_users_roles_user_idTousers: [
+        { activo: true, roles: { nombre: 'Residente' } },
+      ],
+    };
+    const subRow = {
+      id: 'user-sub',
+      email: 'sub@test.mx',
+      torre: 'MECANICO',
+      numero_empleado: 'TRA-010',
+      personas_users_persona_idTopersonas: { nombre: 'Sub', apellido_paterno: 'Ordinado', apellido_materno: null },
+      users_roles_users_roles_user_idTousers: [
+        { activo: true, roles: { nombre: 'Trabajador' } },
+      ],
+    };
+
+    it('agrupa subordinados por jefe y lista los sin jefe', async () => {
+      prisma.users.findMany = jest
+        .fn()
+        .mockResolvedValueOnce([jefeRow]) // jefes
+        .mockResolvedValueOnce([{ ...subRow, jefe_user_id: 'user-jefe' }]) // subordinados
+        .mockResolvedValueOnce([{ ...subRow, id: 'user-libre', jefe_user_id: null }]); // sin jefe
+      const result = await service.findEquipos();
+      expect(result.equipos).toHaveLength(1);
+      expect(result.equipos[0].usuarioId).toBe('user-jefe');
+      expect(result.equipos[0].nombre).toBe('Resi Dente');
+      expect(result.equipos[0].subordinados).toEqual([
+        expect.objectContaining({ id: 'user-sub', nombre: 'Sub Ordinado' }),
+      ]);
+      expect(result.sinJefe).toEqual([
+        expect.objectContaining({ id: 'user-libre' }),
+      ]);
+    });
+
+    it('sin jefes no consulta subordinados', async () => {
+      prisma.users.findMany = jest
+        .fn()
+        .mockResolvedValueOnce([]) // jefes
+        .mockResolvedValueOnce([]); // sin jefe
+      const result = await service.findEquipos();
+      expect(result.equipos).toEqual([]);
+      expect(result.sinJefe).toEqual([]);
+      expect(prisma.users.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('asignarJefe', () => {
+    it('asigna jefe y audita JEFE_ASIGNADO SUCCESS', async () => {
+      prisma.users.findFirst
+        .mockResolvedValueOnce({ id: USER_ID, jefe_user_id: null }) // el usuario
+        .mockResolvedValueOnce({ id: 'user-jefe', jefe_user_id: null }); // el jefe
+      prisma.users.update.mockResolvedValue({ id: USER_ID, jefe_user_id: 'user-jefe' });
+      const result = await service.asignarJefe(USER_ID, { jefeUserId: 'user-jefe' }, ACTOR);
+      expect(prisma.users.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: USER_ID }, data: expect.objectContaining({ jefe_user_id: 'user-jefe' }) }),
+      );
+      expect(result.jefeUserId).toBe('user-jefe');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.JEFE_ASIGNADO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('des-asigna (null) y audita con accion desasignado', async () => {
+      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, jefe_user_id: 'user-jefe' });
+      prisma.users.update.mockResolvedValue({ id: USER_ID, jefe_user_id: null });
+      await service.asignarJefe(USER_ID, { jefeUserId: null }, ACTOR);
+      expect(prisma.users.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ jefe_user_id: null }) }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.JEFE_ASIGNADO,
+          metadata: expect.objectContaining({ accion: 'desasignado' }),
+        }),
+      );
+    });
+
+    it('no encontrado → FAIL + USUARIO_NO_ENCONTRADO', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await expect(service.asignarJefe(USER_ID, { jefeUserId: null }, ACTOR)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'USUARIO_NO_ENCONTRADO' }),
+      );
+    });
+
+    it('auto-jefe → FAIL + JEFE_INVALIDO', async () => {
+      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, jefe_user_id: null });
+      await expect(
+        service.asignarJefe(USER_ID, { jefeUserId: USER_ID }, ACTOR),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'JEFE_INVALIDO' }),
+      );
+    });
+
+    it('jefe inexistente/inactivo → FAIL + JEFE_INVALIDO', async () => {
+      prisma.users.findFirst
+        .mockResolvedValueOnce({ id: USER_ID, jefe_user_id: null })
+        .mockResolvedValueOnce(null);
+      await expect(
+        service.asignarJefe(USER_ID, { jefeUserId: 'user-fantasma' }, ACTOR),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('ciclo: el jefe es subordinado del usuario → FAIL + JEFE_INVALIDO', async () => {
+      prisma.users.findFirst
+        .mockResolvedValueOnce({ id: USER_ID, jefe_user_id: null })
+        .mockResolvedValueOnce({ id: 'user-sub', jefe_user_id: USER_ID });
+      await expect(
+        service.asignarJefe(USER_ID, { jefeUserId: 'user-sub' }, ACTOR),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'JEFE_INVALIDO' }),
+      );
+      expect(prisma.users.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('revocarRol', () => {
     it('revoca y audita ROL_REVOCADO SUCCESS', async () => {
       prisma.users_roles.findFirst.mockResolvedValue({

@@ -398,6 +398,53 @@ describe('Usuarios (Real DB)', () => {
     });
   });
 
+  describe('EQUIPOS (jefe_user_id, JEFE_ASIGNADO)', () => {
+    it('asigna, re-asigna y des-asigna jefe con auditoría real y findEquipos lo refleja', async () => {
+      const jefe = await crearUsuario();
+      const sub = await crearUsuario();
+
+      // Asignar
+      const r1 = await service.asignarJefe(sub.id, { jefeUserId: jefe.id }, ACTOR_USER_ID);
+      expect(r1.jefeUserId).toBe(jefe.id);
+      const row = await prisma.users.findUnique({ where: { id: sub.id } });
+      expect(row!.jefe_user_id).toBe(jefe.id);
+
+      let audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.JEFE_ASIGNADO, entity_id: sub.id, result: 'SUCCESS' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audit).not.toBeNull();
+      expect((audit!.metadata as Record<string, unknown>).accion).toBe('asignado');
+
+      // El listado lo refleja
+      const equipos = await service.findEquipos();
+      const equipoJefe = equipos.equipos.find((e) => e.usuarioId === jefe.id);
+      expect(equipoJefe).toBeDefined();
+      expect(equipoJefe!.subordinados.some((s) => s.id === sub.id)).toBe(true);
+      expect(equipos.sinJefe.some((s) => s.id === sub.id)).toBe(false);
+
+      // Ciclo: el sub no puede ser jefe de su propio jefe → FAIL + JEFE_INVALIDO
+      await expect(
+        service.asignarJefe(jefe.id, { jefeUserId: sub.id }, ACTOR_USER_ID),
+      ).rejects.toThrow(BadRequestException);
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.JEFE_ASIGNADO, result: AuditResult.FAIL, error_code: 'JEFE_INVALIDO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+
+      // Des-asignar
+      await service.asignarJefe(sub.id, { jefeUserId: null }, ACTOR_USER_ID);
+      const row2 = await prisma.users.findUnique({ where: { id: sub.id } });
+      expect(row2!.jefe_user_id).toBeNull();
+      audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.JEFE_ASIGNADO, entity_id: sub.id, result: 'SUCCESS' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect((audit!.metadata as Record<string, unknown>).accion).toBe('desasignado');
+    });
+  });
+
   describe('registro_auditoria inmutable', () => {
     it('DELETE contra registro_auditoria es rechazado por el trigger', async () => {
       const creado = await crearUsuario();

@@ -556,6 +556,218 @@ export class UsuariosService {
   }
 
   // ────────────────────────────────────────────
+  //  EQUIPOS (vista /equipos — P11: jefe↔trabajador)
+  // ────────────────────────────────────────────
+  /**
+   * Equipos: por cada "jefe" (usuario con rol Residente o con subordinados)
+   * su lista de subordinados, y los candidatos sin jefe.
+   * Confirmado por el cliente (P10): vínculo usuario↔usuario; un jefe puede
+   * tener subordinados de CUALQUIER rol.
+   */
+  async findEquipos() {
+    const jefes = await this.prisma.users.findMany({
+      where: {
+        eliminado_en: null,
+        activo: true,
+        OR: [
+          {
+            users_roles_users_roles_user_idTousers: {
+              some: { activo: true, roles: { nombre: 'Residente' } },
+            },
+          },
+          { subordinados: { some: { eliminado_en: null } } },
+        ],
+      },
+      include: {
+        personas_users_persona_idTopersonas: true,
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          include: { roles: { select: { nombre: true } } },
+        },
+      },
+      orderBy: [{ torre: 'asc' }, { creado_en: 'asc' }],
+    });
+
+    const subordinados = jefes.length
+      ? await this.prisma.users.findMany({
+          where: {
+            jefe_user_id: { in: jefes.map((j) => j.id) },
+            eliminado_en: null,
+          },
+          include: {
+            personas_users_persona_idTopersonas: true,
+            users_roles_users_roles_user_idTousers: {
+              where: { activo: true },
+              include: { roles: { select: { nombre: true } } },
+            },
+          },
+          orderBy: { creado_en: 'asc' },
+        })
+      : [];
+
+    const porJefe = new Map<string, typeof subordinados>();
+    for (const s of subordinados) {
+      const lista = porJefe.get(s.jefe_user_id!) ?? [];
+      lista.push(s);
+      porJefe.set(s.jefe_user_id!, lista);
+    }
+
+    // Candidatos: sin jefe, sin equipo a su cargo (los jefes salen arriba).
+    const sinJefe = await this.prisma.users.findMany({
+      where: {
+        eliminado_en: null,
+        activo: true,
+        jefe_user_id: null,
+        id: { notIn: jefes.map((j) => j.id) },
+        subordinados: { none: { eliminado_en: null } },
+      },
+      include: {
+        personas_users_persona_idTopersonas: true,
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          include: { roles: { select: { nombre: true } } },
+        },
+      },
+      orderBy: { creado_en: 'asc' },
+    });
+
+    return {
+      equipos: jefes.map((j) => ({
+        usuarioId: j.id,
+        nombre: this.nombreDe(j),
+        email: j.email,
+        torre: j.torre ?? null,
+        numeroEmpleado: j.numero_empleado,
+        roles: this.rolesDe(j),
+        subordinados: (porJefe.get(j.id) ?? []).map((s) => this.resumenDe(s)),
+      })),
+      sinJefe: sinJefe.map((u) => this.resumenDe(u)),
+    };
+  }
+
+  /**
+   * PATCH /usuarios/:id/jefe — asignar / re-asignar / des-asignar jefe.
+   * Audita la acción literal `JEFE_ASIGNADO` (enum de BD, decisión del cliente).
+   */
+  async asignarJefe(id: string, dto: { jefeUserId: string | null }, userId: string) {
+    const user = await this.prisma.users.findFirst({
+      where: { id, eliminado_en: null },
+      select: { id: true, jefe_user_id: true },
+    });
+    if (!user) {
+      return this.fallir(
+        AuditAction.JEFE_ASIGNADO,
+        id,
+        'USUARIO_NO_ENCONTRADO',
+        NotFoundException,
+        `Usuario con id "${id}" no encontrado`,
+      );
+    }
+
+    const anterior = user.jefe_user_id;
+    const nuevo = dto.jefeUserId || null;
+
+    if (nuevo) {
+      if (nuevo === id) {
+        return this.fallir(
+          AuditAction.JEFE_ASIGNADO,
+          id,
+          'JEFE_INVALIDO',
+          BadRequestException,
+          'Un usuario no puede ser su propio jefe',
+        );
+      }
+
+      const jefe = await this.prisma.users.findFirst({
+        where: { id: nuevo, eliminado_en: null, activo: true },
+        select: { id: true, jefe_user_id: true },
+      });
+      if (!jefe) {
+        return this.fallir(
+          AuditAction.JEFE_ASIGNADO,
+          id,
+          'JEFE_INVALIDO',
+          BadRequestException,
+          'El jefe seleccionado no existe o está inactivo',
+        );
+      }
+
+      // Jerarquía de 1 nivel: el jefe no puede ser subordinado del propio usuario.
+      if (jefe.jefe_user_id === id) {
+        return this.fallir(
+          AuditAction.JEFE_ASIGNADO,
+          id,
+          'JEFE_INVALIDO',
+          BadRequestException,
+          'No se puede asignar como jefe a un subordinado del usuario',
+        );
+      }
+    }
+
+    const actualizado = await this.prisma.users.update({
+      where: { id },
+      data: { jefe_user_id: nuevo, actualizado_por: userId, actualizado_en: new Date() },
+      select: { id: true, jefe_user_id: true },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.JEFE_ASIGNADO,
+      entityType: 'users',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      metadata: {
+        campo: 'jefe_user_id',
+        anterior: anterior ?? null,
+        nuevo,
+        accion: nuevo === null ? 'desasignado' : anterior ? 'reasignado' : 'asignado',
+      },
+    });
+    return {
+      message: nuevo === null ? 'Jefe des-asignado' : 'Jefe asignado',
+      jefeUserId: actualizado.jefe_user_id,
+    };
+  }
+
+  /** Nombre completo desde la persona. */
+  private nombreDe(u: { personas_users_persona_idTopersonas: { nombre: string; apellido_paterno: string | null; apellido_materno: string | null } | null }) {
+    const p = u.personas_users_persona_idTopersonas;
+    return p
+      ? [p.nombre, p.apellido_paterno, p.apellido_materno].filter(Boolean).join(' ')
+      : null;
+  }
+
+  /** Nombres de roles activos. */
+  private rolesDe(u: { users_roles_users_roles_user_idTousers: { activo: boolean; roles: { nombre: string } }[] }) {
+    return u.users_roles_users_roles_user_idTousers
+      .filter((ur) => ur.activo)
+      .map((ur) => ur.roles.nombre);
+  }
+
+  /** Fila resumen de subordinado / candidato sin jefe. */
+  private resumenDe(u: {
+    id: string;
+    email: string;
+    torre: CategoriaReporte | null;
+    numero_empleado: string | null;
+    personas_users_persona_idTopersonas: {
+      nombre: string;
+      apellido_paterno: string | null;
+      apellido_materno: string | null;
+    } | null;
+    users_roles_users_roles_user_idTousers: { activo: boolean; roles: { nombre: string } }[];
+  }) {
+    return {
+      id: u.id,
+      nombre: this.nombreDe(u),
+      email: u.email,
+      torre: u.torre ?? null,
+      numeroEmpleado: u.numero_empleado,
+      roles: this.rolesDe(u),
+    };
+  }
+
+  // ────────────────────────────────────────────
   //  SERIALIZACIÓN (nunca password_hash ni pin_hash)
   // ────────────────────────────────────────────
   private serialize(u: UsuarioRow) {
