@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Modal, ModalBody, ModalHeader, ModalFooter } from '@/components/ui/Modal';
 import { posClasses } from './pos.styles';
 import { cn } from '@/lib/utils';
-import { fechaLocalHoy } from '@/lib/formatters';
+import { formatHora12, fechaLocalHoy } from '@/lib/formatters';
 import { ventasApi, TurnoConfig, CierreVentaDTO } from '@/lib/api';
 import {
   BUSINESS_INFO,
@@ -262,7 +262,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
     generateClosureHtml({
       businessInfo: BUSINESS_INFO,
       registerName: `CAJA-PV · TER-01`,
-      time: hour,
+      time: formatHora12(hour),
       cashierName,
       salesCount: todaySales.length,
       totalSales,
@@ -298,7 +298,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
             <Lock className="w-4 h-4 shrink-0 mt-0.5" />
             <p className="text-xs font-medium">
               El turno de hoy ya cerró. El siguiente corte se habilitará después de la hora de
-              cierre del próximo turno ({turnoConfig.cierre} hrs).
+              cierre del próximo turno ({formatHora12(turnoConfig.cierre)} hrs).
             </p>
           </div>
         </div>
@@ -364,15 +364,15 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
             <div className={cn(posClasses.alertBox, 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-300')}>
               <Clock className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="text-xs font-medium">
-                Turno de {turnoConfig.apertura} a {turnoConfig.cierre} hrs · Cierre permitido:{' '}
-                desde las {turnoConfig.cierre} y hasta antes de las {turnoConfig.apertura} (siguiente turno).
+                Turno de {formatHora12(turnoConfig.apertura)} a {formatHora12(turnoConfig.cierre)} hrs · Cierre permitido:{' '}
+                desde las {formatHora12(turnoConfig.cierre)} y hasta antes de las {formatHora12(turnoConfig.apertura)} (siguiente turno).
               </p>
             </div>
             {!allowed && (
               <div className={cn(posClasses.alertBox, 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300 mt-2')}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <p className="text-xs font-medium">
-                  Ahora mismo no está permitido cerrar caja (horario de trabajo). Se habilita después de las {turnoConfig.cierre} hrs.
+                  Ahora mismo no está permitido cerrar caja (horario de trabajo). Se habilita después de las {formatHora12(turnoConfig.cierre)} hrs.
                 </p>
               </div>
             )}
@@ -556,7 +556,7 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
       <Modal open={showSummary} onClose={() => setShowSummary(false)} size="lg">
         <ModalHeader
           title="Cierre de caja registrado"
-          subtitle={`CAJA-PV · ${hour} hrs · ${cashierName}`}
+          subtitle={`CAJA-PV · ${formatHora12(hour)} · ${cashierName}`}
         />
         <ModalBody>
           <div className="max-h-[60vh] overflow-y-auto scrollbar-none space-y-4">

@@ -10,6 +10,7 @@ import { usePOS } from '@/components/pos/POSProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { ventasApi, ventaDtoToSale, type TurnoConfig } from '@/lib/api';
 import { parseHM, permiteCerrarCaja } from '@/lib/pos';
+import { formatHora12 } from '@/lib/formatters';
 
 export default function CorteDelDiaPage() {
   const { user } = useAuth();
@@ -80,7 +81,7 @@ export default function CorteDelDiaPage() {
                 <div>
                   <p className="text-red-900 dark:text-red-300 font-bold text-lg">Fuera de la ventana de cierre de caja</p>
                   <p className="text-red-700 dark:text-red-400 text-sm font-medium mt-1">
-                    El cierre solo está permitido después de las <strong>{turnoConfig.cierre}</strong> y hasta antes de las <strong>{turnoConfig.apertura}</strong> hrs (siguiente turno).
+                    El cierre solo está permitido después de las <strong>{formatHora12(turnoConfig.cierre)}</strong> y hasta antes de las <strong>{formatHora12(turnoConfig.apertura)}</strong> hrs (siguiente turno).
                     Hora actual: <strong>{new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong>.
                   </p>
                 </div>

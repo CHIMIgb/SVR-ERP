@@ -22,7 +22,7 @@ import { FormModal, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
 import { clientesApi, type ClienteDTO } from '@/lib/api';
-import { telefonoEsValido, limpiarTelefono, fechaLocalHoy } from '@/lib/formatters';
+import { telefonoEsValido, limpiarTelefono, fechaLocalHoy, formatHora12 } from '@/lib/formatters';
 
 import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
@@ -423,7 +423,7 @@ export default function VentasPage() {
                 <div>
                   <p className="text-red-900 font-bold text-lg">Fuera de horario de atención</p>
                   <p className="text-red-700 text-sm font-medium mt-1">
-                    El turno es de <strong>{turnoConfig.apertura}</strong> a <strong>{turnoConfig.cierre}</strong> hrs.
+                    El turno es de <strong>{formatHora12(turnoConfig.apertura)}</strong> a <strong>{formatHora12(turnoConfig.cierre)}</strong> hrs.
                     El punto de venta solo está disponible dentro de este horario.
                   </p>
                 </div>

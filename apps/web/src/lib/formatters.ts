@@ -115,6 +115,21 @@ export function esDecimalValido(valor: string, min: number, max?: number): boole
   return max === undefined ? true : n <= max;
 }
 
+/**
+ * Convierte una hora de config "HH:mm" (ej. "22:00" del turno de caja) a
+ * 12 horas con a.m./p.m. ("10:00 p.m.") — estándar de visualización del POS.
+ * Entrada inválida se devuelve tal cual (los mensajes no se rompen).
+ */
+export function formatHora12(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return hhmm;
+  let h = Number(m[1]);
+  const sufijo = h < 12 ? 'a.m.' : 'p.m.';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${String(h).padStart(2, '0')}:${m[2]} ${sufijo}`;
+}
+
 /** Fecha de hoy en horario local como YYYY-MM-DD (toISOString usaría UTC). */
 export function fechaLocalHoy(): string {
   const hoy = new Date();
