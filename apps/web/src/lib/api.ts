@@ -1939,6 +1939,10 @@ export interface RegistroCribaDTO {
   turno: 'Matutino' | 'Vespertino';
   operadorId: string | null;
   operador: string | null;
+  maquinaId: string | null;
+  maquina: string | null;
+  proyectoId: string | null;
+  proyecto: string | null;
   tipoMaterial: string;
   materialProducido: number;
   horasTrabajadas: number;
@@ -1973,6 +1977,9 @@ export interface CribaCreateInput {
   fecha: string;
   turno: TurnoCribaApi;
   operadorId?: string;
+  /** B6: máquina y proyecto de la producción (opcionales). */
+  maquinaId?: string;
+  proyectoId?: string;
   tipoMaterial: string;
   materialProducido: number;
   horasTrabajadas: number;
@@ -1988,6 +1995,8 @@ export const cribaApi = {
     tipoMaterial?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    maquinaId?: string;
+    proyectoId?: string;
     page?: number;
     limit?: number;
   }) => {
@@ -1997,6 +2006,8 @@ export const cribaApi = {
     if (params?.tipoMaterial) searchParams.set('tipoMaterial', params.tipoMaterial);
     if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
     if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();

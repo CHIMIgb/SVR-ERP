@@ -16,15 +16,18 @@ import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
-import { formatFechaSolo } from '@/lib/formatters';
+import { formatFechaSolo, fechaLocalHoy } from '@/lib/formatters';
 import {
   cribaApi,
+  maquinasApi,
+  reportesCampoApi,
   type RegistroCribaDTO,
   type CribaCreateInput,
   type CribaStats,
   type CribaCatalogos,
   type TurnoCribaApi,
 } from '@/lib/api';
+import type { Maquina } from '@svr-erp/shared';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
 
@@ -51,9 +54,11 @@ const turnoVariant: Record<RegistroCribaDTO['turno'], 'warning' | 'info'> = {
 };
 
 const emptyForm = {
-  fecha: new Date().toISOString().split('T')[0],
+  fecha: fechaLocalHoy(),
   turno: 'MATUTINO' as TurnoCribaApi,
   operadorId: '',
+  maquinaId: '',
+  proyectoId: '',
   tipoMaterial: 'Criba fina' as string,
   materialProducido: '',
   horasTrabajadas: '',
@@ -87,6 +92,9 @@ export default function CribaPage() {
   // ── Estado de datos ──
   const [registros, setRegistros] = useState<RegistroCribaDTO[]>([]);
   const [catalogos, setCatalogos] = useState<CribaCatalogos>({ trabajadores: [] });
+  // B6: catálogos para los selects de Máquina y Proyecto (EN_PROCESO).
+  const [maquinas, setMaquinas] = useState<Maquina[]>([]);
+  const [proyectosCriba, setProyectosCriba] = useState<{ id: string; nombre: string }[]>([]);
   const [stats, setStats] = useState({
     totalProducido: 0,
     totalAlBanco: 0,
@@ -119,6 +127,13 @@ export default function CribaPage() {
         setCatalogos(res.data);
       }
     });
+    // B6: catálogo de máquinas y proyectos EN_PROCESO (endpoints existentes).
+    maquinasApi.listar().then((res) => {
+      if (res.success && res.data) setMaquinas(res.data);
+    });
+    reportesCampoApi.proyectos().then((res) => {
+      if (res.success && res.data) setProyectosCriba(res.data);
+    });
   }, []);
 
   // ── Cargar datos ──
@@ -133,6 +148,8 @@ export default function CribaPage() {
         search: searchVal || undefined,
         turno: filters?.turno as TurnoCribaApi | undefined,
         tipoMaterial: filters?.tipoMaterial || undefined,
+        maquinaId: filters?.maquinaId || undefined,
+        proyectoId: filters?.proyectoId || undefined,
         page,
         limit: PAGE_SIZE,
       });
@@ -172,6 +189,14 @@ export default function CribaPage() {
   if (filterValues.tipoMaterial) {
     activeFilters.push({ key: 'tipoMaterial', label: 'Material', value: filterValues.tipoMaterial });
   }
+  if (filterValues.maquinaId) {
+    const m = maquinas.find((x) => x.id === filterValues.maquinaId);
+    activeFilters.push({ key: 'maquinaId', label: 'Máquina', value: m?.nombre ?? filterValues.maquinaId });
+  }
+  if (filterValues.proyectoId) {
+    const p = proyectosCriba.find((x) => x.id === filterValues.proyectoId);
+    activeFilters.push({ key: 'proyectoId', label: 'Proyecto', value: p?.nombre ?? filterValues.proyectoId });
+  }
 
   // ── Filtros para SearchBar ──
   const filterFields: FilterField[] = [
@@ -187,6 +212,20 @@ export default function CribaPage() {
       label: 'Material',
       type: 'select',
       options: MATERIALES.map((m) => ({ value: m, label: m })),
+      placeholder: 'Todos',
+    },
+    {
+      key: 'maquinaId',
+      label: 'Máquina',
+      type: 'select',
+      options: maquinas.map((m) => ({ value: m.id, label: m.nombre })),
+      placeholder: 'Todas',
+    },
+    {
+      key: 'proyectoId',
+      label: 'Proyecto',
+      type: 'select',
+      options: proyectosCriba.map((p) => ({ value: p.id, label: p.nombre })),
       placeholder: 'Todos',
     },
   ];
@@ -233,6 +272,8 @@ export default function CribaPage() {
       fecha: item.fecha.split('T')[0],
       turno: item.turno === 'Matutino' ? 'MATUTINO' : 'VESPERTINO',
       operadorId: item.operadorId ?? '',
+      maquinaId: item.maquinaId ?? '',
+      proyectoId: item.proyectoId ?? '',
       tipoMaterial: item.tipoMaterial,
       materialProducido: String(item.materialProducido),
       horasTrabajadas: String(item.horasTrabajadas),
@@ -270,6 +311,8 @@ export default function CribaPage() {
     fecha: form.fecha,
     turno: form.turno,
     operadorId: form.operadorId || undefined,
+    maquinaId: form.maquinaId || undefined,
+    proyectoId: form.proyectoId || undefined,
     tipoMaterial: form.tipoMaterial,
     materialProducido: parseFloat(form.materialProducido),
     horasTrabajadas: parseFloat(form.horasTrabajadas),
@@ -370,6 +413,22 @@ export default function CribaPage() {
       header: 'Operador',
       render: (item) => (
         <span className="font-bold text-ui-700">{item.operador || '—'}</span>
+      ),
+    },
+    {
+      key: 'maquina',
+      header: 'Máquina',
+      // B6: máquina que produjo (opcional en el registro).
+      render: (item) => (
+        <span className="font-medium text-ui-600">{item.maquina || '—'}</span>
+      ),
+    },
+    {
+      key: 'proyecto',
+      header: 'Proyecto',
+      // B6: proyecto de destino (opcional en el registro).
+      render: (item) => (
+        <span className="font-medium text-ui-600">{item.proyecto || '—'}</span>
       ),
     },
     {
@@ -720,6 +779,36 @@ export default function CribaPage() {
             </select>
           </ModalField>
 
+          {/* B6: máquina y proyecto de la producción (opcionales) */}
+          <ModalField label="Máquina">
+            <select
+              className={modalSelectClass}
+              value={form.maquinaId}
+              onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
+            >
+              <option value="">Sin máquina...</option>
+              {maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Proyecto">
+            <select
+              className={modalSelectClass}
+              value={form.proyectoId}
+              onChange={(e) => setForm({ ...form, proyectoId: e.target.value })}
+            >
+              <option value="">Sin proyecto...</option>
+              {proyectosCriba.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-ui-500">
+              Solo proyectos en proceso.
+            </p>
+          </ModalField>
+
           <ModalField label="Material" required>
             <select
               className={modalSelectClass}
@@ -822,6 +911,36 @@ export default function CribaPage() {
                 <option key={t.id} value={t.id}>{t.nombre}</option>
               ))}
             </select>
+          </ModalField>
+
+          {/* B6: máquina y proyecto de la producción (opcionales) */}
+          <ModalField label="Máquina">
+            <select
+              className={modalSelectClass}
+              value={form.maquinaId}
+              onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
+            >
+              <option value="">Sin máquina...</option>
+              {maquinas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Proyecto">
+            <select
+              className={modalSelectClass}
+              value={form.proyectoId}
+              onChange={(e) => setForm({ ...form, proyectoId: e.target.value })}
+            >
+              <option value="">Sin proyecto...</option>
+              {proyectosCriba.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-ui-500">
+              Solo proyectos en proceso.
+            </p>
           </ModalField>
 
           <ModalField label="Material" required>
