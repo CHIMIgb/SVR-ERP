@@ -36,6 +36,10 @@ describe('CribaService', () => {
     actualizado_por: 'user-1',
     eliminado_en: null,
     trabajadores: { id: mockTrabajador.id, nombre: mockTrabajador.nombre },
+    maquina_id: 'm-1',
+    proyecto_id: 'p-1',
+    maquinas: { id: 'm-1', nombre: 'Criba 1' },
+    proyectos: { id: 'p-1', nombre: 'Obra Norte' },
   };
 
   beforeEach(async () => {
@@ -150,6 +154,65 @@ describe('CribaService', () => {
           result: AuditResult.SUCCESS,
         }),
       );
+    });
+
+    it('B6: con maquinaId/proyectoId guarda los FKs (mocks de máquina y proyecto)', async () => {
+      prisma.maquinas = { findFirst: jest.fn().mockResolvedValue({ id: 'm-1', nombre: 'Criba 1' }) };
+      prisma.proyectos = {
+        findFirst: jest.fn().mockResolvedValue({ id: 'p-1', nombre: 'Obra Norte', estado: 'EN_PROCESO' }),
+      };
+      const result = await service.create(
+        { ...createDto, maquinaId: 'm-1', proyectoId: 'p-1' },
+        'user-1',
+      );
+
+      const data = prisma.registros_criba.create.mock.calls[0][0].data;
+      expect(data.maquina_id).toBe('m-1');
+      expect(data.proyecto_id).toBe('p-1');
+      expect(result.maquinaId).toBe('m-1');
+      expect(result.proyectoId).toBe('p-1');
+    });
+
+    it('B6: maquinaId inexistente → MAQUINA_NO_ENCONTRADA con audit FAIL', async () => {
+      prisma.maquinas = { findFirst: jest.fn().mockResolvedValue(null) };
+      await expect(
+        service.create({ ...createDto, maquinaId: 'm-x' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'MAQUINA_NO_ENCONTRADA',
+        }),
+      );
+    });
+
+    it('B6: proyectoId no EN_PROCESO → PROYECTO_NO_EN_PROCESO con audit FAIL', async () => {
+      // El mock simula la BD: el proyecto existe pero está FINALIZADO — la
+      // consulta del resolver (estado EN_PROCESO) no lo encuentra.
+      const proyectoReal = { id: 'p-1', nombre: 'Obra Norte', estado: 'FINALIZADO' };
+      prisma.proyectos = {
+        findFirst: jest.fn().mockImplementation(async ({ where }: { where: { estado?: string } }) =>
+          proyectoReal.estado === where?.estado ? proyectoReal : null,
+        ),
+      };
+      await expect(
+        service.create({ ...createDto, proyectoId: 'p-1' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'PROYECTO_NO_EN_PROCESO',
+        }),
+      );
+    });
+
+    it('B6: findAll aplica los filtros maquinaId y proyectoId', async () => {
+      await service.findAll({ maquinaId: 'm-1', proyectoId: 'p-1' });
+      const where = prisma.registros_criba.findMany.mock.calls[0][0].where;
+      expect(where.maquina_id).toBe('m-1');
+      expect(where.proyecto_id).toBe('p-1');
     });
 
     it('should throw BadRequestException when alBanco > producido AND audit the failure', async () => {

@@ -26,6 +26,16 @@ export class UpdateRegistroCribaDto {
   @IsUUID()
   operadorId?: string;
 
+  /** B6: máquina que produjo el material (opcional). */
+  @IsOptional()
+  @IsUUID()
+  maquinaId?: string;
+
+  /** B6: proyecto de destino del material (opcional; debe estar EN_PROCESO). */
+  @IsOptional()
+  @IsUUID()
+  proyectoId?: string;
+
   @IsOptional()
   @IsString()
   @IsIn(MATERIALES_CRIBA)

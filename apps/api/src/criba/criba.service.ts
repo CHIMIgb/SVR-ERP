@@ -18,6 +18,8 @@ import { QueryRegistrosCribaDto } from './dto/query-registros-criba.dto';
 
 const REGISTRO_INCLUDE = {
   trabajadores: { select: { id: true, nombre: true } },
+  maquinas: { select: { id: true, nombre: true } },
+  proyectos: { select: { id: true, nombre: true } },
 } as const;
 
 const TURNO_LABELS: Record<Turno, string> = {
@@ -86,6 +88,14 @@ export class CribaService {
       where.tipo_material = query.tipoMaterial;
     }
 
+    // B6: filtros por máquina y proyecto.
+    if (query.maquinaId) {
+      where.maquina_id = query.maquinaId;
+    }
+    if (query.proyectoId) {
+      where.proyecto_id = query.proyectoId;
+    }
+
     if (query.fechaDesde || query.fechaHasta) {
       where.fecha = {};
       if (query.fechaDesde) where.fecha.gte = new Date(query.fechaDesde);
@@ -149,12 +159,22 @@ export class CribaService {
       );
     }
 
+    // B6: máquina y proyecto opcionales (validados; falla audita FAIL).
+    const maquinaId = dto.maquinaId
+      ? await this.resolverMaquina(dto.maquinaId, AuditAction.REGISTRO_CRIBA_CREADO)
+      : null;
+    const proyectoId = dto.proyectoId
+      ? await this.resolverProyecto(dto.proyectoId, AuditAction.REGISTRO_CRIBA_CREADO)
+      : null;
+
     const registro = await this.prisma.registros_criba.create({
       data: {
         id: randomUUID(),
         fecha: new Date(dto.fecha),
         turno: dto.turno,
         operador_id: operadorId,
+        maquina_id: maquinaId,
+        proyecto_id: proyectoId,
         tipo_material: dto.tipoMaterial,
         material_producido: dto.materialProducido,
         horas_trabajadas: dto.horasTrabajadas,
@@ -219,12 +239,30 @@ export class CribaService {
           : await this.resolverTrabajador(dto.operadorId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
     }
 
+    // B6: máquina/proyecto — undefined no toca; null limpia; valor se valida.
+    let maquinaId: string | null | undefined;
+    if (dto.maquinaId !== undefined) {
+      maquinaId =
+        dto.maquinaId === null
+          ? null
+          : await this.resolverMaquina(dto.maquinaId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
+    }
+    let proyectoId: string | null | undefined;
+    if (dto.proyectoId !== undefined) {
+      proyectoId =
+        dto.proyectoId === null
+          ? null
+          : await this.resolverProyecto(dto.proyectoId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
+    }
+
     const registro = await this.prisma.registros_criba.update({
       where: { id },
       data: {
         ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
         ...(dto.turno !== undefined && { turno: dto.turno }),
         ...(operadorId !== undefined && { operador_id: operadorId }),
+        ...(maquinaId !== undefined && { maquina_id: maquinaId }),
+        ...(proyectoId !== undefined && { proyecto_id: proyectoId }),
         ...(dto.tipoMaterial !== undefined && { tipo_material: dto.tipoMaterial }),
         ...(dto.materialProducido !== undefined && { material_producido: dto.materialProducido }),
         ...(dto.horasTrabajadas !== undefined && { horas_trabajadas: dto.horasTrabajadas }),
@@ -407,6 +445,42 @@ export class CribaService {
     return trabajador.id;
   }
 
+  /** B6: valida que la máquina exista y esté activa. */
+  private async resolverMaquina(maquinaId: string, action: AuditAction, entityId?: string): Promise<string> {
+    const maquina = await this.prisma.maquinas.findFirst({
+      where: { id: maquinaId, eliminado_en: null },
+      select: { id: true, nombre: true },
+    });
+    if (!maquina) {
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'MAQUINA_NO_ENCONTRADA',
+        BadRequestException,
+        `Máquina con id "${maquinaId}" no encontrada`,
+      );
+    }
+    return maquina.id;
+  }
+
+  /** B6: valida que el proyecto exista y esté EN_PROCESO. */
+  private async resolverProyecto(proyectoId: string, action: AuditAction, entityId?: string): Promise<string> {
+    const proyecto = await this.prisma.proyectos.findFirst({
+      where: { id: proyectoId, eliminado_en: null, estado: 'EN_PROCESO' },
+      select: { id: true, nombre: true },
+    });
+    if (!proyecto) {
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'PROYECTO_NO_EN_PROCESO',
+        BadRequestException,
+        `Proyecto con id "${proyectoId}" no encontrado o no está en proceso`,
+      );
+    }
+    return proyecto.id;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(registro: any) {
     return {
@@ -419,6 +493,10 @@ export class CribaService {
       turno: TURNO_LABELS[registro.turno as Turno] ?? registro.turno,
       operadorId: registro.operador_id,
       operador: registro.trabajadores?.nombre ?? null,
+      maquinaId: registro.maquina_id,
+      maquina: registro.maquinas?.nombre ?? null,
+      proyectoId: registro.proyecto_id,
+      proyecto: registro.proyectos?.nombre ?? null,
       tipoMaterial: registro.tipo_material,
       materialProducido: Number(registro.material_producido),
       horasTrabajadas: Number(registro.horas_trabajadas),
