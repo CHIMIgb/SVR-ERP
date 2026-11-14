@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -84,7 +83,7 @@ export class UsuariosController {
   @RequirePermission('sistema', 'usuarios', 'editar')
   @Patch(':id')
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: UpdateUsuarioDto,
     @Req() req: Request,
   ) {
@@ -99,7 +98,7 @@ export class UsuariosController {
    */
   @RequirePermission('sistema', 'usuarios', 'eliminar')
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+  remove(@Param('id') id: string, @Req() req: Request) {
     const user = req.user as { id: string };
     return this.usuariosService.remove(id, user.id);
   }
@@ -112,7 +111,7 @@ export class UsuariosController {
   @RequirePermission('sistema', 'usuarios', 'asignar_rol')
   @Post(':id/roles')
   asignarRol(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: AsignarRolDto,
     @Req() req: Request,
   ) {
@@ -128,8 +127,8 @@ export class UsuariosController {
   @RequirePermission('sistema', 'usuarios', 'asignar_rol')
   @Delete(':id/roles/:rolId')
   revocarRol(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('rolId', ParseUUIDPipe) rolId: string,
+    @Param('id') id: string,
+    @Param('rolId') rolId: string,
     @Req() req: Request,
   ) {
     const user = req.user as { id: string };

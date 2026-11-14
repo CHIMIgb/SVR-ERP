@@ -16,7 +16,7 @@ import { CategoriaReporte } from '@prisma/client';
 export class CreateUsuarioDto {
   /** Persona del catálogo ya existente (si no viene, se crea una con los datos del alta rápida). */
   @IsOptional()
-  @IsUUID()
+  @IsString()
   personaId?: string;
 
   /** Alta rápida de persona (obligatoria si no viene personaId). */
@@ -45,8 +45,9 @@ export class CreateUsuarioDto {
   @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
   password!: string;
 
-  /** Rol principal (roles activos, no `es_sistema`). */
-  @IsUUID()
+  /** Rol principal (roles activos, no `es_sistema`). @IsString y no @IsUUID:
+   * los UUID legados del seed (bits de versión en 0) no pasan la validación RFC. */
+  @IsString()
   rolId!: string;
 
   /** Área (torre) — precede a la del rol en /reportes. */
