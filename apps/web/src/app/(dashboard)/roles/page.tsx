@@ -696,7 +696,6 @@ export default function RolesPage() {
 
       {/* Tabs compactos */}
       <Tabs
-        compact
         tabs={[
           { key: 'roles', label: 'Roles', icon: <ShieldCheck className="w-4 h-4" />, count: tab === 'roles' ? undefined : roles.length },
           { key: 'usuarios', label: 'Usuarios', icon: <Users className="w-4 h-4" />, count: tab === 'usuarios' ? undefined : usuariosLoaded ? usuarios.length : undefined },
