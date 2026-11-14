@@ -93,6 +93,7 @@ model articulos_inventario {
   articulos_precio                                  articulos_precio[]
   ventas_items                                      ventas_items[]
   ordenes_compra_items                             ordenes_compra_items[]
+  materiales_criba_materiales_criba_articuloTousers materiales_criba[]         @relation("materiales_criba_articulo")
 
   @@index([categoria_id])
   @@index([proveedor_id])
@@ -1475,6 +1476,10 @@ model registros_criba {
   /// los registros previos).
   maquina_id                                   String?       @db.Uuid
   proyecto_id                                  String?       @db.Uuid
+  /// B7: material del catálogo de criba (Criba fina/gruesa/Arena lavada).
+  material_criba_id                            String?       @db.Uuid
+  /// B7: fecha en que la producción se envió al inventario (guard anti-doble).
+  inventario_en                                DateTime?     @db.Timestamptz()
   tipo_material                                String
   material_producido                           Decimal       @db.Decimal(10, 2)
   horas_trabajadas                             Decimal       @db.Decimal(6, 2)
@@ -1491,10 +1496,24 @@ model registros_criba {
   trabajadores                                 trabajadores? @relation(fields: [operador_id], references: [id])
   maquinas                                     maquinas?     @relation("registros_criba_maquina", fields: [maquina_id], references: [id])
   proyectos                                    proyectos?    @relation("registros_criba_proyecto", fields: [proyecto_id], references: [id])
+  materiales_criba                             materiales_criba? @relation("registros_criba_material", fields: [material_criba_id], references: [id])
 
   @@index([fecha])
   @@index([maquina_id])
   @@index([proyecto_id])
+  @@index([material_criba_id])
+}
+
+/// B7: catálogo de materiales que produce la criba; cada material enlaza a su
+/// artículo de inventario para las entradas de producción.
+model materiales_criba {
+  id             String   @id @db.Uuid
+  nombre         String   @unique
+  articulo_id    String?  @db.Uuid
+  creado_en      DateTime @default(now()) @db.Timestamptz()
+  actualizado_en DateTime @db.Timestamptz()
+  articulos_inventario articulos_inventario? @relation("materiales_criba_articulo", fields: [articulo_id], references: [id])
+  registros_criba      registros_criba[]     @relation("registros_criba_material")
 }
 
 model registros_mantenimiento {
