@@ -23,6 +23,7 @@ import {
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
+import { formatearMiles, parsearMiles, esDecimalValido } from '@/lib/formatters';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -237,7 +238,7 @@ export default function InventarioPage() {
       unidadId: item.unidadId,
       stock: String(item.stock),
       stockMinimo: String(item.stockMinimo),
-      precioUnitario: String(item.precioUnitario),
+      precioUnitario: formatearMiles(String(item.precioUnitario)),
     });
     setEditOpen(true);
   }, []);
@@ -260,6 +261,10 @@ export default function InventarioPage() {
       showToast('Nombre, categoría, proveedor y unidad son obligatorios.', 'error');
       return;
     }
+    if (form.precioUnitario && !esDecimalValido(form.precioUnitario, 0)) {
+      showToast('Ingresa un precio unitario válido.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await inventarioApi.crear({
@@ -270,7 +275,7 @@ export default function InventarioPage() {
         unidadId: form.unidadId,
         stock: Number(form.stock) || 0,
         stockMinimo: Number(form.stockMinimo) || 0,
-        precioUnitario: Number(form.precioUnitario) || 0,
+        precioUnitario: parsearMiles(form.precioUnitario) || 0,
       });
       if (res.success) {
         showToast(`Artículo "${form.nombre}" creado exitosamente.`, 'success');
@@ -293,6 +298,10 @@ export default function InventarioPage() {
       showToast('Nombre, categoría, proveedor y unidad son obligatorios.', 'error');
       return;
     }
+    if (form.precioUnitario && !esDecimalValido(form.precioUnitario, 0)) {
+      showToast('Ingresa un precio unitario válido.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await inventarioApi.actualizar(selectedItem.id, {
@@ -303,7 +312,7 @@ export default function InventarioPage() {
         unidadId: form.unidadId,
         stock: Number(form.stock) || 0,
         stockMinimo: Number(form.stockMinimo) || 0,
-        precioUnitario: Number(form.precioUnitario) || 0,
+        precioUnitario: parsearMiles(form.precioUnitario) || 0,
       });
       if (res.success) {
         showToast(`Artículo "${form.nombre}" actualizado exitosamente.`, 'success');
@@ -398,12 +407,11 @@ export default function InventarioPage() {
     {
       key: 'estado',
       header: 'Estado',
+      // Sin badge de color (decisión del cliente): texto neutro.
       render: (item) => (
-        item.stock <= item.stockMinimo ? (
-          <Badge variant="error" size="sm">Stock Bajo</Badge>
-        ) : (
-          <Badge variant="success" size="sm">Ok</Badge>
-        )
+        <span className="text-xs font-semibold text-ui-600">
+          {item.stock <= item.stockMinimo ? 'Stock Bajo' : 'Ok'}
+        </span>
       ),
     },
     {
@@ -644,7 +652,7 @@ export default function InventarioPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre" required className="sm:col-span-2">
+          <ModalField label="Nombre" required>
             <input
               type="text"
               className={modalInputClass}
@@ -705,35 +713,34 @@ export default function InventarioPage() {
 
           <ModalField label="Stock Inicial">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="0"
-              min="0"
               value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+              onChange={(e) => setForm({ ...form, stock: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Stock Mínimo">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="5"
-              min="0"
               value={form.stockMinimo}
-              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Precio Unitario (MXN)">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="0.00"
-              min="0"
-              step="0.01"
               value={form.precioUnitario}
-              onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+              onChange={(e) => setForm({ ...form, precioUnitario: formatearMiles(e.target.value) })}
               readOnly={esMaterialDeVenta}
             />
             {esMaterialDeVenta && (
@@ -806,7 +813,7 @@ export default function InventarioPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre" required className="sm:col-span-2">
+          <ModalField label="Nombre" required>
             <input
               type="text"
               className={modalInputClass}
@@ -867,35 +874,34 @@ export default function InventarioPage() {
 
           <ModalField label="Stock Actual">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="0"
-              min="0"
               value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+              onChange={(e) => setForm({ ...form, stock: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Stock Mínimo">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="5"
-              min="0"
               value={form.stockMinimo}
-              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Precio Unitario (MXN)">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="0.00"
-              min="0"
-              step="0.01"
               value={form.precioUnitario}
-              onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+              onChange={(e) => setForm({ ...form, precioUnitario: formatearMiles(e.target.value) })}
               readOnly={esMaterialDeVenta}
             />
             {esMaterialDeVenta && (
