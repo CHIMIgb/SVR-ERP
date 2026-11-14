@@ -37,10 +37,10 @@ export class UpdateRegistroCribaDto {
   @IsUUID()
   proyectoId?: string;
 
+  /** B7: material del catálogo de criba (opcional; cambia el responsable del material). */
   @IsOptional()
-  @IsString()
-  @IsIn(MATERIALES_CRIBA)
-  tipoMaterial?: string;
+  @IsUUID()
+  materialId?: string;
 
   @IsOptional()
   @IsNumber()

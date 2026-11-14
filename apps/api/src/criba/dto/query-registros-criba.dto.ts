@@ -16,6 +16,11 @@ export class QueryRegistrosCribaDto {
   @IsIn(MATERIALES_CRIBA)
   tipoMaterial?: string;
 
+  /** B7: filtro por material del catálogo de criba. */
+  @IsOptional()
+  @IsUUID()
+  materialId?: string;
+
   /** B6: filtro por máquina (código, ej. M001). */
   @IsOptional()
   @IsString()

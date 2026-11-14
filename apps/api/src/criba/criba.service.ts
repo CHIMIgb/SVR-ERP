@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
@@ -12,6 +13,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { InventarioService } from '../inventario/inventario.service';
 import { CreateRegistroCribaDto } from './dto/create-registro-criba.dto';
 import { UpdateRegistroCribaDto } from './dto/update-registro-criba.dto';
 import { QueryRegistrosCribaDto } from './dto/query-registros-criba.dto';
@@ -20,8 +22,10 @@ const REGISTRO_INCLUDE = {
   trabajadores: { select: { id: true, nombre: true } },
   maquinas: { select: { id: true, nombre: true } },
   proyectos: { select: { id: true, nombre: true } },
+  materiales_criba: {
+    select: { id: true, nombre: true, articulo_id: true },
+  },
 } as const;
-
 const TURNO_LABELS: Record<Turno, string> = {
   [Turno.MATUTINO]: 'Matutino',
   [Turno.VESPERTINO]: 'Vespertino',
@@ -35,6 +39,7 @@ export class CribaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly inventarioService: InventarioService,
   ) {}
 
   /**
@@ -88,6 +93,10 @@ export class CribaService {
       where.tipo_material = query.tipoMaterial;
     }
 
+    // B7: filtro por material del catálogo de criba.
+    if (query.materialId) {
+      where.material_criba_id = query.materialId;
+    }
     // B6: filtro por máquina (código, patrón despachos) y proyecto (id).
     if (query.maquinaId) {
       where.maquinas = { codigo: query.maquinaId };
@@ -167,6 +176,13 @@ export class CribaService {
       ? await this.resolverProyecto(dto.proyectoId, AuditAction.REGISTRO_CRIBA_CREADO)
       : null;
 
+    // B7: material del catálogo de criba (requerido); tipo_material queda como
+    // instantánea del nombre del material.
+    const material = await this.resolverMaterial(
+      dto.materialId,
+      AuditAction.REGISTRO_CRIBA_CREADO,
+    );
+
     const registro = await this.prisma.registros_criba.create({
       data: {
         id: randomUUID(),
@@ -175,7 +191,8 @@ export class CribaService {
         operador_id: operadorId,
         maquina_id: maquinaId,
         proyecto_id: proyectoId,
-        tipo_material: dto.tipoMaterial,
+        material_criba_id: material.id,
+        tipo_material: material.nombre,
         material_producido: dto.materialProducido,
         horas_trabajadas: dto.horasTrabajadas,
         material_al_banco: dto.materialAlBanco,
@@ -255,6 +272,15 @@ export class CribaService {
           : await this.resolverProyecto(dto.proyectoId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
     }
 
+    // B7: material del catálogo — undefined no toca; valor se valida.
+    let materialCribaId: string | null | undefined;
+    let materialNombre: string | undefined;
+    if (dto.materialId !== undefined) {
+      const material = await this.resolverMaterial(dto.materialId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
+      materialCribaId = material.id;
+      materialNombre = material.nombre;
+    }
+
     const registro = await this.prisma.registros_criba.update({
       where: { id },
       data: {
@@ -263,7 +289,8 @@ export class CribaService {
         ...(operadorId !== undefined && { operador_id: operadorId }),
         ...(maquinaId !== undefined && { maquina_id: maquinaId }),
         ...(proyectoId !== undefined && { proyecto_id: proyectoId }),
-        ...(dto.tipoMaterial !== undefined && { tipo_material: dto.tipoMaterial }),
+        ...(materialCribaId !== undefined && { material_criba_id: materialCribaId }),
+        ...(materialNombre !== undefined && { tipo_material: materialNombre }),
         ...(dto.materialProducido !== undefined && { material_producido: dto.materialProducido }),
         ...(dto.horasTrabajadas !== undefined && { horas_trabajadas: dto.horasTrabajadas }),
         ...(dto.materialAlBanco !== undefined && { material_al_banco: dto.materialAlBanco }),
@@ -481,6 +508,142 @@ export class CribaService {
     return proyecto.id;
   }
 
+  /** B7: valida el material del catálogo de criba (con su artículo de inventario). */
+  private async resolverMaterial(materialId: string, action: AuditAction, entityId?: string) {
+    const material = await this.prisma.materiales_criba.findFirst({
+      where: { id: materialId },
+      select: { id: true, nombre: true, articulo_id: true },
+    });
+    if (!material) {
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'MATERIAL_NO_ENCONTRADO',
+        BadRequestException,
+        `Material de criba con id "${materialId}" no encontrado`,
+      );
+    }
+    return material;
+  }
+
+  /**
+   * B7.2: envía la producción del registro AL INVENTARIO en una transacción:
+   *  - guard anti-doble-envío (`inventario_en IS NULL` vía updateMany),
+   *  - artículo destino vía el catálogo de materiales (exacto),
+   *  - `aplicarEntrada` del inventario (stock + movimiento trazable),
+   *  - marca `inventario_en` y audita SUCCESS/FAIL.
+   */
+  async enviarInventario(id: string, userId: string) {
+    const existente = await this.prisma.registros_criba.findFirst({
+      where: { id, eliminado_en: null },
+      include: { materiales_criba: { select: { id: true, nombre: true, articulo_id: true } } },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'REGISTRO_NO_ENCONTRADO',
+        NotFoundException,
+        `Registro de criba con id "${id}" no encontrado`,
+      );
+    }
+
+    if (existente.inventario_en) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'YA_EN_INVENTARIO',
+        ConflictException,
+        `El registro ${existente.codigo ?? ''} ya fue enviado al inventario`,
+      );
+    }
+
+    if (!existente.material_criba_id) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'SIN_MATERIAL_EN_CATALOGO',
+        BadRequestException,
+        'Este registro no tiene material del catálogo enlazado (registro antiguo)',
+      );
+    }
+
+    const material = existente.materiales_criba!;
+    if (!material.articulo_id) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'MATERIAL_SIN_ARTICULO',
+        BadRequestException,
+        `El material "${material.nombre}" no tiene artículo de inventario enlazado`,
+      );
+    }
+
+    const cantidad = Number(existente.material_al_banco);
+    if (!(cantidad > 0)) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'SIN_MATERIAL_AL_BANCO',
+        BadRequestException,
+        'El registro no tiene material al banco por enviar (0 m³)',
+      );
+    }
+
+    // Guard anti-doble-envío: solo gana quien pisa inventario_en null.
+    const marcado = await this.prisma.registros_criba.updateMany({
+      where: { id, inventario_en: null, eliminado_en: null },
+      data: { inventario_en: new Date(), actualizado_por: userId, actualizado_en: new Date() },
+    });
+    if (marcado.count === 0) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'YA_EN_INVENTARIO',
+        ConflictException,
+        'El registro ya fue enviado al inventario',
+      );
+    }
+
+    const { stockAnterior, stockResultante } = await this.prisma.$transaction(async (tx) =>
+      this.inventarioService.aplicarEntrada(tx, {
+        articuloId: material.articulo_id!,
+        cantidad,
+        motivo: 'PRODUCCION_CRIBA',
+        referenciaTipo: 'registros_criba',
+        referenciaId: id,
+        creadoPor: userId,
+      }),
+    );
+
+    const registro = await this.prisma.registros_criba.findUnique({
+      where: { id },
+      include: REGISTRO_INCLUDE,
+    });
+
+    const serialized = this.serialize(registro!);
+
+    await this.auditService.log({
+      action: AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+      entityType: 'registros_criba',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        material: material.nombre,
+        articuloId: material.articulo_id,
+        cantidad,
+        stockAnterior,
+        stockResultante,
+      },
+    });
+
+    return serialized;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(registro: any) {
     return {
@@ -493,6 +656,9 @@ export class CribaService {
       turno: TURNO_LABELS[registro.turno as Turno] ?? registro.turno,
       operadorId: registro.operador_id,
       operador: registro.trabajadores?.nombre ?? null,
+      materialId: registro.material_criba_id,
+      material: registro.materiales_criba?.nombre ?? registro.tipo_material,
+      inventarioEn: registro.inventario_en?.toISOString?.() ?? null,
       maquinaId: registro.maquina_id,
       maquina: registro.maquinas?.nombre ?? null,
       proyectoId: registro.proyecto_id,

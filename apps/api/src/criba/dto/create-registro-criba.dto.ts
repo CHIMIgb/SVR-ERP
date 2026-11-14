@@ -38,9 +38,9 @@ export class CreateRegistroCribaDto {
   @IsUUID()
   proyectoId?: string;
 
-  @IsString()
-  @IsIn(MATERIALES_CRIBA)
-  tipoMaterial!: string;
+  /** B7: material del catálogo de criba (Criba fina/gruesa/Arena lavada). */
+  @IsUUID()
+  materialId!: string;
 
   @IsNumber()
   @Min(0.01)

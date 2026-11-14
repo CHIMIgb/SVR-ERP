@@ -72,6 +72,17 @@ export class CribaController {
   }
 
   /**
+   * B7.2: envía la producción del registro al inventario (transacción).
+   * Permiso: operaciones.criba.editar
+   */
+  @RequirePermission('operaciones', 'criba', 'editar')
+  @Post(':id/inventario')
+  enviarInventario(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.cribaService.enviarInventario(id, user.id);
+  }
+
+  /**
    * POST /api/criba
    * Registrar un turno de criba.
    * Permiso: operaciones.criba.crear

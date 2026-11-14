@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Turno, AuditAction, AuditResult } from '@prisma/client';
 import { CribaService } from './criba.service';
+import { InventarioService } from '../inventario/inventario.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -65,6 +66,18 @@ describe('CribaService', () => {
         findFirst: jest.fn().mockResolvedValue(mockTrabajador),
         findMany: jest.fn().mockResolvedValue([mockTrabajador]),
       },
+      materiales_criba: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'mc-1',
+          nombre: 'Criba fina',
+          articulo_id: 'art-criba',
+        }),
+      },
+      maquinas: { findFirst: jest.fn().mockResolvedValue(null) },
+      proyectos: { findFirst: jest.fn().mockResolvedValue(null) },
+      articulos_inventario: { findUnique: jest.fn().mockResolvedValue(null) },
+      // B7.2: aplicarEntrada del inventario mock (no se prueba aquí).
+      // (InventarioService no se inyecta en el unit spec)
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -72,6 +85,10 @@ describe('CribaService', () => {
         CribaService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
+        {
+          provide: InventarioService,
+          useValue: { aplicarEntrada: jest.fn().mockResolvedValue({ stockAnterior: 0, stockResultante: 1 }) },
+        },
       ],
     }).compile();
 
@@ -135,6 +152,7 @@ describe('CribaService', () => {
     const createDto = {
       fecha: '2026-08-20',
       turno: Turno.VESPERTINO,
+      materialId: 'mc-1',
       operadorId: mockTrabajador.id,
       tipoMaterial: 'Criba gruesa',
       materialProducido: 250,
