@@ -17,7 +17,8 @@ import { RequirePermission } from '../auth/guards/require-permission.decorator';
 import { UsuariosService } from './usuarios.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
-import { AsignarRolDto } from './dto/asignar-rol.dto';
+import { CambiarRolDto } from './dto/cambiar-rol.dto';
+import { EstadoUsuarioDto } from './dto/estado-usuario.dto';
 import { AsignarJefeDto } from './dto/asignar-jefe.dto';
 import { QueryUsuariosDto } from './dto/query-usuarios.dto';
 
@@ -105,51 +106,36 @@ export class UsuariosController {
   }
 
   /**
-   * POST /api/usuarios/:id/roles
-   * Asigna un rol (opcionalmente como principal).
-   * Permiso: sistema.usuarios.asignar_rol
-   */
-  @RequirePermission('sistema', 'usuarios', 'asignar_rol')
-  @Post(':id/roles')
-  asignarRol(
-    @Param('id') id: string,
-    @Body() dto: AsignarRolDto,
-    @Req() req: Request,
-  ) {
-    const user = req.user as { id: string };
-    return this.usuariosService.asignarRol(id, dto, user.id);
-  }
-
-  /**
-   * PATCH /api/usuarios/:id/jefe
-   * Asignar / re-asignar / des-asignar jefe (vista /equipos, P11).
-   * Audita la acción literal JEFE_ASIGNADO.
+   * PATCH /api/usuarios/:id/estado
+   * Activar / desactivar cuenta (acción propia del botón, audita el campo).
+   * Al desactivar se cierran sus sesiones activas.
    * Permiso: sistema.usuarios.editar
    */
   @RequirePermission('sistema', 'usuarios', 'editar')
-  @Patch(':id/jefe')
-  asignarJefe(
+  @Patch(':id/estado')
+  cambiarEstado(
     @Param('id') id: string,
-    @Body() dto: AsignarJefeDto,
+    @Body() dto: EstadoUsuarioDto,
     @Req() req: Request,
   ) {
     const user = req.user as { id: string };
-    return this.usuariosService.asignarJefe(id, dto, user.id);
+    return this.usuariosService.cambiarEstado(id, dto, user.id);
   }
 
   /**
-   * DELETE /api/usuarios/:id/roles/:rolId
-   * Revoca un rol activo.
+   * PATCH /api/usuarios/:id/rol
+   * Cambia el ROL ÚNICO del usuario (mono-rol, decisión del cliente).
+   * Audita ROL_ASIGNADO con metadata del rol anterior y el nuevo.
    * Permiso: sistema.usuarios.asignar_rol
    */
   @RequirePermission('sistema', 'usuarios', 'asignar_rol')
-  @Delete(':id/roles/:rolId')
-  revocarRol(
+  @Patch(':id/rol')
+  cambiarRol(
     @Param('id') id: string,
-    @Param('rolId') rolId: string,
+    @Body() dto: CambiarRolDto,
     @Req() req: Request,
   ) {
     const user = req.user as { id: string };
-    return this.usuariosService.revocarRol(id, rolId, user.id);
+    return this.usuariosService.cambiarRol(id, dto, user.id);
   }
 }

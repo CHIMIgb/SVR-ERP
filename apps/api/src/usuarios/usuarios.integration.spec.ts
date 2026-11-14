@@ -339,40 +339,34 @@ describe('Usuarios (Real DB)', () => {
     });
   });
 
-  describe('ROLES (asignar / revocar)', () => {
-    it('asigna y revoca un rol con auditoría real', async () => {
+  describe('ROL ÚNICO (cambiarRol)', () => {
+    it('cambia el rol único con auditoría real y metadata del cambio', async () => {
       const creado = await crearUsuario();
 
-      await service.asignarRol(creado.id, { rolId: rolZZ2.id }, ACTOR_USER_ID);
-      const asignado = await prisma.users_roles.findFirst({
-        where: { user_id: creado.id, rol_id: rolZZ2.id, activo: true },
-      });
-      expect(asignado).not.toBeNull();
+      const resultado = await service.cambiarRol(creado.id, { rolId: rolZZ2.id }, ACTOR_USER_ID);
+      expect(resultado.message).toContain('cambiado');
 
-      const auditAlta = await prisma.registro_auditoria.findFirst({
+      const activos = await prisma.users_roles.findMany({
+        where: { user_id: creado.id, activo: true },
+      });
+      expect(activos).toHaveLength(1); // mono-rol: siempre exactamente uno
+      expect(activos[0].rol_id).toBe(rolZZ2.id);
+      expect(activos[0].es_principal).toBe(true);
+
+      const audit = await prisma.registro_auditoria.findFirst({
         where: { action: AuditAction.ROL_ASIGNADO, entity_id: creado.id, result: 'SUCCESS' },
         orderBy: { timestamp: 'desc' },
       });
-      expect(auditAlta).not.toBeNull();
-
-      // Revocar (deja otro rol activo → pasa el guard de USUARIO_SIN_ROL)
-      await service.revocarRol(creado.id, rolZZ2.id, ACTOR_USER_ID);
-      const revocado = await prisma.users_roles.findFirst({
-        where: { user_id: creado.id, rol_id: rolZZ2.id, activo: true },
-      });
-      expect(revocado).toBeNull();
-
-      const auditBaja = await prisma.registro_auditoria.findFirst({
-        where: { action: AuditAction.ROL_REVOCADO, entity_id: creado.id, result: 'SUCCESS' },
-        orderBy: { timestamp: 'desc' },
-      });
-      expect(auditBaja).not.toBeNull();
+      expect(audit).not.toBeNull();
+      expect((audit!.metadata as Record<string, unknown>).modo).toBe('cambio');
+      expect((audit!.metadata as Record<string, unknown>).rolAnterior).toBe(rolZZ.nombre);
+      expect((audit!.metadata as Record<string, unknown>).rolNuevo).toBe(rolZZ2.nombre);
     });
 
-    it('rechaza asignar un rol duplicado con FAIL + ROL_YA_ASIGNADO', async () => {
+    it('rechaza asignar el rol que ya tiene con FAIL + ROL_YA_ASIGNADO', async () => {
       const creado = await crearUsuario();
       await expect(
-        service.asignarRol(creado.id, { rolId: rolZZ.id }, ACTOR_USER_ID),
+        service.cambiarRol(creado.id, { rolId: rolZZ.id }, ACTOR_USER_ID),
       ).rejects.toThrow(BadRequestException);
 
       const fail = await prisma.registro_auditoria.findFirst({
@@ -380,6 +374,92 @@ describe('Usuarios (Real DB)', () => {
           action: AuditAction.ROL_ASIGNADO,
           result: AuditResult.FAIL,
           error_code: 'ROL_YA_ASIGNADO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+    });
+  });
+
+  describe('ESTADO (activar / desactivar)', () => {
+    it('desactiva con cierre de sesiones y auditoría del campo', async () => {
+      const creado = await crearUsuario();
+      await prisma.sessions.create({
+        data: {
+          id: randomUUID(),
+          user_id: creado.id,
+          refresh_token_jti: randomUUID(),
+          activa: true,
+          expira_en: new Date(Date.now() + 3_600_000),
+          actualizado_en: new Date(),
+        },
+      });
+
+      const resultado = await service.cambiarEstado(creado.id, { activo: false }, ACTOR_USER_ID);
+      expect(resultado.message).toBe('Usuario desactivado');
+
+      const row = await prisma.users.findUnique({ where: { id: creado.id } });
+      expect(row!.activo).toBe(false);
+      expect(row!.eliminado_en).toBeNull(); // desactivar NO es eliminar
+
+      const sesiones = await prisma.sessions.findMany({ where: { user_id: creado.id } });
+      expect(sesiones.every((s) => !s.activa)).toBe(true);
+      expect(sesiones[0].motivo_cierre).toBe('cuenta_desactivada');
+
+      const audit = await prisma.registro_auditoria.findFirst({
+        where: { action: AuditAction.USUARIO_ACTUALIZADO, entity_id: creado.id, result: 'SUCCESS' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect((audit!.metadata as Record<string, unknown>).campo).toBe('activo');
+      expect((audit!.metadata as Record<string, unknown>).valor).toBe(false);
+
+      // Reactivar
+      await service.cambiarEstado(creado.id, { activo: true }, ACTOR_USER_ID);
+      const row2 = await prisma.users.findUnique({ where: { id: creado.id } });
+      expect(row2!.activo).toBe(true);
+    });
+
+    it('no permite desactivar al propio actor con FAIL', async () => {
+      await expect(
+        service.cambiarEstado(ACTOR_USER_ID, { activo: false }, ACTOR_USER_ID),
+      ).rejects.toThrow(BadRequestException);
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.USUARIO_ACTUALIZADO,
+          result: AuditResult.FAIL,
+          error_code: 'NO_PUEDE_DESACTIVARSE_A_SI_MISMO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+    });
+
+    it('no permite desactivar al único Administrador con FAIL + ULTIMO_ADMINISTRADOR', async () => {
+      const adminSeed = await prisma.users.findFirst({
+        where: {
+          eliminado_en: null,
+          users_roles_users_roles_user_idTousers: {
+            some: { activo: true, roles: { es_sistema: true } },
+          },
+        },
+        select: { id: true },
+      });
+      expect(adminSeed).not.toBeNull();
+
+      const otroUser = await prisma.users.findFirst({
+        where: { eliminado_en: null, id: { not: adminSeed!.id } },
+        select: { id: true },
+      });
+      expect(otroUser).not.toBeNull();
+
+      await expect(
+        service.cambiarEstado(adminSeed!.id, { activo: false }, otroUser!.id),
+      ).rejects.toThrow(BadRequestException);
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: {
+          action: AuditAction.USUARIO_ACTUALIZADO,
+          result: AuditResult.FAIL,
+          error_code: 'ULTIMO_ADMINISTRADOR',
         },
         orderBy: { timestamp: 'desc' },
       });

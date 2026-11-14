@@ -11,7 +11,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
-import { AsignarRolDto } from './dto/asignar-rol.dto';
+import { CambiarRolDto } from './dto/cambiar-rol.dto';
+import { EstadoUsuarioDto } from './dto/estado-usuario.dto';
 import { QueryUsuariosDto } from './dto/query-usuarios.dto';
 
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -297,7 +298,16 @@ export class UsuariosService {
   async update(id: string, dto: UpdateUsuarioDto, userId: string) {
     const user = await this.prisma.users.findFirst({
       where: { id, eliminado_en: null },
-      select: { id: true, email: true, torre: true, activo: true },
+      select: {
+        id: true,
+        email: true,
+        torre: true,
+        persona_id: true,
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          select: { rol_id: true },
+        },
+      },
     });
     if (!user) {
       return this.fallir(
@@ -307,6 +317,23 @@ export class UsuariosService {
         NotFoundException,
         `Usuario con id "${id}" no encontrado`,
       );
+    }
+
+    // Fail-fast: el rol nuevo debe ser válido ANTES de tocar nada.
+    if (dto.rolId && dto.rolId !== user.users_roles_users_roles_user_idTousers[0]?.rol_id) {
+      const rol = await this.prisma.roles.findFirst({
+        where: { id: dto.rolId, ...ROLES_ASIGNABLES_WHERE },
+        select: { id: true, nombre: true },
+      });
+      if (!rol) {
+        return this.fallir(
+          AuditAction.USUARIO_ACTUALIZADO,
+          id,
+          'ROL_NO_ASIGNABLE',
+          ForbiddenException,
+          'El rol seleccionado no es válido o no es asignable',
+        );
+      }
     }
 
     if (dto.email && dto.email.trim().toLowerCase() !== user.email) {
@@ -325,11 +352,30 @@ export class UsuariosService {
       }
     }
 
+    // Persona: los datos del alta se editan aquí también (misma captura).
+    // actualizado_por se omite aquí (el UpdateInput tipado no toma la FK de
+    // la relación nombrada; el actor queda en registro_auditoria).
+    const datosPersona: Prisma.personasUpdateInput = {
+      ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
+      ...(dto.apellidoPaterno !== undefined && { apellido_paterno: dto.apellidoPaterno.trim() || null }),
+      ...(dto.apellidoMaterno !== undefined && { apellido_materno: dto.apellidoMaterno.trim() || null }),
+      ...(dto.telefono !== undefined && { telefono: dto.telefono.trim() || null }),
+      actualizado_en: new Date(),
+    };
+    if (Object.keys(datosPersona).length > 1) {
+      await this.prisma.personas.update({
+        where: { id: user.persona_id },
+        data: datosPersona,
+      });
+    }
+
+    const passwordHash = dto.password ? await bcrypt.hash(dto.password, SALT_ROUNDS) : undefined;
+
     const actualizado = await this.prisma.users.update({
       where: { id },
       data: {
         ...(dto.email !== undefined && { email: dto.email.trim().toLowerCase() }),
-        ...(dto.activo !== undefined && { activo: dto.activo }),
+        ...(passwordHash && { password_hash: passwordHash }),
         ...(dto.torre !== undefined && { torre: dto.torre }),
         actualizado_por: userId,
         actualizado_en: new Date(),
@@ -339,6 +385,11 @@ export class UsuariosService {
         users_roles_users_roles_user_idTousers: { where: { activo: true }, include: { roles: true } },
       },
     });
+
+    // Mono-rol: si cambió el rol, se reemplaza el único rol activo.
+    if (dto.rolId && dto.rolId !== user.users_roles_users_roles_user_idTousers[0]?.rol_id) {
+      await this.cambiarRol(id, { rolId: dto.rolId }, userId);
+    }
 
     const serialized = this.serialize(actualizado);
     await this.auditService.log({
@@ -350,6 +401,100 @@ export class UsuariosService {
       newValue: serialized,
     });
     return serialized;
+  }
+
+  // ────────────────────────────────────────────
+  //  ESTADO (activar / desactivar — acción propia del botón)
+  // ────────────────────────────────────────────
+  async cambiarEstado(id: string, dto: EstadoUsuarioDto, userId: string) {
+    if (dto.activo === false && id === userId) {
+      return this.fallir(
+        AuditAction.USUARIO_ACTUALIZADO,
+        id,
+        'NO_PUEDE_DESACTIVARSE_A_SI_MISMO',
+        BadRequestException,
+        'No puedes desactivar tu propia cuenta',
+      );
+    }
+
+    const user = await this.prisma.users.findFirst({
+      where: { id, eliminado_en: null },
+      select: { id: true, activo: true },
+    });
+    if (!user) {
+      return this.fallir(
+        AuditAction.USUARIO_ACTUALIZADO,
+        id,
+        'USUARIO_NO_ENCONTRADO',
+        NotFoundException,
+        `Usuario con id "${id}" no encontrado`,
+      );
+    }
+
+    if (dto.activo === false) {
+      await this.validarNoUltimoAdmin(
+        id,
+        AuditAction.USUARIO_ACTUALIZADO,
+        'No se puede desactivar al único Administrador del sistema',
+      );
+    }
+
+    const ahora = new Date();
+    await this.prisma.$transaction([
+      this.prisma.users.update({
+        where: { id },
+        data: { activo: dto.activo, actualizado_por: userId, actualizado_en: ahora },
+      }),
+      // Una cuenta desactivada no conserva sesiones vivas.
+      ...(dto.activo === false
+        ? [
+            this.prisma.sessions.updateMany({
+              where: { user_id: id, activa: true },
+              data: { activa: false, cerrada_en: ahora, motivo_cierre: 'cuenta_desactivada' },
+            }),
+          ]
+        : []),
+    ]);
+
+    await this.auditService.log({
+      action: AuditAction.USUARIO_ACTUALIZADO,
+      entityType: 'users',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      metadata: { campo: 'activo', valor: dto.activo, anterior: user.activo },
+    });
+    return { message: dto.activo ? 'Usuario activado' : 'Usuario desactivado' };
+  }
+
+  /** Guard compartido: la cuenta no puede quedarse sin su único Administrador. */
+  private async validarNoUltimoAdmin(id: string, action: AuditAction, mensaje: string) {
+    const user = await this.prisma.users.findFirst({
+      where: { id, eliminado_en: null },
+      include: {
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          include: { roles: { select: { es_sistema: true } } },
+        },
+      },
+    });
+    const esAdministrador = user?.users_roles_users_roles_user_idTousers?.some(
+      (ur) => ur.roles.es_sistema,
+    );
+    if (!esAdministrador) return;
+
+    const admins = await this.prisma.users.count({
+      where: {
+        eliminado_en: null,
+        activo: true,
+        users_roles_users_roles_user_idTousers: {
+          some: { activo: true, roles: { es_sistema: true } },
+        },
+      },
+    });
+    if (admins <= 1) {
+      return this.fallir(action, id, 'ULTIMO_ADMINISTRADOR', BadRequestException, mensaje);
+    }
   }
 
   // ────────────────────────────────────────────
@@ -386,27 +531,11 @@ export class UsuariosService {
     }
 
     // Guard: no dejar al sistema sin su último Administrador (es_sistema).
-    const esAdministrador = user.users_roles_users_roles_user_idTousers.some((ur) => ur.roles.es_sistema);
-    if (esAdministrador) {
-      const admins = await this.prisma.users.count({
-        where: {
-          eliminado_en: null,
-          activo: true,
-          users_roles_users_roles_user_idTousers: {
-            some: { activo: true, roles: { es_sistema: true } },
-          },
-        },
-      });
-      if (admins <= 1) {
-        return this.fallir(
-          AuditAction.USUARIO_ELIMINADO,
-          id,
-          'ULTIMO_ADMINISTRADOR',
-          BadRequestException,
-          'No se puede eliminar al único Administrador del sistema',
-        );
-      }
-    }
+    await this.validarNoUltimoAdmin(
+      id,
+      AuditAction.USUARIO_ELIMINADO,
+      'No se puede eliminar al único Administrador del sistema',
+    );
 
     const ahora = new Date();
     await this.prisma.$transaction([
@@ -437,12 +566,17 @@ export class UsuariosService {
   }
 
   // ────────────────────────────────────────────
-  //  ROLES (asignar / revocar)
+  //  ROL ÚNICO (mono-rol — reemplaza el rol del usuario)
   // ────────────────────────────────────────────
-  async asignarRol(id: string, dto: AsignarRolDto, userId: string) {
+  async cambiarRol(id: string, dto: CambiarRolDto, userId: string) {
     const user = await this.prisma.users.findFirst({
       where: { id, eliminado_en: null },
-      select: { id: true, email: true },
+      include: {
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          include: { roles: { select: { nombre: true } } },
+        },
+      },
     });
     if (!user) {
       return this.fallir(
@@ -468,11 +602,11 @@ export class UsuariosService {
       );
     }
 
-    const yaAsignado = await this.prisma.users_roles.findFirst({
-      where: { user_id: id, rol_id: dto.rolId, activo: true },
-      select: { id: true },
-    });
-    if (yaAsignado) {
+    const rolAnterior =
+      user.users_roles_users_roles_user_idTousers
+        .map((ur) => ur.roles.nombre)
+        .join(', ') || null;
+    if (rolAnterior === rol.nombre) {
       return this.fallir(
         AuditAction.ROL_ASIGNADO,
         id,
@@ -482,20 +616,17 @@ export class UsuariosService {
       );
     }
 
-    const esPrincipal = dto.esPrincipal ?? false;
-    const asignado = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      if (esPrincipal) {
-        await tx.users_roles.updateMany({
-          where: { user_id: id, activo: true },
-          data: { es_principal: false },
-        });
-      }
-      return tx.users_roles.create({
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.users_roles.updateMany({
+        where: { user_id: id, activo: true },
+        data: { activo: false },
+      });
+      await tx.users_roles.create({
         data: {
           id: randomUUID(),
           user_id: id,
           rol_id: dto.rolId,
-          es_principal: esPrincipal,
+          es_principal: true,
           asignado_por: userId,
         },
       });
@@ -507,53 +638,9 @@ export class UsuariosService {
       entityId: id,
       result: AuditResult.SUCCESS,
       actorUserId: userId,
-      newValue: { rolId: dto.rolId, rolNombre: rol.nombre, esPrincipal, asignacionId: asignado.id },
+      metadata: { modo: 'cambio', rolAnterior, rolNuevo: rol.nombre },
     });
-    return { message: `Rol "${rol.nombre}" asignado` };
-  }
-
-  async revocarRol(id: string, rolId: string, userId: string) {
-    const asignacion = await this.prisma.users_roles.findFirst({
-      where: { user_id: id, rol_id: rolId, activo: true },
-      include: { roles: { select: { nombre: true } } },
-    });
-    if (!asignacion) {
-      return this.fallir(
-        AuditAction.ROL_REVOCADO,
-        id,
-        'ROL_NO_ASIGNADO',
-        NotFoundException,
-        'El usuario no tiene ese rol activo',
-      );
-    }
-
-    const activos = await this.prisma.users_roles.count({
-      where: { user_id: id, activo: true },
-    });
-    if (activos <= 1) {
-      return this.fallir(
-        AuditAction.ROL_REVOCADO,
-        id,
-        'USUARIO_SIN_ROL',
-        BadRequestException,
-        'El usuario debe conservar al menos un rol',
-      );
-    }
-
-    await this.prisma.users_roles.update({
-      where: { id: asignacion.id },
-      data: { activo: false },
-    });
-
-    await this.auditService.log({
-      action: AuditAction.ROL_REVOCADO,
-      entityType: 'users',
-      entityId: id,
-      result: AuditResult.SUCCESS,
-      actorUserId: userId,
-      newValue: { rolId, rolNombre: asignacion.roles.nombre },
-    });
-    return { message: `Rol "${asignacion.roles.nombre}" revocado` };
+    return { message: `Rol cambiado a "${rol.nombre}"` };
   }
 
   // ────────────────────────────────────────────

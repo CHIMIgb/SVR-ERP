@@ -62,6 +62,7 @@ describe('UsuariosService', () => {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: PERSONA_ID }),
         findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({ id: PERSONA_ID }),
       },
       roles: { findFirst: jest.fn().mockResolvedValue({ id: ROL_ID, nombre: 'Trabajador' }) },
       users_roles: {
@@ -223,19 +224,81 @@ describe('UsuariosService', () => {
   });
 
   describe('update', () => {
-    it('edita y audita SUCCESS', async () => {
+    it('edita persona (nombre/telefono), torre y audita SUCCESS', async () => {
       prisma.users.findFirst.mockResolvedValue({
         id: USER_ID,
         email: 'nuevo@svr.com',
-        torre: null,
-        activo: true,
+        persona_id: PERSONA_ID,
+        users_roles_users_roles_user_idTousers: [{ rol_id: ROL_ID }],
       });
-      await service.update(USER_ID, { torre: 'RESIDENTE' }, ACTOR);
+      await service.update(
+        USER_ID,
+        { nombre: 'Ana Actualizada', telefono: '55-9999-8888', torre: 'RESIDENTE' },
+        ACTOR,
+      );
+      expect(prisma.personas.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: PERSONA_ID },
+          data: expect.objectContaining({ nombre: 'Ana Actualizada', telefono: '55-9999-8888' }),
+        }),
+      );
       expect(prisma.users.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ torre: 'RESIDENTE' }) }),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.USUARIO_ACTUALIZADO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('contraseña nueva se hashea (nunca en claro)', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        email: 'nuevo@svr.com',
+        persona_id: PERSONA_ID,
+        users_roles_users_roles_user_idTousers: [{ rol_id: ROL_ID }],
+      });
+      await service.update(USER_ID, { password: 'nuevaClave123' }, ACTOR);
+      const data = prisma.users.update.mock.calls[0][0].data;
+      expect(data.password_hash).toBeDefined();
+      expect(data.password_hash).not.toBe('nuevaClave123');
+    });
+
+    it('sin contraseña nueva la actual se conserva', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        email: 'nuevo@svr.com',
+        persona_id: PERSONA_ID,
+        users_roles_users_roles_user_idTousers: [{ rol_id: ROL_ID }],
+      });
+      await service.update(USER_ID, { torre: 'RESIDENTE' }, ACTOR);
+      const data = prisma.users.update.mock.calls[0][0].data;
+      expect(data.password_hash).toBeUndefined();
+    });
+
+    it('cambio de rol delega en cambiarRol', async () => {
+      prisma.users.findFirst
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          email: 'nuevo@svr.com',
+          persona_id: PERSONA_ID,
+          users_roles_users_roles_user_idTousers: [{ rol_id: ROL_ID }],
+        }) // el usuario (update)
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          users_roles_users_roles_user_idTousers: [
+            { activo: true, roles: { nombre: 'Trabajador' } },
+          ],
+        }); // el usuario (cambiarRol)
+      prisma.roles.findFirst.mockResolvedValue({ id: 'rol-nuevo', nombre: 'Residente' });
+      await service.update(USER_ID, { rolId: 'rol-nuevo' }, ACTOR);
+      expect(prisma.users_roles.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { user_id: USER_ID, activo: true } }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.ROL_ASIGNADO,
+          metadata: expect.objectContaining({ modo: 'cambio' }),
+        }),
       );
     });
 
@@ -249,7 +312,12 @@ describe('UsuariosService', () => {
 
     it('email tomado por otro → FAIL + EMAIL_DUPLICADO', async () => {
       prisma.users.findFirst
-        .mockResolvedValueOnce({ id: USER_ID, email: 'nuevo@svr.com' }) // el propio
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          email: 'nuevo@svr.com',
+          persona_id: PERSONA_ID,
+          users_roles_users_roles_user_idTousers: [{ rol_id: ROL_ID }],
+        }) // el propio
         .mockResolvedValueOnce({ id: 'otro-user' }); // el email lo tiene otro
       await expect(
         service.update(USER_ID, { email: 'otro@svr.com' }, ACTOR),
@@ -257,6 +325,21 @@ describe('UsuariosService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'EMAIL_DUPLICADO' }),
       );
+    });
+
+    it('rol nuevo inválido → FAIL + ROL_NO_ASIGNABLE (fail-fast)', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        email: 'nuevo@svr.com',
+        persona_id: PERSONA_ID,
+        users_roles_users_roles_user_idTousers: [{ rol_id: ROL_ID }],
+      });
+      prisma.roles.findFirst.mockResolvedValue(null);
+      await expect(
+        service.update(USER_ID, { rolId: 'rol-malo' }, ACTOR),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.personas.update).not.toHaveBeenCalled();
+      expect(prisma.users.update).not.toHaveBeenCalled();
     });
   });
 
@@ -293,11 +376,20 @@ describe('UsuariosService', () => {
     });
 
     it('último Administrador → FAIL + ULTIMO_ADMINISTRADOR', async () => {
-      prisma.users.findFirst.mockResolvedValue({
-        id: USER_ID,
-        email: 'admin@svr.com',
-        users_roles_users_roles_user_idTousers: [{ activo: true, roles: { nombre: 'Administrador', es_sistema: true } }],
-      });
+      prisma.users.findFirst
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          email: 'admin@svr.com',
+          users_roles_users_roles_user_idTousers: [
+            { activo: true, roles: { nombre: 'Administrador', es_sistema: true } },
+          ],
+        })
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          users_roles_users_roles_user_idTousers: [
+            { activo: true, roles: { es_sistema: true } },
+          ],
+        });
       prisma.users.count.mockResolvedValue(1); // solo él
       await expect(service.remove(USER_ID, ACTOR)).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
@@ -306,208 +398,123 @@ describe('UsuariosService', () => {
     });
   });
 
-  describe('asignarRol', () => {
-    const dto = { rolId: ROL_ID };
-
-    it('asigna y audita ROL_ASIGNADO SUCCESS', async () => {
-      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, email: 'a@b.com' });
-      prisma.users_roles.findFirst.mockResolvedValue(null);
-      await service.asignarRol(USER_ID, dto, ACTOR);
-      expect(prisma.users_roles.create).toHaveBeenCalled();
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.ROL_ASIGNADO, result: AuditResult.SUCCESS }),
+  describe('cambiarEstado', () => {
+    it('desactiva y cierra sesiones, audit SUCCESS con metadata', async () => {
+      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, activo: true });
+      const result = await service.cambiarEstado(USER_ID, { activo: false }, ACTOR);
+      expect(prisma.sessions.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ user_id: USER_ID, activa: true }),
+        }),
       );
-    });
-
-    it('rol ya asignado → FAIL + ROL_YA_ASIGNADO', async () => {
-      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, email: 'a@b.com' });
-      prisma.users_roles.findFirst.mockResolvedValue({ id: 'ur-1' });
-      await expect(service.asignarRol(USER_ID, dto, ACTOR)).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'ROL_YA_ASIGNADO' }),
-      );
-    });
-
-    it('rol no asignable → FAIL + ROL_NO_ASIGNABLE', async () => {
-      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, email: 'a@b.com' });
-      prisma.roles.findFirst.mockResolvedValue(null);
-      await expect(service.asignarRol(USER_ID, dto, ACTOR)).rejects.toThrow(ForbiddenException);
-    });
-
-    it('usuario no encontrado → FAIL', async () => {
-      prisma.users.findFirst.mockResolvedValue(null);
-      await expect(service.asignarRol(USER_ID, dto, ACTOR)).rejects.toThrow(NotFoundException);
-    });
-
-    it('es_principal quita el principal anterior en transacción', async () => {
-      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, email: 'a@b.com' });
-      prisma.users_roles.findFirst.mockResolvedValue(null);
-      await service.asignarRol(USER_ID, { ...dto, esPrincipal: true }, ACTOR);
-      expect(prisma.users_roles.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { user_id: USER_ID, activo: true } }),
-      );
-    });
-  });
-
-  describe('findEquipos', () => {
-    const jefeRow = {
-      id: 'user-jefe',
-      email: 'residente@test.mx',
-      torre: 'RESIDENTE',
-      numero_empleado: 'RES-001',
-      personas_users_persona_idTopersonas: { nombre: 'Resi', apellido_paterno: 'Dente', apellido_materno: null },
-      users_roles_users_roles_user_idTousers: [
-        { activo: true, roles: { nombre: 'Residente' } },
-      ],
-    };
-    const subRow = {
-      id: 'user-sub',
-      email: 'sub@test.mx',
-      torre: 'MECANICO',
-      numero_empleado: 'TRA-010',
-      personas_users_persona_idTopersonas: { nombre: 'Sub', apellido_paterno: 'Ordinado', apellido_materno: null },
-      users_roles_users_roles_user_idTousers: [
-        { activo: true, roles: { nombre: 'Trabajador' } },
-      ],
-    };
-
-    it('agrupa subordinados por jefe y lista los sin jefe', async () => {
-      prisma.users.findMany = jest
-        .fn()
-        .mockResolvedValueOnce([jefeRow]) // jefes
-        .mockResolvedValueOnce([{ ...subRow, jefe_user_id: 'user-jefe' }]) // subordinados
-        .mockResolvedValueOnce([{ ...subRow, id: 'user-libre', jefe_user_id: null }]); // sin jefe
-      const result = await service.findEquipos();
-      expect(result.equipos).toHaveLength(1);
-      expect(result.equipos[0].usuarioId).toBe('user-jefe');
-      expect(result.equipos[0].nombre).toBe('Resi Dente');
-      expect(result.equipos[0].subordinados).toEqual([
-        expect.objectContaining({ id: 'user-sub', nombre: 'Sub Ordinado' }),
-      ]);
-      expect(result.sinJefe).toEqual([
-        expect.objectContaining({ id: 'user-libre' }),
-      ]);
-    });
-
-    it('sin jefes no consulta subordinados', async () => {
-      prisma.users.findMany = jest
-        .fn()
-        .mockResolvedValueOnce([]) // jefes
-        .mockResolvedValueOnce([]); // sin jefe
-      const result = await service.findEquipos();
-      expect(result.equipos).toEqual([]);
-      expect(result.sinJefe).toEqual([]);
-      expect(prisma.users.findMany).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('asignarJefe', () => {
-    it('asigna jefe y audita JEFE_ASIGNADO SUCCESS', async () => {
-      prisma.users.findFirst
-        .mockResolvedValueOnce({ id: USER_ID, jefe_user_id: null }) // el usuario
-        .mockResolvedValueOnce({ id: 'user-jefe', jefe_user_id: null }); // el jefe
-      prisma.users.update.mockResolvedValue({ id: USER_ID, jefe_user_id: 'user-jefe' });
-      const result = await service.asignarJefe(USER_ID, { jefeUserId: 'user-jefe' }, ACTOR);
-      expect(prisma.users.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: USER_ID }, data: expect.objectContaining({ jefe_user_id: 'user-jefe' }) }),
-      );
-      expect(result.jefeUserId).toBe('user-jefe');
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.JEFE_ASIGNADO, result: AuditResult.SUCCESS }),
-      );
-    });
-
-    it('des-asigna (null) y audita con accion desasignado', async () => {
-      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, jefe_user_id: 'user-jefe' });
-      prisma.users.update.mockResolvedValue({ id: USER_ID, jefe_user_id: null });
-      await service.asignarJefe(USER_ID, { jefeUserId: null }, ACTOR);
-      expect(prisma.users.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ jefe_user_id: null }) }),
-      );
+      expect(result.message).toBe('Usuario desactivado');
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: AuditAction.JEFE_ASIGNADO,
-          metadata: expect.objectContaining({ accion: 'desasignado' }),
+          action: AuditAction.USUARIO_ACTUALIZADO,
+          metadata: expect.objectContaining({ campo: 'activo', valor: false }),
         }),
+      );
+    });
+
+    it('activa sin cerrar sesiones', async () => {
+      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, activo: false });
+      const result = await service.cambiarEstado(USER_ID, { activo: true }, ACTOR);
+      expect(prisma.sessions.updateMany).not.toHaveBeenCalled();
+      expect(result.message).toBe('Usuario activado');
+    });
+
+    it('no se puede desactivar a sí mismo → FAIL', async () => {
+      await expect(
+        service.cambiarEstado(ACTOR, { activo: false }, ACTOR),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'NO_PUEDE_DESACTIVARSE_A_SI_MISMO' }),
       );
     });
 
     it('no encontrado → FAIL + USUARIO_NO_ENCONTRADO', async () => {
       prisma.users.findFirst.mockResolvedValue(null);
-      await expect(service.asignarJefe(USER_ID, { jefeUserId: null }, ACTOR)).rejects.toThrow(
+      await expect(service.cambiarEstado(USER_ID, { activo: true }, ACTOR)).rejects.toThrow(
         NotFoundException,
       );
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'USUARIO_NO_ENCONTRADO' }),
-      );
     });
 
-    it('auto-jefe → FAIL + JEFE_INVALIDO', async () => {
-      prisma.users.findFirst.mockResolvedValue({ id: USER_ID, jefe_user_id: null });
-      await expect(
-        service.asignarJefe(USER_ID, { jefeUserId: USER_ID }, ACTOR),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'JEFE_INVALIDO' }),
-      );
-    });
-
-    it('jefe inexistente/inactivo → FAIL + JEFE_INVALIDO', async () => {
+    it('último Administrador → FAIL + ULTIMO_ADMINISTRADOR', async () => {
       prisma.users.findFirst
-        .mockResolvedValueOnce({ id: USER_ID, jefe_user_id: null })
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce({ id: USER_ID, activo: true })
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          users_roles_users_roles_user_idTousers: [
+            { activo: true, roles: { es_sistema: true } },
+          ],
+        });
+      prisma.users.count.mockResolvedValue(1);
       await expect(
-        service.asignarJefe(USER_ID, { jefeUserId: 'user-fantasma' }, ACTOR),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('ciclo: el jefe es subordinado del usuario → FAIL + JEFE_INVALIDO', async () => {
-      prisma.users.findFirst
-        .mockResolvedValueOnce({ id: USER_ID, jefe_user_id: null })
-        .mockResolvedValueOnce({ id: 'user-sub', jefe_user_id: USER_ID });
-      await expect(
-        service.asignarJefe(USER_ID, { jefeUserId: 'user-sub' }, ACTOR),
+        service.cambiarEstado(USER_ID, { activo: false }, ACTOR),
       ).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'JEFE_INVALIDO' }),
+        expect.objectContaining({ errorCode: 'ULTIMO_ADMINISTRADOR' }),
       );
-      expect(prisma.users.update).not.toHaveBeenCalled();
     });
   });
 
-  describe('revocarRol', () => {
-    it('revoca y audita ROL_REVOCADO SUCCESS', async () => {
-      prisma.users_roles.findFirst.mockResolvedValue({
-        id: 'ur-1',
-        roles: { nombre: 'Trabajador' },
+  describe('cambiarRol (mono-rol)', () => {
+    it('cambia el rol en transacción y audita el cambio', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        users_roles_users_roles_user_idTousers: [
+          { activo: true, roles: { nombre: 'Trabajador' } },
+        ],
       });
-      prisma.users_roles.count.mockResolvedValue(2);
-      await service.revocarRol(USER_ID, ROL_ID, ACTOR);
-      expect(prisma.users_roles.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'ur-1' } }),
+      prisma.roles.findFirst.mockResolvedValue({ id: 'rol-nuevo', nombre: 'Residente' });
+      await service.cambiarRol(USER_ID, { rolId: 'rol-nuevo' }, ACTOR);
+      expect(prisma.users_roles.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { user_id: USER_ID, activo: true } }),
+      );
+      expect(prisma.users_roles.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ rol_id: 'rol-nuevo', es_principal: true }),
+        }),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.ROL_REVOCADO, result: AuditResult.SUCCESS }),
+        expect.objectContaining({
+          action: AuditAction.ROL_ASIGNADO,
+          metadata: expect.objectContaining({ modo: 'cambio', rolAnterior: 'Trabajador' }),
+        }),
       );
     });
 
-    it('rol no activo → FAIL + ROL_NO_ASIGNADO', async () => {
-      prisma.users_roles.findFirst.mockResolvedValue(null);
-      await expect(service.revocarRol(USER_ID, ROL_ID, ACTOR)).rejects.toThrow(NotFoundException);
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'ROL_NO_ASIGNADO' }),
-      );
+    it('usuario no encontrado → FAIL', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await expect(
+        service.cambiarRol(USER_ID, { rolId: 'rol-nuevo' }, ACTOR),
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('último rol activo → FAIL + USUARIO_SIN_ROL', async () => {
-      prisma.users_roles.findFirst.mockResolvedValue({
-        id: 'ur-1',
-        roles: { nombre: 'Trabajador' },
+    it('rol no asignable → FAIL + ROL_NO_ASIGNABLE', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        users_roles_users_roles_user_idTousers: [],
       });
-      prisma.users_roles.count.mockResolvedValue(1);
-      await expect(service.revocarRol(USER_ID, ROL_ID, ACTOR)).rejects.toThrow(BadRequestException);
+      prisma.roles.findFirst.mockResolvedValue(null);
+      await expect(
+        service.cambiarRol(USER_ID, { rolId: 'rol-malo' }, ACTOR),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('mismo rol → FAIL + ROL_YA_ASIGNADO', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        users_roles_users_roles_user_idTousers: [
+          { activo: true, roles: { nombre: 'Trabajador' } },
+        ],
+      });
+      prisma.roles.findFirst.mockResolvedValue({ id: ROL_ID, nombre: 'Trabajador' });
+      await expect(
+        service.cambiarRol(USER_ID, { rolId: ROL_ID }, ACTOR),
+      ).rejects.toThrow(BadRequestException);
       expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'USUARIO_SIN_ROL' }),
+        expect.objectContaining({ errorCode: 'ROL_YA_ASIGNADO' }),
       );
     });
   });
