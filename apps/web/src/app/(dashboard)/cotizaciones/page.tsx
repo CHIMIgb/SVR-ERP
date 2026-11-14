@@ -235,27 +235,38 @@ export default function CotizacionesPage() {
     setEstadoOpen(true);
   }, []);
 
+  // Editar: el listado NO trae partidas (se omiten para no cargar N+1) —
+  // pedir el detalle antes de abrir. Ver las partidas reales es lo que
+  // evita el borrado accidental al guardar (el update las reemplaza todas).
   const openEditar = useCallback((item: CotizacionDTO) => {
-    setEditId(item.id);
-    setEditHasItems(Boolean(item.items?.length));
-    setEditForm({
-      clienteId: item.clienteId,
-      descripcion: item.descripcion,
-      monto: formatearMiles(String(item.monto)),
-      fecha: item.fecha,
-      condiciones: item.condiciones ?? CONDICIONES_PLANTILLA,
-      items: item.items?.length
-        ? item.items.map((it) => ({
-            descripcion: it.descripcion,
-            cantidad: String(it.cantidad),
-            unidad: it.unidad,
-            precio: String(it.precioUnitario),
-          }))
-        : [emptyPartida],
+    cotizacionesApi.obtener(item.id).then((res) => {
+      if (!res.success) {
+        showToast(mensajeErrorApi(res.error, 'No se pudo cargar la cotización para editar.'), 'error');
+        return;
+      }
+      const det = res.data;
+      if (!det) return;
+      setEditId(item.id);
+      setEditHasItems(Boolean(det.items?.length));
+      setEditForm({
+        clienteId: det.clienteId,
+        descripcion: det.descripcion,
+        monto: formatearMiles(String(det.monto)),
+        fecha: det.fecha,
+        condiciones: det.condiciones ?? CONDICIONES_PLANTILLA,
+        items: det.items?.length
+          ? det.items.map((it) => ({
+              descripcion: it.descripcion,
+              cantidad: String(it.cantidad),
+              unidad: it.unidad,
+              precio: String(it.precioUnitario),
+            }))
+          : [emptyPartida],
+      });
+      setDetailOpen(false);
+      setEditOpen(true);
     });
-    setDetailOpen(false);
-    setEditOpen(true);
-  }, []);
+  }, [showToast]);
 
   const refresh = useCallback(() => {
     fetchData(pagination.page, search, filterValues);
