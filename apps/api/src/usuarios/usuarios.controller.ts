@@ -138,4 +138,46 @@ export class UsuariosController {
     const user = req.user as { id: string };
     return this.usuariosService.cambiarRol(id, dto, user.id);
   }
+
+  /**
+   * GET /api/usuarios/:id/identidad
+   * Ficha 360 de la vista /roles (solo lectura): rol único, vistas y permisos
+   * heredados, área, jefe, estado de PIN y sesiones activas.
+   * Permiso: sistema.usuarios.ver
+   */
+  @RequirePermission('sistema', 'usuarios', 'ver')
+  @Get(':id/identidad')
+  findIdentidad(@Param('id') id: string) {
+    return this.usuariosService.findIdentidad(id);
+  }
+
+  /**
+   * POST /api/usuarios/:id/sesiones/cierre
+   * Cierre masivo de sesiones (mesa de ayuda de /roles).
+   * Audita SESION_CERRADA con metadata {modo:'masivo'}.
+   * Permiso: sistema.usuarios.editar
+   */
+  @RequirePermission('sistema', 'usuarios', 'editar')
+  @Post(':id/sesiones/cierre')
+  cierreSesiones(@Param('id') id: string, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.usuariosService.cierreSesiones(id, user.id);
+  }
+
+  /**
+   * PATCH /api/usuarios/:id/jefe
+   * Asignar / re-asignar / des-asignar jefe (vista /equipos, P11).
+   * Audita la acción literal JEFE_ASIGNADO.
+   * Permiso: sistema.usuarios.editar
+   */
+  @RequirePermission('sistema', 'usuarios', 'editar')
+  @Patch(':id/jefe')
+  asignarJefe(
+    @Param('id') id: string,
+    @Body() dto: AsignarJefeDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { id: string };
+    return this.usuariosService.asignarJefe(id, dto, user.id);
+  }
 }

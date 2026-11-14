@@ -72,7 +72,10 @@ describe('UsuariosService', () => {
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      sessions: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      sessions: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), findMany: jest.fn().mockResolvedValue([]) },
+      role_vistas: { findMany: jest.fn().mockResolvedValue([]) },
+      role_permissions: { findMany: jest.fn().mockResolvedValue([]) },
+      refresh_tokens: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       $transaction: jest.fn((ops: unknown) =>
         Array.isArray(ops) ? Promise.resolve(ops) : Promise.resolve((ops as (tx: unknown) => unknown)(prisma)),
       ),
@@ -395,6 +398,111 @@ describe('UsuariosService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ errorCode: 'ULTIMO_ADMINISTRADOR' }),
       );
+    });
+  });
+
+  describe('findIdentidad (ficha 360)', () => {
+    it('regresa rol, vistas, permisos y sesiones activas', async () => {
+      prisma.users.findFirst.mockResolvedValue({
+        id: USER_ID,
+        email: 'a@b.com',
+        torre: 'RESIDENTE',
+        numero_empleado: 'RES-001',
+        intentos_pin: 0,
+        pin_temporal_hasta: null,
+        activo: true,
+        personas_users_persona_idTopersonas: { nombre: 'Ana', apellido_paterno: 'L', apellido_materno: null },
+        users_roles_users_roles_user_idTousers: [
+          { activo: true, rol_id: ROL_ID, roles: { id: ROL_ID, nombre: 'Residente', nivel: 90 } },
+        ],
+        jefe: {
+          id: 'user-jefe',
+          personas_users_persona_idTopersonas: { nombre: 'Jefe', apellido_paterno: null, apellido_materno: null },
+        },
+      });
+      prisma.role_vistas.findMany.mockResolvedValue([
+        {
+          vista_id: 'v1',
+          puede_ver: true,
+          puede_crear: false,
+          puede_editar: false,
+          puede_eliminar: false,
+          puede_exportar: false,
+          vistas: { id: 'v1', ruta: '/ventas', nombre: 'Punto de Venta', orden: 44 },
+        },
+      ]);
+      prisma.role_permissions.findMany.mockResolvedValue([
+        { permissions: { modulo: 'comercial', recurso: 'ventas', accion: 'ver' } },
+      ]);
+      prisma.sessions.findMany.mockResolvedValue([
+        {
+          id: 's1',
+          dispositivo: 'PC-01',
+          ubicacion: 'Oficina',
+          ip_address: '192.168.1.5',
+          iniciada_en: new Date('2026-11-14'),
+          ultima_actividad: new Date('2026-11-14'),
+        },
+      ]);
+
+      const result = await service.findIdentidad(USER_ID);
+      expect(result.roles).toEqual([{ id: ROL_ID, nombre: 'Residente', nivel: 90 }]);
+      expect(result.vistas).toHaveLength(1);
+      expect(result.vistas[0].puedeVer).toBe(true);
+      expect(result.permisos).toEqual([{ modulo: 'comercial', recurso: 'ventas', accion: 'ver' }]);
+      expect(result.sesiones).toHaveLength(1);
+      expect(result.jefe?.id).toBe('user-jefe');
+      expect(result.pinEstado).toBe('NORMAL');
+    });
+
+    it('no encontrado → FAIL + USUARIO_NO_ENCONTRADO', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await expect(service.findIdentidad(USER_ID)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('cierreSesiones (mesa de ayuda)', () => {
+    it('cierra sesiones y revoca refresh tokens, audit SESION_CERRADA masivo', async () => {
+      prisma.users.findFirst.mockResolvedValue({ id: USER_ID });
+      prisma.sessions.findMany.mockResolvedValue([{ id: 's1' }, { id: 's2' }]);
+      const result = await service.cierreSesiones(USER_ID, ACTOR);
+      expect(prisma.sessions.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: ['s1', 's2'] } },
+        }),
+      );
+      expect(prisma.refresh_tokens.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { session_id: { in: ['s1', 's2'] }, activo: true, revocado_en: null },
+        }),
+      );
+      expect(result.message).toContain('2');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.SESION_CERRADA,
+          metadata: expect.objectContaining({ modo: 'masivo', sesiones: 2 }),
+        }),
+      );
+    });
+
+    it('sin sesiones activas es no-op con 0', async () => {
+      prisma.users.findFirst.mockResolvedValue({ id: USER_ID });
+      prisma.sessions.findMany.mockResolvedValue([]);
+      const result = await service.cierreSesiones(USER_ID, ACTOR);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(result.message).toContain('0');
+    });
+
+    it('propias sesiones → FAIL + NO_PUEDE_CERRAR_SUS_PROPIAS_SESIONES', async () => {
+      await expect(service.cierreSesiones(ACTOR, ACTOR)).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'NO_PUEDE_CERRAR_SUS_PROPIAS_SESIONES' }),
+      );
+    });
+
+    it('no encontrado → FAIL', async () => {
+      prisma.users.findFirst.mockResolvedValue(null);
+      await expect(service.cierreSesiones(USER_ID, ACTOR)).rejects.toThrow(NotFoundException);
     });
   });
 

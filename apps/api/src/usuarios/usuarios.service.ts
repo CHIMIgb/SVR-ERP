@@ -644,6 +644,177 @@ export class UsuariosService {
   }
 
   // ────────────────────────────────────────────
+  //  IDENTIDAD (ficha 360 de la vista /roles — solo lectura + sesiones)
+  // ────────────────────────────────────────────
+  /**
+   * Ficha 360: rol único, vistas y permisos heredados, área, jefe, estado de
+   * PIN y sesiones activas. Lectura — la edición de datos va en /usuarios.
+   */
+  async findIdentidad(id: string) {
+    const user = await this.prisma.users.findFirst({
+      where: { id, eliminado_en: null },
+      include: {
+        personas_users_persona_idTopersonas: true,
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          include: { roles: { select: { id: true, nombre: true, nivel: true } } },
+        },
+        jefe: {
+          include: { personas_users_persona_idTopersonas: true },
+        },
+      },
+    });
+    if (!user) {
+      return this.fallir(
+        AuditAction.USUARIO_ACTUALIZADO,
+        id,
+        'USUARIO_NO_ENCONTRADO',
+        NotFoundException,
+        `Usuario con id "${id}" no encontrado`,
+      );
+    }
+
+    const rolesActivos = user.users_roles_users_roles_user_idTousers;
+    const roleIds = rolesActivos.map((ur) => ur.rol_id);
+
+    const [vistasAsignadas, permisosAsignados, sesiones] = await Promise.all([
+      roleIds.length
+        ? this.prisma.role_vistas.findMany({
+            where: { rol_id: { in: roleIds }, activo: true },
+            include: {
+              vistas: { select: { id: true, ruta: true, nombre: true, orden: true } },
+            },
+          })
+        : Promise.resolve([]),
+      roleIds.length
+        ? this.prisma.role_permissions.findMany({
+            where: { rol_id: { in: roleIds } },
+            include: {
+              permissions: {
+                select: { id: true, modulo: true, recurso: true, accion: true },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      this.prisma.sessions.findMany({
+        where: { user_id: id, activa: true },
+        orderBy: { ultima_actividad: 'desc' },
+      }),
+    ]);
+
+    let pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO' = 'NORMAL';
+    if (user.intentos_pin >= MAX_INTENTOS_PIN) pinEstado = 'BLOQUEADO';
+    else if (user.pin_temporal_hasta && user.pin_temporal_hasta > new Date()) pinEstado = 'TEMPORAL';
+
+    return {
+      id: user.id,
+      nombre: this.nombreDe(user),
+      email: user.email,
+      activo: user.activo,
+      torre: user.torre ?? null,
+      numeroEmpleado: user.numero_empleado,
+      roles: rolesActivos.map((ur) => ({
+        id: ur.roles.id,
+        nombre: ur.roles.nombre,
+        nivel: ur.roles.nivel,
+      })),
+      jefe: user.jefe
+        ? {
+            id: user.jefe.id,
+            nombre: this.nombreDe(user.jefe),
+          }
+        : null,
+      pinEstado,
+      // Vistas con flags heredados del rol (mono-rol: un solo rol activo).
+      vistas: vistasAsignadas.map((rv) => ({
+        vistaId: rv.vista_id,
+        ruta: rv.vistas.ruta,
+        nombre: rv.vistas.nombre,
+        puedeVer: rv.puede_ver,
+        puedeCrear: rv.puede_crear,
+        puedeEditar: rv.puede_editar,
+        puedeEliminar: rv.puede_eliminar,
+        puedeExportar: rv.puede_exportar,
+      })),
+      permisos: permisosAsignados.map((rp) => ({
+        id: rp.permissions.id,
+        modulo: rp.permissions.modulo,
+        recurso: rp.permissions.recurso,
+        accion: rp.permissions.accion,
+      })),
+      sesiones: sesiones.map((s) => ({
+        id: s.id,
+        dispositivo: s.dispositivo,
+        ubicacion: s.ubicacion,
+        ip: s.ip_address,
+        iniciadaEn: s.iniciada_en.toISOString(),
+        ultimaActividad: s.ultima_actividad.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Cierre masivo de sesiones de un usuario (mesa de ayuda de /roles).
+   * Audita SESION_CERRADA con metadata {modo:'masivo', sesiones}.
+   */
+  async cierreSesiones(id: string, userId: string) {
+    if (id === userId) {
+      return this.fallir(
+        AuditAction.SESION_CERRADA,
+        id,
+        'NO_PUEDE_CERRAR_SUS_PROPIAS_SESIONES',
+        BadRequestException,
+        'No puedes cerrar tus propias sesiones — usa "Cerrar sesión" del menú',
+      );
+    }
+
+    const user = await this.prisma.users.findFirst({
+      where: { id, eliminado_en: null },
+      select: { id: true },
+    });
+    if (!user) {
+      return this.fallir(
+        AuditAction.SESION_CERRADA,
+        id,
+        'USUARIO_NO_ENCONTRADO',
+        NotFoundException,
+        `Usuario con id "${id}" no encontrado`,
+      );
+    }
+
+    const sesiones = await this.prisma.sessions.findMany({
+      where: { user_id: id, activa: true },
+      select: { id: true },
+    });
+
+    if (sesiones.length > 0) {
+      const sesionIds = sesiones.map((s) => s.id);
+      const ahora = new Date();
+      await this.prisma.$transaction([
+        this.prisma.sessions.updateMany({
+          where: { id: { in: sesionIds } },
+          data: { activa: false, cerrada_en: ahora, motivo_cierre: 'cierre_masivo' },
+        }),
+        // Revoca los refresh tokens de esas sesiones: el access token muere
+        // al expirar y el refresh ya no sirve.
+        this.prisma.refresh_tokens.updateMany({
+          where: { session_id: { in: sesionIds }, activo: true, revocado_en: null },
+          data: { revocado_en: ahora, motivo_revocado: 'cierre_masivo', activo: false },
+        }),
+      ]);
+    }
+
+    await this.auditService.log({
+      action: AuditAction.SESION_CERRADA,
+      entityType: 'users',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      metadata: { modo: 'masivo', sesiones: sesiones.length },
+    });
+    return { message: `${sesiones.length} sesión(es) cerrada(s)` };
+  }
+  // ────────────────────────────────────────────
   //  EQUIPOS (vista /equipos — P11: jefe↔trabajador)
   // ────────────────────────────────────────────
   /**
