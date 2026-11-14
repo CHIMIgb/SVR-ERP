@@ -97,6 +97,12 @@ export default function RolesPage() {
   const puedeEditar = vista?.puedeEditar ?? false;
   const puedeEliminar = vista?.puedeEliminar ?? false;
 
+  // El rol es_sistema (Administrador) es SOLO LECTURA en los modales:
+  // checkboxes deshabilitados, sin botón Guardar, y solo se muestran las
+  // vistas/permisos que el rol tiene asignados. La muralla final es el
+  // backend (validarRolEditable → 403 + auditoría FAIL).
+  const soloLectura = selectedRol?.esSistema ?? false;
+
   // ── Catálogo de roles ──
   const fetchRoles = useCallback(async () => {
     if (!hasLoaded.current) {
@@ -925,7 +931,7 @@ export default function RolesPage() {
       <Modal open={vistasOpen} onClose={() => setVistasOpen(false)} size="xl">
         <ModalHeader
           title={`Vistas de ${selectedRol?.nombre ?? 'rol'}`}
-          subtitle="Flags por vista — se guardan todos junto"
+          subtitle={soloLectura ? 'Solo lectura — las vistas con acceso del rol' : 'Flags por vista — se guardan todos junto'}
           onClose={() => setVistasOpen(false)}
         />
         <ModalBody>
@@ -945,7 +951,9 @@ export default function RolesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {vistas.map((v) => (
+                  {vistas
+                    .filter((v) => (soloLectura ? v.puedeVer : true))
+                    .map((v) => (
                     <tr key={v.vistaId} className="border-t border-ui-100">
                       <td className="py-2">
                         <div className="font-bold text-ui-800">{v.nombre}</div>
@@ -956,6 +964,7 @@ export default function RolesPage() {
                           <input
                             type="checkbox"
                             checked={v[campo]}
+                            disabled={soloLectura}
                             onChange={() => toggleFlag(v.vistaId, campo)}
                             className="w-4 h-4 accent-blue-600"
                             aria-label={`${campo} ${v.nombre}`}
@@ -970,8 +979,10 @@ export default function RolesPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setVistasOpen(false)}>Cancelar</Button>
-          <Button variant="primary" onClick={handleGuardarVistas} loading={submitting}>Guardar</Button>
+          <Button variant="secondary" onClick={() => setVistasOpen(false)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Button>
+          {!soloLectura && (
+            <Button variant="primary" onClick={handleGuardarVistas} loading={submitting}>Guardar</Button>
+          )}
         </ModalFooter>
       </Modal>
 
@@ -979,7 +990,7 @@ export default function RolesPage() {
       <Modal open={permisosOpen} onClose={() => setPermisosOpen(false)} size="xl">
         <ModalHeader
           title={`Permisos de ${selectedRol?.nombre ?? 'rol'}`}
-          subtitle="Matriz módulo / recurso / acción — marca los que el rol puede hacer"
+          subtitle={soloLectura ? 'Solo lectura — los permisos asignados al rol' : 'Matriz módulo / recurso / acción — marca los que el rol puede hacer'}
           onClose={() => setPermisosOpen(false)}
         />
         <ModalBody>
@@ -988,10 +999,12 @@ export default function RolesPage() {
           ) : (
             <div className="max-h-[55vh] overflow-y-auto scrollbar-none space-y-4">
               {Object.entries(
-                permisos.reduce<Record<string, PermisoDTO[]>>((acc, p) => {
-                  (acc[p.modulo] = acc[p.modulo] ?? []).push(p);
-                  return acc;
-                }, {}),
+                permisos
+                  .filter((p) => (soloLectura ? p.asignado : true))
+                  .reduce<Record<string, PermisoDTO[]>>((acc, p) => {
+                    (acc[p.modulo] = acc[p.modulo] ?? []).push(p);
+                    return acc;
+                  }, {}),
               ).map(([modulo, lista]) => (
                 <div key={modulo}>
                   <p className="text-[10px] font-black text-ui-500 uppercase tracking-widest mb-1.5">
@@ -999,10 +1012,11 @@ export default function RolesPage() {
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {lista.map((p) => (
-                      <label key={p.id} className="flex items-center gap-2 text-xs font-medium text-ui-700 cursor-pointer">
+                      <label key={p.id} className={`flex items-center gap-2 text-xs font-medium text-ui-700 ${soloLectura ? '' : 'cursor-pointer'}`}>
                         <input
                           type="checkbox"
                           checked={Boolean(p.asignado)}
+                          disabled={soloLectura}
                           onChange={() => togglePermiso(p.id)}
                           className="w-4 h-4 accent-blue-600"
                         />
@@ -1017,8 +1031,10 @@ export default function RolesPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setPermisosOpen(false)}>Cancelar</Button>
-          <Button variant="primary" onClick={handleGuardarPermisos} loading={submitting}>Guardar</Button>
+          <Button variant="secondary" onClick={() => setPermisosOpen(false)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Button>
+          {!soloLectura && (
+            <Button variant="primary" onClick={handleGuardarPermisos} loading={submitting}>Guardar</Button>
+          )}
         </ModalFooter>
       </Modal>
 
