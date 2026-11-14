@@ -135,10 +135,18 @@ export default function EquiposPage() {
         <div>
           <div className="font-black text-ui-900">{equipo.nombre ?? equipo.email}</div>
           <div className="text-[10px] font-bold text-ui-400 uppercase tracking-widest">
-            {equipo.roles.join(', ') || 'Sin rol'}
-            {equipo.numeroEmpleado ? ` · ${equipo.numeroEmpleado}` : ''}
+            {equipo.numeroEmpleado ?? equipo.email}
           </div>
         </div>
+      ),
+    },
+    {
+      key: 'rol',
+      header: 'Rol',
+      render: (equipo) => (
+        <span className="text-xs font-semibold text-ui-600">
+          {equipo.roles.join(', ') || '—'}
+        </span>
       ),
     },
     {
