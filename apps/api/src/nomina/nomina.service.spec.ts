@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { NominaService } from './nomina.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -83,6 +83,7 @@ describe('NominaService', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
+    prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -196,20 +197,41 @@ describe('NominaService', () => {
       expect(prisma.percepciones_nomina.create).not.toHaveBeenCalled();
     });
 
-    it('creates an auto deduccion line for faltas using 1/6 of the weekly wage per day', async () => {
+    it('creates an auto deduccion line for faltas using 1/7 of the weekly wage per day (paid Sunday)', async () => {
       mockAsistencia.findSemanal.mockResolvedValue([
         { trabajadorId: mockTrabajador.id, totalDiasAsistidos: 4, totalFaltas: 2, totalHorasOrdinarias: 32, totalHorasExtra: 0 },
       ]);
       await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      // Semanal 6,000 → diario 857.142… → 2 faltas = 1,714.29 (antes, entre 6, salían 2,000).
       expect(prisma.deducciones_nomina.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ tipo: 'FALTA_AUTO', monto: 2000 }) }),
+        expect.objectContaining({ data: expect.objectContaining({ tipo: 'FALTA_AUTO', monto: 1714.29 }) }),
+      );
+    });
+
+    it('prorates the week of someone hired mid-week: the days before the hire date are deducted', async () => {
+      mockAsistencia.findSemanal.mockResolvedValue([
+        {
+          trabajadorId: mockTrabajador.id,
+          totalDiasAsistidos: 4,
+          totalFaltas: 0,
+          totalDiasAntesDeIngreso: 2,
+          totalHorasOrdinarias: 32,
+          totalHorasExtra: 0,
+        },
+      ]);
+      await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      expect(prisma.deducciones_nomina.create).toHaveBeenCalledTimes(1);
+      expect(prisma.deducciones_nomina.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ tipo: 'INGRESO_AUTO', monto: 1714.29 }) }),
       );
     });
 
     it('clears previous auto-generated lines before regenerating them (no duplicate accumulation)', async () => {
       await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
       expect(prisma.percepciones_nomina.deleteMany).toHaveBeenCalledWith({ where: { nomina_id: mockNomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
-      expect(prisma.deducciones_nomina.deleteMany).toHaveBeenCalledWith({ where: { nomina_id: mockNomina.id, tipo: 'FALTA_AUTO' } });
+      expect(prisma.deducciones_nomina.deleteMany).toHaveBeenCalledWith({
+        where: { nomina_id: mockNomina.id, tipo: { in: ['FALTA_AUTO', 'INGRESO_AUTO'] } },
+      });
     });
 
     it('404s when the periodo does not exist', async () => {
@@ -228,6 +250,32 @@ describe('NominaService', () => {
       expect(prisma.nominas.update).not.toHaveBeenCalled();
       expect(result.nominasPagadasSinCambio).toBe(1);
       expect(result.totalFaltasAplicadas).toBe(0);
+    });
+
+    it('skips the nomina when it gets paid while the sync is running (race with "pagar todos")', async () => {
+      // findMany todavía la ve pendiente, pero el candado condicional dentro de la transacción ya no la encuentra
+      prisma.nominas.updateMany.mockResolvedValueOnce({ count: 0 });
+      mockAsistencia.findSemanal.mockResolvedValue([
+        { trabajadorId: mockTrabajador.id, totalDiasAsistidos: 4, totalFaltas: 2, totalHorasOrdinarias: 32, totalHorasExtra: 1 },
+      ]);
+      const result = await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+
+      expect(prisma.nominas.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: mockNomina.id, estado: { not: 'PAGADA' } }) }),
+      );
+      expect(prisma.deducciones_nomina.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.nominas.update).not.toHaveBeenCalled();
+      expect(result.nominasPagadasSinCambio).toBe(1);
+      expect(result.totalFaltasAplicadas).toBe(0);
+      expect(result.totalHorasExtraSincronizadas).toBe(0);
+    });
+
+    it('writes the sync lines and the totals inside one transaction per nomina', async () => {
+      await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.deleteMany).toHaveBeenCalled();
+      expect(prisma.nominas.update).toHaveBeenCalled();
     });
 
     it('reports how many faltas come from unresolved omisiones and how many are still pending today', async () => {
@@ -250,6 +298,38 @@ describe('NominaService', () => {
   });
 
   describe('registrarAjuste', () => {
+    it('rejects a bono or descuento on a nómina already paid (it is closed) and audits the failure', async () => {
+      prisma.nominas.findFirst.mockResolvedValue({ ...mockNomina, estado: 'PAGADA' });
+      await expect(
+        service.registrarAjuste(mockNomina.id, { tipo: 'Bono', monto: 500, concepto: 'Productividad' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.percepciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NOMINA_PAGADA' }));
+    });
+
+    it('rejects the ajuste when the nómina gets paid while it is being saved (race with "pagar todos")', async () => {
+      // findFirst todavía la ve pendiente, pero el candado condicional dentro de la transacción ya no la encuentra
+      prisma.nominas.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(
+        service.registrarAjuste(mockNomina.id, { tipo: 'Descuento', monto: 300, concepto: 'Daño' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+
+      expect(prisma.nominas.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: mockNomina.id, estado: { not: 'PAGADA' } }) }),
+      );
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.nominas.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NOMINA_PAGADA' }));
+    });
+
+    it('writes the line and the totals inside one transaction', async () => {
+      await service.registrarAjuste(mockNomina.id, { tipo: 'Bono', monto: 500, concepto: 'Productividad' }, 'user-1');
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.percepciones_nomina.create).toHaveBeenCalled();
+      expect(prisma.nominas.update).toHaveBeenCalled();
+    });
+
     it('creates a percepcion for a Bono and recomputes totals', async () => {
       prisma.percepciones_nomina.findMany.mockResolvedValue([{ monto: 500 }]);
       await service.registrarAjuste(mockNomina.id, { tipo: 'Bono', monto: 500, concepto: 'Productividad' }, 'user-1');

@@ -1360,7 +1360,9 @@ export class TrabajadoresService {
       );
     }
 
-    const sueldoDiario = Number((Number(trabajador.sueldo_fiscal) + Number(trabajador.sueldo_efectivo)) / 6);
+    // Sueldo diario = semanal entre 7 (el domingo de descanso se paga; regla del cliente). Antes se dividía
+    // entre 6 y cada día del finiquito salía más alto de lo que corresponde.
+    const sueldoDiario = Number((Number(trabajador.sueldo_fiscal) + Number(trabajador.sueldo_efectivo)) / 7);
     const fechaIngreso = trabajador.fecha_contratacion;
     const diffDays = Math.max(0, Math.ceil((Date.now() - fechaIngreso.getTime()) / 86400000));
     const aniosAntiguedad = Math.max(0.1, Number((diffDays / 365.25).toFixed(2)));

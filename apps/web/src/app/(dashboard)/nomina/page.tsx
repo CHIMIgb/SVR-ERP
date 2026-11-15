@@ -414,7 +414,8 @@ export default function NominaPage() {
       render: (item) => (
         // Los clics de estos botones no deben abrir el recibo de la fila.
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-          {puedeCrear && (
+          {/* Una nómina pagada queda cerrada: la API ya no acepta ajustes sobre ella. */}
+          {puedeCrear && item.estado !== 'Pagado' && (
             <Button variant="ghost" size="sm" disabled={ocupado} onClick={() => handleOpenAdjust(item)}>
               Ajuste
             </Button>
@@ -598,11 +599,6 @@ export default function NominaPage() {
           isSubmitting={submitting}
         >
           <div className="space-y-4">
-            {selectedWorkerForAdjust.estado === 'Pagado' && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Este pago ya está marcado como pagado: el ajuste cambia su neto.
-              </p>
-            )}
             <ModalField label="Tipo de ajuste">
               <select
                 aria-label="Tipo de ajuste"

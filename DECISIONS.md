@@ -519,6 +519,48 @@ se haga la migración de carpetas.
 
 ---
 
+## 22. Reglas de Dinero de la Nómina Semanal
+
+**Fecha:** Noviembre 2026
+**Estado:** Activo (las reglas 1 y 2 están pendientes de confirmación final del cliente)
+
+**Decisión:** Tres reglas fijas para calcular la nómina semanal y el finiquito:
+
+1. **Sueldo diario = sueldo semanal ÷ 7.** El domingo se paga. Una falta descuenta un
+   día de ese sueldo (ej. semanal $7,000 → falta de $1,000). Antes se dividía entre 6.
+2. **Prorrateo de ingreso.** Quien entra a media semana no cobra los días anteriores
+   a su `fecha_contratacion`: se descuentan con una línea `INGRESO_AUTO`, igual que
+   las faltas (`FALTA_AUTO`). El día de ingreso sí se paga.
+3. **Una nómina pagada queda cerrada.** No acepta bonos, descuentos ni préstamos
+   (409 `NOMINA_PAGADA`, auditado). `sincronizarAsistencia` tampoco la recalcula.
+   El ajuste y el recálculo de totales van en una transacción con candado
+   condicional (`updateMany` donde `estado != PAGADA`), para que un "pagar todos"
+   simultáneo no deje entrar un ajuste después del pago. El mismo candado protege
+   al sync: si la nómina se paga mientras corre, la salta sin escribir nada.
+
+**Por qué:**
+- La regla 1 es la que usa el cliente en su nómina actual; con ÷6 el descuento
+  por falta salía más alto que el suyo
+- Sin la regla 2, alguien dado de alta el viernes cobraba la semana completa
+- Sin la regla 3, un recibo ya entregado podía cambiar sin rastro
+
+**Dónde vive cada regla (deben cambiar juntas):**
+- ÷7: `apps/api/src/nomina/nomina.service.ts` (faltas e ingreso),
+  `apps/api/src/trabajadores/trabajadores.service.ts` (`liquidar()`) y
+  `apps/web/src/components/workers/LiquidacionModal.tsx` (vista previa del finiquito).
+  Si una cambia sola, la vista previa deja de coincidir con el finiquito real.
+- Prorrateo: `nomina.service.ts` + `totalDiasAntesDeIngreso` en
+  `apps/api/src/asistencia/asistencia.service.ts` (`findSemanal`).
+- Nómina cerrada: `registrarAjuste()` y `sincronizarAsistencia()` en
+  `nomina.service.ts`; la vista
+  `apps/web/src/app/(dashboard)/nomina/page.tsx` esconde "Ajuste" si está pagada.
+
+**Trade-off:** Regresar una nómina a "pendiente" sigue siendo posible (para corregir
+un pago marcado por error) y vuelve a abrir los ajustes; quién puede hacerlo está
+pendiente de definir.
+
+---
+
 ## Referencia Rápida
 
 | Decisión | Estado | Archivo Clave |
@@ -544,3 +586,4 @@ se haga la migración de carpetas.
 | formatCurrency | Activo | `packages/shared/src/utils/currency.ts` |
 | Engram | Rechazado | N/A |
 | Módulos backend sin `modules/` | Activo (migración pendiente) | `apps/api/src/<dominio>/` |
+| Reglas de dinero de la nómina | Activo | `apps/api/src/nomina/nomina.service.ts` |
