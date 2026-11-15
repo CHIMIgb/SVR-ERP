@@ -252,6 +252,32 @@ describe('NominaService', () => {
       expect(result.totalFaltasAplicadas).toBe(0);
     });
 
+    it('skips the nomina when it gets paid while the sync is running (race with "pagar todos")', async () => {
+      // findMany todavía la ve pendiente, pero el candado condicional dentro de la transacción ya no la encuentra
+      prisma.nominas.updateMany.mockResolvedValueOnce({ count: 0 });
+      mockAsistencia.findSemanal.mockResolvedValue([
+        { trabajadorId: mockTrabajador.id, totalDiasAsistidos: 4, totalFaltas: 2, totalHorasOrdinarias: 32, totalHorasExtra: 1 },
+      ]);
+      const result = await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+
+      expect(prisma.nominas.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: mockNomina.id, estado: { not: 'PAGADA' } }) }),
+      );
+      expect(prisma.deducciones_nomina.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.nominas.update).not.toHaveBeenCalled();
+      expect(result.nominasPagadasSinCambio).toBe(1);
+      expect(result.totalFaltasAplicadas).toBe(0);
+      expect(result.totalHorasExtraSincronizadas).toBe(0);
+    });
+
+    it('writes the sync lines and the totals inside one transaction per nomina', async () => {
+      await service.sincronizarAsistencia(mockPeriodo.id, 'user-1');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.deducciones_nomina.deleteMany).toHaveBeenCalled();
+      expect(prisma.nominas.update).toHaveBeenCalled();
+    });
+
     it('reports how many faltas come from unresolved omisiones and how many are still pending today', async () => {
       mockAsistencia.findSemanal.mockResolvedValue([
         {

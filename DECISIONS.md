@@ -535,7 +535,8 @@ se haga la migración de carpetas.
    (409 `NOMINA_PAGADA`, auditado). `sincronizarAsistencia` tampoco la recalcula.
    El ajuste y el recálculo de totales van en una transacción con candado
    condicional (`updateMany` donde `estado != PAGADA`), para que un "pagar todos"
-   simultáneo no deje entrar un ajuste después del pago.
+   simultáneo no deje entrar un ajuste después del pago. El mismo candado protege
+   al sync: si la nómina se paga mientras corre, la salta sin escribir nada.
 
 **Por qué:**
 - La regla 1 es la que usa el cliente en su nómina actual; con ÷6 el descuento
@@ -550,7 +551,8 @@ se haga la migración de carpetas.
   Si una cambia sola, la vista previa deja de coincidir con el finiquito real.
 - Prorrateo: `nomina.service.ts` + `totalDiasAntesDeIngreso` en
   `apps/api/src/asistencia/asistencia.service.ts` (`findSemanal`).
-- Nómina cerrada: `registrarAjuste()` en `nomina.service.ts`; la vista
+- Nómina cerrada: `registrarAjuste()` y `sincronizarAsistencia()` en
+  `nomina.service.ts`; la vista
   `apps/web/src/app/(dashboard)/nomina/page.tsx` esconde "Ajuste" si está pagada.
 
 **Trade-off:** Regresar una nómina a "pendiente" sigue siendo posible (para corregir

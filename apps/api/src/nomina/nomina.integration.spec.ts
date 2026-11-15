@@ -213,6 +213,40 @@ describe('Nomina Audit (Real DB)', () => {
       expect(audits[0].result).toBe('FAIL');
       expect(audits[0].error_code).toBe('PERIODO_NO_ENCONTRADO');
     });
+
+    it('no reescribe una nomina pagada durante el sync (el candado condicional la salta)', async () => {
+      const trabajador = await crearTrabajador(`Nomina Sync Pagada ${TEST_ID}`, 120);
+      const { periodo, items } = await service.findActual({}, ACTOR_USER_ID);
+      createdPeriodoIds.push(periodo.id);
+      const nominaId = items.find((i) => i.trabajadorId === trabajador.id)!.id;
+
+      // Con asistencia pendiente de sincronizar: si el sync tocara la nómina, crearía líneas automáticas.
+      const registro = await asistenciaService.marcarEntrada(
+        {
+          trabajadorId: trabajador.id,
+          obraId,
+          lat: 19.3421,
+          lng: -99.1843,
+          dispositivo: 'Integration Test',
+        },
+        ACTOR_USER_ID,
+      );
+      try {
+        await service.actualizarEstado(nominaId, { estado: 'Pagado' }, ACTOR_USER_ID);
+
+        const resultado = await service.sincronizarAsistencia(periodo.id, ACTOR_USER_ID);
+        const fila = resultado.items.find((i) => i.trabajadorId === trabajador.id);
+        expect(fila?.percepciones).toHaveLength(0);
+        expect(fila?.deducciones).toHaveLength(0);
+        expect(fila?.diasTrabajados).toBe(0);
+        expect(resultado.nominasPagadasSinCambio).toBeGreaterThanOrEqual(1);
+
+        const audits = await findAudits(AuditAction.NOMINA_PROCESADA, periodo.id);
+        expect(audits[0].result).toBe('SUCCESS');
+      } finally {
+        await prisma.registros_asistencia.deleteMany({ where: { id: registro.id } });
+      }
+    });
   });
 
   describe('registrarAjuste', () => {
