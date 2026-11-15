@@ -305,6 +305,18 @@ describe('AsistenciaService', () => {
       expect(prisma.registros_asistencia.updateMany).not.toHaveBeenCalled();
     });
 
+    it('gives 0 h (not 12 h) to a same-day registro whose salida is earlier than its entrada', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({
+        ...baseRegistro,
+        hora_entrada: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)), // entrada de HOY a las 18:00
+      });
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 6, 0, 0)); // salida 06:00 del mismo dia
+      await service.marcarSalida({ trabajadorId: mockTrabajador.id, lat: 1, lng: 1, dispositivo: 'Móvil' }, 'user-1');
+
+      const data = prisma.registros_asistencia.updateMany.mock.calls[0][0].data;
+      expect(data.horas_trabajadas_ordinarias).toBe(0);
+    });
+
     it('rejects when there is no entrada registered today', async () => {
       prisma.registros_asistencia.findFirst.mockResolvedValue(null);
       await expect(

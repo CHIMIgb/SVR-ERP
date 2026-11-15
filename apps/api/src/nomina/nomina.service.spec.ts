@@ -83,6 +83,7 @@ describe('NominaService', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
+    prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -279,6 +280,28 @@ describe('NominaService', () => {
       expect(prisma.percepciones_nomina.create).not.toHaveBeenCalled();
       expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NOMINA_PAGADA' }));
+    });
+
+    it('rejects the ajuste when the nómina gets paid while it is being saved (race with "pagar todos")', async () => {
+      // findFirst todavía la ve pendiente, pero el candado condicional dentro de la transacción ya no la encuentra
+      prisma.nominas.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(
+        service.registrarAjuste(mockNomina.id, { tipo: 'Descuento', monto: 300, concepto: 'Daño' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+
+      expect(prisma.nominas.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: mockNomina.id, estado: { not: 'PAGADA' } }) }),
+      );
+      expect(prisma.deducciones_nomina.create).not.toHaveBeenCalled();
+      expect(prisma.nominas.update).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'NOMINA_PAGADA' }));
+    });
+
+    it('writes the line and the totals inside one transaction', async () => {
+      await service.registrarAjuste(mockNomina.id, { tipo: 'Bono', monto: 500, concepto: 'Productividad' }, 'user-1');
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.percepciones_nomina.create).toHaveBeenCalled();
+      expect(prisma.nominas.update).toHaveBeenCalled();
     });
 
     it('creates a percepcion for a Bono and recomputes totals', async () => {

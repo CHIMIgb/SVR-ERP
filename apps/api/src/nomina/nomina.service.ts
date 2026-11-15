@@ -366,18 +366,41 @@ export class NominaService {
       );
     }
 
-    if (dto.tipo === 'Bono') {
-      await this.prisma.percepciones_nomina.create({
-        data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo: 'BONO', monto: dto.monto, actualizado_en: new Date() },
+    // El chequeo de arriba no basta si otro usuario la paga mientras tanto ("pagar todos" o "marcar pagado").
+    // El updateMany condicional bloquea la fila y solo pasa si sigue sin pagar: un pago concurrente espera a que
+    // termine el ajuste, o el ajuste ve la nómina ya pagada y no escribe nada.
+    const pagadaEnElCamino = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.nominas.updateMany({
+        where: { id: nominaId, eliminado_en: null, estado: { not: 'PAGADA' } },
+        data: { actualizado_por: userId, actualizado_en: new Date() },
       });
-    } else {
-      const tipo = dto.tipo === 'Prestamo' ? 'PRESTAMO' : 'DESCUENTO';
-      await this.prisma.deducciones_nomina.create({
-        data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo, monto: dto.monto, actualizado_en: new Date() },
-      });
+      if (count === 0) return true;
+
+      if (dto.tipo === 'Bono') {
+        await tx.percepciones_nomina.create({
+          data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo: 'BONO', monto: dto.monto, actualizado_en: new Date() },
+        });
+      } else {
+        const tipo = dto.tipo === 'Prestamo' ? 'PRESTAMO' : 'DESCUENTO';
+        await tx.deducciones_nomina.create({
+          data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo, monto: dto.monto, actualizado_en: new Date() },
+        });
+      }
+
+      await this.recomputarTotales(nominaId, userId, tx);
+      return false;
+    });
+    if (pagadaEnElCamino) {
+      return this.fallir(
+        AuditAction.NOMINA_AJUSTE_APLICADO,
+        ENTITY_NOMINA,
+        nominaId,
+        'NOMINA_PAGADA',
+        ConflictException,
+        'Esta nómina ya está pagada: no se le pueden agregar bonos ni descuentos',
+      );
     }
 
-    await this.recomputarTotales(nominaId, userId);
     const serializado = this.toResponse(await this.obtenerNominaCompleta(nominaId));
 
     await this.auditService.log({
@@ -465,18 +488,22 @@ export class NominaService {
   //  HELPERS
   // ────────────────────────────────────────────
 
-  private async recomputarTotales(nominaId: string, userId: string): Promise<void> {
+  private async recomputarTotales(
+    nominaId: string,
+    userId: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<void> {
     const [percepciones, deducciones, nomina] = await Promise.all([
-      this.prisma.percepciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
-      this.prisma.deducciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
-      this.prisma.nominas.findUniqueOrThrow({ where: { id: nominaId } }),
+      db.percepciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
+      db.deducciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
+      db.nominas.findUniqueOrThrow({ where: { id: nominaId } }),
     ]);
 
     const totalPercepciones = percepciones.reduce((s, p) => s + Number(p.monto), 0);
     const totalDeducciones = deducciones.reduce((s, d) => s + Number(d.monto), 0);
     const totalNeto = Number(nomina.sueldo_fiscal) + Number(nomina.sueldo_efectivo) + totalPercepciones - totalDeducciones;
 
-    await this.prisma.nominas.update({
+    await db.nominas.update({
       where: { id: nominaId },
       data: {
         total_percepciones: Number(totalPercepciones.toFixed(2)),

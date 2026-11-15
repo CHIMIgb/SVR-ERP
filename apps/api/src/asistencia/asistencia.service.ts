@@ -340,8 +340,10 @@ export class AsistenciaService {
     });
     // Turno nocturno: la salida de pasada la medianoche cierra la entrada de ayer. Antes se buscaba solo la
     // entrada de hoy y la salida se rechazaba ("sin entrada previa").
+    let cruzaMedianoche = false;
     if (!registro) {
       registro = await this.entradaNocturnaAbierta(dto.trabajadorId, hoy, ahora);
+      cruzaMedianoche = registro !== null;
     }
     if (!registro || !registro.hora_entrada) {
       return this.fallir(
@@ -365,7 +367,8 @@ export class AsistenciaService {
     }
 
     const horas =
-      dto.horasTrabajadasOrdinarias ?? this.horasEntreHoras(registro.hora_entrada, this.horaActualUtc(ahora));
+      dto.horasTrabajadasOrdinarias ??
+      this.horasEntreHoras(registro.hora_entrada, this.horaActualUtc(ahora), cruzaMedianoche);
     const salidaAnticipada = dto.salidaAnticipada ?? false;
 
     // Condicional: dos salidas del mismo trabajador al mismo tiempo pasaban la revisión de arriba y la segunda
@@ -1539,14 +1542,15 @@ export class AsistenciaService {
   }
 
   /**
-   * Horas decimales entre dos Time(0) anclados en UTC. Si la salida es menor que la entrada, el turno cruzó la
-   * medianoche (antes daba 0 horas).
+   * Horas decimales entre dos Time(0) anclados en UTC. Solo el turno nocturno (registro de ayer cerrado hoy)
+   * suma las 24 h cuando la salida es menor que la entrada; en un registro del mismo día eso es una captura
+   * imposible y da 0 horas, como antes, en vez de acreditar medio día.
    */
-  private horasEntreHoras(entrada: Date, salida: Date): number {
+  private horasEntreHoras(entrada: Date, salida: Date, cruzaMedianoche = false): number {
     const minutosEntrada = entrada.getUTCHours() * 60 + entrada.getUTCMinutes();
     const minutosSalida = salida.getUTCHours() * 60 + salida.getUTCMinutes();
     let minutos = minutosSalida - minutosEntrada;
-    if (minutos < 0) minutos += 24 * 60;
+    if (minutos < 0) minutos = cruzaMedianoche ? minutos + 24 * 60 : 0;
     return Number((minutos / 60).toFixed(1));
   }
 
