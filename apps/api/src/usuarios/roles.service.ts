@@ -406,7 +406,7 @@ export class RolesService {
       metadata: { agregados: porAgregar.length, quitados: porQuitar.length },
     });
     return {
-      message: `Permisos actualizados (+${porAgregar.length} / −${porQuitar.length})`,
+      message: 'Permisos actualizados',
     };
   }
 
