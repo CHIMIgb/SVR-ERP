@@ -120,7 +120,8 @@ interface SidebarGroup {
 
 function buildGroups(vistas: VistaAuth[]): SidebarGroup[] {
   const visible = vistas
-    .filter((v) => v.puedeVer && v.es_menu !== false && !v.ruta.startsWith("/m")) // las /m/* son exclusivas de la PWA
+    // las /m y /m/* son exclusivas de la PWA; startsWith("/m") a secas también escondía /maquinaria y /mantenimiento
+    .filter((v) => v.puedeVer && v.es_menu !== false && v.ruta !== "/m" && !v.ruta.startsWith("/m/"))
     .sort((a, b) => a.orden - b.orden);
 
   const grouped = new Map<string, VistaAuth[]>();

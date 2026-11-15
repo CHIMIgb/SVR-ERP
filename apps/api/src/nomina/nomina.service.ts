@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, MetodoPago, Prisma, TipoNotificacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -239,55 +239,92 @@ export class NominaService {
       const horasExtra = datos?.totalHorasExtraAprobadas ?? 0;
       const montoHorasExtra = datos?.montoHorasExtraAprobadas ?? 0;
 
+      // El chequeo de arriba lee la lista previa: otro usuario puede pagarla mientras tanto ("pagar todos" o
+      // "marcar pagado"). El updateMany condicional bloquea la fila y solo escribe si sigue sin pagar; si ya
+      // se pagó, no toca nada y la cuenta como sin cambio (mismo candado del ajuste).
+      // Sueldo diario = semanal entre 7 (el domingo de descanso se paga; regla del cliente). Antes era entre 6 y
+      // cada falta descontaba de más.
+      const sueldoDiario = (Number(nomina.sueldo_fiscal) + Number(nomina.sueldo_efectivo)) / 7;
+      // Quien entra a media semana cobra prorrateado: los días antes de su ingreso no se pagan. Antes cobraba la
+      // semana completa porque esos días no contaban como falta ni se descontaban.
+      const diasAntesDeIngreso = datos?.totalDiasAntesDeIngreso ?? 0;
+
+      const escribio = await this.prisma.$transaction(async (tx) => {
+        const { count } = await tx.nominas.updateMany({
+          where: { id: nomina.id, eliminado_en: null, estado: { not: 'PAGADA' } },
+          data: { actualizado_por: userId, actualizado_en: new Date() },
+        });
+        if (count === 0) return false;
+
+        await tx.percepciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
+        await tx.deducciones_nomina.deleteMany({
+          where: { nomina_id: nomina.id, tipo: { in: ['FALTA_AUTO', 'INGRESO_AUTO'] } },
+        });
+
+        if (montoHorasExtra > 0) {
+          await tx.percepciones_nomina.create({
+            data: {
+              id: randomUUID(),
+              nomina_id: nomina.id,
+              concepto: 'Horas extra autorizadas',
+              tipo: 'HORAS_EXTRA_AUTO',
+              monto: Number(montoHorasExtra.toFixed(2)),
+              actualizado_en: new Date(),
+            },
+          });
+        }
+
+        if (diasAntesDeIngreso > 0) {
+          await tx.deducciones_nomina.create({
+            data: {
+              id: randomUUID(),
+              nomina_id: nomina.id,
+              concepto: `${diasAntesDeIngreso} día(s) antes de su ingreso`,
+              tipo: 'INGRESO_AUTO',
+              monto: Number((sueldoDiario * diasAntesDeIngreso).toFixed(2)),
+              actualizado_en: new Date(),
+            },
+          });
+        }
+
+        if (diasFaltas > 0) {
+          await tx.deducciones_nomina.create({
+            data: {
+              id: randomUUID(),
+              nomina_id: nomina.id,
+              concepto: `${diasFaltas} inasistencia(s) detectada(s)`,
+              tipo: 'FALTA_AUTO',
+              monto: Number((sueldoDiario * diasFaltas).toFixed(2)),
+              actualizado_en: new Date(),
+            },
+          });
+        }
+
+        await tx.nominas.update({
+          where: { id: nomina.id },
+          data: {
+            dias_trabajados: diasTrabajados,
+            dias_faltas: diasFaltas,
+            horas_ordinarias: horasOrdinarias,
+            horas_extra: horasExtra,
+            actualizado_por: userId,
+            actualizado_en: new Date(),
+          },
+        });
+
+        await this.recomputarTotales(nomina.id, userId, tx);
+        return true;
+      });
+      if (!escribio) {
+        nominasPagadasSinCambio++;
+        continue;
+      }
+
       totalHorasExtraSincronizadas += horasExtra;
       totalHorasExtraSinAutorizar += datos?.totalHorasExtraSinAutorizar ?? 0;
       totalFaltasAplicadas += diasFaltas;
       totalOmisionesPendientes += datos?.totalOmisionesPendientes ?? 0;
       totalOmisionesVencidas += datos?.totalOmisionesVencidas ?? 0;
-
-      await this.prisma.percepciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'HORAS_EXTRA_AUTO' } });
-      await this.prisma.deducciones_nomina.deleteMany({ where: { nomina_id: nomina.id, tipo: 'FALTA_AUTO' } });
-
-      if (montoHorasExtra > 0) {
-        await this.prisma.percepciones_nomina.create({
-          data: {
-            id: randomUUID(),
-            nomina_id: nomina.id,
-            concepto: 'Horas extra autorizadas',
-            tipo: 'HORAS_EXTRA_AUTO',
-            monto: Number(montoHorasExtra.toFixed(2)),
-            actualizado_en: new Date(),
-          },
-        });
-      }
-
-      if (diasFaltas > 0) {
-        const sueldoDiario = (Number(nomina.sueldo_fiscal) + Number(nomina.sueldo_efectivo)) / 6;
-        await this.prisma.deducciones_nomina.create({
-          data: {
-            id: randomUUID(),
-            nomina_id: nomina.id,
-            concepto: `${diasFaltas} inasistencia(s) detectada(s)`,
-            tipo: 'FALTA_AUTO',
-            monto: Number((sueldoDiario * diasFaltas).toFixed(2)),
-            actualizado_en: new Date(),
-          },
-        });
-      }
-
-      await this.prisma.nominas.update({
-        where: { id: nomina.id },
-        data: {
-          dias_trabajados: diasTrabajados,
-          dias_faltas: diasFaltas,
-          horas_ordinarias: horasOrdinarias,
-          horas_extra: horasExtra,
-          actualizado_por: userId,
-          actualizado_en: new Date(),
-        },
-      });
-
-      await this.recomputarTotales(nomina.id, userId);
     }
 
     await this.auditService.log({
@@ -335,19 +372,53 @@ export class NominaService {
         `Registro de nómina con id "${nominaId}" no encontrado`,
       );
     }
-
-    if (dto.tipo === 'Bono') {
-      await this.prisma.percepciones_nomina.create({
-        data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo: 'BONO', monto: dto.monto, actualizado_en: new Date() },
-      });
-    } else {
-      const tipo = dto.tipo === 'Prestamo' ? 'PRESTAMO' : 'DESCUENTO';
-      await this.prisma.deducciones_nomina.create({
-        data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo, monto: dto.monto, actualizado_en: new Date() },
-      });
+    // Una nómina pagada queda cerrada: un bono o descuento después del pago cambiaba el recibo ya entregado.
+    if (nomina.estado === 'PAGADA') {
+      return this.fallir(
+        AuditAction.NOMINA_AJUSTE_APLICADO,
+        ENTITY_NOMINA,
+        nominaId,
+        'NOMINA_PAGADA',
+        ConflictException,
+        'Esta nómina ya está pagada: no se le pueden agregar bonos ni descuentos',
+      );
     }
 
-    await this.recomputarTotales(nominaId, userId);
+    // El chequeo de arriba no basta si otro usuario la paga mientras tanto ("pagar todos" o "marcar pagado").
+    // El updateMany condicional bloquea la fila y solo pasa si sigue sin pagar: un pago concurrente espera a que
+    // termine el ajuste, o el ajuste ve la nómina ya pagada y no escribe nada.
+    const pagadaEnElCamino = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.nominas.updateMany({
+        where: { id: nominaId, eliminado_en: null, estado: { not: 'PAGADA' } },
+        data: { actualizado_por: userId, actualizado_en: new Date() },
+      });
+      if (count === 0) return true;
+
+      if (dto.tipo === 'Bono') {
+        await tx.percepciones_nomina.create({
+          data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo: 'BONO', monto: dto.monto, actualizado_en: new Date() },
+        });
+      } else {
+        const tipo = dto.tipo === 'Prestamo' ? 'PRESTAMO' : 'DESCUENTO';
+        await tx.deducciones_nomina.create({
+          data: { id: randomUUID(), nomina_id: nominaId, concepto: dto.concepto, tipo, monto: dto.monto, actualizado_en: new Date() },
+        });
+      }
+
+      await this.recomputarTotales(nominaId, userId, tx);
+      return false;
+    });
+    if (pagadaEnElCamino) {
+      return this.fallir(
+        AuditAction.NOMINA_AJUSTE_APLICADO,
+        ENTITY_NOMINA,
+        nominaId,
+        'NOMINA_PAGADA',
+        ConflictException,
+        'Esta nómina ya está pagada: no se le pueden agregar bonos ni descuentos',
+      );
+    }
+
     const serializado = this.toResponse(await this.obtenerNominaCompleta(nominaId));
 
     await this.auditService.log({
@@ -447,18 +518,22 @@ export class NominaService {
   //  HELPERS
   // ────────────────────────────────────────────
 
-  private async recomputarTotales(nominaId: string, userId: string): Promise<void> {
+  private async recomputarTotales(
+    nominaId: string,
+    userId: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<void> {
     const [percepciones, deducciones, nomina] = await Promise.all([
-      this.prisma.percepciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
-      this.prisma.deducciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
-      this.prisma.nominas.findUniqueOrThrow({ where: { id: nominaId } }),
+      db.percepciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
+      db.deducciones_nomina.findMany({ where: { nomina_id: nominaId, activo: true } }),
+      db.nominas.findUniqueOrThrow({ where: { id: nominaId } }),
     ]);
 
     const totalPercepciones = percepciones.reduce((s, p) => s + Number(p.monto), 0);
     const totalDeducciones = deducciones.reduce((s, d) => s + Number(d.monto), 0);
     const totalNeto = Number(nomina.sueldo_fiscal) + Number(nomina.sueldo_efectivo) + totalPercepciones - totalDeducciones;
 
-    await this.prisma.nominas.update({
+    await db.nominas.update({
       where: { id: nominaId },
       data: {
         total_percepciones: Number(totalPercepciones.toFixed(2)),

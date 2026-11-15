@@ -102,7 +102,8 @@ describe('Nomina Audit (Real DB)', () => {
         // (si no, a media tarde quedaría en omisión pendiente y el resultado dependería de la hora).
         entrada: new Date(Date.UTC(1970, 0, 1, 23, 45, 0)),
         // Igual que trabajadores.service.ts: todo trabajador real tiene fecha_contratacion
-        // (se usa para no contar como falta los días anteriores a su ingreso).
+        // (los días anteriores a su ingreso no son falta, pero se descuentan por prorrateo: ver
+        // descuentoPorIngresoDeHoy).
         fecha_contratacion: new Date(),
         actualizado_en: new Date(),
       },
@@ -110,6 +111,14 @@ describe('Nomina Audit (Real DB)', () => {
     createdTrabajadorIds.push(t.id);
     return t;
   };
+
+  // Los trabajadores de prueba entran hoy: los días de la semana anteriores a hoy se descuentan por prorrateo
+  // (sueldo semanal de 6,000 entre 7 por día). El jueves son 3 días; el lunes, ninguno.
+  const diasAntesDeHoy = (() => {
+    const hoy = new Date();
+    return Math.min(6, (hoy.getDay() + 6) % 7);
+  })();
+  const descuentoPorIngresoDeHoy = Number(((6000 / 7) * diasAntesDeHoy).toFixed(2));
 
   const findAudits = (action: AuditAction, entityId: string) =>
     prisma.registro_auditoria.findMany({ where: { action, entity_id: entityId }, orderBy: { timestamp: 'desc' } });
@@ -167,7 +176,11 @@ describe('Nomina Audit (Real DB)', () => {
       expect(filaSinAutorizar?.diasTrabajados).toBe(1);
       expect(filaSinAutorizar?.horasExtra).toBe(0);
       expect(filaSinAutorizar?.percepciones.some((p) => p.tipo === 'HORAS_EXTRA_AUTO')).toBe(false);
-      expect(filaSinAutorizar?.totalNeto).toBe(6000);
+      // Prorrateo: quien entró hoy no cobra los días de la semana anteriores a su ingreso.
+      const lineaIngreso = filaSinAutorizar?.deducciones.find((d) => d.tipo === 'INGRESO_AUTO');
+      if (diasAntesDeHoy > 0) expect(lineaIngreso?.monto).toBe(descuentoPorIngresoDeHoy);
+      else expect(lineaIngreso).toBeUndefined();
+      expect(filaSinAutorizar?.totalNeto).toBe(Number((6000 - descuentoPorIngresoDeHoy).toFixed(2)));
       expect(sinAutorizar.totalHorasExtraSinAutorizar).toBeGreaterThanOrEqual(3);
 
       // Autorizadas: se pagan al monto aprobado (3 h × $150), no a la tarifa del trabajador.
@@ -177,7 +190,7 @@ describe('Nomina Audit (Real DB)', () => {
 
       expect(fila?.horasExtra).toBe(3);
       expect(fila?.percepciones.some((p) => p.tipo === 'HORAS_EXTRA_AUTO' && p.monto === 450)).toBe(true);
-      expect(fila?.totalNeto).toBe(6450);
+      expect(fila?.totalNeto).toBe(Number((6450 - descuentoPorIngresoDeHoy).toFixed(2)));
 
       const audits = await findAudits(AuditAction.NOMINA_PROCESADA, periodo.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
@@ -200,9 +213,61 @@ describe('Nomina Audit (Real DB)', () => {
       expect(audits[0].result).toBe('FAIL');
       expect(audits[0].error_code).toBe('PERIODO_NO_ENCONTRADO');
     });
+
+    it('no reescribe una nomina pagada durante el sync (el candado condicional la salta)', async () => {
+      const trabajador = await crearTrabajador(`Nomina Sync Pagada ${TEST_ID}`, 120);
+      const { periodo, items } = await service.findActual({}, ACTOR_USER_ID);
+      createdPeriodoIds.push(periodo.id);
+      const nominaId = items.find((i) => i.trabajadorId === trabajador.id)!.id;
+
+      // Con asistencia pendiente de sincronizar: si el sync tocara la nómina, crearía líneas automáticas.
+      const registro = await asistenciaService.marcarEntrada(
+        {
+          trabajadorId: trabajador.id,
+          obraId,
+          lat: 19.3421,
+          lng: -99.1843,
+          dispositivo: 'Integration Test',
+        },
+        ACTOR_USER_ID,
+      );
+      try {
+        await service.actualizarEstado(nominaId, { estado: 'Pagado' }, ACTOR_USER_ID);
+
+        const resultado = await service.sincronizarAsistencia(periodo.id, ACTOR_USER_ID);
+        const fila = resultado.items.find((i) => i.trabajadorId === trabajador.id);
+        expect(fila?.percepciones).toHaveLength(0);
+        expect(fila?.deducciones).toHaveLength(0);
+        expect(fila?.diasTrabajados).toBe(0);
+        expect(resultado.nominasPagadasSinCambio).toBeGreaterThanOrEqual(1);
+
+        const audits = await findAudits(AuditAction.NOMINA_PROCESADA, periodo.id);
+        expect(audits[0].result).toBe('SUCCESS');
+      } finally {
+        await prisma.registros_asistencia.deleteMany({ where: { id: registro.id } });
+      }
+    });
   });
 
   describe('registrarAjuste', () => {
+    it('rechaza un ajuste sobre una nómina pagada (queda cerrada), con 409 auditado y sin tocar el neto', async () => {
+      const trabajador = await crearTrabajador(`Nomina Pagada Test ${TEST_ID}`);
+      const { periodo, items } = await service.findActual({}, ACTOR_USER_ID);
+      createdPeriodoIds.push(periodo.id);
+      const nominaId = items.find((i) => i.trabajadorId === trabajador.id)!.id;
+      const pagada = await service.actualizarEstado(nominaId, { estado: 'Pagado' }, ACTOR_USER_ID);
+
+      await expect(
+        service.registrarAjuste(nominaId, { tipo: 'Bono', monto: 800, concepto: 'Productividad' }, ACTOR_USER_ID),
+      ).rejects.toThrow(ConflictException);
+      const audits = await findAudits(AuditAction.NOMINA_AJUSTE_APLICADO, nominaId);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].error_code).toBe('NOMINA_PAGADA');
+      const despues = await prisma.nominas.findUniqueOrThrow({ where: { id: nominaId } });
+      expect(Number(despues.total_neto)).toBe(pagada.totalNeto);
+      expect(await prisma.percepciones_nomina.count({ where: { nomina_id: nominaId } })).toBe(0);
+    });
+
     it('debe aplicar un Bono, recalcular el total neto y auditar NOMINA_AJUSTE_APLICADO', async () => {
       const trabajador = await crearTrabajador(`Nomina Ajuste Test ${TEST_ID}`);
       const { periodo, items } = await service.findActual({}, ACTOR_USER_ID);
