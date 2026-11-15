@@ -49,3 +49,6 @@ apps/web/.turbo/
 
 # documentos operativos del cliente (excel/word) — no suben al repo
 /docs-svr/
+
+# Cache de Turborepo en la raiz (builds de prueba)
+.turbo/
