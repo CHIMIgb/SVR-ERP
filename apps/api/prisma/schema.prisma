@@ -234,7 +234,7 @@ model categorias_puesto {
   torre                 CategoriaReporte?
   /** Rol que recibe la cuenta de acceso cuando el alta lleva este puesto (NULL = sin acceso, ej. "Otro"). */
   rol_id                String?                @db.Uuid
-  rol                   roles?                 @relation("puestos_rol", fields: [rol_id], references: [id], onDelete: SetNull)
+  rol                   roles?                 @relation("puestos_rol", fields: [rol_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   activo                Boolean                @default(true)
   creado_en             DateTime               @default(now()) @db.Timestamptz()
   actualizado_en        DateTime               @db.Timestamptz()
@@ -1502,6 +1502,7 @@ model registros_criba {
   @@index([maquina_id])
   @@index([proyecto_id])
   @@index([material_criba_id])
+  @@index([inventario_en])
 }
 
 /// B7: catálogo de materiales que produce la criba; cada material enlaza a su
@@ -1594,6 +1595,7 @@ model reportes_campo {
   @@index([tipo, estado])
   @@index([asignado_a_id])
   @@index([subcategoria_id])
+  @@index([proyecto_id])
 }
 
 /// Catálogo de subcategorías por torre (ej. Diesel → "150 litros de diésel").
@@ -1607,6 +1609,7 @@ model subcategorias_reporte {
   reportes    reportes_campo[]
 
   @@unique([categoria, nombre])
+  @@index([categoria])
 }
 
 /// Bitácora de trabajo del incidente (comentarios/actividades publicadas).
@@ -2076,8 +2079,8 @@ model users {
   pin_hash                                                                       String?
   pin_temporal_hasta                                                             DateTime?                     @db.Timestamptz()
   pin_cambiado_en                                                                DateTime?                     @db.Timestamptz()
-  pin_historial                                                                  Json                          @default("[]")
-  intentos_pin                                                                   Int                           @default(0)
+  pin_historial                                                                  Json?                         @default("[]")
+  intentos_pin                                                                   Int?                          @default(0)
   cuenta_bloqueada_en                                                            DateTime?                     @db.Timestamptz()
   preferencias                                                                   Json                          @default("{}")
   activo                                                                         Boolean                       @default(true)
@@ -2203,6 +2206,7 @@ model users {
   reportes_campo_asignado_user_reportes_campo_asignado_userTousers               reportes_campo[]              @relation("reportes_campo_asignado_user")
 
   @@unique([numero_empleado])
+  @@index([jefe_user_id])
 }
 
 model users_roles {
@@ -2311,6 +2315,8 @@ enum AuditAction {
   ROL_ELIMINADO
   VISTAS_ROL_ACTUALIZADAS
   PERMISOS_ROL_ACTUALIZADAS
+  PERMISOS_ROL_ACTUALIZADOS
+  REPORTE_CAMPO_FACTURADO
   PERMISO_MODIFICADO
   VISTA_CREADA
   VISTA_ACTUALIZADA

@@ -126,7 +126,7 @@ export class PinService {
           where: { id: user.id, intentos_pin: { lt: MAX_INTENTOS_PIN } },
           data: { intentos_pin: { increment: 1 } },
         });
-        nuevosIntentos = r.intentos_pin;
+        nuevosIntentos = r.intentos_pin ?? 0;
       } catch {
         nuevosIntentos = MAX_INTENTOS_PIN; // al tope (o el usuario desapareció)
       }
@@ -235,7 +235,7 @@ export class PinService {
           where: { id: user.id, intentos_pin: { lt: MAX_INTENTOS_PIN } },
           data: { intentos_pin: { increment: 1 } },
         });
-        nuevosIntentos = r.intentos_pin;
+        nuevosIntentos = r.intentos_pin ?? 0;
       } catch {
         nuevosIntentos = MAX_INTENTOS_PIN; // ya al tope
       }

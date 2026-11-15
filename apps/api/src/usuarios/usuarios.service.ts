@@ -717,7 +717,7 @@ export class UsuariosService {
     ]);
 
     let pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO' = 'NORMAL';
-    if (user.intentos_pin >= MAX_INTENTOS_PIN) pinEstado = 'BLOQUEADO';
+    if ((user.intentos_pin ?? 0) >= MAX_INTENTOS_PIN) pinEstado = 'BLOQUEADO';
     else if (user.pin_temporal_hasta && user.pin_temporal_hasta > new Date()) pinEstado = 'TEMPORAL';
 
     return {
@@ -1054,7 +1054,7 @@ export class UsuariosService {
       }));
 
     let pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO' = 'NORMAL';
-    if (u.intentos_pin >= MAX_INTENTOS_PIN) pinEstado = 'BLOQUEADO';
+    if ((u.intentos_pin ?? 0) >= MAX_INTENTOS_PIN) pinEstado = 'BLOQUEADO';
     else if (u.pin_temporal_hasta && u.pin_temporal_hasta > new Date()) pinEstado = 'TEMPORAL';
 
     return {
