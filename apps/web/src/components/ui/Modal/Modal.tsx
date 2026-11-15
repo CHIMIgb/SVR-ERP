@@ -48,18 +48,20 @@ export function Modal({
   );
 
   useEffect(() => {
-    if (open) {
-      document.addEventListener('keydown', handleKeyDown);
-      // Compensa el ancho del scrollbar ANTES de bloquear el scroll para que
-      // la página no "salte" al desaparecer la barra. El contador soporta
-      // modales anidados (solo el último en cerrarse libera el bloqueo).
-      if (modalesAbiertos === 0) {
-        const anchoBarra = window.innerWidth - document.documentElement.clientWidth;
-        if (anchoBarra > 0) document.body.style.paddingRight = `${anchoBarra}px`;
-      }
-      modalesAbiertos += 1;
-      document.body.style.overflow = 'hidden';
+    // Si nunca abrió, esta corrida no incrementó el contador: el cleanup tampoco debe decrementar
+    // (un modal cerrado que se desmonta, o cuyo onClose cambia en cada render del padre, no debe
+    // liberar el scroll de otro modal que sigue abierto).
+    if (!open) return;
+    document.addEventListener('keydown', handleKeyDown);
+    // Compensa el ancho del scrollbar ANTES de bloquear el scroll para que
+    // la página no "salte" al desaparecer la barra. El contador soporta
+    // modales anidados (solo el último en cerrarse libera el bloqueo).
+    if (modalesAbiertos === 0) {
+      const anchoBarra = window.innerWidth - document.documentElement.clientWidth;
+      if (anchoBarra > 0) document.body.style.paddingRight = `${anchoBarra}px`;
     }
+    modalesAbiertos += 1;
+    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       modalesAbiertos -= 1;
