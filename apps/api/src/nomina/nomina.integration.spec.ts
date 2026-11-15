@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { AsistenciaService } from '../asistencia/asistencia.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { NominaService } from './nomina.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
@@ -34,7 +35,7 @@ describe('Nomina Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, AsistenciaService, NominaService],
+      providers: [PrismaService, AuditContextService, AuditService, AsistenciaService, NotificacionesService, NominaService],
     }).compile();
 
     app = module.createNestApplication();
