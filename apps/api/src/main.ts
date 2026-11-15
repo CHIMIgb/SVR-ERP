@@ -18,6 +18,9 @@ for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Despliegue tras proxy (Railway): confiar SOLO el primer salto para que
+  // req.ip sea la IP real del cliente — el bloqueo por IP del login depende de ello.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   const port = parseInt(process.env.PORT || '3001', 10);
 
   // Límites de body por ruta (review PR #17):
