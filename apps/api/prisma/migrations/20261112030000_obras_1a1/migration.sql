@@ -2,8 +2,8 @@
 -- Aplica el índice único y siembra la obra de cada proyecto que no tiene.
 
 -- 1) Una sola obra por proyecto: el índice único sustituye al índice simple.
-DROP INDEX "obras_proyecto_id_idx";
-CREATE UNIQUE INDEX "obras_proyecto_id_key" ON "obras"("proyecto_id");
+DROP INDEX IF EXISTS "obras_proyecto_id_idx";
+CREATE UNIQUE INDEX IF NOT EXISTS "obras_proyecto_id_key" ON "obras"("proyecto_id");
 
 -- 2) Backfill: cada proyecto vivo sin obra recibe la suya (hereda nombre,
 --    estado mapeado y ubicación compuesta). Idempotente por el NOT EXISTS.

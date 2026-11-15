@@ -1,13 +1,17 @@
 -- B5.11: cuenta de acceso del trabajador (FK única, nullable) + backfill por
 -- nombre exacto (solo coincidencias ÚNICAS; ambigüedades quedan sin enlazar).
 -- AlterTable
-ALTER TABLE "trabajadores" ADD COLUMN     "usuario_id" UUID;
+ALTER TABLE "trabajadores" ADD COLUMN IF NOT EXISTS "usuario_id" UUID;
 
 -- CreateIndex
-CREATE UNIQUE INDEX "trabajadores_usuario_id_key" ON "trabajadores"("usuario_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "trabajadores_usuario_id_key" ON "trabajadores"("usuario_id");
 
 -- AddForeignKey
-ALTER TABLE "trabajadores" ADD CONSTRAINT "fk_trabajadores_usuario" FOREIGN KEY ("usuario_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_trabajadores_usuario') THEN
+        ALTER TABLE "trabajadores" ADD CONSTRAINT "fk_trabajadores_usuario" FOREIGN KEY ("usuario_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- Backfill único: trabajador.nombre == persona (nombre + apellidos) de la
 -- cuenta. Solo si el nombre del trabajador es ÚNICO y la persona candidata

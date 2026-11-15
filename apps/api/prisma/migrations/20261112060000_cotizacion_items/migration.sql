@@ -1,5 +1,5 @@
 -- B1.1: partidas de cotización (los renglones de los Word) + condiciones precargadas.
-CREATE TABLE "cotizacion_items" (
+CREATE TABLE IF NOT EXISTS "cotizacion_items" (
     "id" UUID NOT NULL,
     "cotizacion_id" UUID NOT NULL,
     "descripcion" TEXT NOT NULL,
@@ -17,16 +17,28 @@ CREATE TABLE "cotizacion_items" (
 );
 
 -- AlterTable
-ALTER TABLE "cotizaciones" ADD COLUMN     "condiciones" TEXT;
+ALTER TABLE "cotizaciones" ADD COLUMN IF NOT EXISTS "condiciones" TEXT;
 
 -- CreateIndex
-CREATE INDEX "cotizacion_items_cotizacion_id_idx" ON "cotizacion_items"("cotizacion_id");
+CREATE INDEX IF NOT EXISTS "cotizacion_items_cotizacion_id_idx" ON "cotizacion_items"("cotizacion_id");
 
 -- AddForeignKey
-ALTER TABLE "cotizacion_items" ADD CONSTRAINT "cotizacion_items_cotizacion_id_fkey" FOREIGN KEY ("cotizacion_id") REFERENCES "cotizaciones"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cotizacion_items_cotizacion_id_fkey') THEN
+        ALTER TABLE "cotizacion_items" ADD CONSTRAINT "cotizacion_items_cotizacion_id_fkey" FOREIGN KEY ("cotizacion_id") REFERENCES "cotizaciones"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "cotizacion_items" ADD CONSTRAINT "fk_cotizacion_items_actualizado_por" FOREIGN KEY ("actualizado_por") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cotizacion_items_actualizado_por') THEN
+        ALTER TABLE "cotizacion_items" ADD CONSTRAINT "fk_cotizacion_items_actualizado_por" FOREIGN KEY ("actualizado_por") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "cotizacion_items" ADD CONSTRAINT "fk_cotizacion_items_creado_por" FOREIGN KEY ("creado_por") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cotizacion_items_creado_por') THEN
+        ALTER TABLE "cotizacion_items" ADD CONSTRAINT "fk_cotizacion_items_creado_por" FOREIGN KEY ("creado_por") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+    END IF;
+END $$;
