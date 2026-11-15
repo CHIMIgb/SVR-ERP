@@ -970,7 +970,7 @@ export default function RolesPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setVistasOpen(false)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Button>
+          <Button variant={soloLectura ? 'primary' : 'secondary'} onClick={() => setVistasOpen(false)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Button>
           {!soloLectura && (
             <Button variant="primary" onClick={handleGuardarVistas} loading={submitting}>Guardar</Button>
           )}
@@ -1022,7 +1022,7 @@ export default function RolesPage() {
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setPermisosOpen(false)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Button>
+          <Button variant={soloLectura ? 'primary' : 'secondary'} onClick={() => setPermisosOpen(false)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Button>
           {!soloLectura && (
             <Button variant="primary" onClick={handleGuardarPermisos} loading={submitting}>Guardar</Button>
           )}
