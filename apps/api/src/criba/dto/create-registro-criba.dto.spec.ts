@@ -7,6 +7,7 @@ describe('CreateRegistroCribaDto', () => {
     fecha: '2026-08-20',
     turno: 'VESPERTINO',
     operadorId: '550e8400-e29b-41d4-a716-446655440001',
+    materialId: '550e8400-e29b-41d4-a716-446655440002',
     tipoMaterial: 'Criba fina',
     materialProducido: 320,
     horasTrabajadas: 8,
@@ -31,8 +32,15 @@ describe('CreateRegistroCribaDto', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('should fail with material outside catalog', async () => {
-    const dto = plainToInstance(CreateRegistroCribaDto, { ...base, tipoMaterial: 'Grava suelta' });
+  it('B7: should fail with invalid materialId UUID', async () => {
+    const dto = plainToInstance(CreateRegistroCribaDto, { ...base, materialId: 'no-uuid' });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('B7: should fail without materialId (obligatorio)', async () => {
+    const { materialId, ...sinMaterial } = base;
+    const dto = plainToInstance(CreateRegistroCribaDto, sinMaterial);
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });

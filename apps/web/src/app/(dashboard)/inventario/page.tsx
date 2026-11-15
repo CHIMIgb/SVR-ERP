@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
@@ -23,6 +22,7 @@ import {
 } from '@/lib/api';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
+import { formatearMiles, parsearMiles, esDecimalValido } from '@/lib/formatters';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -39,11 +39,6 @@ const emptyForm = {
   precioUnitario: '',
 };
 
-const emptyOrderForm = {
-  cantidad: '',
-  motivo: '',
-};
-
 export default function InventarioPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -55,6 +50,7 @@ export default function InventarioPage() {
     categorias: [],
     proveedores: [],
     unidades: [],
+    materialesCriba: [],
   });
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,11 +65,9 @@ export default function InventarioPage() {
   // ── Estado de modales ──
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [orderOpen, setOrderOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ArticuloInventarioDTO | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [orderForm, setOrderForm] = useState(emptyOrderForm);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Permisos RBAC ──
@@ -86,6 +80,13 @@ export default function InventarioPage() {
   // (articulos_precio) que se gestionan por separado, su precio unitario
   // base no se edita desde aquí.
   const esMaterialDeVenta = selectedItem?.codigo?.startsWith('MAT-') ?? false;
+  // Artículos cuyo stock se alimenta de la PRODUCCIÓN DE CRIBA
+  // (catálogo materiales_criba por API): el nombre y el stock no se editan a
+  // mano — solo el envío de criba toca el stock. El cruce es por ID del
+  // artículo enlazado, nunca por nombre.
+  const esDeCriba = catalogos.materialesCriba.some(
+    (m) => m.articuloId !== null && m.articuloId === selectedItem?.id,
+  );
 
   // ── Cargar catálogos (una sola vez) ──
   useEffect(() => {
@@ -237,17 +238,12 @@ export default function InventarioPage() {
       unidadId: item.unidadId,
       stock: String(item.stock),
       stockMinimo: String(item.stockMinimo),
-      precioUnitario: String(item.precioUnitario),
+      precioUnitario: formatearMiles(String(item.precioUnitario)),
     });
     setEditOpen(true);
   }, []);
 
-  const openOrder = useCallback((item: ArticuloInventarioDTO) => {
-    setSelectedItem(item);
-    const sugerencia = Math.max(1, item.stockMinimo - item.stock + 10);
-    setOrderForm({ cantidad: String(sugerencia), motivo: '' });
-    setOrderOpen(true);
-  }, []);
+  // ── CRUD ──
 
   const openDelete = useCallback((item: ArticuloInventarioDTO) => {
     setSelectedItem(item);
@@ -260,6 +256,10 @@ export default function InventarioPage() {
       showToast('Nombre, categoría, proveedor y unidad son obligatorios.', 'error');
       return;
     }
+    if (form.precioUnitario && !esDecimalValido(form.precioUnitario, 0)) {
+      showToast('Ingresa un precio unitario válido.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await inventarioApi.crear({
@@ -270,7 +270,7 @@ export default function InventarioPage() {
         unidadId: form.unidadId,
         stock: Number(form.stock) || 0,
         stockMinimo: Number(form.stockMinimo) || 0,
-        precioUnitario: Number(form.precioUnitario) || 0,
+        precioUnitario: parsearMiles(form.precioUnitario) || 0,
       });
       if (res.success) {
         showToast(`Artículo "${form.nombre}" creado exitosamente.`, 'success');
@@ -293,6 +293,10 @@ export default function InventarioPage() {
       showToast('Nombre, categoría, proveedor y unidad son obligatorios.', 'error');
       return;
     }
+    if (form.precioUnitario && !esDecimalValido(form.precioUnitario, 0)) {
+      showToast('Ingresa un precio unitario válido.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await inventarioApi.actualizar(selectedItem.id, {
@@ -303,7 +307,7 @@ export default function InventarioPage() {
         unidadId: form.unidadId,
         stock: Number(form.stock) || 0,
         stockMinimo: Number(form.stockMinimo) || 0,
-        precioUnitario: Number(form.precioUnitario) || 0,
+        precioUnitario: parsearMiles(form.precioUnitario) || 0,
       });
       if (res.success) {
         showToast(`Artículo "${form.nombre}" actualizado exitosamente.`, 'success');
@@ -320,35 +324,6 @@ export default function InventarioPage() {
       setSubmitting(false);
     }
   }, [selectedItem, form, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
-
-  const handleOrder = useCallback(async () => {
-    if (!selectedItem || !orderForm.cantidad) {
-      showToast('La cantidad a pedir es obligatoria.', 'error');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await inventarioApi.movimiento({
-        articuloId: selectedItem.id,
-        tipo: 'ENTRADA',
-        cantidad: Number(orderForm.cantidad),
-        motivo: orderForm.motivo || `Orden de compra - ${selectedItem.nombre}`,
-      });
-      if (res.success) {
-        showToast(`Entrada de ${orderForm.cantidad} unidades registrada para "${selectedItem.nombre}".`, 'success');
-        setOrderOpen(false);
-        setSelectedItem(null);
-        fetchData(pagination.page, search, filterValues);
-        fetchStats();
-      } else {
-        showToast(mensajeErrorApi(res.error, 'Error al registrar entrada.'), 'error');
-      }
-    } catch {
-      showToast('Error de conexión al registrar entrada.', 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [selectedItem, orderForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
@@ -398,12 +373,11 @@ export default function InventarioPage() {
     {
       key: 'estado',
       header: 'Estado',
+      // Sin badge de color (decisión del cliente): texto neutro.
       render: (item) => (
-        item.stock <= item.stockMinimo ? (
-          <Badge variant="error" size="sm">Stock Bajo</Badge>
-        ) : (
-          <Badge variant="success" size="sm">Ok</Badge>
-        )
+        <span className="text-xs font-semibold text-ui-600">
+          {item.stock <= item.stockMinimo ? 'Stock Bajo' : 'Ok'}
+        </span>
       ),
     },
     {
@@ -427,16 +401,6 @@ export default function InventarioPage() {
       align: 'right',
       render: (item) => (
         <div className="flex items-center justify-end gap-1">
-          {puedeEditar && (
-            <Button
-              variant="info"
-              size="sm"
-              icon={<ShoppingCart className="w-3.5 h-3.5" />}
-              onClick={(e) => { e.stopPropagation(); openOrder(item); }}
-            >
-              Pedir
-            </Button>
-          )}
           {puedeEditar && (
             <Button
               variant="warning"
@@ -644,7 +608,7 @@ export default function InventarioPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre" required className="sm:col-span-2">
+          <ModalField label="Nombre" required>
             <input
               type="text"
               className={modalInputClass}
@@ -705,35 +669,34 @@ export default function InventarioPage() {
 
           <ModalField label="Stock Inicial">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="0"
-              min="0"
               value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+              onChange={(e) => setForm({ ...form, stock: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Stock Mínimo">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="5"
-              min="0"
               value={form.stockMinimo}
-              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Precio Unitario (MXN)">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="0.00"
-              min="0"
-              step="0.01"
               value={form.precioUnitario}
-              onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+              onChange={(e) => setForm({ ...form, precioUnitario: formatearMiles(e.target.value) })}
               readOnly={esMaterialDeVenta}
             />
             {esMaterialDeVenta && (
@@ -743,55 +706,6 @@ export default function InventarioPage() {
             )}
           </ModalField>
         </div>
-      </FormModal>
-
-      <FormModal
-        open={orderOpen}
-        onClose={() => setOrderOpen(false)}
-        onCancel={() => setOrderOpen(false)}
-        title="Registrar Entrada de Inventario"
-        subtitle={selectedItem ? `Artículo: ${selectedItem.nombre}` : undefined}
-        submitLabel="Registrar Entrada"
-        cancelLabel="Cancelar"
-        onSubmit={handleOrder}
-        isSubmitting={submitting}
-      >
-        {selectedItem && (
-          <div className="space-y-4">
-            <div className="bg-ui-50 border border-ui-200 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-black text-ui-900">{selectedItem.nombre}</p>
-                  <p className="text-xs text-ui-500">{selectedItem.categoria} — {selectedItem.proveedor}</p>
-                </div>
-                <Badge variant={selectedItem.stock <= selectedItem.stockMinimo ? 'error' : 'success'} size="sm">
-                  Stock: {selectedItem.stock} {selectedItem.unidad}
-                </Badge>
-              </div>
-            </div>
-
-            <ModalField label="Cantidad a Entrar" required>
-              <input
-                type="number"
-                className={modalInputClass}
-                placeholder="10"
-                min="1"
-                value={orderForm.cantidad}
-                onChange={(e) => setOrderForm({ ...orderForm, cantidad: e.target.value })}
-              />
-            </ModalField>
-
-            <ModalField label="Motivo / Referencia">
-              <input
-                type="text"
-                className={modalInputClass}
-                placeholder="Número de orden interno, proveedor, etc."
-                value={orderForm.motivo}
-                onChange={(e) => setOrderForm({ ...orderForm, motivo: e.target.value })}
-              />
-            </ModalField>
-          </div>
-        )}
       </FormModal>
 
       <FormModal
@@ -806,14 +720,20 @@ export default function InventarioPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre" required className="sm:col-span-2">
+          <ModalField label="Nombre" required>
             <input
               type="text"
               className={modalInputClass}
               placeholder="Nombre del artículo"
               value={form.nombre}
               onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+              readOnly={esDeCriba}
             />
+            {esDeCriba && (
+              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                Material de producción de criba; su nombre lo administra el catálogo de criba.
+              </p>
+            )}
           </ModalField>
 
           <ModalField label="Código">
@@ -867,35 +787,40 @@ export default function InventarioPage() {
 
           <ModalField label="Stock Actual">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="0"
-              min="0"
               value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+              onChange={(e) => setForm({ ...form, stock: e.target.value.replace(/[^\d]/g, '') })}
+              readOnly={esDeCriba}
             />
+            {esDeCriba && (
+              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                El stock de este material solo sube al enviar la producción de criba al inventario.
+              </p>
+            )}
           </ModalField>
 
           <ModalField label="Stock Mínimo">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className={modalInputClass}
               placeholder="5"
-              min="0"
               value={form.stockMinimo}
-              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+              onChange={(e) => setForm({ ...form, stockMinimo: e.target.value.replace(/[^\d]/g, '') })}
             />
           </ModalField>
 
           <ModalField label="Precio Unitario (MXN)">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
               placeholder="0.00"
-              min="0"
-              step="0.01"
               value={form.precioUnitario}
-              onChange={(e) => setForm({ ...form, precioUnitario: e.target.value })}
+              onChange={(e) => setForm({ ...form, precioUnitario: formatearMiles(e.target.value) })}
               readOnly={esMaterialDeVenta}
             />
             {esMaterialDeVenta && (

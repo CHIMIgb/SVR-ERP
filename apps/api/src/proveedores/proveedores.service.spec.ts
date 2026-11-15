@@ -5,6 +5,7 @@ import { ProveedoresService } from './proveedores.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 describe('ProveedoresService', () => {
   let service: ProveedoresService;
@@ -106,6 +107,7 @@ describe('ProveedoresService', () => {
       pagos_proveedor: {
         create: jest.fn().mockResolvedValue(mockPago),
         count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       transacciones: {
         create: jest.fn().mockResolvedValue({ id: '990e8400-e29b-41d4-a716-446655440010' }),
@@ -137,6 +139,8 @@ describe('ProveedoresService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: InventarioService, useValue: mockInventario },
+        // B5.3: emisión de notificaciones mock (no se prueba aquí).
+        { provide: NotificacionesService, useValue: { emitirARol: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -457,6 +461,26 @@ describe('ProveedoresService', () => {
       );
     });
 
+    it('con fechaVencimiento guarda la fecha en OC y en la CxP', async () => {
+      await service.createOrden(
+        { ...dto, fechaVencimiento: '2026-12-15' },
+        USER_ID,
+      );
+      const data = prisma.ordenes_compra.create.mock.calls[0][0].data;
+      expect(data.fecha_vencimiento).toBeInstanceOf(Date);
+      expect(data.fecha_vencimiento.toISOString().startsWith('2026-12-15')).toBe(true);
+      const dataCxp = prisma.cuentas_por_pagar.create.mock.calls[0][0].data;
+      expect(dataCxp.fecha_vencimiento).toBe(data.fecha_vencimiento);
+    });
+
+    it('sin fechaVencimiento la CxP nace sin vencimiento (flujo de contado)', async () => {
+      await service.createOrden(dto, USER_ID);
+      const data = prisma.ordenes_compra.create.mock.calls[0][0].data;
+      expect(data.fecha_vencimiento).toBeNull();
+      const dataCxp = prisma.cuentas_por_pagar.create.mock.calls[0][0].data;
+      expect(dataCxp.fecha_vencimiento).toBeNull();
+    });
+
     it('should map duplicate folio (P2002) to ConflictException with fallir', async () => {
       const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
@@ -532,6 +556,32 @@ describe('ProveedoresService', () => {
       await expect(service.updateOrden(mockOrden.id, { monto: 500 }, USER_ID)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('con fechaVencimiento actualiza la OC y propaga a la CxP abierta', async () => {
+      await service.updateOrden(mockOrden.id, { fechaVencimiento: '2026-12-20' }, USER_ID);
+      const dataOc = prisma.ordenes_compra.update.mock.calls[0][0].data;
+      expect(dataOc.fecha_vencimiento).toBeInstanceOf(Date);
+      expect(dataOc.fecha_vencimiento.toISOString().startsWith('2026-12-20')).toBe(true);
+      // La CxP del mock está abierta (monto_pagado 0 < monto 1000) → propagado.
+      const llamadasCxp = prisma.cuentas_por_pagar.update.mock.calls.filter(
+        (c: any[]) => 'fecha_vencimiento' in c[0].data,
+      );
+      expect(llamadasCxp).toHaveLength(1);
+      expect(llamadasCxp[0][0].data.fecha_vencimiento.toISOString().startsWith('2026-12-20')).toBe(true);
+    });
+
+    it('la CxP SALDADA conserva su vencimiento histórico (no se propaga)', async () => {
+      prisma.cuentas_por_pagar.findUnique.mockResolvedValue({
+        ...prisma.cuentas_por_pagar.findUnique(),
+        monto: 1000,
+        monto_pagado: 1000,
+      });
+      await service.updateOrden(mockOrden.id, { fechaVencimiento: '2026-12-20' }, USER_ID);
+      const llamadasCxp = prisma.cuentas_por_pagar.update.mock.calls.filter(
+        (c: any[]) => 'fecha_vencimiento' in c[0].data,
+      );
+      expect(llamadasCxp).toHaveLength(0);
     });
   });
 

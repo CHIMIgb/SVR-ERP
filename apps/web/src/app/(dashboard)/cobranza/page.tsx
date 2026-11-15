@@ -6,6 +6,7 @@ import {
   SlidersHorizontal, Download, CalendarClock, ReceiptText, X,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { fechaLocalHoy } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -57,7 +58,7 @@ const metodoLabel: Record<MetodoPagoCobro, string> = {
   CHEQUE: 'Cheque',
 };
 
-const hoyISO = new Date().toISOString().split('T')[0];
+const hoyISO = fechaLocalHoy();
 
 // ─── Filtros (chips + panel de selects, mismo diseño que /inventario) ─────────
 function FiltrosCobranza({

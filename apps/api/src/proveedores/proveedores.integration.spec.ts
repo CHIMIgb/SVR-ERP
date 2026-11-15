@@ -146,6 +146,46 @@ describe('Proveedores Audit (Real DB)', () => {
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
     });
+
+    // B4.2: la CxP nace con el vencimiento de la OC.
+    it('debe crear OC con vencimiento y propagarlo a la CxP en BD', async () => {
+      const proveedor = await service.create(
+        { nombre: `Prov-VENC ${TEST_ID}-${randomUUID().slice(0, 4)}` },
+        ACTOR_USER_ID,
+      );
+      createdProveedorIds.push(proveedor.id);
+
+      const orden = await service.createOrden(
+        {
+          proveedorId: proveedor.id,
+          items: [{ nombre: 'Pintura vinílica', cantidad: 5, precioUnitario: 200 }],
+          fechaVencimiento: '2026-12-31',
+        },
+        ACTOR_USER_ID,
+      );
+      createdOrdenIds.push(orden.id);
+
+      expect(orden.fechaVencimiento).toBe('2026-12-31');
+
+      const fila = await prisma.ordenes_compra.findUnique({
+        where: { id: orden.id },
+        select: { fecha_vencimiento: true },
+      });
+      expect(fila?.fecha_vencimiento?.toISOString().startsWith('2026-12-31')).toBe(true);
+
+      const cxp = await prisma.cuentas_por_pagar.findUnique({
+        where: { orden_compra_id: orden.id },
+      });
+      expect(cxp?.fecha_vencimiento?.toISOString().startsWith('2026-12-31')).toBe(true);
+
+      // Propagación en la actualización (CxP abierta).
+      const actualizada = await service.updateOrden(orden.id, { fechaVencimiento: '2027-01-15' }, ACTOR_USER_ID);
+      expect(actualizada.fechaVencimiento).toBe('2027-01-15');
+      const cxp2 = await prisma.cuentas_por_pagar.findUnique({
+        where: { orden_compra_id: orden.id },
+      });
+      expect(cxp2?.fecha_vencimiento?.toISOString().startsWith('2027-01-15')).toBe(true);
+    });
   });
 
   describe('PAGO_PROVEEDOR_REGISTRADO', () => {

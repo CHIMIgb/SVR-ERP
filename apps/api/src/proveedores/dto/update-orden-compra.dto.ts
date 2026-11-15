@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsDateString,
   IsNumber,
   IsOptional,
   IsString,
@@ -21,6 +22,11 @@ export class UpdateOrdenCompraDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   monto?: number;
+
+  /** Corrección del vencimiento (B4): se propaga a la CxP mientras siga abierta. */
+  @IsOptional()
+  @IsDateString()
+  fechaVencimiento?: string;
 
   @IsOptional()
   @IsArray()

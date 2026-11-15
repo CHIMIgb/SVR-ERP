@@ -30,12 +30,18 @@ describe('InventarioService', () => {
     },
     categorias_inventario: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     proveedores: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     unidades_medida: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
+    },
+    materiales_criba: {
+      findMany: jest.fn(),
     },
     movimientos_inventario: {
       findMany: jest.fn(),
@@ -282,109 +288,6 @@ describe('InventarioService', () => {
     });
   });
 
-  describe('crearMovimiento', () => {
-    it('should register ENTRADA and log MOVIMIENTO_REGISTRADO', async () => {
-      const result = await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'ENTRADA',
-          cantidad: 10,
-        },
-        'user-1',
-      );
-
-      expect(result.tipo).toBe('ENTRADA');
-      expect(result.stockResultante).toBe(22); // 12 + 10
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'MOVIMIENTO_REGISTRADO',
-          actorUserId: 'user-1',
-        }),
-      );
-    });
-
-    it('should register SALIDA and log MOVIMIENTO_REGISTRADO', async () => {
-      const result = await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'SALIDA',
-          cantidad: 5,
-        },
-        'user-1',
-      );
-
-      expect(result.tipo).toBe('SALIDA');
-      expect(result.stockResultante).toBe(7); // 12 - 5
-    });
-
-    it('should detect stock threshold crossing on SALIDA', async () => {
-      // stock=12, minimo=5 → SALIDA de 10 → stock=2 (below 5)
-      await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'SALIDA',
-          cantidad: 10,
-        },
-        'user-1',
-      );
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'STOCK_BAJO_DETECTADO',
-        }),
-      );
-    });
-
-    it('should detect stock resolution on ENTRADA', async () => {
-      const lowStock = { ...mockArticulo, stock: 2, stock_minimo: 5 };
-      mockPrisma.articulos_inventario.findFirst.mockResolvedValue(lowStock);
-
-      // stock=2 (bajo) → ENTRADA de 5 → stock=7 (above 5)
-      await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'ENTRADA',
-          cantidad: 5,
-        },
-        'user-1',
-      );
-
-      expect(mockAudit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'STOCK_BAJO_RESUELTO',
-        }),
-      );
-    });
-
-    it('should throw BadRequestException for insufficient stock', async () => {
-      await expect(
-        service.crearMovimiento(
-          {
-            articuloId: mockArticulo.id,
-            tipo: 'SALIDA',
-            cantidad: 100,
-          },
-          'user-1',
-        ),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockAudit.logFailure).toHaveBeenCalledWith(
-        expect.objectContaining({
-          errorCode: 'INSUFFICIENT_STOCK',
-        }),
-      );
-    });
-
-    it('should throw NotFoundException for non-existent article', async () => {
-      mockPrisma.articulos_inventario.findFirst.mockResolvedValue(null);
-      await expect(
-        service.crearMovimiento(
-          { articuloId: 'bad', tipo: 'ENTRADA', cantidad: 1 },
-          'user-1',
-        ),
-      ).rejects.toThrow(NotFoundException);
-    });
-  });
 
   describe('aplicarEntrada', () => {
     const params = {
@@ -421,26 +324,31 @@ describe('InventarioService', () => {
       );
     });
 
-    it('should delegate from crearMovimiento ENTRADA using $transaction callback', async () => {
-      const result = await service.crearMovimiento(
-        {
-          articuloId: mockArticulo.id,
-          tipo: 'ENTRADA',
-          cantidad: 10,
-        },
-        'user-1',
-      );
-
-      expect(result.stockResultante).toBe(22); // 12 + 10
-      // La delegación ocurre dentro del callback del tx (no en el array principal).
-      expect(mockTx.articulos_inventario.update).toHaveBeenCalled();
-    });
-
     it('should throw NotFoundException when tx article does not exist', async () => {
       mockTx.articulos_inventario.findFirst.mockResolvedValue(null);
       await expect(
         service.aplicarEntrada(mockTx as never, params),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findCatalogos', () => {
+    it('should return catalogos including materialesCriba with articuloId', async () => {
+      mockPrisma.categorias_inventario.findMany.mockResolvedValue([mockCategoria]);
+      mockPrisma.proveedores.findMany.mockResolvedValue([mockProveedor]);
+      mockPrisma.unidades_medida.findMany.mockResolvedValue([mockUnidad]);
+      mockPrisma.materiales_criba.findMany.mockResolvedValue([
+        { id: 'mc-1', nombre: 'Criba fina', articulo_id: 'a1' },
+      ]);
+
+      const result = await service.findCatalogos();
+
+      expect(result.categorias).toEqual([mockCategoria]);
+      expect(result.proveedores).toEqual([mockProveedor]);
+      expect(result.unidades).toEqual([mockUnidad]);
+      expect(result.materialesCriba).toEqual([
+        { id: 'mc-1', nombre: 'Criba fina', articuloId: 'a1' },
+      ]);
     });
   });
 });

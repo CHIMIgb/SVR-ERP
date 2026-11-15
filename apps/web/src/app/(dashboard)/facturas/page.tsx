@@ -166,7 +166,7 @@ export default function FacturasPage() {
   useEffect(() => {
     clientesApi.listar({ page: 1, limit: 100 }).then((res) => {
       if (res.success && res.data) {
-        setClientes(res.data.items.map((c) => ({ id: c.id, nombre: c.nombre, empresa: c.empresa })));
+        setClientes(res.data.items.map((c) => ({ id: c.id, nombre: c.nombre, empresa: c.empresa ?? '' })));
       }
     });
   }, []);

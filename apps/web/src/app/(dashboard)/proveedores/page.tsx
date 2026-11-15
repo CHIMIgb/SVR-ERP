@@ -3,14 +3,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, FileText, Pencil, Trash2, CreditCard, AlertCircle, XCircle, Eye, CheckCircle2,
-  Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal,
+  Truck, ClipboardList, Wallet, ShoppingCart, SlidersHorizontal, CalendarClock,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { fechaEsPasada, formatearMiles, limpiarRfc, limpiarTelefono, parsearMiles, rfcEsValido, telefonoEsValido } from '@/lib/formatters';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
@@ -39,22 +39,6 @@ const ESTADO_LABEL: Record<EstadoOrdenApi, EstadoOrden> = {
 const PAGE_SIZE = 8;
 
 const CATEGORIAS: CategoriaProveedor[] = ['Refacciones', 'Combustible', 'Materiales', 'Servicios', 'Otros'];
-const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MIXTO'] as const;
-
-const badgeVariant: Record<CategoriaProveedor, 'info' | 'warning' | 'success' | 'neutral' | 'primary'> = {
-  Refacciones: 'info',
-  Combustible: 'warning',
-  Materiales: 'success',
-  Servicios: 'neutral',
-  Otros: 'primary',
-};
-
-const estadoVariant: Record<EstadoOrden, 'warning' | 'info' | 'success' | 'error'> = {
-  Pendiente: 'warning',
-  Aprobada: 'info',
-  Recibida: 'success',
-  Cancelada: 'error',
-};
 
 // ─── Estado inicial de formularios ────────────────────────────────────────────
 const emptyProvForm = {
@@ -68,6 +52,7 @@ const emptyProvForm = {
 const emptyOcForm = {
   proveedorId: '',
   descripcion: '',
+  fechaVencimiento: '',
   items: [] as Array<{ nombre: string; articuloId: string | null; modo: 'inventario' | 'nuevo'; cantidad: number; precioUnitario: number }>,
 };
 
@@ -116,6 +101,9 @@ export default function ProveedoresPage() {
   const [confirmCambio, setConfirmCambio] = useState<{ orden: OrdenCompraDTO; estado: 'APROBADA' | 'RECIBIDA' } | null>(null);
   const [deleteOC, setDeleteOC] = useState<OrdenCompraDTO | null>(null);
   const [detalleProv, setDetalleProv] = useState<EstadoCuentaResumenDTO | null>(null);
+  // B4: corrección del vencimiento de una OC abierta (propaga a su CxP).
+  const [vencimientoOC, setVencimientoOC] = useState<OrdenCompraDTO | null>(null);
+  const [vencimientoForm, setVencimientoForm] = useState('');
 
   // ── Helpers de datos (resumen por proveedor) ──
   const resumenPorProv = useMemo(() => {
@@ -319,9 +307,14 @@ export default function ProveedoresPage() {
       showToast('El nombre del proveedor es obligatorio.', 'error');
       return;
     }
-    // RFC validado en la UI con la misma regex del backend (mayúsculas).
+    // Teléfono opcional, pero si se captura debe ser un teléfono MX de 10 dígitos.
+    if (provForm.telefono.trim() && !telefonoEsValido(provForm.telefono)) {
+      showToast('El teléfono debe tener 10 dígitos.', 'error');
+      return;
+    }
+    // RFC opcional, con formato oficial MX (3-4 letras + 6 dígitos + homoclave).
     const rfc = provForm.rfc.trim().toUpperCase();
-    if (rfc && !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{2,3}$/.test(rfc)) {
+    if (rfc && !rfcEsValido(rfc)) {
       showToast('El RFC no tiene el formato oficial (3-4 letras + 6 dígitos + homoclave), ejemplo: TOR890101ABC. Déjalo vacío si no aplica.', 'error');
       return;
     }
@@ -393,6 +386,11 @@ export default function ProveedoresPage() {
         return;
       }
     }
+    // B4: vencimiento opcional; si se captura no puede ser anterior a hoy.
+    if (ocForm.fechaVencimiento && fechaEsPasada(ocForm.fechaVencimiento)) {
+      showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       // Sanitización: `modo` es estado puro de UI y se descarta. Las líneas del
@@ -400,6 +398,7 @@ export default function ProveedoresPage() {
       const res = await ordenesCompraApi.crear({
         proveedorId: ocForm.proveedorId,
         descripcion: ocForm.descripcion.trim() || undefined,
+        ...(ocForm.fechaVencimiento ? { fechaVencimiento: ocForm.fechaVencimiento } : {}),
         items: ocForm.items.map((it) => ({
           ...(it.articuloId ? { articuloId: it.articuloId } : { nombre: it.nombre.trim() }),
           cantidad: it.cantidad,
@@ -421,9 +420,38 @@ export default function ProveedoresPage() {
     }
   }, [ocForm, showToast, refetchAll]);
 
-  const handleAbono = useCallback(async () => {
-    if (!abonoOC) return;
-    const abono = parseFloat(abonoForm.monto);
+  // B4: guardar vencimiento corregido (OC abierta) — el backend propaga a la CxP.
+  const handleVencimiento = useCallback(async () => {
+    if (!vencimientoOC) return;
+    if (!vencimientoForm) {
+      showToast('Selecciona una fecha de vencimiento.', 'error');
+      return;
+    }
+    if (fechaEsPasada(vencimientoForm)) {
+      showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await ordenesCompraApi.actualizar(vencimientoOC.id, {
+        fechaVencimiento: vencimientoForm,
+      });
+      if (res.success) {
+        showToast('Vencimiento actualizado.', 'success');
+        setVencimientoOC(null);
+        refetchAll();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar el vencimiento.'), 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [vencimientoOC, vencimientoForm, showToast, refetchAll]);
+
+  const handleAbono = useCallback(async () => {    if (!abonoOC) return;
+    const abono = parsearMiles(abonoForm.monto);
     if (!abono || abono <= 0) {
       showToast('Ingresa un monto válido.', 'error');
       return;
@@ -551,11 +579,8 @@ export default function ProveedoresPage() {
     {
       key: 'categoria',
       header: 'Categoría',
-      render: (p) => (
-        <Badge variant={badgeVariant[(p.categoria as CategoriaProveedor)] ?? 'neutral'} size="sm">
-          {p.categoria}
-        </Badge>
-      ),
+      // Solo texto, sin badge de color (decisión del cliente).
+      render: (p) => <span className="text-xs font-semibold text-ui-600">{p.categoria}</span>,
     },
     {
       key: 'saldo',
@@ -601,7 +626,14 @@ export default function ProveedoresPage() {
 
   // ── Columnas DataTable: órdenes ──
   const ordenColumns: Column<OrdenCompraDTO>[] = [
-    { key: 'folio', header: 'Folio', render: (o) => <span className="font-black text-primary text-xs">{o.folio}</span> },
+    { key: 'folio', header: 'Folio', render: (o) => (
+      <div>
+        <span className="font-black text-primary text-xs">{o.folio}</span>
+        {o.creadoPor && (
+          <p className="text-[10px] font-medium text-ui-400">por {o.creadoPor}</p>
+        )}
+      </div>
+    ) },
     {
       key: 'proveedor',
       header: 'Proveedor',
@@ -638,12 +670,24 @@ export default function ProveedoresPage() {
       key: 'estado',
       header: 'Estado',
       align: 'center',
+      // Solo texto, sin badge de color (decisión del cliente).
+      render: (o) => <span className="text-xs font-semibold text-ui-600">{ESTADO_LABEL[o.estado]}</span>,
+    },
+    {
+      key: 'vence',
+      header: 'Vence',
+      align: 'center',
+      // B4: fecha límite de pago; en rojo si ya venció y tiene saldo.
       render: (o) => (
-        <div className="flex justify-center">
-          <Badge variant={estadoVariant[ESTADO_LABEL[o.estado]]} size="sm">
-            {ESTADO_LABEL[o.estado]}
-          </Badge>
-        </div>
+        <span
+          className={`text-xs font-bold whitespace-nowrap ${
+            o.fechaVencimiento && o.saldo > 0 && fechaEsPasada(o.fechaVencimiento)
+              ? 'text-red-600'
+              : 'text-ui-500'
+          }`}
+        >
+          {o.fechaVencimiento ? o.fechaVencimiento : '—'}
+        </span>
       ),
     },
     {
@@ -656,6 +700,19 @@ export default function ProveedoresPage() {
         const activa = o.estado === 'PENDIENTE' || o.estado === 'APROBADA';
         return (
           <div className="flex items-center justify-center gap-1">
+            {activa && puedeEditar && (
+              <Button
+                variant="info"
+                size="sm"
+                icon={<CalendarClock className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  setVencimientoForm(o.fechaVencimiento ?? '');
+                  setVencimientoOC(o);
+                }}
+              >
+                Vencimiento
+              </Button>
+            )}
             {o.saldo > 0 && puedeEditar && (
               <Button
                 variant="outline"
@@ -689,17 +746,11 @@ export default function ProveedoresPage() {
                 Recibir
               </Button>
             )}
-            {activa && puedeEditar && (
+            {activa && puedeEditar && o.pagado === 0 && (
               <Button
                 variant="danger"
                 size="sm"
                 icon={<XCircle className="w-3.5 h-3.5" />}
-                disabled={o.pagado > 0}
-                title={
-                  o.pagado > 0
-                    ? 'No se puede cancelar: la orden ya tiene abonos registrados.'
-                    : 'Cancelar orden de compra'
-                }
                 onClick={() => {
                   setMotivoCancelacion('');
                   setCancelOC(o);
@@ -765,6 +816,17 @@ export default function ProveedoresPage() {
         </span>
       ),
     },
+    {
+      key: 'proximoVencimiento',
+      header: 'Próximo Vencimiento',
+      align: 'center',
+      // B4: el vencimiento más próximo entre las OCs con saldo del proveedor.
+      render: (r) => (
+        <span className="text-xs font-bold whitespace-nowrap text-ui-600">
+          {r.proximoVencimiento ?? '—'}
+        </span>
+      ),
+    },
   ];
 
   // ── Columnas DataTable: ledger detalle de un proveedor ──
@@ -772,6 +834,23 @@ export default function ProveedoresPage() {
     { key: 'fecha', header: 'Fecha', render: (r) => <span className="text-xs font-medium text-ui-500">{r.fecha.slice(0, 10)}</span> },
     { key: 'folio', header: 'Folio', render: (r) => <span className="font-black text-primary text-xs">{r.folio}</span> },
     { key: 'concepto', header: 'Concepto', render: (r) => <p className="text-xs text-ui-600 font-medium max-w-[200px] truncate">{r.concepto}</p> },
+    {
+      key: 'vence',
+      header: 'Vence',
+      align: 'center',
+      // B4: fecha límite de pago de la OC (null si nunca se capturó).
+      render: (r) => (
+        <span
+          className={`text-xs font-bold whitespace-nowrap ${
+            r.vence && r.saldo > 0 && fechaEsPasada(r.vence)
+              ? 'text-red-600'
+              : 'text-ui-500'
+          }`}
+        >
+          {r.vence ?? '—'}
+        </span>
+      ),
+    },
     { key: 'cargo', header: 'Cargo', align: 'right', render: (r) => <span className="text-xs font-bold text-ui-700">{formatCurrency(r.cargo)}</span> },
     { key: 'abono', header: 'Abono', align: 'right', render: (r) => <span className="text-xs font-bold text-green-600">{formatCurrency(r.abono)}</span> },
     {
@@ -1063,7 +1142,7 @@ export default function ProveedoresPage() {
               className={modalInputClass}
               placeholder="XXX000000XX0"
               value={provForm.rfc}
-              onChange={(e) => setProvForm({ ...provForm, rfc: e.target.value })}
+              onChange={(e) => setProvForm({ ...provForm, rfc: limpiarRfc(e.target.value) })}
             />
           </ModalField>
           <ModalField label="Categoría">
@@ -1085,9 +1164,9 @@ export default function ProveedoresPage() {
             <input
               type="text"
               className={modalInputClass}
-              placeholder="555-0000"
+              placeholder="Ej: 322-123-4567"
               value={provForm.telefono}
-              onChange={(e) => setProvForm({ ...provForm, telefono: e.target.value })}
+              onChange={(e) => setProvForm({ ...provForm, telefono: limpiarTelefono(e.target.value) })}
             />
           </ModalField>
           <ModalField label="Correo">
@@ -1136,6 +1215,25 @@ export default function ProveedoresPage() {
             value={ocForm.descripcion}
             onChange={(e) => setOcForm({ ...ocForm, descripcion: e.target.value })}
           />
+        </ModalField>
+        <ModalField label="Fecha de vencimiento">
+          <input
+            type="date"
+            className={modalInputClass}
+            value={ocForm.fechaVencimiento}
+            onChange={(e) => {
+              // Validación al ELEGIR la fecha (patrón fecha de inicio en obras).
+              if (e.target.value && fechaEsPasada(e.target.value)) {
+                showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+                setOcForm({ ...ocForm, fechaVencimiento: '' });
+                return;
+              }
+              setOcForm({ ...ocForm, fechaVencimiento: e.target.value });
+            }}
+          />
+          <p className="mt-1 text-xs text-ui-500">
+            Opcional: día límite de pago de esta orden (queda en la cuenta por pagar).
+          </p>
         </ModalField>
         {/* Líneas de detalle del pedido (Fase 7) */}
         <div className="sm:col-span-2">
@@ -1289,10 +1387,54 @@ export default function ProveedoresPage() {
         </div>
       </FormModal>
 
+      {/* ─── Modal Vencimiento (B4) ─────────────────────────────────────── */}
+      <FormModal
+        open={!!vencimientoOC}
+        onClose={() => setVencimientoOC(null)}
+        onCancel={() => setVencimientoOC(null)}
+        title="Fecha de Vencimiento"
+        subtitle={vencimientoOC ? `Orden ${vencimientoOC.folio} — ${vencimientoOC.proveedor ?? ''}` : undefined}
+        submitLabel="Guardar Vencimiento"
+        cancelLabel="Cancelar"
+        isSubmitting={submitting}
+        onSubmit={handleVencimiento}
+      >
+        {vencimientoOC && (
+          <div className="bg-ui-50 rounded-xl p-4 space-y-1 text-sm mb-3">
+            <p className="font-bold text-ui-700">{vencimientoOC.proveedor ?? '—'}</p>
+            <p className="text-ui-500 text-xs">
+              {vencimientoOC.folio} — {formatCurrency(vencimientoOC.monto)} · saldo{' '}
+              {formatCurrency(vencimientoOC.saldo)}
+            </p>
+            <p className="text-ui-500 text-xs">
+              Vencimiento actual: {vencimientoOC.fechaVencimiento ?? 'sin capturar'}
+            </p>
+          </div>
+        )}
+        <ModalField label="Fecha de vencimiento" required>
+          <input
+            type="date"
+            className={modalInputClass}
+            value={vencimientoForm}
+            onChange={(e) => {
+              // Validación al ELEGIR la fecha (patrón fecha de inicio en obras).
+              if (e.target.value && fechaEsPasada(e.target.value)) {
+                showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error');
+                setVencimientoForm('');
+                return;
+              }
+              setVencimientoForm(e.target.value);
+            }}
+          />
+          <p className="mt-1 text-xs text-ui-500">
+            Se propaga a la cuenta por pagar mientras esté abierta.
+          </p>
+        </ModalField>
+      </FormModal>
+
       {/* ─── Modal Abono ────────────────────────────────────────────────── */}
       <FormModal
-        open={!!abonoOC}
-        onClose={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
+        open={!!abonoOC}        onClose={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
         onCancel={() => { setAbonoOC(null); setAbonoForm({ monto: '', metodoPago: 'EFECTIVO' }); }}
         title="Registrar Abono"
         subtitle="Aplicar un pago parcial o total a la orden."
@@ -1313,13 +1455,12 @@ export default function ProveedoresPage() {
         )}
         <ModalField label="Monto a Abonar (MXN)" required>
           <input
-            type="number"
-            min="0"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             className={modalInputClass}
             placeholder="0.00"
             value={abonoForm.monto}
-            onChange={(e) => setAbonoForm({ ...abonoForm, monto: e.target.value })}
+            onChange={(e) => setAbonoForm({ ...abonoForm, monto: formatearMiles(e.target.value) })}
           />
         </ModalField>
         <ModalField label="Método de Pago">
@@ -1328,11 +1469,9 @@ export default function ProveedoresPage() {
             value={abonoForm.metodoPago}
             onChange={(e) => setAbonoForm({ ...abonoForm, metodoPago: e.target.value })}
           >
-            {MEDIOS_PAGO.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
+            {/* Solo efectivo (decisión del cliente): los demás métodos del
+                backend quedan fuera de la UI hasta que se definan. */}
+            <option value="EFECTIVO">EFECTIVO</option>
           </select>
         </ModalField>
       </FormModal>
@@ -1508,14 +1647,40 @@ export default function ProveedoresPage() {
                   </div>
                 </div>
                 {ledger ? (
-                  <DataTable
-                    columns={ledgerColumns}
-                    data={ledger.movimientos}
-                    keyExtractor={(r) => r.folio}
-                    loading={!ledger}
-                    emptyText="Sin operaciones registradas."
-                    maxBodyHeight="320px"
-                  />
+                  <>
+                    <DataTable
+                      columns={ledgerColumns}
+                      data={ledger.movimientos}
+                      keyExtractor={(r) => r.folio}
+                      loading={!ledger}
+                      emptyText="Sin operaciones registradas."
+                      maxBodyHeight="320px"
+                    />
+                    {/* Abonos registrados con quién los hizo (patrón "Creada por"). */}
+                    {ledger.abonos.length > 0 && (
+                      <div className="border border-ui-200 rounded-xl overflow-hidden">
+                        <p className="text-[10px] font-black text-ui-400 uppercase tracking-widest px-3 py-2 bg-ui-50">
+                          Abonos registrados ({ledger.abonos.length})
+                        </p>
+                        <div className="divide-y divide-ui-100 max-h-[200px] overflow-y-auto scrollbar-none">
+                          {ledger.abonos.map((a) => (
+                            <div key={a.codigo} className="flex items-center justify-between gap-3 px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="text-xs font-black text-ui-800 truncate">{a.codigo}</p>
+                                <p className="text-[10px] font-medium text-ui-400 truncate">
+                                  {a.folioOrden ?? '—'} · {a.fechaPago.slice(0, 10)} · {a.metodoPago ?? '—'}
+                                  {a.registradoPor ? ` · por ${a.registradoPor}` : ''}
+                                </p>
+                              </div>
+                              <span className="text-xs font-black text-green-600 whitespace-nowrap">
+                                {formatCurrency(a.monto)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : null}
               </div>
             </ModalBody>

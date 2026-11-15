@@ -410,13 +410,14 @@ describe('TrabajadoresService', () => {
       expect(prisma.proyectos.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { eliminado_en: null, activo: true } }),
       );
-      // Roles asignables: sin Administrador ni roles con permisos de sistema (PR #18 #2).
+      // Roles asignables: sin Administrador ni roles con permisos de sistema
+      // (PR #18 #2). EXCEPCIÓN: sistema.notificaciones.ver no cuenta (B5.2).
       expect(prisma.roles.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             activo: true,
             eliminado_en: null,
-            role_permissions: { none: { permissions: { modulo: 'sistema' } } },
+            role_permissions: { none: { permissions: { modulo: 'sistema', recurso: { not: 'notificaciones' } } } },
           }),
         }),
       );

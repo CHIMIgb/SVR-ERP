@@ -172,6 +172,19 @@ o elimina sin autorización explícita.
 Al crear o refactorizar vistas, reemplazar estos patrones manuales
 por sus componentes equivalentes. **Nunca re-implementar lo que ya existe.**
 
+**REGLA DURA — respetar la documentación de componentes reutilizables
+(`COMPONENTS.md`, raíz del repo):** toda vista usa el kit
+`src/components/ui/*` siguiendo SU documentación en `COMPONENTS.md` —
+variantes, props, tamaños, y cuándo usar / cuándo NO usar cada componente
+(ej. la acción de ver/leer en columnas de acciones va con
+`variant="info"` + icono `Eye`, el pie de un modal de solo lectura lleva
+`<ModalFooter>` con botón Cerrar `variant="secondary"`, los loaders usan
+el patrón documentado en la sección de componentes, etc.). Antes de
+construir o editar una vista, CONSULTAR `COMPONENTS.md`; desviarse del
+componente documentado es Request Changes. Si el componente no existe,
+se crea nuevo en `src/components/ui/` (con patrón `.tsx` + `.styles.ts`
++ `index.ts`) y se documenta en `COMPONENTS.md` en el mismo cambio.
+
 | Patrón manual existente | Componente a usar | Import |
 |------------------------|-------------------|--------|
 | `text-3xl font-black tracking-tight text-slate-900` en headers | `<PageHeader title="..." />` | `@/components/ui/PageHeader` |
@@ -308,6 +321,30 @@ en todo `/reportes`. Roles consolidados: **Administrativo** (absorbió Encargado
 de RRHH) y **Técnico** (absorbió Tecnico Mecanico/Soldador/Diesel/Mantenimiento
 — viejos roles desactivados). El detalle completo (roles, puestos, torres y
 gráfica) está en el README, sección "Estructura organizacional".
+
+#### ⚠️ Regla dura — Zona horaria: UNA sola fuente (.env)
+
+La zona horaria oficial de la empresa (`America/Mexico_City`, Nayarit Costa
+Sur) vive **SOLO en los archivos `.env`** — **PROHIBIDO hardcodearla en
+cualquier otro archivo de código**:
+
+- **API** (`apps/api/.env`): `TZ=America/Mexico_City` (+ `TIMEZONE`, que usan
+  `hoyEnZona()`/`inicioDelDiaEnZona()` de `common/validacion.ts`).
+- **Web** (`apps/web/.env`): `NEXT_PUBLIC_TZ=America/Mexico_City` → la lee
+  `APP_TIMEZONE` en `lib/formatters.ts`.
+
+**PROHIBIDO capturar "hoy" con `new Date().toISOString().split('T')[0]`** —
+`toISOString()` convierte a UTC y a partir de las 6 p.m. guarda/muestra el
+día SIGUIENTE (bug real del 12-nov: registrando a las 11 p.m. se guardó el
+13-nov). Usar:
+
+- **API:** `hoyEnZona()` (de `common/validacion.ts`).
+- **Web:** `fechaLocalHoy()` (de `lib/formatters.ts`).
+
+Los **comparadores de fecha puros** (ej. `sumarDias` con `T00:00:00Z` sobre
+un string `YYYY-MM-DD`) sí son correctos: son aritmética de fechas pura, no
+conversión de zona. Lo que prohíbe la regla es capturar "hoy" o mostrar
+fechas por UTC.
 
 #### ⚠️ Vigilancia de permisos (regla dura al agregar el permiso #107 y siguientes)
 

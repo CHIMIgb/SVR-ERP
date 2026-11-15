@@ -12,11 +12,13 @@ import {
   Prioridad,
   TipoReporteCampo,
   CategoriaReporte,
+  TipoNotificacion,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
 import { QueryReportesCampoDto } from './dto/query-reportes-campo.dto';
@@ -110,6 +112,7 @@ export class ReportesCampoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   // ────────────────────────────────────────────
@@ -403,10 +406,12 @@ export class ReportesCampoService {
         estado: EstadoIncidente.NUEVO,
         asignado_a_id: null,
         asignado_nombre: null,
+        asignado_user_id: null,
         eliminado_en: null,
       },
       data: {
         asignado_nombre: nombre,
+        asignado_user_id: userId,
         asignado_en: new Date(),
         actualizado_por: userId,
         actualizado_en: new Date(),
@@ -449,6 +454,19 @@ export class ReportesCampoService {
       previousValue: { asignadoAId: null, asignadoNombre: null },
       newValue: { aceptadoPor: nombre, estado: ESTADO_LABELS[existente.estado as EstadoIncidente] },
     });
+
+    // B5.10: aviso al CREADOR de que su reporte fue aceptado (y por quién).
+    if (existente.usuario_id && existente.usuario_id !== userId) {
+      const nombreAceptor = (await this.nombreDeUsuario(userId)) ?? nombre;
+      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `${nombreAceptor} aceptó tu reporte ${serialized.codigo ?? ''}`,
+        cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
 
     return serialized;
   }
@@ -578,6 +596,16 @@ export class ReportesCampoService {
       actorType: 'USER',
       actorRole: 'autenticado',
       newValue: serialized,
+    });
+
+    // B5.10: aviso a TODA el área del reporte (torre destino).
+    await this.notificacionesService.emitirATorre(torre, {
+      tipo: TipoNotificacion.ALERTA,
+      titulo: `Nuevo reporte ${serialized.codigo ?? ''}`,
+      cuerpo: `${(dto.prioridad ? PRIORIDAD_LABELS[dto.prioridad] : undefined) ?? 'Reporte'} — ${dto.descripcion.slice(0, 140)}`,
+      referenciaTipo: 'reportes_campo',
+      referenciaId: reporte.id,
+      creadoPor: userId,
     });
 
     return serialized;
@@ -760,6 +788,16 @@ export class ReportesCampoService {
       data: {
         asignado_a_id: asignadoA,
         asignado_nombre: asignadoNombre,
+        // B5.12: si el trabajador tiene cuenta enlazada, queda como responsable
+        // (para notificarle el cierre); texto libre → null.
+        asignado_user_id: asignadoA
+          ? (
+              await this.prisma.trabajadores.findUnique({
+                where: { id: asignadoA },
+                select: { usuario: { select: { id: true } } },
+              })
+            )?.usuario?.id ?? null
+          : null,
         asignado_en: new Date(),
         actualizado_por: userId,
         actualizado_en: new Date(),
@@ -809,6 +847,40 @@ export class ReportesCampoService {
         estado: ESTADO_LABELS[existente.estado as EstadoIncidente],
       },
     });
+
+    // B5.10/B5.13: al (re)asignar se avisa al NUEVO asignado (si cambió y tiene
+    // cuenta) y al ANTERIOR, a quien le quitaron el reporte.
+    if (asignadoA && asignadoA !== existente.asignado_a_id) {
+      await this.notificacionesService.emitirATrabajador(asignadoA, {
+        tipo: TipoNotificacion.ALERTA,
+        titulo: `Te asignaron el reporte ${serialized.codigo ?? ''}`,
+        cuerpo: `${PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte'} — ${existente.descripcion.slice(0, 140)}`,
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
+    if (existente.asignado_a_id && existente.asignado_a_id !== asignadoA) {
+      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `El reporte ${serialized.codigo ?? ''} fue reasignado a otra persona`,
+        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    } else if (!existente.asignado_a_id && existente.asignado_user_id && existente.asignado_user_id !== userId) {
+      // Antes lo tenía asignado un USUARIO (lo aceptó por texto): se le avisa
+      // que el reporte fue reasignado (a quien corresponda).
+      await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `El reporte ${serialized.codigo ?? ''} que aceptaste fue reasignado a otra persona`,
+        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
 
     return serialized;
   }
@@ -920,6 +992,30 @@ export class ReportesCampoService {
       newValue: { estado: ESTADO_LABELS[dto.estado] },
     });
 
+    // B5.10: al CERRAR se avisa al asignado — trabajador con cuenta o, en su
+    // defecto, el USUARIO responsable (quien aceptó); si no hay ninguno, nada.
+    if (dto.estado === EstadoIncidente.CERRADO) {
+      if (existente.asignado_a_id) {
+        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Cerraron el reporte ${serialized.codigo ?? ''} que tenías asignado`,
+          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      } else if (existente.asignado_user_id) {
+        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Cerraron tu reporte ${serialized.codigo ?? ''}`,
+          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      }
+    }
+
     return serialized;
   }
 
@@ -988,6 +1084,40 @@ export class ReportesCampoService {
         texto: dto.texto.trim().slice(0, 120),
       },
     });
+
+    // B5.10: actividades publicadas — se avisa a LA OTRA PARTE: si publicó el
+    // creador → el asignado (trabajador con cuenta o usuario responsable); si
+    // publicó el asignado (u otro) → el creador.
+    if (userId === existente.usuario_id && (existente.asignado_a_id || existente.asignado_user_id)) {
+      if (existente.asignado_a_id) {
+        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
+          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      } else {
+        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id!, {
+          tipo: TipoNotificacion.INFO,
+          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
+          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+          referenciaTipo: 'reportes_campo',
+          referenciaId: id,
+          creadoPor: userId,
+        });
+      }
+    } else if (userId !== existente.usuario_id && existente.usuario_id) {
+      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
+        tipo: TipoNotificacion.INFO,
+        titulo: `Nueva actividad en tu reporte ${existente.codigo ?? ''}`,
+        cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
+        referenciaTipo: 'reportes_campo',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
 
     return {
       id: actividad.id,
@@ -1447,6 +1577,21 @@ export class ReportesCampoService {
   ): string {
     const asignado = reporte.asignado_a?.nombre ?? reporte.asignado_nombre;
     return asignado ?? reporte.usuario ?? userId;
+  }
+
+  /** Nombre completo del usuario receptor del aviso (para "quién aceptó"). */
+  private async nombreDeUsuario(userId: string): Promise<string | null> {
+    const u = await this.prisma.users.findUnique({
+      where: { id: userId },
+      include: {
+        personas_users_persona_idTopersonas: {
+          select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+        },
+      },
+    });
+    const p = u?.personas_users_persona_idTopersonas;
+    if (!p) return null;
+    return [p.nombre, p.apellido_paterno, p.apellido_materno].filter(Boolean).join(' ');
   }
 
   /**

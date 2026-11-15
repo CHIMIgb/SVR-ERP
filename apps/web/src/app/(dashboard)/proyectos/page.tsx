@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, HardHat, CheckCircle2, FolderKanban,
-  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Wallet,
+  Pencil, Trash2, SlidersHorizontal, X, AlertCircle, Eye, Wallet, Flag,
 } from 'lucide-react';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -11,14 +11,13 @@ import { StatsCard } from '@/components/ui/StatsCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { SearchBar, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { FormModal, ModalField, modalInputClass, modalSelectClass } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import ProjectDetailsModal from '@/components/projects/ProjectDetailsModal';
-import { formatDate } from '@/lib/formatters';
+import { formatDate, formatearMiles, parsearMiles, fechaLocalHoy } from '@/lib/formatters';
 import {
   proyectosApi,
   type ProyectoDTO,
@@ -38,22 +37,17 @@ const ESTADOS: { value: NonNullable<ProyectoCreateInput['estado']>; label: strin
   { value: 'PAUSADO', label: 'Pausado' },
 ];
 
-const estadoVariant: Record<ProyectoDTO['estado'], 'primary' | 'success' | 'warning'> = {
-  'En Proceso': 'primary',
-  'Finalizado': 'success',
-  'Pausado': 'warning',
-};
-
 const emptyForm = {
   nombre: '',
   clienteId: '',
   presupuesto: '',
-  fechaInicio: new Date().toISOString().split('T')[0],
+  fechaInicio: '',
   fechaFin: '',
   estado: 'EN_PROCESO' as NonNullable<ProyectoCreateInput['estado']>,
   progreso: '0',
   calle: '',
   colonia: '',
+  municipio: '',
   ciudad: '',
   estadoUbicacion: '',
   codigoPostal: '',
@@ -102,6 +96,9 @@ export default function ProyectosPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [estadoOpen, setEstadoOpen] = useState(false);
+  const [estadoValue, setEstadoValue] =
+    useState<NonNullable<ProyectoCreateInput['estado']>>('EN_PROCESO');
   const [finanzasOpen, setFinanzasOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ProyectoDTO | null>(null);
   const [viewItem, setViewItem] = useState<ProyectoDTO | null>(null);
@@ -137,7 +134,7 @@ export default function ProyectosPage() {
         setRegistros(res.data.items);
         setPagination(res.data.pagination);
       } else {
-        showToast('Error al cargar proyectos.', 'error');
+        showToast('Error al cargar las obras.', 'error');
       }
     } catch {
       showToast('No se pudo conectar con el servidor.', 'error');
@@ -220,6 +217,18 @@ export default function ProyectosPage() {
   }, [fetchData, search, filterValues]);
 
   // ── Handlers de modales ──
+  const handleFechaInicioChange = useCallback(
+    (valor: string) => {
+      if (valor && valor < fechaLocalHoy()) {
+        showToast('La fecha de inicio no puede ser anterior a hoy.', 'error');
+        setForm((prev) => ({ ...prev, fechaInicio: '' }));
+        return;
+      }
+      setForm((prev) => ({ ...prev, fechaInicio: valor }));
+    },
+    [showToast],
+  );
+
   const openCreate = useCallback(() => {
     setForm(emptyForm);
     setCreateOpen(true);
@@ -230,13 +239,14 @@ export default function ProyectosPage() {
     setForm({
       nombre: item.nombre,
       clienteId: item.clienteId,
-      presupuesto: String(item.presupuesto),
+      presupuesto: formatearMiles(String(item.presupuesto)),
       fechaInicio: item.fechaInicio,
       fechaFin: item.fechaFin,
       estado: estadoToValue(item.estado),
       progreso: String(item.progreso),
       calle: item.calle ?? '',
       colonia: item.colonia ?? '',
+      municipio: item.municipio ?? '',
       ciudad: item.ciudad ?? '',
       estadoUbicacion: item.estadoUbicacion ?? '',
       codigoPostal: item.codigoPostal ?? '',
@@ -247,10 +257,16 @@ export default function ProyectosPage() {
   const openFinanzas = useCallback((item: ProyectoDTO) => {
     setSelectedItem(item);
     setFinanzasForm({
-      ingresoCobrado: String(item.ingresoCobrado),
-      gastado: String(item.gastado),
+      ingresoCobrado: formatearMiles(String(item.ingresoCobrado)),
+      gastado: formatearMiles(String(item.gastado)),
     });
     setFinanzasOpen(true);
+  }, []);
+
+  const openEstado = useCallback((item: ProyectoDTO) => {
+    setSelectedItem(item);
+    setEstadoValue(estadoToValue(item.estado));
+    setEstadoOpen(true);
   }, []);
 
   const openDelete = useCallback((item: ProyectoDTO) => {
@@ -265,14 +281,14 @@ export default function ProyectosPage() {
   // ── Validación ──
   const validateForm = useCallback(() => {
     if (!form.nombre.trim()) {
-      showToast('El nombre del proyecto es obligatorio.', 'error');
+      showToast('El nombre de la obra es obligatorio.', 'error');
       return false;
     }
     if (!form.clienteId) {
       showToast('Selecciona un cliente.', 'error');
       return false;
     }
-    const ppto = parseFloat(form.presupuesto);
+    const ppto = parsearMiles(form.presupuesto);
     if (!form.presupuesto || isNaN(ppto) || ppto <= 0) {
       showToast('Ingresa un presupuesto válido mayor a cero.', 'error');
       return false;
@@ -309,13 +325,14 @@ export default function ProyectosPage() {
     () => ({
       nombre: form.nombre.trim(),
       clienteId: form.clienteId,
-      presupuesto: parseFloat(form.presupuesto),
+      presupuesto: parsearMiles(form.presupuesto),
       fechaInicio: form.fechaInicio,
       fechaFin: form.fechaFin,
       estado: form.estado,
       progreso: parseFloat(form.progreso),
       calle: form.calle.trim(),
       colonia: form.colonia.trim(),
+      municipio: form.municipio.trim(),
       ciudad: form.ciudad.trim(),
       estadoUbicacion: form.estadoUbicacion.trim(),
       codigoPostal: form.codigoPostal.trim(),
@@ -325,7 +342,7 @@ export default function ProyectosPage() {
 
   const parseOptionalMoney = (value: string): number | undefined => {
     if (value === '') return undefined;
-    const n = parseFloat(value);
+    const n = parsearMiles(value);
     return isNaN(n) ? undefined : n;
   };
 
@@ -339,7 +356,8 @@ export default function ProyectosPage() {
       ['gastado', 'Gasto acumulado'],
     ] as const) {
       const v = finanzasForm[campo];
-      if (v !== '' && (isNaN(parseFloat(v)) || parseFloat(v) < 0)) {
+      const n = parsearMiles(v);
+      if (v !== '' && (isNaN(n) || n < 0)) {
         showToast(`${label} debe ser un número mayor o igual a cero.`, 'error');
         return false;
       }
@@ -353,16 +371,16 @@ export default function ProyectosPage() {
     try {
       const res = await proyectosApi.crear(buildPayload());
       if (res.success) {
-        showToast(`Proyecto "${form.nombre}" creado exitosamente.`, 'success');
+        showToast(`Obra "${form.nombre}" creada exitosamente.`, 'success');
         setCreateOpen(false);
         setForm(emptyForm);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al crear el proyecto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al crear la obra.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al crear el proyecto.', 'error');
+      showToast('Error de conexión al crear la obra.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -374,17 +392,17 @@ export default function ProyectosPage() {
     try {
       const res = await proyectosApi.actualizar(selectedItem.id, buildPayload());
       if (res.success) {
-        showToast(`Proyecto "${form.nombre}" actualizado exitosamente.`, 'success');
+        showToast(`Obra "${form.nombre}" actualizada exitosamente.`, 'success');
         setEditOpen(false);
         setSelectedItem(null);
         setForm(emptyForm);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al actualizar el proyecto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al actualizar la obra.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al actualizar el proyecto.', 'error');
+      showToast('Error de conexión al actualizar la obra.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -414,22 +432,44 @@ export default function ProyectosPage() {
     }
   }, [selectedItem, validateFinanzas, finanzasForm, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
 
+  const handleEstado = useCallback(async () => {
+    if (!selectedItem) return;
+    setSubmitting(true);
+    try {
+      const res = await proyectosApi.actualizar(selectedItem.id, { estado: estadoValue });
+      if (res.success) {
+        const label = ESTADOS.find((e) => e.value === estadoValue)?.label ?? estadoValue;
+        showToast(`"${selectedItem.nombre}" ahora está ${label}.`, 'success');
+        setEstadoOpen(false);
+        setSelectedItem(null);
+        fetchData(pagination.page, search, filterValues);
+        fetchStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'Error al cambiar el estado.'), 'error');
+      }
+    } catch {
+      showToast('Error de conexión al cambiar el estado.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedItem, estadoValue, showToast, fetchData, pagination.page, search, filterValues, fetchStats]);
+
   const handleDelete = useCallback(async () => {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
       const res = await proyectosApi.eliminar(selectedItem.id);
       if (res.success) {
-        showToast(`Proyecto "${selectedItem.nombre}" eliminado exitosamente.`, 'success');
+        showToast(`Obra "${selectedItem.nombre}" eliminada exitosamente.`, 'success');
         setDeleteOpen(false);
         setSelectedItem(null);
         fetchData(pagination.page, search, filterValues);
         fetchStats();
       } else {
-        showToast(mensajeErrorApi(res.error, 'Error al eliminar el proyecto.'), 'error');
+        showToast(mensajeErrorApi(res.error, 'Error al eliminar la obra.'), 'error');
       }
     } catch {
-      showToast('Error de conexión al eliminar el proyecto.', 'error');
+      showToast('Error de conexión al eliminar la obra.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -439,7 +479,7 @@ export default function ProyectosPage() {
   const columns: Column<ProyectoDTO>[] = [
     {
       key: 'nombre',
-      header: 'Proyecto / Cliente',
+      header: 'Obra / Cliente',
       render: (item) => (
         <div>
           <div className="font-black text-ui-900">{item.nombre}</div>
@@ -451,7 +491,7 @@ export default function ProyectosPage() {
       key: 'estado',
       header: 'Estado',
       render: (item) => (
-        <Badge variant={estadoVariant[item.estado]} size="sm">{item.estado}</Badge>
+        <span className="text-sm font-semibold text-ui-700">{item.estado}</span>
       ),
     },
     {
@@ -465,6 +505,7 @@ export default function ProyectosPage() {
         const direccionCompleta = [
           item.calle,
           item.colonia,
+          item.municipio,
           `${item.ciudad}, ${item.estadoUbicacion}`.replace(/ , |, $/, ', '),
           item.codigoPostal ? `CP ${item.codigoPostal}` : null,
         ]
@@ -525,6 +566,16 @@ export default function ProyectosPage() {
           )}
           {puedeEditar && (
             <Button
+              variant="primary"
+              size="sm"
+              icon={<Flag className="w-3.5 h-3.5" />}
+              onClick={(e) => { e.stopPropagation(); openEstado(item); }}
+            >
+              Estado
+            </Button>
+          )}
+          {puedeEditar && (
+            <Button
               variant="success"
               size="sm"
               icon={<Wallet className="w-3.5 h-3.5" />}
@@ -561,13 +612,13 @@ export default function ProyectosPage() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
-        title="Gestión de Proyectos"
+        title="Gestión de Obras"
         subtitle="Control físico y financiero de obras activas."
         action={
           puedeCrear ? (
             <Button
           skeleton={initialLoading} variant="primary" icon={<Plus className="w-5 h-5" />} onClick={openCreate}>
-              Nuevo Proyecto
+              Nueva Obra
             </Button>
           ) : undefined
         }
@@ -577,7 +628,7 @@ export default function ProyectosPage() {
         <StatsCard
           icon={<FolderKanban className="w-6 h-6" />}
           value={stats.total}
-          label="Total Proyectos"
+          label="Total Obras"
           color="info"
         loading={initialLoading}
         />
@@ -602,7 +653,7 @@ export default function ProyectosPage() {
           value={search}
           onChange={handleSearchChange}
           onSearch={handleSearch}
-          placeholder="Buscar por proyecto o cliente..."
+          placeholder="Buscar por obra o cliente..."
           className="flex-1"
         />
         <Button
@@ -684,7 +735,7 @@ export default function ProyectosPage() {
             data={registros}
             loading={initialLoading}
             keyExtractor={(item) => item.id}
-            emptyText="No se encontraron proyectos que coincidan con la búsqueda."
+            emptyText="No se encontraron obras que coincidan con la búsqueda."
             maxBodyHeight="520px"
           />
         </div>
@@ -705,15 +756,15 @@ export default function ProyectosPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCancel={() => setCreateOpen(false)}
-        title="Nuevo Proyecto"
+        title="Nueva Obra"
         subtitle="Registra una nueva obra para control físico y financiero."
-        submitLabel="Crear Proyecto"
+        submitLabel="Crear Obra"
         cancelLabel="Cancelar"
         onSubmit={handleCreate}
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre del proyecto" required className="sm:col-span-2">
+          <ModalField label="Nombre de la obra" required className="sm:col-span-2">
             <input
               type="text"
               className={modalInputClass}
@@ -738,13 +789,12 @@ export default function ProyectosPage() {
 
           <ModalField label="Presupuesto (MXN)" required className="sm:col-span-2">
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
-              placeholder="1500000"
+              placeholder="30,000"
               value={form.presupuesto}
-              onChange={(e) => setForm({ ...form, presupuesto: e.target.value })}
+              onChange={(e) => setForm({ ...form, presupuesto: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
@@ -753,7 +803,7 @@ export default function ProyectosPage() {
               type="date"
               className={modalInputClass}
               value={form.fechaInicio}
-              onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+              onChange={(e) => handleFechaInicioChange(e.target.value)}
             />
           </ModalField>
 
@@ -772,7 +822,7 @@ export default function ProyectosPage() {
               Ubicación de la obra
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ModalField label="Calle y número" required className="sm:col-span-2">
+              <ModalField label="Calle y número" required>
                 <input
                   type="text"
                   className={modalInputClass}
@@ -789,6 +839,16 @@ export default function ProyectosPage() {
                   placeholder="Ej: Col. Centro"
                   value={form.colonia}
                   onChange={(e) => setForm({ ...form, colonia: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Municipio" hint="Opcional.">
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Tepic"
+                  value={form.municipio}
+                  onChange={(e) => setForm({ ...form, municipio: e.target.value })}
                 />
               </ModalField>
 
@@ -834,7 +894,7 @@ export default function ProyectosPage() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onCancel={() => setEditOpen(false)}
-        title="Editar Proyecto"
+        title="Editar Obra"
         subtitle={selectedItem ? `Editando: ${selectedItem.nombre}` : undefined}
         submitLabel="Guardar Cambios"
         cancelLabel="Cancelar"
@@ -842,7 +902,7 @@ export default function ProyectosPage() {
         isSubmitting={submitting}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ModalField label="Nombre del proyecto" required className="sm:col-span-2">
+          <ModalField label="Nombre de la obra" required className="sm:col-span-2">
             <input
               type="text"
               className={modalInputClass}
@@ -864,39 +924,14 @@ export default function ProyectosPage() {
             </select>
           </ModalField>
 
-          <ModalField label="Presupuesto (MXN)" required>
+          <ModalField label="Presupuesto (MXN)" required className="sm:col-span-2">
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               className={modalInputClass}
+              placeholder="30,000"
               value={form.presupuesto}
-              onChange={(e) => setForm({ ...form, presupuesto: e.target.value })}
-            />
-          </ModalField>
-
-          <ModalField label="Estado">
-            <select
-              className={modalSelectClass}
-              value={form.estado}
-              onChange={(e) =>
-                setForm({ ...form, estado: e.target.value as NonNullable<ProyectoCreateInput['estado']> })
-              }
-            >
-              {ESTADOS.map((e) => (
-                <option key={e.value} value={e.value}>{e.label}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <ModalField label="Progreso (%)" hint="Avance físico de la obra.">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              className={modalInputClass}
-              value={form.progreso}
-              onChange={(e) => setForm({ ...form, progreso: e.target.value })}
+              onChange={(e) => setForm({ ...form, presupuesto: formatearMiles(e.target.value) })}
             />
           </ModalField>
 
@@ -905,7 +940,7 @@ export default function ProyectosPage() {
               type="date"
               className={modalInputClass}
               value={form.fechaInicio}
-              onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+              onChange={(e) => handleFechaInicioChange(e.target.value)}
             />
           </ModalField>
 
@@ -924,7 +959,7 @@ export default function ProyectosPage() {
               Ubicación de la obra
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ModalField label="Calle y número" required className="sm:col-span-2">
+              <ModalField label="Calle y número" required>
                 <input
                   type="text"
                   className={modalInputClass}
@@ -941,6 +976,16 @@ export default function ProyectosPage() {
                   placeholder="Ej: Col. Centro"
                   value={form.colonia}
                   onChange={(e) => setForm({ ...form, colonia: e.target.value })}
+                />
+              </ModalField>
+
+              <ModalField label="Municipio" hint="Opcional.">
+                <input
+                  type="text"
+                  className={modalInputClass}
+                  placeholder="Ej: Tepic"
+                  value={form.municipio}
+                  onChange={(e) => setForm({ ...form, municipio: e.target.value })}
                 />
               </ModalField>
 
@@ -983,10 +1028,41 @@ export default function ProyectosPage() {
       </FormModal>
 
       <FormModal
+        open={estadoOpen}
+        onClose={() => setEstadoOpen(false)}
+        onCancel={() => setEstadoOpen(false)}
+        title="Cambiar Estado"
+        subtitle={selectedItem ? `Obra: ${selectedItem.nombre}` : undefined}
+        submitLabel="Guardar Estado"
+        cancelLabel="Cancelar"
+        onSubmit={handleEstado}
+        isSubmitting={submitting}
+      >
+        <ModalField label="Estado de la obra" required>
+          <select
+            className={modalSelectClass}
+            value={estadoValue}
+            onChange={(e) =>
+              setEstadoValue(e.target.value as NonNullable<ProyectoCreateInput['estado']>)
+            }
+          >
+            {ESTADOS.map((e) => (
+              <option key={e.value} value={e.value}>{e.label}</option>
+            ))}
+          </select>
+        </ModalField>
+
+        <p className="text-[11px] text-ui-400 font-medium mt-3">
+          El estado se sincroniza con la obra: al marcarlo Finalizado deja de
+          aparecer en el catálogo de obras de /operaciones.
+        </p>
+      </FormModal>
+
+      <FormModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onCancel={() => setDeleteOpen(false)}
-        title="Eliminar Proyecto"
+        title="Eliminar Obra"
         subtitle="Esta acción no se puede deshacer."
         submitLabel="Sí, Eliminar"
         cancelLabel="Cancelar"
@@ -999,7 +1075,7 @@ export default function ProyectosPage() {
               <AlertCircle className="w-7 h-7 text-red-500" />
             </div>
             <p className="text-sm text-ui-700 mb-1">
-              ¿Estás seguro de eliminar este proyecto?
+              ¿Estás seguro de eliminar esta obra?
             </p>
             <p className="font-black text-ui-900 text-lg mb-2">{selectedItem.nombre}</p>
             <p className="text-xs text-ui-500">
@@ -1037,25 +1113,27 @@ export default function ProyectosPage() {
 
             <ModalField label="Ingreso cobrado (MXN)" hint="Monto facturado y cobrado al cliente hasta la fecha.">
               <input
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 className={modalInputClass}
-                placeholder="Ej: 350000"
+                placeholder="350,000"
                 value={finanzasForm.ingresoCobrado}
-                onChange={(e) => setFinanzasForm({ ...finanzasForm, ingresoCobrado: e.target.value })}
+                onChange={(e) =>
+                  setFinanzasForm({ ...finanzasForm, ingresoCobrado: formatearMiles(e.target.value) })
+                }
               />
             </ModalField>
 
             <ModalField label="Gasto acumulado (MXN)" hint="Costo real acumulado de ejecutar la obra hasta la fecha.">
               <input
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 className={modalInputClass}
-                placeholder="Ej: 280000"
+                placeholder="280,000"
                 value={finanzasForm.gastado}
-                onChange={(e) => setFinanzasForm({ ...finanzasForm, gastado: e.target.value })}
+                onChange={(e) =>
+                  setFinanzasForm({ ...finanzasForm, gastado: formatearMiles(e.target.value) })
+                }
               />
             </ModalField>
 

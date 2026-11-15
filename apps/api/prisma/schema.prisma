@@ -93,6 +93,7 @@ model articulos_inventario {
   articulos_precio                                  articulos_precio[]
   ventas_items                                      ventas_items[]
   ordenes_compra_items                             ordenes_compra_items[]
+  materiales_criba_materiales_criba_articuloTousers materiales_criba[]         @relation("materiales_criba_articulo")
 
   @@index([categoria_id])
   @@index([proveedor_id])
@@ -275,7 +276,7 @@ model clientes {
   id                                    String                   @id @db.Uuid
   codigo                                String?                  @unique
   nombre                                String
-  empresa                               String
+  empresa                               String?
   correo                                String
   telefono                              String
   activo                                Boolean                  @default(true)
@@ -295,6 +296,7 @@ model clientes {
   pagos                                 pagos[]
   proyectos                             proyectos[]
   trabajadores                          trabajadores[]
+  ventas                                ventas[]
 }
 
 model contactos_emergencia {
@@ -320,6 +322,7 @@ model cotizaciones {
   cliente_id                                String           @db.Uuid
   descripcion                               String
   monto                                     Decimal          @db.Decimal(14, 2)
+  condiciones                               String?
   fecha                                     DateTime         @db.Date
   estado                                    EstadoCotizacion @default(PENDIENTE)
   motivo_rechazo                            String?
@@ -331,12 +334,33 @@ model cotizaciones {
   eliminado_en                              DateTime?        @db.Timestamptz()
   vendedor_id                               String?          @db.Uuid
   facturas                                  facturas[]
+  items                                     cotizacion_items[]
   clientes                                  clientes         @relation(fields: [cliente_id], references: [id])
   users_cotizaciones_actualizado_porTousers users?           @relation("cotizaciones_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_actualizado_por")
   users_cotizaciones_creado_porTousers      users?           @relation("cotizaciones_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_creado_por")
   users_cotizaciones_vendedor_idTousers     users?           @relation("cotizaciones_vendedor_idTousers", fields: [vendedor_id], references: [id], onUpdate: NoAction, map: "fk_cotizaciones_vendedor")
 
   @@index([cliente_id])
+}
+
+model cotizacion_items {
+  id               String     @id @db.Uuid
+  cotizacion_id    String     @db.Uuid
+  descripcion      String
+  cantidad         Decimal    @db.Decimal(10, 4)
+  unidad           String
+  precio_unitario  Decimal    @db.Decimal(12, 2)
+  importe          Decimal    @db.Decimal(12, 2)
+  orden            Int        @default(0)
+  creado_en        DateTime   @default(now()) @db.Timestamptz()
+  actualizado_en   DateTime   @db.Timestamptz()
+  creado_por       String?    @db.Uuid
+  actualizado_por  String?    @db.Uuid
+  cotizaciones     cotizaciones @relation(fields: [cotizacion_id], references: [id], onDelete: Cascade)
+  users_cotizacion_items_actualizado_porTousers users? @relation("cotizacion_items_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_cotizacion_items_actualizado_por")
+  users_cotizacion_items_creado_porTousers      users? @relation("cotizacion_items_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_cotizacion_items_creado_por")
+
+  @@index([cotizacion_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -904,6 +928,7 @@ model maquinas {
   rastreo_gps                           rastreo_gps[]
   registros_mantenimiento               registros_mantenimiento[]
   reportes_campo                        reportes_campo[]
+  registros_criba                       registros_criba[]            @relation("registros_criba_maquina")
 
   @@index([estado])
   @@index([operador_id])
@@ -942,6 +967,53 @@ model niveles_bloqueo {
   usuarios_bloqueados usuarios_bloqueados[]
 }
 
+enum TipoNotificacion {
+  ALERTA
+  INFO
+}
+
+/// B5: una fila por evento del ERP; audiencia por rol (null = todos los roles).
+/// El estado de leído/descartado vive POR USUARIO en `notificaciones_lecturas`.
+/// Destinatario explícito: usuario / torre(área) / rol — elegido al emitir.
+model notificaciones {
+  id               String            @id @db.Uuid
+  tipo             TipoNotificacion  @default(INFO)
+  titulo           String            @db.VarChar(200)
+  cuerpo           String
+  referencia_tipo  String?
+  referencia_id    String?           @db.Uuid
+  audiencia_rol_id String?           @db.Uuid
+  /// B5.8: destinatario PERSONAL (ej. "te asignaron el reporte").
+  destinatario_user_id String?       @db.Uuid
+  /// B5.8: audiencia por ÁREA/TORRE (ej. "se creó un reporte de tu área").
+  audiencia_torre  CategoriaReporte?
+  creado_en        DateTime          @default(now()) @db.Timestamptz()
+  creado_por       String?           @db.Uuid
+  roles            roles?            @relation("notificaciones_audiencia", fields: [audiencia_rol_id], references: [id])
+  users_notificaciones_creado_porTousers users? @relation("notificaciones_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_notificaciones_creado_por")
+  users_notificaciones_destinatarioTousers users? @relation("notificaciones_destinatario", fields: [destinatario_user_id], references: [id], onUpdate: NoAction, map: "fk_notificaciones_destinatario")
+  lecturas         notificaciones_lecturas[] @relation("lecturas_notificacion")
+
+  @@index([audiencia_rol_id])
+  @@index([destinatario_user_id])
+  @@index([audiencia_torre])
+  @@index([creado_en])
+}
+
+/// Estado por USUARIO de cada notificación (lectura y descarte individuales).
+model notificaciones_lecturas {
+  notificacion_id String     @db.Uuid
+  user_id         String     @db.Uuid
+  leido_en        DateTime?  @db.Timestamptz()
+  descartada      Boolean    @default(false)
+  creado_en       DateTime   @default(now()) @db.Timestamptz()
+  notificaciones  notificaciones @relation("lecturas_notificacion", fields: [notificacion_id], references: [id], onDelete: Cascade)
+  users           users          @relation("lecturas_usuario", fields: [user_id], references: [id], onUpdate: NoAction, map: "fk_notificaciones_lecturas_usuario")
+
+  @@id([notificacion_id, user_id])
+  @@index([user_id])
+}
+
 model ordenes_compra {
   id                                          String              @id @db.Uuid
   folio                                       String              @unique
@@ -950,6 +1022,8 @@ model ordenes_compra {
   monto                                       Decimal             @db.Decimal(14, 2)
   pagado                                      Decimal             @default(0) @db.Decimal(14, 2)
   fecha                                       DateTime            @db.Date
+  /// Fecha límite de pago (B4): se propaga a la CxP que nace con la OC.
+  fecha_vencimiento                           DateTime?           @db.Date
   estado                                      EstadoOrdenCompra   @default(PENDIENTE)
   motivo_cancelacion                          String?
   activo                                      Boolean             @default(true)
@@ -1051,7 +1125,7 @@ model obras {
   registros_asistencia               registros_asistencia[]
   reportes_campo                     reportes_campo[]
 
-  @@index([proyecto_id])
+  @@unique([proyecto_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1243,6 +1317,7 @@ model proyectos {
   // ── Ubicación exacta de la obra (calle incluye número; estado = entidad federativa) ──
   calle                                  String?
   colonia                                String?
+  municipio                              String?
   ciudad                                 String?
   estado_ubicacion                       String?
   codigo_postal                          String?                  @db.VarChar(10)
@@ -1262,6 +1337,7 @@ model proyectos {
   trabajadores_proyectos                 trabajadores_proyectos[]
   cuentas_por_cobrar                     cuentas_por_cobrar[]
   reportes_campo                         reportes_campo[]
+  registros_criba                        registros_criba[]            @relation("registros_criba_proyecto")
 
   @@index([estado], map: "idx_proyectos_estado")
   @@index([cliente_id])
@@ -1396,6 +1472,14 @@ model registros_criba {
   fecha                                        DateTime      @db.Date
   turno                                        Turno
   operador_id                                  String?       @db.Uuid
+  /// B6: máquina que produjo y proyecto de destino (opcionales; nullable para
+  /// los registros previos).
+  maquina_id                                   String?       @db.Uuid
+  proyecto_id                                  String?       @db.Uuid
+  /// B7: material del catálogo de criba (Criba fina/gruesa/Arena lavada).
+  material_criba_id                            String?       @db.Uuid
+  /// B7: fecha en que la producción se envió al inventario (guard anti-doble).
+  inventario_en                                DateTime?     @db.Timestamptz()
   tipo_material                                String
   material_producido                           Decimal       @db.Decimal(10, 2)
   horas_trabajadas                             Decimal       @db.Decimal(6, 2)
@@ -1410,8 +1494,26 @@ model registros_criba {
   users_registros_criba_actualizado_porTousers users?        @relation("registros_criba_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_registros_criba_actualizado_por")
   users_registros_criba_creado_porTousers      users?        @relation("registros_criba_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_registros_criba_creado_por")
   trabajadores                                 trabajadores? @relation(fields: [operador_id], references: [id])
+  maquinas                                     maquinas?     @relation("registros_criba_maquina", fields: [maquina_id], references: [id])
+  proyectos                                    proyectos?    @relation("registros_criba_proyecto", fields: [proyecto_id], references: [id])
+  materiales_criba                             materiales_criba? @relation("registros_criba_material", fields: [material_criba_id], references: [id])
 
   @@index([fecha])
+  @@index([maquina_id])
+  @@index([proyecto_id])
+  @@index([material_criba_id])
+}
+
+/// B7: catálogo de materiales que produce la criba; cada material enlaza a su
+/// artículo de inventario para las entradas de producción.
+model materiales_criba {
+  id             String   @id @db.Uuid
+  nombre         String   @unique
+  articulo_id    String?  @db.Uuid
+  creado_en      DateTime @default(now()) @db.Timestamptz()
+  actualizado_en DateTime @db.Timestamptz()
+  articulos_inventario articulos_inventario? @relation("materiales_criba_articulo", fields: [articulo_id], references: [id])
+  registros_criba      registros_criba[]     @relation("registros_criba_material")
 }
 
 model registros_mantenimiento {
@@ -1470,8 +1572,12 @@ model reportes_campo {
   asignado_a_id                               String?            @db.Uuid
   asignado_en                                 DateTime?          @db.Timestamptz()
   asignado_nombre                             String?
+  /// B5.12: el USUARIO responsable (quién aceptó, o la cuenta enlazada del
+  /// trabajador asignado) — para notificarle al cerrar el reporte.
+  asignado_user_id                            String?            @db.Uuid
   cerrado_en                                  DateTime?          @db.Timestamptz()
   asignado_a                                  trabajadores?      @relation("reportes_campo_asignado_a", fields: [asignado_a_id], references: [id])
+  asignado_user                               users?             @relation("reportes_campo_asignado_user", fields: [asignado_user_id], references: [id])
   users_reportes_campo_actualizado_porTousers users?             @relation("reportes_campo_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_actualizado_por")
   users_reportes_campo_creado_porTousers      users?             @relation("reportes_campo_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_creado_por")
   users_reportes_campo_usuario_idTousers      users?             @relation("reportes_campo_usuario_idTousers", fields: [usuario_id], references: [id], onUpdate: NoAction, map: "fk_reportes_campo_usuario")
@@ -1580,6 +1686,7 @@ model roles {
   users_roles_creado_porTousers      users?             @relation("roles_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_roles_creado_por")
   users_roles                        users_roles[]
   puestos_rol                        categorias_puesto[]  @relation("puestos_rol")
+  notificaciones_audiencia           notificaciones[]     @relation("notificaciones_audiencia")
 }
 
 model sessions {
@@ -1645,6 +1752,9 @@ model trabajadores {
   fecha_contratacion                        DateTime?                     @db.Date
   vacaciones_dias                           Int?
   horas_extra_semana                        Decimal?                      @db.Decimal(6, 2)
+  /// Cuenta de acceso del trabajador (login PWA por número de empleado + PIN).
+  /// Único y nullable: no todo trabajador tiene cuenta.
+  usuario_id                                String?                       @unique @db.Uuid
   tarifa_hora_extra                         Decimal?                      @db.Decimal(10, 2)
   descuentos_semana                         Decimal?                      @db.Decimal(10, 2)
   concepto_descuento                        String?
@@ -1674,6 +1784,7 @@ model trabajadores {
   registros_asistencia                      registros_asistencia[]
   registros_criba                           registros_criba[]
   registros_mantenimiento                   registros_mantenimiento[]
+  usuario                                   users?                        @relation("trabajadores_cuenta", fields: [usuario_id], references: [id])
   users_trabajadores_actualizado_porTousers users?                        @relation("trabajadores_actualizado_porTousers", fields: [actualizado_por], references: [id], onUpdate: NoAction, map: "fk_trabajadores_actualizado_por")
   users_trabajadores_creado_porTousers      users?                        @relation("trabajadores_creado_porTousers", fields: [creado_por], references: [id], onUpdate: NoAction, map: "fk_trabajadores_creado_por")
   categorias_puesto                         categorias_puesto             @relation(fields: [categoria_puesto_id], references: [id])
@@ -1827,6 +1938,8 @@ model ventas {
   terminal          String         @default("TER-01")
   caja              String         @default("CAJA-PV")
   cliente           String         @default("Público en general")
+  /// Cliente del catálogo cuando la venta lleva cliente real (null = Público en general).
+  cliente_id        String?        @db.Uuid
   cajero            String
   subtotal          Decimal        @db.Decimal(12, 2)
   iva               Decimal        @db.Decimal(12, 2)
@@ -1846,9 +1959,11 @@ model ventas {
   eliminado_en      DateTime?      @db.Timestamptz()
   items             ventas_items[]
   pagos             ventas_pagos[]
+  clientes          clientes?      @relation(fields: [cliente_id], references: [id])
 
   @@index([creado_en])
   @@index([ticket, creado_en])
+  @@index([cliente_id])
 }
 
 /// Línea de venta (artículo + medida + cantidades; snapshot de precios).
@@ -1995,6 +2110,8 @@ model users {
   cotizaciones_cotizaciones_actualizado_porTousers                               cotizaciones[]                @relation("cotizaciones_actualizado_porTousers")
   cotizaciones_cotizaciones_creado_porTousers                                    cotizaciones[]                @relation("cotizaciones_creado_porTousers")
   cotizaciones_cotizaciones_vendedor_idTousers                                   cotizaciones[]                @relation("cotizaciones_vendedor_idTousers")
+  cotizacion_items_cotizacion_items_actualizado_porTousers                       cotizacion_items[]            @relation("cotizacion_items_actualizado_porTousers")
+  cotizacion_items_cotizacion_items_creado_porTousers                            cotizacion_items[]            @relation("cotizacion_items_creado_porTousers")
   despachos_maquina_despachos_maquina_actualizado_porTousers                     despachos_maquina[]           @relation("despachos_maquina_actualizado_porTousers")
   despachos_maquina_despachos_maquina_creado_porTousers                          despachos_maquina[]           @relation("despachos_maquina_creado_porTousers")
   dias_asistencia_semana_dias_asistencia_semana_actualizado_porTousers           dias_asistencia_semana[]      @relation("dias_asistencia_semana_actualizado_porTousers")
@@ -2079,6 +2196,11 @@ model users {
   ordenes_compra_ordenes_compra_creado_porTousers                                ordenes_compra[]              @relation("ordenes_compra_creado_porTousers")
   ordenes_compra_ordenes_compra_actualizado_porTousers                           ordenes_compra[]              @relation("ordenes_compra_actualizado_porTousers")
   pagos_proveedor_pagos_proveedor_creado_porTousers                              pagos_proveedor[]             @relation("pagos_proveedor_creado_porTousers")
+  notificaciones_notificaciones_creado_porTousers                                notificaciones[]              @relation("notificaciones_creado_porTousers")
+  lecturas_notificaciones_lecturas_user_idTousers                                notificaciones_lecturas[]     @relation("lecturas_usuario")
+  notificaciones_notificaciones_destinatarioTousers                              notificaciones[]              @relation("notificaciones_destinatario")
+  trabajadores_trabajadores_cuentaTousers                                        trabajadores[]                @relation("trabajadores_cuenta")
+  reportes_campo_asignado_user_reportes_campo_asignado_userTousers               reportes_campo[]              @relation("reportes_campo_asignado_user")
 
   @@unique([numero_empleado])
 }
@@ -2184,6 +2306,11 @@ enum AuditAction {
   USUARIO_ELIMINADO
   ROL_ASIGNADO
   ROL_REVOCADO
+  ROL_CREADO
+  ROL_ACTUALIZADO
+  ROL_ELIMINADO
+  VISTAS_ROL_ACTUALIZADAS
+  PERMISOS_ROL_ACTUALIZADAS
   PERMISO_MODIFICADO
   VISTA_CREADA
   VISTA_ACTUALIZADA
@@ -2210,6 +2337,7 @@ enum AuditAction {
   COMBUSTIBLE_CARGADO
   MAQUINA_ASIGNADA
   MAQUINA_LIBERADA
+  JEFE_ASIGNADO
   USUARIO_BLOQUEADO
   IP_BLOQUEADA
   ARTICULO_CREADO
@@ -2314,6 +2442,8 @@ enum AuditAction {
   MOVIMIENTO_BANCARIO_LOTE_CARGADO
   MOVIMIENTO_CONCILIADO
   MOVIMIENTO_DESCONCILIADO
+  NOTIFICACION_LEIDA
+  NOTIFICACION_DESCARTADA
 }
 
 enum AuditResult {

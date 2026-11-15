@@ -10,6 +10,7 @@ import {
   Banknote,
   RefreshCw,
   Clock,
+  UserRound,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -20,6 +21,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal, ModalField, modalInputClass } from '@/components/ui/Modal';
 import { useToast } from '@/components/layout/Toast';
 import { useAuth } from '@/hooks/useAuth';
+import { clientesApi, type ClienteDTO } from '@/lib/api';
+import { telefonoEsValido, limpiarTelefono, fechaLocalHoy, formatHora12 } from '@/lib/formatters';
 
 import { ProductPicker } from '@/components/pos/ProductPicker';
 import { CartItemRow } from '@/components/pos/CartItemRow';
@@ -49,6 +52,7 @@ import type { CreateVentaInput } from '@/lib/api';
 import { generateUUID } from '@/lib/utils';
 import type { CartItem, Payment, PaymentMethod, POSSale, Product } from '@/lib/pos';
 import { formatCurrency } from '@svr-erp/shared/utils/currency';
+import { formatearMiles, parsearMiles } from '@/lib/formatters';
 import { mensajeErrorApi } from '@/lib/api';
 
 function parseHM(s: string): { h: number; m: number } {
@@ -170,16 +174,39 @@ export default function VentasPage() {
   const [modalRetiro, setModalRetiro] = useState(false);
   const [formRetiro, setFormRetiro] = useState({ concepto: '', monto: '', autorizadoPor: '' });
 
+  // ── Cliente de la venta (B3: catálogo real, null = Público en general) ──
+  const [clientesPos, setClientesPos] = useState<ClienteDTO[]>([]);
+  const [clienteId, setClienteId] = useState('');
+  /** Nombre a mano cuando el cliente no está en el catálogo ('manual'). */
+  const [clienteManual, setClienteManual] = useState('');
+  const [modalCliente, setModalCliente] = useState(false);
+  const [formCliente, setFormCliente] = useState({ nombre: '', empresa: '', telefono: '', correo: '' });
+  const [creandoCliente, setCreandoCliente] = useState(false);
+
+  useEffect(() => {
+    clientesApi.listar({ limit: 100 }).then((res) => {
+      if (res.success && res.data) setClientesPos(res.data.items);
+    });
+  }, []);
+
   const total = useMemo(() => calculateTotal(cart), [cart]);
   const itemsSold = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
   // ── Carrito ──────────────────────────────────────────────────────────────
-  const addProduct = (product: Product, unit: string, quantity: number) => {
+  // Devuelve false si supera el stock (con toast inmediato) para que el
+  // ProductPicker borre el input de cantidad.
+  const addProduct = (product: Product, unit: string, quantity: number): boolean => {
     const qty = Math.floor(Math.max(1, quantity));
+    const lineKey = `${product.id}:${unit}`;
+    const enCarrito = cart.find((i) => cartLineKey(i) === lineKey)?.quantity ?? 0;
+    if (enCarrito + qty > product.stock) {
+      showToast(`Stock máximo (${product.stock} ${unit}).`, 'error');
+      return false;
+    }
     setCart((prev) => {
-      const lineKey = `${product.id}:${unit}`;
       const existing = prev.find((i) => cartLineKey(i) === lineKey);
       if (existing) {
+        // Defensa extra contra doble-click: el precheck de arriba ya validó.
         if (existing.quantity + qty > product.stock) {
           showToast(`Stock máximo (${product.stock} ${unit}).`, 'error');
           return prev;
@@ -190,7 +217,15 @@ export default function VentasPage() {
       }
       return [...prev, { product, unit, quantity: qty }];
     });
+    return true;
   };
+
+  /** Cantidad ya en carrito de un material+medida (validación al teclear). */
+  const enCarritoDe = useCallback(
+    (materialId: string, unit: string) =>
+      cart.find((i) => cartLineKey(i) === `${materialId}:${unit}`)?.quantity ?? 0,
+    [cart],
+  );
 
   const updateQty = (lineKey: string, delta: number) => {
     setCart((prev) =>
@@ -212,6 +247,40 @@ export default function VentasPage() {
   };
 
   // ── Cobro ─────────────────────────────────────────────────────────────────
+  // Alta rápida de cliente (B3): crea en el catálogo y lo deja seleccionado.
+  const handleCrearCliente = useCallback(async () => {
+    if (!formCliente.nombre.trim() || !formCliente.correo.trim()) {
+      showToast('Nombre y correo son obligatorios.', 'error');
+      return;
+    }
+    // Teléfono opcional, pero si se captura debe ser un teléfono MX de 10 dígitos.
+    if (formCliente.telefono.trim() && !telefonoEsValido(formCliente.telefono)) {
+      showToast('El teléfono debe tener 10 dígitos.', 'error');
+      return;
+    }
+    setCreandoCliente(true);
+    try {
+      const res = await clientesApi.crear({
+        nombre: formCliente.nombre.trim(),
+        empresa: formCliente.empresa.trim() || undefined,
+        telefono: formCliente.telefono.trim() || '—',
+        correo: formCliente.correo.trim(),
+      });
+      if (res.success) {        setClientesPos((prev) => [...prev, res.data]);
+        setClienteId(res.data.id);
+        setModalCliente(false);
+        setFormCliente({ nombre: '', empresa: '', telefono: '', correo: '' });
+        showToast(`Cliente "${res.data.empresa || res.data.nombre}" creado y seleccionado.`, 'success');
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo crear el cliente.'), 'error');
+      }
+    } catch {
+      showToast('Error de conexión al crear el cliente.', 'error');
+    } finally {
+      setCreandoCliente(false);
+    }
+  }, [formCliente, showToast]);
+
   // Guard anti doble-submit: evita insertar la venta más de una vez si el
   // botón "Cobrar" se presiona repetido mientras el request está en vuelo.
   const cobrando = useRef(false);
@@ -230,7 +299,12 @@ export default function VentasPage() {
 
     const payload: CreateVentaInput = {
       cajero: cashierName,
-      cliente: 'Público en general',
+      // Cliente del catálogo; si el usuario eligió "Otro", va el nombre a mano
+      // (texto libre, igual que antes de B3). Sin nada: Público en general.
+      ...(clienteId && clienteId !== 'manual' ? { clienteId } : {}),
+      ...(clienteId === 'manual' && clienteManual.trim()
+        ? { cliente: clienteManual.trim() }
+        : {}),
       terminal: POS_TERMINAL,
       caja: POS_REGISTER,
       idempotenciaKey: generateUUID(),
@@ -264,7 +338,7 @@ export default function VentasPage() {
   };
   // ── Retiros ───────────────────────────────────────────────────────────────
   const handleRetiro = async () => {
-    const monto = parseFloat(formRetiro.monto);
+    const monto = parsearMiles(formRetiro.monto);
     if (!formRetiro.concepto.trim() || !monto || monto <= 0) {
       showToast('Concepto y monto son obligatorios.', 'error');
       return;
@@ -301,7 +375,7 @@ export default function VentasPage() {
   // ── Métricas del día ──────────────────────────────────────────────────────
   const ventasHoy = sales.filter((s) => isToday(s.createdAt));
   const totalHoy = ventasHoy.reduce((sum, s) => sum + s.total, 0);
-  const hoyIso = new Date().toISOString().split('T')[0];
+  const hoyIso = fechaLocalHoy();
   const retirosHoy = retiros.filter((r) => r.fecha === hoyIso);
   const totalRetirosHoy = retirosHoy.reduce((sum, r) => sum + r.monto, 0);
   // Ingresos del día netos: se descuentan los retiros/gastos del turno (efectivo).
@@ -349,7 +423,7 @@ export default function VentasPage() {
                 <div>
                   <p className="text-red-900 font-bold text-lg">Fuera de horario de atención</p>
                   <p className="text-red-700 text-sm font-medium mt-1">
-                    El turno es de <strong>{turnoConfig.apertura}</strong> a <strong>{turnoConfig.cierre}</strong> hrs.
+                    El turno es de <strong>{formatHora12(turnoConfig.apertura)}</strong> a <strong>{formatHora12(turnoConfig.cierre)}</strong> hrs.
                     El punto de venta solo está disponible dentro de este horario.
                   </p>
                 </div>
@@ -427,7 +501,11 @@ export default function VentasPage() {
                     </div>
                   )}
                   {catalogoCargado && (
-                    <ProductPicker products={products} onAdd={addProduct} />
+                    <ProductPicker
+                      products={products}
+                      onAdd={addProduct}
+                      enCarritoDe={enCarritoDe}
+                    />
                   )}
 
                   <div className={posClasses.card}>
@@ -435,6 +513,43 @@ export default function VentasPage() {
                       <h3 className={posClasses.sectionTitle}>Carrito</h3>
                       <span className="text-xs font-bold text-ui-400">{itemsSold} art(s)</span>
                     </div>
+
+                    {/* Cliente de la venta: catálogo, nombre a mano, o
+                        "Público en general" si no se elige nada. */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <UserRound className="w-4 h-4 text-ui-400 shrink-0" />
+                      <select
+                        className="h-10 flex-1 min-w-0 px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50"
+                        value={clienteId}
+                        onChange={(e) => setClienteId(e.target.value)}
+                        aria-label="Cliente de la venta"
+                      >
+                        <option value="">Público en general</option>
+                        {clientesPos.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.empresa || c.nombre}
+                          </option>
+                        ))}
+                        <option value="manual">Otro (escribir nombre)...</option>
+                      </select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={<Plus className="w-4 h-4" />}
+                        onClick={() => setModalCliente(true)}
+                      >
+                        Nuevo
+                      </Button>
+                    </div>
+                    {clienteId === 'manual' && (
+                      <input
+                        className="h-10 w-full px-3 border border-ui-200 rounded-lg text-xs font-medium bg-surface text-ui-900 focus:outline-none focus:border-primary/50 mb-3"
+                        placeholder="Nombre del cliente tal como irá en el ticket..."
+                        value={clienteManual}
+                        onChange={(e) => setClienteManual(e.target.value)}
+                        aria-label="Nombre manual del cliente"
+                      />
+                    )}
 
                     {cart.length === 0 ? (
                       <p className="text-sm text-ui-400 text-center py-8">
@@ -559,7 +674,7 @@ export default function VentasPage() {
         title="Retiro de Efectivo"
         submitLabel="Registrar Retiro"
       >
-        <ModalField label="Concepto *" required>
+        <ModalField label="Concepto" required>
           <input
             className={modalInputClass}
             placeholder="Ej: Gasolina, refacción urgente..."
@@ -567,13 +682,14 @@ export default function VentasPage() {
             onChange={(e) => setFormRetiro({ ...formRetiro, concepto: e.target.value })}
           />
         </ModalField>
-        <ModalField label="Monto (MXN) *" required>
+        <ModalField label="Monto (MXN)" required>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className={modalInputClass}
             placeholder="0.00"
             value={formRetiro.monto}
-            onChange={(e) => setFormRetiro({ ...formRetiro, monto: e.target.value })}
+            onChange={(e) => setFormRetiro({ ...formRetiro, monto: formatearMiles(e.target.value) })}
           />
         </ModalField>
         <ModalField label="Autorizado por">
@@ -584,6 +700,52 @@ export default function VentasPage() {
             onChange={(e) => setFormRetiro({ ...formRetiro, autorizadoPor: e.target.value })}
           />
         </ModalField>
+      </FormModal>
+
+      {/* Alta rápida de cliente desde el POS (B3) */}
+      <FormModal
+        open={modalCliente}
+        onClose={() => setModalCliente(false)}
+        onSubmit={handleCrearCliente}
+        title="Nuevo Cliente"
+        subtitle="Alta rápida sin salir del punto de venta."
+        submitLabel="Crear Cliente"
+        isSubmitting={creandoCliente}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModalField label="Nombre" required>
+            <input
+              className={modalInputClass}
+              placeholder="Nombre de contacto"
+              value={formCliente.nombre}
+              onChange={(e) => setFormCliente({ ...formCliente, nombre: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Empresa">
+            <input
+              className={modalInputClass}
+              placeholder="Solo si tiene empresa"
+              value={formCliente.empresa}
+              onChange={(e) => setFormCliente({ ...formCliente, empresa: e.target.value })}
+            />
+          </ModalField>
+          <ModalField label="Teléfono">
+            <input
+              className={modalInputClass}
+              placeholder="Ej: 322-123-4567"
+              value={formCliente.telefono}
+              onChange={(e) => setFormCliente({ ...formCliente, telefono: limpiarTelefono(e.target.value) })}
+            />
+          </ModalField>
+          <ModalField label="Correo" required>
+            <input
+              className={modalInputClass}
+              placeholder="correo@ejemplo.com"
+              value={formCliente.correo}
+              onChange={(e) => setFormCliente({ ...formCliente, correo: e.target.value })}
+            />
+          </ModalField>
+        </div>
       </FormModal>
     </div>
   );

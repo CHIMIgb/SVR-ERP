@@ -514,4 +514,92 @@ describe('Ventas Audit (Real DB)', () => {
       expect(audits[0].actor_user_id).toBe(ACTOR_USER_ID);
     });
   });
+
+  // ────────────────────────────────────────────────
+  //  B3.2 — VENTA CON CLIENTE DEL CATÁLOGO
+  // ────────────────────────────────────────────────
+  describe('VENTA_CON_CLIENTE (ventas.cliente_id)', () => {
+    const createdClienteIds: string[] = [];
+
+    const crearCliente = async () => {
+      const cliente = await prisma.clientes.create({
+        data: {
+          id: randomUUID(),
+          nombre: `Cliente POS ${TEST_ID}-${randomUUID().slice(0, 4)}`,
+          empresa: `Empresa POS ${TEST_ID}`,
+          correo: `${TEST_ID}-${randomUUID().slice(0, 4)}@pos.mx`,
+          telefono: '55-0000-0000',
+          activo: true,
+          actualizado_en: new Date(),
+        },
+      });
+      createdClienteIds.push(cliente.id);
+      return cliente;
+    };
+
+    afterAll(async () => {
+      // Las ventas ya se borraron arriba (FK set-null no aplica al orden);
+      // aquí solo quedan los clientes de prueba.
+      if (createdClienteIds.length > 0) {
+        await prisma.clientes.deleteMany({ where: { id: { in: createdClienteIds } } });
+      }
+    });
+
+    it('crea venta con cliente del catálogo: cliente_id en BD + snapshot del nombre + audit SUCCESS', async () => {
+      const cliente = await crearCliente();
+
+      const dto = {
+        cajero: 'Cajero Test',
+        clienteId: cliente.id,
+        items: [{ materialId, medida: 'm³', cantidad: 1, precioUnitario: 350 }],
+        pagos: [{ metodo: 'efectivo' as const, monto: 350 }],
+        metodo: 'efectivo' as const,
+      };
+      const venta = await service.create(dto, ACTOR_USER_ID);
+      createdVentaIds.push(venta.id);
+
+      expect(venta.clienteId).toBe(cliente.id);
+      expect(venta.customer).toBe(`Empresa POS ${TEST_ID}`);
+
+      const fila = await prisma.ventas.findUnique({
+        where: { id: venta.id },
+        select: { cliente_id: true, cliente: true },
+      });
+      expect(fila?.cliente_id).toBe(cliente.id);
+      expect(fila?.cliente).toBe(`Empresa POS ${TEST_ID}`);
+
+      const audits = await findAudits(AuditAction.VENTA_CREADA, venta.id);
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('clienteId inexistente → rechaza, NO crea venta y audita FAIL con CLIENTE_NO_ENCONTRADO', async () => {
+      const idFantasma = randomUUID();
+      const dto = {
+        cajero: 'Cajero Test',
+        clienteId: idFantasma,
+        items: [{ materialId, medida: 'm³', cantidad: 1, precioUnitario: 350 }],
+        pagos: [{ metodo: 'efectivo' as const, monto: 350 }],
+        metodo: 'efectivo' as const,
+      };
+
+      await expect(service.create(dto, ACTOR_USER_ID)).rejects.toThrow();
+
+      const audits = await prisma.registro_auditoria.findMany({
+        where: {
+          action: AuditAction.VENTA_CREADA,
+          error_code: 'CLIENTE_NO_ENCONTRADO',
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+      expect(audits[0].result).toBe('FAIL');
+      expect(audits[0].entity_id).toBe(idFantasma);
+
+      const fila = await prisma.ventas.findFirst({
+        where: { cliente_id: idFantasma },
+      });
+      expect(fila).toBeNull();
+    });
+  });
 });

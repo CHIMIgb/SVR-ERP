@@ -97,7 +97,13 @@ async function main() {
   await prisma.$connect();
   const audit = new AuditService(prisma, new AuditContextService());
   const inventarioService = new InventarioService(prisma, audit);
-  const service = new ProveedoresService(prisma, audit, inventarioService);
+  const service = new ProveedoresService(
+    prisma,
+    audit,
+    inventarioService,
+    // Semilla sin notificaciones: emisión best-effort que no se usa aquí.
+    { emitirARol: async () => undefined } as never,
+  );
 
   const admin = await prisma.users.findFirst({
     where: { email: 'admin@svr-constructora.com' },

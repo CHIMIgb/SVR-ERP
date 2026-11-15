@@ -11,9 +11,11 @@ export class CreateClienteDto {
   @MaxLength(150)
   nombre!: string;
 
+  /** Opcional: clientes sin empresa (persona física / alta rápida del POS). */
+  @IsOptional()
   @IsString()
   @MaxLength(200)
-  empresa!: string;
+  empresa?: string;
 
   @IsEmail()
   @MaxLength(200)

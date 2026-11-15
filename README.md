@@ -272,6 +272,17 @@ Mantenimiento) quedaron desactivados por la migración
 | **Cobrador** (60) | Cobranza de criba y punto de venta | (sin puesto con torre → Administrativo) |
 | **Trabajador** (20) | Personal de campo sin área: operadores, choferes… | Operador → *(sin torre)*, Chofer → *(sin torre)* |
 
+### Trabajadores demo del sistema
+
+Un grupo de **trabajadores demo** (uno por puesto del catálogo, cubriendo los
+5 roles y las 6 torres) fue creado el 13-nov para probar las
+**notificaciones de reportes** (ver `docs-prioridades/NOTIFICACIONES.md`) y
+**retirado el mismo día** a petición del cliente. El sistema conserva la
+mecánica: el **alta de trabajadores enlaza su cuenta** automáticamente
+(`trabajadores.usuario_id`, B5.11) — cada trabajador que des de alta desde
+`/trabajadores` nace con su cuenta (número de empleado + PIN temporal) lista
+para PWA y notificaciones.
+
 **⚠️ Vigilancia de permisos (regla para agregar el permiso #107 y siguientes):**
 los permisos son granulares por `(modulo, recurso, accion)` — a día de hoy hay
 106 y funcionan porque no hay duplicados. Al agregar uno NUEVO (o al construir

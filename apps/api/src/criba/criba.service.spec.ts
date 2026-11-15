@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Turno, AuditAction, AuditResult } from '@prisma/client';
 import { CribaService } from './criba.service';
+import { InventarioService } from '../inventario/inventario.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -36,6 +37,10 @@ describe('CribaService', () => {
     actualizado_por: 'user-1',
     eliminado_en: null,
     trabajadores: { id: mockTrabajador.id, nombre: mockTrabajador.nombre },
+    maquina_id: 'm-1',
+    proyecto_id: 'p-1',
+    maquinas: { id: 'm-1', nombre: 'Criba 1' },
+    proyectos: { id: 'p-1', nombre: 'Obra Norte' },
   };
 
   beforeEach(async () => {
@@ -61,6 +66,21 @@ describe('CribaService', () => {
         findFirst: jest.fn().mockResolvedValue(mockTrabajador),
         findMany: jest.fn().mockResolvedValue([mockTrabajador]),
       },
+      materiales_criba: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'mc-1',
+          nombre: 'Criba fina',
+          articulo_id: 'art-criba',
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'mc-1', nombre: 'Criba fina', articulo_id: 'art-criba' },
+        ]),
+      },
+      maquinas: { findFirst: jest.fn().mockResolvedValue(null) },
+      proyectos: { findFirst: jest.fn().mockResolvedValue(null) },
+      articulos_inventario: { findUnique: jest.fn().mockResolvedValue(null) },
+      // B7.2: aplicarEntrada del inventario mock (no se prueba aquí).
+      // (InventarioService no se inyecta en el unit spec)
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -68,6 +88,10 @@ describe('CribaService', () => {
         CribaService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
+        {
+          provide: InventarioService,
+          useValue: { aplicarEntrada: jest.fn().mockResolvedValue({ stockAnterior: 0, stockResultante: 1 }) },
+        },
       ],
     }).compile();
 
@@ -131,6 +155,7 @@ describe('CribaService', () => {
     const createDto = {
       fecha: '2026-08-20',
       turno: Turno.VESPERTINO,
+      materialId: 'mc-1',
       operadorId: mockTrabajador.id,
       tipoMaterial: 'Criba gruesa',
       materialProducido: 250,
@@ -150,6 +175,67 @@ describe('CribaService', () => {
           result: AuditResult.SUCCESS,
         }),
       );
+    });
+
+    it('B6: con maquinaId (código)/proyectoId guarda los UUIDs reales', async () => {
+      prisma.maquinas = {
+        findFirst: jest.fn().mockResolvedValue({ id: 'uuid-maquina', codigo: 'M001', nombre: 'Criba 1' }),
+      };
+      prisma.proyectos = {
+        findFirst: jest.fn().mockResolvedValue({ id: 'p-1', nombre: 'Obra Norte', estado: 'EN_PROCESO' }),
+      };
+      const result = await service.create(
+        { ...createDto, maquinaId: 'M001', proyectoId: 'p-1' },
+        'user-1',
+      );
+
+      const data = prisma.registros_criba.create.mock.calls[0][0].data;
+      expect(data.maquina_id).toBe('uuid-maquina'); // el FK guarda el UUID
+      expect(data.proyecto_id).toBe('p-1');
+      expect(result.maquinaId).toBe('m-1'); // serialize expone el código
+      expect(result.proyectoId).toBe('p-1');
+    });
+
+    it('B6: maquinaId inexistente → MAQUINA_NO_ENCONTRADA con audit FAIL', async () => {
+      prisma.maquinas = { findFirst: jest.fn().mockResolvedValue(null) };
+      await expect(
+        service.create({ ...createDto, maquinaId: 'M999' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'MAQUINA_NO_ENCONTRADA',
+        }),
+      );
+    });
+
+    it('B6: proyectoId no EN_PROCESO → PROYECTO_NO_EN_PROCESO con audit FAIL', async () => {
+      // El mock simula la BD: el proyecto existe pero está FINALIZADO — la
+      // consulta del resolver (estado EN_PROCESO) no lo encuentra.
+      const proyectoReal = { id: 'p-1', nombre: 'Obra Norte', estado: 'FINALIZADO' };
+      prisma.proyectos = {
+        findFirst: jest.fn().mockImplementation(async ({ where }: { where: { estado?: string } }) =>
+          proyectoReal.estado === where?.estado ? proyectoReal : null,
+        ),
+      };
+      await expect(
+        service.create({ ...createDto, proyectoId: 'p-1' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REGISTRO_CRIBA_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'PROYECTO_NO_EN_PROCESO',
+        }),
+      );
+    });
+
+    it('B6: findAll aplica los filtros maquinaId (código) y proyectoId', async () => {
+      await service.findAll({ maquinaId: 'M001', proyectoId: 'p-1' });
+      const where = prisma.registros_criba.findMany.mock.calls[0][0].where;
+      expect(where.maquinas).toEqual({ codigo: 'M001' });
+      expect(where.proyecto_id).toBe('p-1');
     });
 
     it('should throw BadRequestException when alBanco > producido AND audit the failure', async () => {
@@ -291,10 +377,13 @@ describe('CribaService', () => {
   });
 
   describe('findCatalogos', () => {
-    it('should return trabajadores catalog', async () => {
+    it('should return trabajadores and materiales with articuloId', async () => {
       const result = await service.findCatalogos();
       expect(result).toHaveProperty('trabajadores');
       expect(result.trabajadores).toHaveLength(1);
+      expect(result.materiales).toEqual([
+        { id: 'mc-1', nombre: 'Criba fina', articuloId: 'art-criba' },
+      ]);
     });
   });
 });

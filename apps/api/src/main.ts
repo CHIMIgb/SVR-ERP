@@ -1,5 +1,5 @@
 import 'dotenv/config';
-process.env.TZ = process.env.TZ || process.env.TIMEZONE || 'America/Mexico_City';
+process.env.TZ = process.env.TZ || process.env.TIMEZONE;
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json } from 'express';

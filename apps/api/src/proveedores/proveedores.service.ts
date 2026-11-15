@@ -10,6 +10,7 @@ import {
   AuditAction,
   AuditResult,
   EstadoOrdenCompra,
+  TipoNotificacion,
 } from '@prisma/client';
 import type { proveedores as Proveedor } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,6 +25,7 @@ import { RegistrarAbonoDto } from './dto/registrar-abono.dto';
 import { QueryOrdenesCompraDto } from './dto/query-ordenes-compra.dto';
 import { RecibirOrdenCompraDto } from './dto/recibir-orden-compra.dto';
 import { InventarioService } from '../inventario/inventario.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -54,6 +56,7 @@ export class ProveedoresService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly inventarioService: InventarioService,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   /**
@@ -326,7 +329,7 @@ export class ProveedoresService {
       include: {
         ordenes_compra: {
           where: { eliminado_en: null, estado: { not: EstadoOrdenCompra.CANCELADA } },
-          select: { id: true, monto: true, pagado: true },
+          select: { id: true, monto: true, pagado: true, fecha_vencimiento: true },
         },
       },
       orderBy: { nombre: 'asc' },
@@ -336,6 +339,11 @@ export class ProveedoresService {
       const ops = p.ordenes_compra;
       const total = ops.reduce((acc, o) => acc + Number(o.monto), 0);
       const pagado = ops.reduce((acc, o) => acc + Number(o.pagado), 0);
+      // B4: el vencimiento MÁS PRÓXIMO entre las OCs con saldo (null si ninguna).
+      const proximoVencimiento = ops
+        .filter((o) => Number(o.pagado) < Number(o.monto) && o.fecha_vencimiento)
+        .map((o) => o.fecha_vencimiento!.toISOString().slice(0, 10))
+        .sort()[0] ?? null;
       return {
         proveedorId: p.id,
         proveedor: p.nombre,
@@ -343,6 +351,7 @@ export class ProveedoresService {
         total,
         pagado,
         saldo: total - pagado,
+        proximoVencimiento,
       };
     });
   }
@@ -387,6 +396,8 @@ export class ProveedoresService {
         fecha: o.fecha.toISOString(),
         folio: o.folio,
         concepto: o.descripcion,
+        // B4: fecha límite de pago de la OC (null si nunca se capturó).
+        vence: o.fecha_vencimiento?.toISOString().slice(0, 10) ?? null,
         cargo,
         abono,
         saldo: saldoCorrido,
@@ -402,10 +413,41 @@ export class ProveedoresService {
       { cargo: 0, abono: 0 },
     );
 
+    // B4/ajustes: abonos del proveedor con quién los registró (patrón "Creada por").
+    const pagos = await this.prisma.pagos_proveedor.findMany({
+      where: { proveedor_id: proveedorId, eliminado_en: null },
+      orderBy: { fecha_pago: 'asc' },
+      include: {
+        ordenes_compra: { select: { folio: true } },
+        users_pagos_proveedor_creado_porTousers: {
+          select: {
+            personas_users_persona_idTopersonas: {
+              select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+            },
+          },
+        },
+      },
+    });
+
     return {
       proveedorId,
       proveedor: proveedor.nombre,
       movimientos,
+      abonos: pagos.map((p) => {
+        const creador = p.users_pagos_proveedor_creado_porTousers?.personas_users_persona_idTopersonas;
+        return {
+          codigo: p.codigo,
+          folioOrden: p.ordenes_compra?.folio ?? null,
+          fechaPago: p.fecha_pago.toISOString(),
+          monto: Number(p.monto),
+          metodoPago: p.metodo_pago,
+          registradoPor: creador
+            ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+                .filter(Boolean)
+                .join(' ')
+            : null,
+        };
+      }),
       totales: { ...totales, saldo: totales.cargo - totales.abono },
     };
   }
@@ -446,6 +488,13 @@ export class ProveedoresService {
             where: { activo: true, eliminado_en: null },
             orderBy: { creado_en: 'asc' },
           },
+          users_ordenes_compra_creado_porTousers: {
+            select: {
+              personas_users_persona_idTopersonas: {
+                select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+              },
+            },
+          },
         },
         orderBy: [{ fecha: 'desc' }, { folio: 'desc' }],
         skip: (page - 1) * limit,
@@ -480,6 +529,15 @@ export class ProveedoresService {
         pagos_proveedor: {
           where: { eliminado_en: null },
           orderBy: { fecha_pago: 'asc' },
+          include: {
+            users_pagos_proveedor_creado_porTousers: {
+              select: {
+                personas_users_persona_idTopersonas: {
+                  select: { nombre: true, apellido_paterno: true, apellido_materno: true },
+                },
+              },
+            },
+          },
         },
       },
     });
@@ -496,14 +554,23 @@ export class ProveedoresService {
 
     return {
       ...this.serializeOrden(orden),
-      abonos: orden!.pagos_proveedor.map((p) => ({
-        id: p.id,
-        codigo: p.codigo,
-        monto: Number(p.monto),
-        fechaPago: p.fecha_pago.toISOString(),
-        metodoPago: p.metodo_pago,
-        referencia: p.referencia ?? null,
-      })),
+      abonos: orden!.pagos_proveedor.map((p) => {
+        const creador = p.users_pagos_proveedor_creado_porTousers?.personas_users_persona_idTopersonas;
+        return {
+          id: p.id,
+          codigo: p.codigo,
+          monto: Number(p.monto),
+          fechaPago: p.fecha_pago.toISOString(),
+          metodoPago: p.metodo_pago,
+          referencia: p.referencia ?? null,
+          // Quién registró el abono (B4/ajustes: patrón "Creada por").
+          creadoPor: creador
+            ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+                .filter(Boolean)
+                .join(' ')
+            : null,
+        };
+      }),
     };
   }
 
@@ -526,6 +593,7 @@ export class ProveedoresService {
     }
 
     const fecha = dto.fecha ? new Date(dto.fecha) : new Date();
+    const vencimiento = dto.fechaVencimiento ? new Date(dto.fechaVencimiento) : null;
     const id = randomUUID();
     const now = new Date();
 
@@ -547,6 +615,7 @@ export class ProveedoresService {
             monto: montoTotal,
             pagado: 0,
             fecha,
+            fecha_vencimiento: vencimiento,
             estado: EstadoOrdenCompra.PENDIENTE,
             creado_por: userId,
             actualizado_por: userId,
@@ -574,6 +643,7 @@ export class ProveedoresService {
             orden_compra_id: orden.id,
             monto: montoTotal,
             monto_pagado: 0,
+            fecha_vencimiento: vencimiento,
             estado: 'PENDIENTE',
             activo: true,
             actualizado_en: now,
@@ -659,14 +729,18 @@ export class ProveedoresService {
 
     const orden = await this.prisma.$transaction(async (tx) => {
       const dataMonto = montoNuevo !== undefined ? { monto: montoNuevo } : {};
+      const dataUpdate: Record<string, unknown> = {
+        ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
+        ...dataMonto,
+        actualizado_por: userId,
+        actualizado_en: new Date(),
+      };
+      if (dto.fechaVencimiento !== undefined) {
+        dataUpdate.fecha_vencimiento = new Date(dto.fechaVencimiento);
+      }
       const actualizada = await tx.ordenes_compra.update({
         where: { id },
-        data: {
-          ...(dto.descripcion !== undefined && { descripcion: dto.descripcion.trim() }),
-          ...dataMonto,
-          actualizado_por: userId,
-          actualizado_en: new Date(),
-        },
+        data: dataUpdate,
       });
 
       // Reemplazar líneas de detalle (snapshot de nombre siempre preservado).
@@ -697,6 +771,20 @@ export class ProveedoresService {
           await tx.cuentas_por_pagar.update({
             where: { id: cxp.id },
             data: { monto: montoNuevo, actualizado_en: new Date() },
+          });
+        }
+      }
+
+      // B4: propagar el vencimiento corregido a la CxP SOLO si sigue abierta
+      // (saldo > 0); las CxP saldadas conservan su histórico.
+      if (dto.fechaVencimiento !== undefined) {
+        const cxp = await tx.cuentas_por_pagar.findUnique({
+          where: { orden_compra_id: id },
+        });
+        if (cxp && Number(cxp.monto_pagado) < Number(cxp.monto)) {
+          await tx.cuentas_por_pagar.update({
+            where: { id: cxp.id },
+            data: { fecha_vencimiento: new Date(dto.fechaVencimiento), actualizado_en: new Date() },
           });
         }
       }
@@ -794,6 +882,7 @@ export class ProveedoresService {
   ) {
     const existente = await this.prisma.ordenes_compra.findFirst({
       where: { id, eliminado_en: null },
+      include: { proveedores: { select: { nombre: true } } },
     });
 
     if (!existente) {
@@ -886,6 +975,18 @@ export class ProveedoresService {
       previousValue: this.serializeOrden(existente as never),
       newValue: serialized,
     });
+
+    // B5.3: notificación a Administrativo cuando se APRUEBA una orden.
+    if (dto.estado === EstadoOrdenCompra.APROBADA) {
+      await this.notificacionesService.emitirARol('Administrativo', {
+        tipo: TipoNotificacion.ALERTA,
+        titulo: `Orden ${existente.folio} aprobada`,
+        cuerpo: `${existente.proveedores?.nombre ?? 'Proveedor'} — ${Number(existente.monto).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} comprometidos en la orden de compra.`,
+        referenciaTipo: 'ordenes_compra',
+        referenciaId: id,
+        creadoPor: userId,
+      });
+    }
 
     return serialized;
   }
@@ -1332,6 +1433,16 @@ export class ProveedoresService {
       },
     });
 
+    // B5.3: notificación a Administrativo de cada abono registrado.
+    await this.notificacionesService.emitirARol('Administrativo', {
+      tipo: TipoNotificacion.INFO,
+      titulo: `Abono a orden ${orden.folio}`,
+      cuerpo: `${proveedor.nombre} — ${dto.monto.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} abonados (pago ${pago.codigo}).`,
+      referenciaTipo: 'pagos_proveedor',
+      referenciaId: idPago,
+      creadoPor: userId,
+    });
+
     return {
       abono: {
         id: idPago,
@@ -1400,6 +1511,7 @@ export class ProveedoresService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serializeOrden(orden: any) {
+    const creador = orden.users_ordenes_compra_creado_porTousers?.personas_users_persona_idTopersonas;
     return {
       id: orden.id,
       folio: orden.folio,
@@ -1410,6 +1522,15 @@ export class ProveedoresService {
       pagado: Number(orden.pagado),
       saldo: Number(orden.monto) - Number(orden.pagado),
       fecha: orden.fecha?.toISOString?.() ?? orden.fecha,
+      // Quién creó la orden (patrón "Creada por"; null en filas viejas o mocks).
+      creadoPor: creador
+        ? [creador.nombre, creador.apellido_paterno, creador.apellido_materno]
+            .filter(Boolean)
+            .join(' ')
+        : null,
+      fechaVencimiento: orden.fecha_vencimiento
+        ? (orden.fecha_vencimiento.toISOString?.().split('T')[0] ?? String(orden.fecha_vencimiento).slice(0, 10))
+        : null,
       estado: orden.estado,
       motivoCancelacion: orden.motivo_cancelacion ?? null,
       activo: orden.activo,

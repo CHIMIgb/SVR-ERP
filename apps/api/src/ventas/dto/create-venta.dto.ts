@@ -63,6 +63,11 @@ export class CreateVentaDto {
   @MaxLength(200)
   cliente?: string;
 
+  /** Cliente del catálogo (opcional): llena ventas.cliente_id; el nombre se snapshot-ea en `cliente`. */
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(20)

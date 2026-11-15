@@ -11,6 +11,7 @@ import {
 import { ReportesCampoService } from './reportes-campo.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 describe('ReportesCampoService (flujo incidentes v2)', () => {
   let service: ReportesCampoService;
@@ -94,6 +95,8 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       },
       trabajadores: {
         findFirst: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez' }),
+        // B5.12: el trabajador asignado sin cuenta enlazada → sin notificación.
+        findUnique: jest.fn().mockResolvedValue({ id: 't-1', nombre: 'José Ramírez', usuario: null }),
       },
       users: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -113,6 +116,8 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
         ReportesCampoService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: mockAudit },
+        // B5.10: emisión de notificaciones mock (no se prueba aquí).
+        { provide: NotificacionesService, useValue: { emitirATorre: jest.fn(), emitirAUsuario: jest.fn(), emitirATrabajador: jest.fn() } },
       ],
     }).compile();
 

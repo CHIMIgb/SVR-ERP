@@ -58,9 +58,12 @@ describe('Proyectos Audit (Real DB)', () => {
   afterAll(async () => {
     if (!prisma) return;
 
-    // Cleanup: CxC de prueba → proyectos → cliente (FK-safe)
+    // Cleanup: CxC de prueba → obras → proyectos → cliente (FK-safe)
     await prisma.cuentas_por_cobrar.deleteMany({ where: { cliente_id: clienteId } });
     if (createdProyectoIds.length > 0) {
+      await prisma.obras.deleteMany({
+        where: { proyecto_id: { in: createdProyectoIds } },
+      });
       await prisma.proyectos.deleteMany({
         where: { id: { in: createdProyectoIds } },
       });
@@ -114,6 +117,49 @@ describe('Proyectos Audit (Real DB)', () => {
       expect(Number(row?.ingreso_cobrado)).toBe(150000);
       expect(Number(row?.gastado)).toBe(80000);
     });
+
+    it('debe crear la obra 1:1 con nombre, estado y ubicación heredados', async () => {
+      const dto = createDto({
+        calle: 'Calle Obra 123',
+        colonia: 'Col. Centro',
+        ciudad: 'Tepic',
+        estadoUbicacion: 'Nayarit',
+      });
+      const proyecto = await service.create(dto, ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      const obra = await prisma.obras.findUnique({
+        where: { proyecto_id: proyecto.id },
+      });
+      expect(obra).not.toBeNull();
+      expect(obra!.nombre).toBe(dto.nombre);
+      expect(obra!.estado).toBe('EN_PROCESO');
+      expect(obra!.ubicacion).toBe('Calle Obra 123, Col. Centro, Tepic, Nayarit');
+
+      // el audit guarda el vínculo
+      const audits = await findAudits(AuditAction.PROYECTO_CREADO, proyecto.id);
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue?.obraId).toBe(obra!.id);
+    });
+
+    it('debe rechazar una segunda obra para el mismo proyecto (índice único)', async () => {
+      const proyecto = await service.create(createDto(), ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      await expect(
+        prisma.obras.create({
+          data: {
+            id: randomUUID(),
+            nombre: 'Obra duplicada',
+            proyecto_id: proyecto.id,
+            actualizado_en: new Date(),
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+
+      const obras = await prisma.obras.count({ where: { proyecto_id: proyecto.id } });
+      expect(obras).toBe(1);
+    });
   });
 
   describe('PROYECTO_ACTUALIZADO', () => {
@@ -152,6 +198,38 @@ describe('Proyectos Audit (Real DB)', () => {
       ).rejects.toThrow('no puede ser anterior');
     });
 
+    it('debe sincronizar la obra: nombre al renombrar y FINALIZADA al finalizar', async () => {
+      const proyecto = await service.create(createDto(), ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      await service.update(proyecto.id, { nombre: `Renombrado ${TEST_ID}` }, ACTOR_USER_ID);
+      let obra = await prisma.obras.findUnique({ where: { proyecto_id: proyecto.id } });
+      expect(obra!.nombre).toBe(`Renombrado ${TEST_ID}`);
+      expect(obra!.estado).toBe('EN_PROCESO');
+
+      await service.update(
+        proyecto.id,
+        { estado: EstadoProyecto.FINALIZADO },
+        ACTOR_USER_ID,
+      );
+      obra = await prisma.obras.findUnique({ where: { proyecto_id: proyecto.id } });
+      expect(obra!.estado).toBe('FINALIZADA');
+
+      const audits = await findAudits(AuditAction.PROYECTO_ACTUALIZADO, proyecto.id);
+      const newValue = audits[0].new_value as Record<string, unknown> | null;
+      expect(newValue?.estadoObra).toBe('FINALIZADA');
+    });
+
+    it('debe dejar la obra intacta cuando el proyecto pasa a PAUSADO', async () => {
+      const proyecto = await service.create(createDto(), ACTOR_USER_ID);
+      createdProyectoIds.push(proyecto.id);
+
+      await service.update(proyecto.id, { estado: EstadoProyecto.PAUSADO }, ACTOR_USER_ID);
+
+      const obra = await prisma.obras.findUnique({ where: { proyecto_id: proyecto.id } });
+      expect(obra!.estado).toBe('EN_PROCESO');
+    });
+
     it('debe persistir la ubicación exacta y auditar previous/new', async () => {
       // arrange: crear SIN dirección (compatibilidad con proyectos viejos)
       const proyecto = await service.create(createDto(), ACTOR_USER_ID);
@@ -161,6 +239,7 @@ describe('Proyectos Audit (Real DB)', () => {
       const direccion = {
         calle: 'Calle Test 456',
         colonia: 'Col. Pruebas',
+        municipio: 'Xalisco',
         ciudad: 'Tepic',
         estadoUbicacion: 'Nayarit',
         codigoPostal: '63000',
@@ -171,11 +250,13 @@ describe('Proyectos Audit (Real DB)', () => {
       const row = await prisma.proyectos.findUnique({ where: { id: proyecto.id } });
       expect(row?.calle).toBe('Calle Test 456');
       expect(row?.colonia).toBe('Col. Pruebas');
+      expect(row?.municipio).toBe('Xalisco');
       expect(row?.ciudad).toBe('Tepic');
       expect(row?.estado_ubicacion).toBe('Nayarit');
       expect(row?.codigo_postal).toBe('63000');
 
       // serializado en camelCase
+      expect(actualizado.municipio).toBe('Xalisco');
       expect(actualizado.ciudad).toBe('Tepic');
       expect(actualizado.codigoPostal).toBe('63000');
 
@@ -185,6 +266,7 @@ describe('Proyectos Audit (Real DB)', () => {
       const newValue = audits[0].new_value as Record<string, unknown> | null;
       expect(previous?.ciudad).toBeNull();
       expect(newValue?.ciudad).toBe('Tepic');
+      expect(newValue?.municipio).toBe('Xalisco');
       expect(newValue?.calle).toBe('Calle Test 456');
     });
   });
@@ -202,6 +284,11 @@ describe('Proyectos Audit (Real DB)', () => {
         where: { id: proyecto.id },
       });
       expect(deleted?.eliminado_en).not.toBeNull();
+
+      // la obra 1:1 se va con el proyecto (soft-delete, sin huérfanas en catálogos)
+      const obra = await prisma.obras.findUnique({ where: { proyecto_id: proyecto.id } });
+      expect(obra?.eliminado_en).not.toBeNull();
+      expect(obra?.activo).toBe(false);
 
       const audits = await findAudits(AuditAction.PROYECTO_ELIMINADO, proyecto.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);

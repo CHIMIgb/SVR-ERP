@@ -1,5 +1,12 @@
 # Análisis de `docs-svr/` — procesos reales en Excel/Word y su impacto en Comercial y Operaciones
 
+> **🎯 ALCANCE DE CORRECCIONES (2026-11-12) — solo estas 15 vistas:**
+> **Operaciones:** `/reportes` · `/operaciones` · `/criba` · `/inventario` ·
+> `/proyectos` — **Comercial:** `/clientes` · `/cotizaciones` · `/finanzas` ·
+> `/proveedores` · `/ventas` · `/cobranza` · `/ventas/corte` · `/facturas`.
+> Los mapeos de §2 señalan la vista de destino de cada documento; los puntos
+> que caen en módulos distintos (maquinaria, RRHH) son de otro dueño.
+
 > **Fuente:** los 12 documentos de `docs-svr/` (10 Excel + 2 Word) que el cliente
 > entregó como la definición de sus procesos actuales. La aplicación debe seguir
 > estos procesos: las hojas de Excel son los flujos operativos y las cartas de

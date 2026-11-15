@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
@@ -12,14 +13,19 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { InventarioService } from '../inventario/inventario.service';
 import { CreateRegistroCribaDto } from './dto/create-registro-criba.dto';
 import { UpdateRegistroCribaDto } from './dto/update-registro-criba.dto';
 import { QueryRegistrosCribaDto } from './dto/query-registros-criba.dto';
 
 const REGISTRO_INCLUDE = {
   trabajadores: { select: { id: true, nombre: true } },
+  maquinas: { select: { id: true, nombre: true } },
+  proyectos: { select: { id: true, nombre: true } },
+  materiales_criba: {
+    select: { id: true, nombre: true, articulo_id: true },
+  },
 } as const;
-
 const TURNO_LABELS: Record<Turno, string> = {
   [Turno.MATUTINO]: 'Matutino',
   [Turno.VESPERTINO]: 'Vespertino',
@@ -33,6 +39,7 @@ export class CribaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly inventarioService: InventarioService,
   ) {}
 
   /**
@@ -84,6 +91,18 @@ export class CribaService {
 
     if (query.tipoMaterial) {
       where.tipo_material = query.tipoMaterial;
+    }
+
+    // B7: filtro por material del catálogo de criba.
+    if (query.materialId) {
+      where.material_criba_id = query.materialId;
+    }
+    // B6: filtro por máquina (código, patrón despachos) y proyecto (id).
+    if (query.maquinaId) {
+      where.maquinas = { codigo: query.maquinaId };
+    }
+    if (query.proyectoId) {
+      where.proyecto_id = query.proyectoId;
     }
 
     if (query.fechaDesde || query.fechaHasta) {
@@ -149,13 +168,31 @@ export class CribaService {
       );
     }
 
+    // B6: máquina y proyecto opcionales (validados; falla audita FAIL).
+    const maquinaId = dto.maquinaId
+      ? await this.resolverMaquina(dto.maquinaId, AuditAction.REGISTRO_CRIBA_CREADO)
+      : null;
+    const proyectoId = dto.proyectoId
+      ? await this.resolverProyecto(dto.proyectoId, AuditAction.REGISTRO_CRIBA_CREADO)
+      : null;
+
+    // B7: material del catálogo de criba (requerido); tipo_material queda como
+    // instantánea del nombre del material.
+    const material = await this.resolverMaterial(
+      dto.materialId,
+      AuditAction.REGISTRO_CRIBA_CREADO,
+    );
+
     const registro = await this.prisma.registros_criba.create({
       data: {
         id: randomUUID(),
         fecha: new Date(dto.fecha),
         turno: dto.turno,
         operador_id: operadorId,
-        tipo_material: dto.tipoMaterial,
+        maquina_id: maquinaId,
+        proyecto_id: proyectoId,
+        material_criba_id: material.id,
+        tipo_material: material.nombre,
         material_producido: dto.materialProducido,
         horas_trabajadas: dto.horasTrabajadas,
         material_al_banco: dto.materialAlBanco,
@@ -219,13 +256,41 @@ export class CribaService {
           : await this.resolverTrabajador(dto.operadorId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
     }
 
+    // B6: máquina/proyecto — undefined no toca; null limpia; valor se valida.
+    let maquinaId: string | null | undefined;
+    if (dto.maquinaId !== undefined) {
+      maquinaId =
+        dto.maquinaId === null
+          ? null
+          : await this.resolverMaquina(dto.maquinaId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
+    }
+    let proyectoId: string | null | undefined;
+    if (dto.proyectoId !== undefined) {
+      proyectoId =
+        dto.proyectoId === null
+          ? null
+          : await this.resolverProyecto(dto.proyectoId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
+    }
+
+    // B7: material del catálogo — undefined no toca; valor se valida.
+    let materialCribaId: string | null | undefined;
+    let materialNombre: string | undefined;
+    if (dto.materialId !== undefined) {
+      const material = await this.resolverMaterial(dto.materialId, AuditAction.REGISTRO_CRIBA_ACTUALIZADO, id);
+      materialCribaId = material.id;
+      materialNombre = material.nombre;
+    }
+
     const registro = await this.prisma.registros_criba.update({
       where: { id },
       data: {
         ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
         ...(dto.turno !== undefined && { turno: dto.turno }),
         ...(operadorId !== undefined && { operador_id: operadorId }),
-        ...(dto.tipoMaterial !== undefined && { tipo_material: dto.tipoMaterial }),
+        ...(maquinaId !== undefined && { maquina_id: maquinaId }),
+        ...(proyectoId !== undefined && { proyecto_id: proyectoId }),
+        ...(materialCribaId !== undefined && { material_criba_id: materialCribaId }),
+        ...(materialNombre !== undefined && { tipo_material: materialNombre }),
         ...(dto.materialProducido !== undefined && { material_producido: dto.materialProducido }),
         ...(dto.horasTrabajadas !== undefined && { horas_trabajadas: dto.horasTrabajadas }),
         ...(dto.materialAlBanco !== undefined && { material_al_banco: dto.materialAlBanco }),
@@ -360,7 +425,21 @@ export class CribaService {
       orderBy: { nombre: 'asc' },
     });
 
-    return { trabajadores };
+    // B7: catálogo de materiales de criba con su artículo de inventario
+    // enlazado — fuente de verdad por id (nada de nombres hardcodeados).
+    const materiales = await this.prisma.materiales_criba.findMany({
+      select: { id: true, nombre: true, articulo_id: true },
+      orderBy: { nombre: 'asc' },
+    });
+
+    return {
+      trabajadores,
+      materiales: materiales.map((m) => ({
+        id: m.id,
+        nombre: m.nombre,
+        articuloId: m.articulo_id,
+      })),
+    };
   }
 
   // ────────────────────────────────────────────
@@ -407,6 +486,178 @@ export class CribaService {
     return trabajador.id;
   }
 
+  /** B6: valida la máquina por CÓDIGO (patrón despachos: el select del front envía el código). */
+  private async resolverMaquina(maquinaId: string, action: AuditAction, entityId?: string): Promise<string> {
+    const maquina = await this.prisma.maquinas.findFirst({
+      where: { codigo: maquinaId, eliminado_en: null },
+      select: { id: true, codigo: true, nombre: true },
+    });
+    if (!maquina) {
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'MAQUINA_NO_ENCONTRADA',
+        BadRequestException,
+        `Máquina con código "${maquinaId}" no encontrada`,
+      );
+    }
+    return maquina.id;
+  }
+
+  /** B6: valida que el proyecto exista y esté EN_PROCESO. */
+  private async resolverProyecto(proyectoId: string, action: AuditAction, entityId?: string): Promise<string> {
+    const proyecto = await this.prisma.proyectos.findFirst({
+      where: { id: proyectoId, eliminado_en: null, estado: 'EN_PROCESO' },
+      select: { id: true, nombre: true },
+    });
+    if (!proyecto) {
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'PROYECTO_NO_EN_PROCESO',
+        BadRequestException,
+        `Proyecto con id "${proyectoId}" no encontrado o no está en proceso`,
+      );
+    }
+    return proyecto.id;
+  }
+
+  /** B7: valida el material del catálogo de criba (con su artículo de inventario). */
+  private async resolverMaterial(materialId: string, action: AuditAction, entityId?: string) {
+    const material = await this.prisma.materiales_criba.findFirst({
+      where: { id: materialId },
+      select: { id: true, nombre: true, articulo_id: true },
+    });
+    if (!material) {
+      return this.fallir(
+        action,
+        entityId ?? null,
+        'MATERIAL_NO_ENCONTRADO',
+        BadRequestException,
+        `Material de criba con id "${materialId}" no encontrado`,
+      );
+    }
+    return material;
+  }
+
+  /**
+   * B7.2: envía la producción del registro AL INVENTARIO en una transacción:
+   *  - guard anti-doble-envío (`inventario_en IS NULL` vía updateMany),
+   *  - artículo destino vía el catálogo de materiales (exacto),
+   *  - `aplicarEntrada` del inventario (stock + movimiento trazable),
+   *  - marca `inventario_en` y audita SUCCESS/FAIL.
+   */
+  async enviarInventario(id: string, userId: string) {
+    const existente = await this.prisma.registros_criba.findFirst({
+      where: { id, eliminado_en: null },
+      include: { materiales_criba: { select: { id: true, nombre: true, articulo_id: true } } },
+    });
+
+    if (!existente) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'REGISTRO_NO_ENCONTRADO',
+        NotFoundException,
+        `Registro de criba con id "${id}" no encontrado`,
+      );
+    }
+
+    if (existente.inventario_en) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'YA_EN_INVENTARIO',
+        ConflictException,
+        `El registro ${existente.codigo ?? ''} ya fue enviado al inventario`,
+      );
+    }
+
+    if (!existente.material_criba_id) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'SIN_MATERIAL_EN_CATALOGO',
+        BadRequestException,
+        'Este registro no tiene material del catálogo enlazado (registro antiguo)',
+      );
+    }
+
+    const material = existente.materiales_criba!;
+    if (!material.articulo_id) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'MATERIAL_SIN_ARTICULO',
+        BadRequestException,
+        `El material "${material.nombre}" no tiene artículo de inventario enlazado`,
+      );
+    }
+
+    const cantidad = Number(existente.material_al_banco);
+    if (!(cantidad > 0)) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'SIN_MATERIAL_AL_BANCO',
+        BadRequestException,
+        'El registro no tiene material al banco por enviar (0 m³)',
+      );
+    }
+
+    // Guard anti-doble-envío: solo gana quien pisa inventario_en null.
+    const marcado = await this.prisma.registros_criba.updateMany({
+      where: { id, inventario_en: null, eliminado_en: null },
+      data: { inventario_en: new Date(), actualizado_por: userId, actualizado_en: new Date() },
+    });
+    if (marcado.count === 0) {
+      return this.fallir(
+        AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+        id,
+        'YA_EN_INVENTARIO',
+        ConflictException,
+        'El registro ya fue enviado al inventario',
+      );
+    }
+
+    const { stockAnterior, stockResultante } = await this.prisma.$transaction(async (tx) =>
+      this.inventarioService.aplicarEntrada(tx, {
+        articuloId: material.articulo_id!,
+        cantidad,
+        motivo: 'PRODUCCION_CRIBA',
+        referenciaTipo: 'registros_criba',
+        referenciaId: id,
+        creadoPor: userId,
+      }),
+    );
+
+    const registro = await this.prisma.registros_criba.findUnique({
+      where: { id },
+      include: REGISTRO_INCLUDE,
+    });
+
+    const serialized = this.serialize(registro!);
+
+    await this.auditService.log({
+      action: AuditAction.REGISTRO_CRIBA_ACTUALIZADO,
+      entityType: 'registros_criba',
+      entityId: id,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: {
+        material: material.nombre,
+        articuloId: material.articulo_id,
+        cantidad,
+        stockAnterior,
+        stockResultante,
+      },
+    });
+
+    return serialized;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private serialize(registro: any) {
     return {
@@ -419,6 +670,13 @@ export class CribaService {
       turno: TURNO_LABELS[registro.turno as Turno] ?? registro.turno,
       operadorId: registro.operador_id,
       operador: registro.trabajadores?.nombre ?? null,
+      materialId: registro.material_criba_id,
+      material: registro.materiales_criba?.nombre ?? registro.tipo_material,
+      inventarioEn: registro.inventario_en?.toISOString?.() ?? null,
+      maquinaId: registro.maquina_id,
+      maquina: registro.maquinas?.nombre ?? null,
+      proyectoId: registro.proyecto_id,
+      proyecto: registro.proyectos?.nombre ?? null,
       tipoMaterial: registro.tipo_material,
       materialProducido: Number(registro.material_producido),
       horasTrabajadas: Number(registro.horas_trabajadas),

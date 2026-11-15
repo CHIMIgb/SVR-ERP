@@ -12,6 +12,7 @@ import {
 } from '@svr-erp/shared';
 
 import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
+import { fechaLocalHoy } from '@/lib/formatters';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -403,6 +404,8 @@ export interface InventarioCatalogos {
   categorias: CatalogoItem[];
   proveedores: CatalogoItem[];
   unidades: CatalogoUnidad[];
+  /** B7: materiales de criba con su artículo de inventario enlazado (por id). */
+  materialesCriba: { id: string; nombre: string; articuloId: string | null }[];
 }
 
 export interface PaginatedResponse<T> {
@@ -424,15 +427,6 @@ export interface ArticuloCreateInput {
   stock: number;
   stockMinimo: number;
   precioUnitario: number;
-}
-
-export interface MovimientoInput {
-  articuloId: string;
-  tipo: 'ENTRADA' | 'SALIDA';
-  cantidad: number;
-  motivo?: string;
-  referenciaTipo?: string;
-  referenciaId?: string;
 }
 
 export const inventarioApi = {
@@ -473,16 +467,6 @@ export const inventarioApi = {
   /** Eliminar un artículo (soft delete) */
   eliminar: (id: string) =>
     apiClient.delete<{ message: string }>(`/inventario/${id}`),
-
-  /** Registrar movimiento de stock */
-  movimiento: (data: MovimientoInput) =>
-    apiClient.post<{
-      articuloId: string;
-      tipo: string;
-      cantidad: number;
-      stockAnterior: number;
-      stockResultante: number;
-    }>('/inventario/movimiento', data),
 
   /** Estadísticas del inventario */
   stats: () =>
@@ -839,6 +823,7 @@ export interface ProyectoDTO {
   /** Ubicación exacta (opcional en BD; la UI la exige) */
   calle: string | null;
   colonia: string | null;
+  municipio: string | null;
   ciudad: string | null;
   estadoUbicacion: string | null;
   codigoPostal: string | null;
@@ -870,6 +855,7 @@ export interface ProyectoCreateInput {
   gastado?: number;
   calle?: string;
   colonia?: string;
+  municipio?: string;
   ciudad?: string;
   estadoUbicacion?: string;
   codigoPostal?: string;
@@ -1815,7 +1801,7 @@ export const finanzasApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `finanzas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `finanzas-${fechaLocalHoy()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -1937,6 +1923,13 @@ export interface RegistroCribaDTO {
   turno: 'Matutino' | 'Vespertino';
   operadorId: string | null;
   operador: string | null;
+  materialId: string | null;
+  material: string | null;
+  inventarioEn: string | null;
+  maquinaId: string | null;
+  maquina: string | null;
+  proyectoId: string | null;
+  proyecto: string | null;
   tipoMaterial: string;
   materialProducido: number;
   horasTrabajadas: number;
@@ -1965,13 +1958,19 @@ export interface CribaStats {
 
 export interface CribaCatalogos {
   trabajadores: { id: string; nombre: string }[];
+  /** B7: materiales de criba con su artículo de inventario enlazado (por id). */
+  materiales: { id: string; nombre: string; articuloId: string | null }[];
 }
 
 export interface CribaCreateInput {
   fecha: string;
   turno: TurnoCribaApi;
   operadorId?: string;
-  tipoMaterial: string;
+  /** B6: máquina y proyecto de la producción (opcionales). */
+  maquinaId?: string;
+  proyectoId?: string;
+  /** B7: material del catálogo de criba. */
+  materialId: string;
   materialProducido: number;
   horasTrabajadas: number;
   materialAlBanco: number;
@@ -1983,18 +1982,22 @@ export const cribaApi = {
   listar: (params?: {
     search?: string;
     turno?: TurnoCribaApi;
-    tipoMaterial?: string;
+    materialId?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    maquinaId?: string;
+    proyectoId?: string;
     page?: number;
     limit?: number;
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set('search', params.search);
     if (params?.turno) searchParams.set('turno', params.turno);
-    if (params?.tipoMaterial) searchParams.set('tipoMaterial', params.tipoMaterial);
+    if (params?.materialId) searchParams.set('materialId', params.materialId);
     if (params?.fechaDesde) searchParams.set('fechaDesde', params.fechaDesde);
     if (params?.fechaHasta) searchParams.set('fechaHasta', params.fechaHasta);
+    if (params?.maquinaId) searchParams.set('maquinaId', params.maquinaId);
+    if (params?.proyectoId) searchParams.set('proyectoId', params.proyectoId);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();
@@ -2018,6 +2021,10 @@ export const cribaApi = {
   /** Crear un registro de turno */
   crear: (data: CribaCreateInput) =>
     apiClient.post<RegistroCribaDTO>('/criba', data),
+
+  /** B7: enviar la producción del registro al inventario (transacción). */
+  enviarInventario: (id: string) =>
+    apiClient.post<RegistroCribaDTO>(`/criba/${id}/inventario`, {}),
 
   /** Actualizar un registro de turno */
   actualizar: (id: string, data: Partial<CribaCreateInput>) =>
@@ -2065,6 +2072,8 @@ export interface VentaPagoInput {
 export interface CreateVentaInput {
   cajero: string;
   cliente?: string;
+  /** Cliente del catálogo (opcional): el backend guarda id + snapshot del nombre. */
+  clienteId?: string;
   terminal?: string;
   caja?: string;
   items: VentaItemInput[];
@@ -2086,6 +2095,8 @@ export interface VentaDTO {
   terminal: string;
   registerNumber: string;
   customer: string;
+  /** Id del cliente del catálogo (solo si la venta llevó cliente). */
+  clienteId?: string;
   cashier: string;
   subtotal: number;
   iva: number;
@@ -2344,7 +2355,8 @@ export interface ClienteDTO {
   id: string;
   codigo: string | null;
   nombre: string;
-  empresa: string;
+  /** Opcional: clientes sin empresa (persona física / alta rápida del POS). */
+  empresa: string | null;
   correo: string;
   telefono: string;
   rfc: string | null;
@@ -2361,7 +2373,8 @@ export interface ClientesStats {
 
 export interface ClienteCreateInput {
   nombre: string;
-  empresa: string;
+  /** Opcional: clientes sin empresa. */
+  empresa?: string;
   correo: string;
   telefono: string;
   rfc?: string;
@@ -2471,12 +2484,20 @@ export interface CotizacionDTO {
   clienteId: string;
   descripcion: string;
   monto: number;
+  condiciones: string | null;
   fecha: string; // YYYY-MM-DD
   estado: 'Pendiente' | 'Aceptada' | 'Rechazada';
   motivoRechazo?: string | null;
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  /** Partidas (renglones). Solo presentes en el detalle y en crear/editar; los listados las omiten. */
+  items?: CotizacionItemDTO[];
+  /** Nombre del usuario que creó la cotización (solo en el detalle). */
+  creadoPor?: string | null;
+  /** B9/P6: vendedor = usuario que capturó la cotización (null en registros legados). */
+  vendedorId?: string | null;
+  vendedorNombre?: string | null;
   // Campos del cliente (solo presentes en el listado/detalle global)
   clienteNombre?: string | null;
   clienteEmpresa?: string | null;
@@ -2484,10 +2505,31 @@ export interface CotizacionDTO {
   clienteCorreo?: string | null;
 }
 
+/** Un renglón de cotización (partida). El importe lo calcula el backend. */
+export interface CotizacionItemDTO {
+  id: string;
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precioUnitario: number;
+  importe: number;
+  orden: number;
+}
+
+export interface CotizacionItemInput {
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precioUnitario: number;
+}
+
 export interface CotizacionCreateInput {
   descripcion: string;
   monto: number;
   fecha: string; // YYYY-MM-DD
+  condiciones?: string;
+  /** Con partidas, el backend recalcula el monto = Σ (cantidad × precioUnitario). */
+  items?: CotizacionItemInput[];
 }
 
 /** Campos editables de una cotización (todos opcionales = PATCH). */
@@ -2496,6 +2538,9 @@ export interface CotizacionUpdateInput {
   descripcion?: string;
   monto?: number;
   fecha?: string; // YYYY-MM-DD
+  condiciones?: string;
+  /** Reemplazo completo de partidas: `[]` las elimina; `undefined` no las toca. */
+  items?: CotizacionItemInput[];
 }
 
 /** Métricas para las tarjetas de /cotizaciones. */
@@ -2516,6 +2561,7 @@ export const cotizacionesApi = {
     search?: string;
     estado?: EstadoCotizacionApi;
     clienteId?: string;
+    vendedorId?: string;
     page?: number;
     limit?: number;
   }) => {
@@ -2523,6 +2569,7 @@ export const cotizacionesApi = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.estado) searchParams.set('estado', params.estado);
     if (params?.clienteId) searchParams.set('clienteId', params.clienteId);
+    if (params?.vendedorId) searchParams.set('vendedorId', params.vendedorId);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();
@@ -2539,6 +2586,12 @@ export const cotizacionesApi = {
   stats: () =>
     apiClient.get<CotizacionesStats>('/cotizaciones/stats'),
 
+  /** B9/P6: vendedores (usuarios activos) para el filtro del listado. */
+  vendedores: () =>
+    apiClient.get<{ vendedores: { id: string; nombre: string }[] }>(
+      '/cotizaciones/catalogos',
+    ),
+
   /** Cambiar estado (Aceptada / Rechazada); motivoRechazo es obligatorio al rechazar. */
   cambiarEstado: (id: string, data: { estado: EstadoCotizacionApi; motivoRechazo?: string }) =>
     apiClient.patch<CotizacionDTO>(`/cotizaciones/${id}/estado`, data),
@@ -2554,6 +2607,51 @@ export const cotizacionesApi = {
       factura: { id: string; codigo: string; total: number; estado: string };
       cxc: { id: string; monto: number; fechaVencimiento: string };
     }>(`/cotizaciones/${id}/facturar`, {}),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Notificaciones API (B5: centro del Topbar cosido al backend)
+// ────────────────────────────────────────────────────────────
+
+/** Formato que devuelve el backend (modelo `notificaciones`). */
+export interface NotificacionDTO {
+  id: string;
+  tipo: 'ALERTA' | 'INFO';
+  titulo: string;
+  cuerpo: string;
+  referenciaTipo: string | null;
+  referenciaId: string | null;
+  audienciaRolId: string | null;
+  leida: boolean;
+  leidoEn: string | null;
+  creadoEn: string;
+}
+
+export interface NotificacionesListadoDTO {
+  items: NotificacionDTO[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  noLeidas: number;
+}
+
+export const notificacionesApi = {
+  /** Buzón del usuario (audiencia todos + sus roles), paginado. */
+  listar: (params?: { page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<NotificacionesListadoDTO>(`/notificaciones${qs ? `?${qs}` : ''}`);
+  },
+
+  marcarLeida: (id: string) =>
+    apiClient.patch<NotificacionDTO>(`/notificaciones/${id}/leer`, {}),
+
+  marcarTodas: () =>
+    apiClient.patch<{ message: string; marcadas: number }>('/notificaciones/leer-todas', {}),
+
+  /** Basura del centro: descarta todas (desaparecen y no vuelven; quedan en BD). */
+  descartarTodas: () =>
+    apiClient.patch<{ message: string; descartadas: number }>('/notificaciones/descartar-todas', {}),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -2587,6 +2685,10 @@ export interface OrdenCompraDTO {
   pagado: number;
   saldo: number;
   fecha: string; // ISO
+  /** Quién creó la orden (patrón "Creada por"). */
+  creadoPor?: string | null;
+  /** Fecha límite de pago (B4): null si nunca se capturó. */
+  fechaVencimiento: string | null;
   estado: EstadoOrdenApi;
   motivoCancelacion: string | null;
   activo: boolean;
@@ -2599,6 +2701,18 @@ export interface AbonoDTO {
   fechaPago: string; // ISO
   metodoPago: string | null;
   referencia: string | null;
+  /** Quién registró el abono (solo en el detalle de la orden). */
+  creadoPor?: string | null;
+}
+
+/** Abono listado en el ledger del estado de cuenta. */
+export interface AbonoLedgerDTO {
+  codigo: string;
+  folioOrden: string | null;
+  fechaPago: string; // ISO
+  monto: number;
+  metodoPago: string | null;
+  registradoPor: string | null;
 }
 
 export interface OrdenCompraDetalleDTO extends OrdenCompraDTO {
@@ -2612,12 +2726,16 @@ export interface EstadoCuentaResumenDTO {
   total: number;
   pagado: number;
   saldo: number;
+  /** Vencimiento más próximo entre las OCs con saldo (B4). */
+  proximoVencimiento: string | null;
 }
 
 export interface LedgerMovimientoDTO {
   fecha: string; // ISO
   folio: string;
   concepto: string;
+  /** Fecha límite de pago de la OC (B4); null si nunca se capturó. */
+  vence: string | null;
   cargo: number;
   abono: number;
   saldo: number;
@@ -2628,6 +2746,8 @@ export interface LedgerDetalleDTO {
   proveedorId: string;
   proveedor: string;
   movimientos: LedgerMovimientoDTO[];
+  /** Abonos del proveedor con quién los registró (B4/ajustes). */
+  abonos: AbonoLedgerDTO[];
   totales: {
     cargo: number;
     abono: number;
@@ -2661,11 +2781,13 @@ export interface OrdenCompraCreateInput {
   proveedorId: string;
   descripcion?: string;
   fecha?: string; // YYYY-MM-DD
+  /** Fecha límite de pago (B4): se propaga a la CxP que nace con la OC. */
+  fechaVencimiento?: string;
   items: OrdenCompraItemInput[]; // monto se deriva de la suma en el backend
 }
 
 export type OrdenCompraUpdateInput = Partial<
-  Pick<OrdenCompraCreateInput, 'descripcion' | 'items'>
+  Pick<OrdenCompraCreateInput, 'descripcion' | 'items' | 'fechaVencimiento'>
 >;
 
 export interface RegistrarAbonoInput {
@@ -2965,7 +3087,7 @@ export const cobranzaApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cobranza-por-proyecto-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `cobranza-por-proyecto-${fechaLocalHoy()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -3121,7 +3243,7 @@ export const facturasApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `facturas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `facturas-${fechaLocalHoy()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -3227,4 +3349,286 @@ export const gpsApi = {
 
   /** Genera el siguiente ping de cada máquina y evalúa cruces de geocerca. */
   simular: () => apiClient.post<SimulacionGpsDTO>('/gps/simular', {}),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Usuarios API (vista /usuarios — módulo Sistema, solo Administrador)
+// ────────────────────────────────────────────────────────────
+
+export interface UsuarioRoleDTO {
+  id: string;
+  nombre: string;
+  esPrincipal: boolean;
+  /** true = rol Administrador (es_sistema): correo y rol no se editan. */
+  esSistema: boolean;
+}
+
+export interface UsuarioDTO {
+  id: string;
+  personaId: string;
+  /** Nombre completo (para mostrar). */
+  nombre: string | null;
+  /** Nombre de pila + apellidos separados (para el form de editar). */
+  personaNombre: string | null;
+  apellidoPaterno: string | null;
+  apellidoMaterno: string | null;
+  telefono: string | null;
+  email: string;
+  activo: boolean;
+  torre: string | null;
+  /** Número de empleado si la persona tiene identidad PWA (alta de Trabajadores). */
+  numeroEmpleado: string | null;
+  roles: UsuarioRoleDTO[];
+  /** NORMAL / TEMPORAL (PIN vigente 24h) / BLOQUEADO (intentos al tope). */
+  pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO';
+  creadoEn: string;
+}
+
+export interface UsuariosStats {
+  total: number;
+  activos: number;
+  conIdentidad: number;
+  bloqueados: number;
+}
+
+export interface UsuariosCatalogos {
+  roles: { id: string; nombre: string; nivel: number; torre: string | null }[];
+  personas: { id: string; nombre: string }[];
+}
+
+export interface UsuarioCreateInput {
+  /** Persona del catálogo (si no viene, se crea una con nombre/apellidos). */
+  personaId?: string;
+  nombre?: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  telefono?: string;
+  email: string;
+  password: string;
+  rolId: string;
+  torre?: string;
+}
+
+export interface UsuarioUpdateInput {
+  nombre?: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  telefono?: string;
+  email?: string;
+  /** Contraseña nueva — vacía/ausente conserva la actual. */
+  password?: string;
+  /** Mono-rol: cambiar el rol único del usuario. */
+  rolId?: string;
+  torre?: string;
+}
+
+export const usuariosApi = {
+  /** Listado paginado con búsqueda y filtros (rol, estado). */
+  listar: (params?: {
+    search?: string;
+    rolId?: string;
+    estado?: 'activo' | 'inactivo';
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.rolId) searchParams.set('rolId', params.rolId);
+    if (params?.estado) searchParams.set('estado', params.estado);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<PaginatedResponse<UsuarioDTO>>(`/usuarios${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Métricas para las tarjetas. */
+  stats: () => apiClient.get<UsuariosStats>('/usuarios/stats'),
+
+  /** Roles asignables + personas sin cuenta de acceso. */
+  catalogos: () => apiClient.get<UsuariosCatalogos>('/usuarios/catalogos'),
+
+  /** Crear usuario de escritorio (email + contraseña + rol). */
+  crear: (data: UsuarioCreateInput) => apiClient.post<UsuarioDTO>('/usuarios', data),
+
+  /** Editar email, estado y área. */
+  actualizar: (id: string, data: UsuarioUpdateInput) =>
+    apiClient.patch<UsuarioDTO>(`/usuarios/${id}`, data),
+
+  /** Baja de usuario (soft delete + cierre de sesiones). */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/usuarios/${id}`),
+
+  /** Cambiar el ROL ÚNICO del usuario (mono-rol). */
+  cambiarRol: (id: string, rolId: string) =>
+    apiClient.patch<{ message: string }>(`/usuarios/${id}/rol`, { rolId }),
+
+  /** Activar / desactivar cuenta (cierra sesiones al desactivar). */
+  cambiarEstado: (id: string, activo: boolean) =>
+    apiClient.patch<{ message: string }>(`/usuarios/${id}/estado`, { activo }),
+
+  /** Ficha 360 (vista /roles — solo lectura). */
+  identidad: (id: string) =>
+    apiClient.get<IdentidadUsuarioDTO>(`/usuarios/${id}/identidad`),
+
+  /** Cierre masivo de sesiones (mesa de ayuda). */
+  cerrarSesiones: (id: string) =>
+    apiClient.post<{ message: string }>(`/usuarios/${id}/sesiones/cierre`, {}),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Equipos API (vista /equipos — residentes ↔ sus empleados, solo Administrador)
+// ────────────────────────────────────────────────────────────
+
+/** Fila resumen de un miembro (subordinado o candidato sin jefe). */
+export interface MiembroEquipoDTO {
+  id: string;
+  nombre: string | null;
+  email: string;
+  torre: string | null;
+  numeroEmpleado: string | null;
+  roles: string[];
+}
+
+export interface EquipoDTO {
+  usuarioId: string;
+  nombre: string | null;
+  email: string;
+  torre: string | null;
+  numeroEmpleado: string | null;
+  roles: string[];
+  subordinados: MiembroEquipoDTO[];
+}
+
+export interface EquiposDTO {
+  equipos: EquipoDTO[];
+  sinJefe: MiembroEquipoDTO[];
+}
+
+export const equiposApi = {
+  /** Jefes con su equipo + candidatos sin jefe. */
+  listar: () => apiClient.get<EquiposDTO>('/equipos'),
+
+  /** Asignar / re-asignar / des-asignar jefe (null des-asigna). */
+  asignarJefe: (usuarioId: string, jefeUserId: string | null) =>
+    apiClient.patch<{ message: string; jefeUserId: string | null }>(
+      `/usuarios/${usuarioId}/jefe`,
+      { jefeUserId },
+    ),
+};
+
+// ────────────────────────────────────────────────────────────
+//  Roles API (vista /roles — Gestión de Identidad, solo Administrador)
+// ────────────────────────────────────────────────────────────
+
+export interface RolDTO {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  nivel: number;
+  torre: string | null;
+  esSistema: boolean;
+  activo: boolean;
+  usuarios: number;
+  vistas: number;
+  permisos: number;
+}
+
+export interface VistaRolDTO {
+  vistaId: string;
+  ruta: string;
+  nombre: string;
+  orden: number;
+  puedeVer: boolean;
+  puedeCrear: boolean;
+  puedeEditar: boolean;
+  puedeEliminar: boolean;
+  puedeExportar: boolean;
+}
+
+export interface PermisoDTO {
+  id: string;
+  modulo: string;
+  recurso: string;
+  accion: string;
+  asignado?: boolean;
+}
+
+export interface SesionDTO {
+  id: string;
+  dispositivo: string | null;
+  ubicacion: string | null;
+  ip: string | null;
+  iniciadaEn: string;
+  ultimaActividad: string;
+}
+
+/** Ficha 360 de un usuario (solo lectura + mesa de ayuda). */
+export interface IdentidadUsuarioDTO {
+  id: string;
+  nombre: string | null;
+  email: string;
+  activo: boolean;
+  torre: string | null;
+  numeroEmpleado: string | null;
+  roles: { id: string; nombre: string; nivel: number; esSistema: boolean }[];
+  jefe: { id: string; nombre: string | null } | null;
+  pinEstado: 'NORMAL' | 'TEMPORAL' | 'BLOQUEADO';
+  vistas: VistaRolDTO[];
+  permisos: PermisoDTO[];
+  sesiones: SesionDTO[];
+}
+
+export interface VistasRolInput {
+  vistas: {
+    vistaId: string;
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+    puedeExportar: boolean;
+  }[];
+}
+
+export const rolesApi = {
+  /** Catálogo de roles con conteos. */
+  catalogo: () => apiClient.get<{ items: RolDTO[] }>('/roles'),
+
+  /** Crear rol. */
+  crear: (data: { nombre: string; descripcion?: string; nivel?: number; torre?: string }) =>
+    apiClient.post<RolDTO>('/roles', data),
+
+  /** Editar rol (el rol es_sistema no se edita). */
+  actualizar: (id: string, data: { nombre?: string; descripcion?: string; nivel?: number; torre?: string; activo?: boolean }) =>
+    apiClient.patch<{ id: string; nombre: string }>(`/roles/${id}`, data),
+
+  /** Baja de rol (no procede con usuarios asignados). */
+  eliminar: (id: string) => apiClient.delete<{ message: string }>(`/roles/${id}`),
+
+  /** Todas las vistas con los flags del rol. */
+  vistas: (id: string) =>
+    apiClient.get<{ rolId: string; rolNombre: string | null; vistas: VistaRolDTO[] }>(
+      `/roles/${id}/vistas`,
+    ),
+
+  /** Upsert de los flags de vistas del rol. */
+  actualizarVistas: (id: string, data: VistasRolInput) =>
+    apiClient.patch<{ message: string }>(`/roles/${id}/vistas`, data),
+
+  /** Matriz de permisos (asignado true/false). */
+  permisos: (id: string) =>
+    apiClient.get<{ rolId: string; permisos: PermisoDTO[] }>(`/roles/${id}/permisos`),
+
+  /** Agregar/quitar permisos del rol. */
+  actualizarPermisos: (id: string, data: { agregar?: string[]; quitar?: string[] }) =>
+    apiClient.patch<{ message: string }>(`/roles/${id}/permisos`, data),
+};
+
+// Mesa de ayuda de PIN (vive en auth/pin — se reusa tal cual).
+export const pinMesaAyudaApi = {
+  /** Genera un PIN temporal de 24 h (se muestra UNA VEZ). */
+  reiniciar: (userId: string) =>
+    apiClient.post<{ message: string; pinTemporal: string }>('/auth/pin/reinicio', { userId }),
+
+  /** Desbloquea la cuenta tras 5 intentos fallidos. */
+  desbloquear: (userId: string) =>
+    apiClient.post<{ message: string }>('/auth/pin/desbloqueo', { userId }),
 };

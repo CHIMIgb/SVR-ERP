@@ -1408,6 +1408,11 @@ import { Tabs, TabPanel } from '@/components/ui/Tabs';
 </Tabs>
 ```
 
+**Estilo del grupo:** las pestañas se agrupan en una **píldora compacta
+(`w-fit`)** que se achica al contenido — NO se estira a todo el ancho
+(estilo de conciliación-bancaria). Si una vista necesitara la barra a
+ancho completo, se agrega una prop en ese momento.
+
 #### Ejemplo avanzado
 
 ```tsx
