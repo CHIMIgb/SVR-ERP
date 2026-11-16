@@ -5,7 +5,7 @@
 # Build/Push: .github/workflows/build-web.yml → ghcr.io/chimigb/svr-erp-web
 
 # ── Etapa 1: dependencias del workspace (web + shared) ──────────────────────
-FROM node:26-alpine AS deps
+FROM node:26-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/
@@ -13,7 +13,7 @@ COPY packages/shared/package.json packages/shared/
 RUN npm ci
 
 # ── Etapa 2: build del web (aquí es donde Railway se quedaba sin memoria) ───
-FROM node:26-alpine AS build
+FROM node:26-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json turbo.json ./
@@ -30,7 +30,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
 RUN npx turbo run build --filter=web
 
 # ── Etapa 3: runtime limpio (solo lo que `next start` necesita) ─────────────
-FROM node:26-alpine AS runner
+FROM node:26-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 COPY --from=build /app/node_modules ./node_modules
