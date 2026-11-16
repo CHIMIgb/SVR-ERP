@@ -49,7 +49,7 @@ jobs:
             ghcr.io/chimigb/svr-erp-web:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_URL=https://svr-erp.up.railway.app/api
-            NEXT_PUBLIC_APP_URL=https://svr-erp-web.up.railway.app
+            NEXT_PUBLIC_APP_URL=https://svr-prod.up.railway.app
             NEXT_PUBLIC_TZ=America/Mexico_City
           cache-from: type=gha
           cache-to: type=gha,mode=max
