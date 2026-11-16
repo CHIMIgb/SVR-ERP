@@ -10,11 +10,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
-# El lockfile (generado en Windows) omite las entradas packages/ de las
-# variantes Linux de lightningcss (binario nativo de Tailwind v4/next/font) —
-# npm ci no las instala y el build muere con "Cannot find module
-# lightningcss.linux-x64-gnu.node". Se instala la variante glibc a mano.
-RUN npm ci && npm install --no-save lightningcss-linux-x64-gnu@1.32.0
+# npm install (NO npm ci): el lockfile generado en Windows omite las entradas
+# packages/ de las variantes NATIVAS de Linux (npm/cli#4828) — lightningcss,
+# @tailwindcss/oxide, sharp… — y npm ci no las instala (build muere con
+# "Cannot find native binding"). npm install dentro del contenedor Linux llena
+# los huecos de plataforma con las mismas versiones del lockfile.
+RUN npm install
 
 # ── Etapa 2: build del web (aquí es donde Railway se quedaba sin memoria) ───
 FROM node:26-slim AS build
