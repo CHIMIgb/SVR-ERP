@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AsistenciaService } from './asistencia.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -67,7 +67,14 @@ describe('AsistenciaService', () => {
         findFirst: jest.fn().mockResolvedValue(mockTrabajador),
         findMany: jest.fn().mockResolvedValue([mockTrabajador]),
       },
+      trabajadores_proyectos: {
+        findMany: jest.fn().mockResolvedValue([{ proyecto_id: 'proy-uuid-1' }]),
+      },
+      users: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       obras: {
+        findMany: jest.fn().mockResolvedValue([mockObra]),
         findFirst: jest.fn().mockResolvedValue(mockObra),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...mockObra, ...data })),
       },
@@ -977,6 +984,160 @@ describe('AsistenciaService', () => {
     it('404 when the obra does not exist', async () => {
       prisma.obras.findFirst.mockResolvedValue(null);
       await expect(service.registrarUbicacionObra('missing', dto, 'user-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('asistencia propia (PWA): el trabajador sale del token', () => {
+    const entradaPropia = { obraId: mockObra.id, lat: 19.3423, lng: -99.1841, dispositivo: 'Móvil' };
+    const salidaPropia = { lat: 19.3423, lng: -99.1841, dispositivo: 'Móvil' };
+
+    it('busca al trabajador por la cuenta del token (usuario_id)', async () => {
+      await service.marcarEntradaPropia(entradaPropia, 'user-1');
+      expect(prisma.trabajadores.findFirst.mock.calls[0][0].where).toEqual({ usuario_id: 'user-1', eliminado_en: null });
+    });
+
+    it('registra la entrada al trabajador enlazado, con la misma regla del marcaje de RRHH', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 7, 5, 0));
+      await service.marcarEntradaPropia(entradaPropia, 'user-1');
+      const data = prisma.registros_asistencia.create.mock.calls[0][0].data;
+      expect(data.trabajador_id).toBe(mockTrabajador.id);
+      expect(data.obra_id).toBe(mockObra.id);
+      expect(data.estado).toBe('PUNTUAL');
+    });
+
+    it('cuenta sin trabajador enlazado: 404 auditado y no registra nada', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue(null);
+      await expect(service.marcarEntradaPropia(entradaPropia, 'user-1')).rejects.toThrow(NotFoundException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'FAIL', errorCode: 'SIN_TRABAJADOR_ENLAZADO', action: 'ASISTENCIA_ENTRADA_REGISTRADA' }),
+      );
+    });
+
+    it('sin obra asignada: 400 auditado', async () => {
+      prisma.trabajadores_proyectos.findMany.mockResolvedValue([]);
+      await expect(service.marcarEntradaPropia(entradaPropia, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'SIN_OBRA_ASIGNADA' }));
+    });
+
+    it('obra que no es suya: 403 auditado y no registra nada', async () => {
+      await expect(
+        service.marcarEntradaPropia({ ...entradaPropia, obraId: 'obra-ajena' }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.registros_asistencia.create).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'OBRA_NO_ASIGNADA' }));
+    });
+
+    it('solo toma obras activas de proyectos activos', async () => {
+      await service.marcarEntradaPropia(entradaPropia, 'user-1');
+      expect(prisma.trabajadores_proyectos.findMany.mock.calls[0][0].where).toEqual({
+        trabajador_id: mockTrabajador.id,
+        activo: true,
+        eliminado_en: null,
+      });
+      expect(prisma.obras.findMany.mock.calls[0][0].where).toEqual({
+        proyecto_id: { in: ['proy-uuid-1'] },
+        activo: true,
+        eliminado_en: null,
+      });
+    });
+
+    it('salida propia: cierra el registro del trabajador enlazado', async () => {
+      prisma.registros_asistencia.findFirst.mockResolvedValue({ ...baseRegistro });
+      await service.marcarSalidaPropia(salidaPropia, 'user-1');
+      expect(prisma.registros_asistencia.findFirst.mock.calls[0][0].where.trabajador_id).toBe(mockTrabajador.id);
+    });
+
+    it('salida propia sin trabajador enlazado: 404 auditado', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue(null);
+      await expect(service.marcarSalidaPropia(salidaPropia, 'user-1')).rejects.toThrow(NotFoundException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'SIN_TRABAJADOR_ENLAZADO', action: 'ASISTENCIA_SALIDA_REGISTRADA' }),
+      );
+    });
+
+    describe('findMia', () => {
+      it('sin trabajador enlazado: 404', async () => {
+        prisma.trabajadores.findFirst.mockResolvedValue(null);
+        await expect(service.findMia('user-1')).rejects.toThrow(NotFoundException);
+      });
+
+      it('devuelve datos del trabajador, sus obras, el registro de hoy y la semana, sin sueldos', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+        prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, puesto: 'Operador', sueldo_fiscal: 9999 });
+        prisma.obras.findMany.mockResolvedValue([mockObra, { ...mockObra, id: 'obra-2', nombre: 'Obra sin ubicacion', lat: null, lng: null }]);
+        prisma.registros_asistencia.findFirst.mockResolvedValue(baseRegistro);
+
+        const r = await service.findMia('user-1');
+
+        expect(r.trabajador).toEqual({
+          id: mockTrabajador.id,
+          nombre: 'Juan Pérez',
+          puesto: 'Operador',
+          estado: 'ACTIVO',
+          entradaProgramada: '07:00',
+        });
+        expect(JSON.stringify(r)).not.toContain('9999');
+        expect(r.obras).toEqual([
+          { id: mockObra.id, nombre: mockObra.nombre, tieneUbicacion: true },
+          { id: 'obra-2', nombre: 'Obra sin ubicacion', tieneUbicacion: false },
+        ]);
+        expect(r.registroHoy?.id).toBe(baseRegistro.id);
+        expect(r.turnoNocturnoAbierto).toBe(false);
+        expect(prisma.trabajadores.findMany.mock.calls[0][0].where.id).toEqual({ in: [mockTrabajador.id] });
+      });
+
+      it('sin registro hoy y sin turno nocturno abierto: registroHoy null', async () => {
+        const r = await service.findMia('user-1');
+        expect(r.registroHoy).toBeNull();
+        expect(r.turnoNocturnoAbierto).toBe(false);
+      });
+
+      it('trabajador no activo: semana null (findSemanal solo trae activos)', async () => {
+        prisma.trabajadores.findMany.mockResolvedValue([]);
+        const r = await service.findMia('user-1');
+        expect(r.semana).toBeNull();
+      });
+    });
+
+    describe('findEquipo', () => {
+      it('sin cuentas a su cargo: equipo vacío y no consulta trabajadores', async () => {
+        const r = await service.findEquipo('residente-1', {});
+        expect(prisma.users.findMany.mock.calls[0][0].where).toEqual({ jefe_user_id: 'residente-1', eliminado_en: null, activo: true });
+        expect(r.miembros).toEqual([]);
+        expect(r.totales.miembros).toBe(0);
+        expect(prisma.trabajadores.findMany).not.toHaveBeenCalled();
+      });
+
+      it('lista a los trabajadores de sus cuentas con el estado del día y sin sueldos', async () => {
+        jest.useFakeTimers().setSystemTime(new Date(2026, 7, 26, 18, 0, 0)); // miércoles, pasada la hora límite
+        prisma.users.findMany.mockResolvedValue([{ id: 'cuenta-1' }, { id: 'cuenta-2' }]);
+        const presente = { ...mockTrabajador, puesto: 'Operador', telefono: '5550000001', sueldo_fiscal: 9999 };
+        const ausente = { ...mockTrabajador, id: 'trab-uuid-2', nombre: 'Pedro Ruiz', puesto: 'Chofer', telefono: '5550000002' };
+        prisma.trabajadores.findMany.mockResolvedValue([presente, ausente]);
+        prisma.registros_asistencia.findMany.mockResolvedValue([baseRegistro]); // solo el primero checó ese día
+
+        const r = await service.findEquipo('residente-1', { fecha: '2026-08-26' });
+
+        expect(prisma.trabajadores.findMany.mock.calls[0][0].where.usuario_id).toEqual({ in: ['cuenta-1', 'cuenta-2'] });
+        expect(r.fecha).toBe('2026-08-26');
+        expect(r.miembros.map((m) => [m.nombre, m.dia?.estado])).toEqual([
+          ['Juan Pérez', 'Puntual'],
+          ['Pedro Ruiz', 'Falta'],
+        ]);
+        expect(r.miembros[1].telefono).toBe('5550000002');
+        expect(r.totales).toEqual({ miembros: 2, presentes: 1, retardos: 0, faltas: 1, omisiones: 0, pendientes: 0 });
+        expect(JSON.stringify(r)).not.toContain('9999');
+      });
+
+      it('domingo: el día queda null y no cuenta en ningún total', async () => {
+        prisma.users.findMany.mockResolvedValue([{ id: 'cuenta-1' }]);
+        prisma.trabajadores.findMany.mockResolvedValue([mockTrabajador]);
+        const r = await service.findEquipo('residente-1', { fecha: '2026-08-30' }); // domingo
+        expect(r.miembros[0].dia).toBeNull();
+        expect(r.totales).toEqual({ miembros: 1, presentes: 0, retardos: 0, faltas: 0, omisiones: 0, pendientes: 0 });
+      });
     });
   });
 });
