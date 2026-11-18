@@ -50,5 +50,6 @@ Railway. El usuario autorizó crear el workflow de integración y el smoke.
 - El dump incluye datos de prueba y se restaura en un runner efímero; no
   contamina la BD local. `registro_auditoria` queda intacto (inmutable).
 - Fase 3 (trazabilidad SHA/digest) quedó registrada en
-  `2026-11-18-trazabilidad-deploy.md`. Fase 4 está en curso; el lint sigue
-  pendiente de confirmación por el cambio de alcance descubierto.
+  `2026-11-18-trazabilidad-deploy.md`. Fase 4 cerrada: tests reactivados,
+  actions actualizadas y lint dejado como deuda por decisión del usuario
+  (`2026-11-18-cierre-fase4-lint-deuda.md`).

@@ -42,5 +42,5 @@ con `gh api repos/<owner>/<repo>/tags` para no inventar números de versión.
 - Las actions mayores nuevas pueden cambiar comportamiento (en particular
   `build-push-action@v7`); la única forma de confirmarlo es correr los
   workflows en GitHub.
-- Queda pendiente el lint (21 errores) y la decisión de alcance explicada en
-  `2026-11-18-ci-integracion-y-smoke.md`.
+- El lint (21 errores) queda como deuda por decisión del usuario; ver
+  `2026-11-18-cierre-fase4-lint-deuda.md`.
