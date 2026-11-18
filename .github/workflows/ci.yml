@@ -1,0 +1,48 @@
+# Gates que hoy están verdes. lint y Jest NO entran todavía: hay deuda
+# conocida (21 errores de eslint y 2 tests de cobranza dependientes de fecha).
+# Integrarlos cuando se arreglen, no antes — un CI rojo desde el día 1 no protege.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+        working-directory: apps/web
+
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      # prisma validate lee la config, pero no conecta a la BD.
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/svr_erp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx prisma validate

@@ -218,8 +218,29 @@ Un PR que incumpla cualquiera = Request Changes.
 - Branch main: `main`. Naming histórico válido: `vistas-<dominio>`, `fix/<tema>`, nombres descriptivos de feature (ej. `proveedores-cobranza`). El branch solo se decide si el usuario pide PR/push.
 - Commits atómicos por bloque lógico; 1 fix = 1 commit que cierra su incidente verificable.
 - Si te ordenan PR: push del branch + `gh pr create --base main` + plantilla actualizada `.github/PULL_REQUEST_TEMPLATE.md` (checklists frontend/backend/tests/BD — ya reflejan este stack, no Expo).
-- Validación previa a un push ordenado: `npm run lint` (raíz), `npx tsc --noEmit` (apps/web), `npm run test` (apps/api); si tocó Prisma `npx prisma validate`.
-- CI/CD: **el repo NO tiene GitHub Actions todavía** (solo existe la plantilla de PR en `.github/`). Puedes crear el workflow SOLO cuando el usuario lo pida explícitamente — nunca de tu cuenta. Propuesta si lo piden: job `ci` con PostgreSQL 18 como service → checkout, setup-node 26 + `npm ci`, turbo `lint` + `tsc --noEmit` web, `jest` unitarios api (con BD del service para los `test:integration` marcados).
+- Validación previa a un push ordenado: `npx tsc --noEmit` (apps/web), `npm run build` (apps/api) y `npx prisma validate` si tocó Prisma. `npm run lint` y `npm run test` hoy están rojos por deuda conocida (ver CI/CD): menciona el resultado en el registro, no los silencies ni los llames "verdes".
+- CI/CD: ver la sección "CI/CD — conocimiento especializado" más abajo. **El repo SÍ tiene GitHub Actions** (no repetir la afirmación vieja de que no los hay).
+
+## CI/CD — conocimiento especializado
+
+**Inventario real (verificar siempre con `git ls-tree -r --name-only HEAD -- .github/workflows`):**
+
+| Workflow | Disparadores | Función |
+|---|---|---|
+| `.github/workflows/ci.yml` | PR a `main`, push a `main`, `workflow_dispatch` | Gates verdes: `tsc --noEmit` del web, `npm run build` de la API, `npx prisma validate`. Sin lint ni Jest todavía. |
+| `.github/workflows/build-web.yml` | push a `main` con cambios de web/packages/lockfiles/`Dockerfile`/workflow + `workflow_dispatch` | Imagen GHCR `chimigb/svr-erp-web` (`latest` + SHA) y `railway redeploy` del servicio Web. |
+
+**Cómo diagnosticar una falla de CI/CD:**
+
+- `apps/api` NO está en los workspaces: `npm ci` de la raíz no lo instala. El job de la API corre `npm ci` dentro de `apps/api` con su lockfile propio.
+- Node 26 / npm 11.20.0. El lockfile se generó en Windows: los binarios nativos Linux (lightningcss, oxide, sharp) se instalan explícito en el `Dockerfile`, pero `tsc` y `nest build` no los necesitan — no "arregles" el CI copiando ese truco sin motivo.
+- `prisma validate` necesita `DATABASE_URL` aunque no conecte: CI usa un valor dummy. Nunca escribas la URL real ni secretos en un workflow.
+- El redeploy a Railway usa el secreto `RAILWAY_TOKEN` (project token) y la variable opcional `RAILWAY_SERVICE` (por defecto `Web`). Funciona sobre el tag mutable `:latest`; si Railway apunta a un tag por SHA, el redeploy repite la imagen vieja. Los PRs de forks no reciben secrets: el deploy solo corre en push a `main` del repo base.
+- `NEXT_PUBLIC_*` va horneado en el bundle en build time: cambiar un build-arg exige rebuild de imagen, no solo redeploy. TZ solo desde `.env`, nunca hardcodeada en Actions.
+- Tests de integración NO van en CI: requieren BD restaurada (`svr_erp_export/`, historial de migraciones baselined) y `registro_auditoria` es inmutable. Se corren local con `npm run test:integration`.
+- Deuda actual: `npm run lint` → 21 errores; `npm run test` (api) → 2 fallos en `cobranza.service.spec.ts` dependientes de la fecha. No los conviertas en gates sin arreglarlos antes.
+
+**Reglas para el agente:** no editar workflows, secretos ni variables de GitHub/Railway sin autorización explícita; nunca imprimir tokens; validar YAML con `git diff --check` y documentar todo cambio de CI/CD en `AGENTS.md`, este archivo y `historial-cambios/` en el mismo commit; push y PR solo cuando el usuario lo ordene.
 
 ## Reglas que también aplican (sincronizado de AGENTS.md)
 

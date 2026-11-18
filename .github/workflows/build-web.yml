@@ -3,8 +3,10 @@
 # de este monorepo (se comprueba: Turbopack y Webpack mueren sin memoria).
 # Los runners de GitHub tienen 7 GB — aquí se construye la imagen y se sube a
 # GHCR; Railway la despliega con "Deploy from image".
-# NOTA: al cambiar el workflow/paths, Railway NO redespliega solo — pulsar
-# "Redeploy" en el servicio Web (o usar un Deploy Trigger, pendiente).
+# El redeploy se dispara solo: requiere el secreto RAILWAY_TOKEN (project token)
+# y, opcionalmente, la variable RAILWAY_SERVICE (por defecto "Web").
+# El servicio debe apuntar al tag mutable :latest; con un tag por SHA el
+# redeploy repite la imagen antigua.
 
 name: build-web
 
@@ -53,3 +55,14 @@ jobs:
             NEXT_PUBLIC_TZ=America/Mexico_City
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Railway no redepliega solo al actualizarse la imagen: el redeploy vuelve a
+  # jalar el tag :latest y recoge el digest nuevo.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Redeploy del servicio Web en Railway
+        run: npx -y @railway/cli@latest redeploy --service "${{ vars.RAILWAY_SERVICE || 'Web' }}" --yes
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

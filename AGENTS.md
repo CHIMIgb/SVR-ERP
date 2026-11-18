@@ -23,7 +23,8 @@ npm run start     # Serve production build
 npm run lint      # ESLint (flat config, eslint-config-next)
 ```
 
-No test runner is configured. No CI pipeline exists.
+Jest corre en `apps/api`; el front aún no tiene runner de tests.
+CI/CD: ver la sección "CI/CD (GitHub Actions)" al final de este archivo.
 
 ## Path Aliases
 
@@ -524,3 +525,22 @@ placeholders y las de escritorio son mock). Todo es smoke manual.
   ciegas son lo primero que muerde con dos desarrolladores en paralelo.
 - **Prioridad: media-alta** — se activa ANTES de que existan 3+
   pantallas reales (el esqueleto 8/10 decae rápido sin red de seguridad).
+
+## CI/CD (GitHub Actions)
+
+Estado real a 2026-11-18: el repo **sí tiene Actions** (no repetir lo contrario).
+
+| Workflow | Disparadores | Qué hace |
+|---|---|---|
+| `.github/workflows/ci.yml` | `pull_request` a `main`, `push` a `main`, `workflow_dispatch` | Gates verdes: `npx tsc --noEmit` del web, `npm run build` de la API y `npx prisma validate`. |
+| `.github/workflows/build-web.yml` | `push` a `main` que toque web/packages/lockfiles/`Dockerfile`/workflow, más `workflow_dispatch` | Construye y publica `ghcr.io/chimigb/svr-erp-web` (`latest` + SHA) y hace `railway redeploy` del servicio Web. |
+
+### Reglas duras
+
+1. Node **26** y npm **11.20.0** en los runners (igual que el Dockerfile y la máquina de desarrollo). `apps/api` está fuera de los workspaces: su `npm ci` corre dentro de `apps/api` con su propio lockfile; el de la raíz instala solo web + shared.
+2. `npx prisma validate` necesita `DATABASE_URL` aunque no abra conexión: en CI se usa un valor dummy. La URL real jamás se escribe en un workflow.
+3. `NEXT_PUBLIC_*` se hornea en build time (build-args del Dockerfile): cambiar un `build-arg` del workflow exige nuevo build de imagen, no basta con redeploy. La zona horaria vive solo en `.env` (`NEXT_PUBLIC_TZ` / `TZ`), nunca hardcodeada en Actions.
+4. Deploy a Railway: secreto **`RAILWAY_TOKEN`** (project token) y variable opcional **`RAILWAY_SERVICE`** (por defecto `Web`). El redeploy funciona sobre el tag mutable `:latest`: si el servicio apunta a un tag por SHA, no recoge la imagen nueva. Nunca imprimir el token en logs ni commitearlo.
+5. Los tests de integración **no** corren en CI: necesitan la BD restaurada de `svr_erp_export/` (el historial de migraciones fue baselined; `migrate deploy` desde cero no crea las tablas base) y `registro_auditoria` es inmutable. Se corren en local con `npm run test:integration` y se documentan en `historial-cambios/`.
+6. Deuda conocida (no gate today): `npm run lint` tiene 21 errores y `npm run test` de la API tiene 2 fallos en `cobranza.service.spec.ts` por expectativas dependientes de la fecha. No se silencian: se arreglan y entonces se agregan como gates.
+7. Todo cambio de workflow requiere autorización explícita, se valida con `git diff --check` y se registra en `historial-cambios/` en el mismo commit. Push y PR siguen siendo solo cuando el usuario lo ordene.
