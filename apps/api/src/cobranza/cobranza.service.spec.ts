@@ -40,10 +40,10 @@ describe('CobranzaService', () => {
     proyecto_id: null,
     monto: 1000,
     monto_pagado: 0,
-    fecha_vencimiento: new Date('2026-10-01'),
+    fecha_vencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     estado: 'PENDIENTE',
     activo: true,
-    creado_en: new Date('2026-09-01'),
+    creado_en: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
     actualizado_en: new Date(),
     clientes: { id: CLIENTE_ID, nombre: 'Constructora Beta', empresa: 'Beta SA de CV' },
     facturas: null,
@@ -111,8 +111,7 @@ describe('CobranzaService', () => {
   });
 
   describe('findAll', () => {
-    // shortcut: mockCuenta tiene fechas fijas de sep-2026; hoy ya es ATRASO_GRAVE, reactivar al hacerlas relativas
-    it.skip('devuelve items paginados y aplica filtros', async () => {
+    it('devuelve items paginados y aplica filtros', async () => {
       prisma.cuentas_por_cobrar.findMany.mockResolvedValue([mockCuenta]);
       prisma.cuentas_por_cobrar.count.mockResolvedValue(1);
 
@@ -758,8 +757,7 @@ describe('CobranzaService', () => {
   });
 
   describe('exportar', () => {
-    // shortcut: mismo mock con fechas fijas; reactivar con el arreglo de fechas de cobranza
-    it.skip('genera CSV con BOM y encabezados', async () => {
+    it('genera CSV con BOM y encabezados', async () => {
       prisma.cuentas_por_cobrar.findMany.mockResolvedValue([mockCuenta]);
 
       const result = await service.exportar({});

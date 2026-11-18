@@ -35,8 +35,9 @@ restaurada de `svr_erp_export/` y `registro_auditoria` es inmutable.
 
 ## Pruebas / verificación
 
-- `npm run test -- --runInBand` en `apps/api`: **1415 passed, 2 skipped,
-  1417 total** (antes: 1415 passed, 2 failed).
+- `npm run test -- --runInBand` en `apps/api` al integrarlos: **1415 passed,
+  2 skipped, 1417 total** (antes: 1415 passed, 2 failed). Los 2 tests se
+  reactivaron el mismo día; ver `2026-11-18-reactivar-tests-cobranza.md`.
 - Estructura YAML de `ci.yml` validada con `js-yaml` + aserción de pasos.
 - `git diff --check`: limpio.
 - Sin push ni corrida en GitHub: el usuario eligió dejar el commit local.

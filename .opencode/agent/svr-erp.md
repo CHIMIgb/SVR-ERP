@@ -227,7 +227,7 @@ Un PR que incumpla cualquiera = Request Changes.
 
 | Workflow | Disparadores | Función |
 |---|---|---|
-| `.github/workflows/ci.yml` | PR a `main`, push a `main`, `workflow_dispatch` | Gates verdes: `tsc --noEmit` del web, `npm run build` de la API, `npx prisma validate` y `npm run test -- --runInBand` (2 tests de cobranza en `it.skip`). Sin lint. |
+| `.github/workflows/ci.yml` | PR a `main`, push a `main`, `workflow_dispatch` | Gates verdes: `tsc --noEmit` del web, `npm run build` de la API, `npx prisma validate` y `npm run test -- --runInBand` (1417 tests). Sin lint. |
 | `.github/workflows/build-web.yml` | push a `main` con cambios de web/packages/lockfiles/`Dockerfile`/workflow + `workflow_dispatch` | Imagen GHCR `chimigb/svr-erp-web` (`latest` + SHA) y smoke del contenedor. El deploy en Railway es manual. |
 | `.github/workflows/integration.yml` | `workflow_dispatch` | Tests de integración con Postgres 18 efímero y restore del dump sin PostGIS; no van en `ci.yml`. |
 
@@ -239,7 +239,7 @@ Un PR que incumpla cualquiera = Request Changes.
 - El deploy en Railway es **manual**, sin secretos de GitHub: después de que el workflow publique la imagen, entrar al servicio Web → **Redeploy**. El servicio debe apuntar al tag mutable `:latest`; si apunta a un tag por SHA, el redeploy repite la imagen vieja. Si el paquete GHCR es privado, Railway necesita un token `read:packages` en Registry Credentials (no el `GITHUB_TOKEN` del workflow). En cada Redeploy, registrar en `historial-cambios/` el SHA y el digest que imprimió `build-web`.
 - `NEXT_PUBLIC_*` va horneado en el bundle en build time: cambiar un build-arg exige rebuild de imagen, no solo redeploy. TZ solo desde `.env`, nunca hardcodeada en Actions.
 - Tests de integración NO van en `ci.yml`: corren en `integration.yml` (`workflow_dispatch`) con Postgres 18 efímero y restore de `svr_erp_export/svr_erp_sin_postgis.sql` (sin PostGIS; el historial de migraciones fue baselined). No corras `migrate deploy` desde cero. `registro_auditoria` es inmutable. También se corren local con `npm run test:integration`.
-- Deuda actual: `npm run lint` → 21 errores (sigue fuera del CI). Jest ya corre en CI con `--runInBand`; 2 tests de `cobranza.service.spec.ts` están en `it.skip` por fechas fijas del mock: reactivarlos al corregir esas fechas.
+- Deuda actual: `npm run lint` → 21 errores (sigue fuera del CI). Jest ya corre en CI con `--runInBand` y los 1417 tests pasan sin `skip`.
 
 **Reglas para el agente:** no editar workflows, secretos ni variables de GitHub/Railway sin autorización explícita; nunca imprimir tokens; validar YAML con `git diff --check` y documentar todo cambio de CI/CD en `AGENTS.md`, este archivo y `historial-cambios/` en el mismo commit; push y PR solo cuando el usuario lo ordene.
 
