@@ -2,6 +2,11 @@
 // Sin esto, la zona depende del sistema (en CI está bien, en local no).
 require('dotenv').config();
 
+// En CI no hay .env: JwtStrategy exige secretos aunque sean de prueba.
+// Valores dummy, nunca los reales de despliegue.
+process.env.JWT_ACCESS_SECRET ||= 'integration-access-secret';
+process.env.JWT_REFRESH_SECRET ||= 'integration-refresh-secret';
+
 /** @type {import('jest').Config} */
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
