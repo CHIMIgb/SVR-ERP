@@ -232,7 +232,7 @@ Un PR que incumpla cualquiera = Request Changes.
 
 **Cómo diagnosticar una falla de CI/CD:**
 
-- `apps/api` NO está en los workspaces: `npm ci` de la raíz no lo instala. El job de la API corre `npm ci` dentro de `apps/api` con su lockfile propio.
+- `apps/api` NO está en los workspaces: `npm ci` de la raíz no lo instala. El job de la API corre `npm ci` dentro de `apps/api` con su lockfile propio. Ese `npm ci` no genera el cliente Prisma (no hay `postinstall`): si el build falla con `TS2339` sobre `prisma.users`, `prisma.sessions`, etc., falta el paso `npx prisma generate` antes de `npm run build`.
 - Node 26 / npm 11.20.0. El lockfile se generó en Windows: los binarios nativos Linux (lightningcss, oxide, sharp) se instalan explícito en el `Dockerfile`, pero `tsc` y `nest build` no los necesitan — no "arregles" el CI copiando ese truco sin motivo.
 - `prisma validate` necesita `DATABASE_URL` aunque no conecte: CI usa un valor dummy. Nunca escribas la URL real ni secretos en un workflow.
 - El deploy en Railway es **manual**, sin secretos de GitHub: después de que el workflow publique la imagen, entrar al servicio Web → **Redeploy**. El servicio debe apuntar al tag mutable `:latest`; si apunta a un tag por SHA, el redeploy repite la imagen vieja. Si el paquete GHCR es privado, Railway necesita un token `read:packages` en Registry Credentials (no el `GITHUB_TOKEN` del workflow).

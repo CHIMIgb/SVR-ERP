@@ -44,5 +44,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/api/package-lock.json
       - run: npm ci
+      # npm ci no dispara generate (no hay postinstall en apps/api): sin esto
+      # @prisma/client queda con tipos stub y el build falla con TS2339.
+      - run: npx prisma generate
       - run: npm run build
       - run: npx prisma validate

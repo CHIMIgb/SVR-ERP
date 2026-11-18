@@ -537,7 +537,7 @@ Estado real a 2026-11-18: el repo **sí tiene Actions** (no repetir lo contrario
 
 ### Reglas duras
 
-1. Node **26** y npm **11.20.0** en los runners (igual que el Dockerfile y la máquina de desarrollo). `apps/api` está fuera de los workspaces: su `npm ci` corre dentro de `apps/api` con su propio lockfile; el de la raíz instala solo web + shared.
+1. Node **26** y npm **11.20.0** en los runners (igual que el Dockerfile y la máquina de desarrollo). `apps/api` está fuera de los workspaces: su `npm ci` corre dentro de `apps/api` con su propio lockfile; el de la raíz instala solo web + shared. Ese `npm ci` **no genera el cliente Prisma** (no hay `postinstall`): el job `api` corre `npx prisma generate` antes de compilar, si no el build muere con `TS2339` sobre los modelos de `PrismaService`.
 2. `npx prisma validate` necesita `DATABASE_URL` aunque no abra conexión: en CI se usa un valor dummy. La URL real jamás se escribe en un workflow.
 3. `NEXT_PUBLIC_*` se hornea en build time (build-args del Dockerfile): cambiar un `build-arg` del workflow exige nuevo build de imagen, no basta con redeploy. La zona horaria vive solo en `.env` (`NEXT_PUBLIC_TZ` / `TZ`), nunca hardcodeada en Actions.
 4. Deploy a Railway: **manual**, sin secretos de GitHub. Después de que el workflow publique la imagen, entrar al servicio Web en Railway → **Redeploy**. El servicio debe apuntar al tag mutable `:latest`: con un tag por SHA el redeploy repite la imagen vieja. El paquete GHCR debe ser público o tener credenciales `read:packages` en Registry Credentials.
