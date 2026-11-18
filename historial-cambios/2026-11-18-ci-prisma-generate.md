@@ -32,7 +32,8 @@ cliente ya estaba generado en `node_modules`.
 - Corrida anterior: `ci` fallida en `api` (run `44388478857`), `web` verde.
 - `git diff --check`: limpio.
 - Sintaxis YAML validada con `js-yaml`.
-- Revalidación en GitHub Actions: pendiente del push de este commit.
+- Revalidación en GitHub Actions: run `44389263754` **SUCCESS** — `web` (28s) y
+  `api` (48s) verdes, con `npx prisma generate` ejecutado antes del build.
 
 ## Pendientes y riesgos
 
