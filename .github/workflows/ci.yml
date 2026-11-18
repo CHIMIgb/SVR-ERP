@@ -19,8 +19,8 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 26
           cache: npm
@@ -37,8 +37,8 @@ jobs:
       # prisma validate lee la config, pero no conecta a la BD.
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/svr_erp
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 26
           cache: npm
