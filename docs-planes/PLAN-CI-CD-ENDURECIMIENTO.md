@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-18
 **Autor:** Agente (análisis y plan solicitados por el usuario)
-**Estado:** plan propuesto, **sin ejecutar**.
+**Estado:** Fase 0 **ejecutada** (2026-11-18); fases 1-6 pendientes de autorización.
 
 ## Alcance y decisión previa
 
@@ -60,7 +60,7 @@ CI no puede ayudar sin antes arreglar deuda del producto.
 
 | ID | Brecha | Impacto | Esfuerzo | Prioridad |
 |---|---|---|---|---|
-| B1 | Ruleset sin `required_status_checks` | Un PR se puede mergear con checks rojos | Bajo (config GitHub) | 0 |
+| B1 | ~~Ruleset sin `required_status_checks`~~ **CERRADA** (Fase 0: checks `web`/`api`/`integration`, strict) | Un PR se puede mergear con checks rojos | Bajo (config GitHub) | 0 |
 | B2 | Comment desactualizado sobre skips en `ci.yml`/`AGENTS.md` | Nadie sabe si los 1417 son reales | Muy bajo | 1 |
 | B3 | Sin validación schema ↔ dump | Falsos verdes/rojos al cambiar `schema.prisma` | Bajo (1 paso en `integration`) | 1 |
 | B4 | `build-web` publica `latest` antes del smoke | Imagen rota en producción | Medio (reordenar pasos) | 1 |
@@ -91,9 +91,25 @@ Cada fase se ejecuta como un cambio atómico, con su registro en
 mezclan fases en un mismo commit. Los cambios de GitHub (Fase 0) se hacen con
 autorización explícita, porque son administración externa al repo.
 
-### Fase 0 — Checks obligatorios en el ruleset
+### Fase 0 — Checks obligatorios en el ruleset — ✅ EJECUTADA 2026-11-18
 
-- **Qué se toca:** ruleset `21267691` en GitHub, **nada en el repo**.
+- **Resultado:** regla `required_status_checks` agregada al ruleset `21267691`
+  con contexts `web`, `api`, `integration` y
+  `strict_required_status_checks_policy: true`. `bypass_actors` intacto
+  (`CHIMIgb`, id `156728324`, `always`). El nombre del ruleset, que se
+  mojibakeó durante el primer PUT, fue corregido a `Protección main` y
+  verificado por codepoints (`ó` = 243).
+- **Verificación:** `gh api .../rulesets/21267691` devuelve 6 reglas (las 5
+  originales + la nueva); los check runs publicados en el SHA de `main` se
+  llaman exactamente `integration`, `api` y `web`, así que los contexts
+  coinciden.
+- **Hallazgo al cerrar la fase:** en el head de `main` el check `api` está en
+  `failure` — run `44422735359`, 2 tests de `ventas.service.spec.ts` dependientes
+  del turno de cierre ("se habilita después de las 00:00 y hasta antes de las
+  23:00"), 1415 pasaron de 1417. No lo causó la Fase 0, pero con el gate activo
+  bloquea los PR hasta que esos tests dejen de depender de la hora. Requiere
+  autorización para arreglarse (fuera de esta fase).
+- **Qué se tocó (según el plan original):** ruleset `21267691` en GitHub, **nada en el repo**.
 - **Acción:** agregar la regla `required_status_checks` con los checks
   `web`, `api` e `integration` (nombres reales de los jobs). Excluir `build-web`:
   no dispara en PR y dejaría un check pendiente para siempre. Modo estricto

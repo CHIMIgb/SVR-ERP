@@ -243,6 +243,8 @@ Un PR que incumpla cualquiera = Request Changes.
 
 **Reglas para el agente:** no editar workflows, secretos ni variables de GitHub/Railway sin autorización explícita; nunca imprimir tokens; validar YAML con `git diff --check` y documentar todo cambio de CI/CD en `AGENTS.md`, este archivo y `historial-cambios/` en el mismo commit; push y PR solo cuando el usuario lo ordene.
 
+- El ruleset `Protección main` (id `21267691`) exige los checks `web`, `api` e `integration` en modo estricto desde 2026-11-18. El `bypass_always` de `CHIMIgb` se conserva por decisión explícita del usuario: los push directos del owner siguen saltándose los gates. Verificar con `gh api repos/CHIMIgb/SVR-ERP/rulesets/21267691`.
+
 ## Reglas que también aplican (sincronizado de AGENTS.md)
 
 **Regla de oro — código existente NO se toca sin autorización explícita.**
