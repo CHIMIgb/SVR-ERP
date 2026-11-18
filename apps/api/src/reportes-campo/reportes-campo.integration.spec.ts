@@ -22,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { ReportesCampoService } from './reportes-campo.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -42,7 +43,21 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, ReportesCampoService],
+      providers: [
+        PrismaService,
+        AuditContextService,
+        AuditService,
+        {
+          provide: NotificacionesService,
+          useValue: {
+            emitirARol: jest.fn().mockResolvedValue(undefined),
+            emitirAUsuario: jest.fn().mockResolvedValue(undefined),
+            emitirATrabajador: jest.fn().mockResolvedValue(undefined),
+            emitirATorre: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        ReportesCampoService,
+      ],
     }).compile();
 
     app = module.createNestApplication();
@@ -828,11 +843,11 @@ describe('ReportesCampo Audit (Real DB)', () => {
     });
 
     it('residente ve el reporte de SU trabajador; un outside torre no (jefe_user_id real)', async () => {
-      const pedro = await usuarioDemo('pedro.chofer@svr-constructora.com');
+      const pedro = await usuarioDemo('trabajador@svr-constructora.com');
       const residente = await usuarioDemo('residente@svr-constructora.com');
       const soldador = await usuarioDemo('soldador@svr-constructora.com');
 
-      // el reporte lo levanta Pedro (trabajador del residente)
+      // el reporte lo levanta el trabajador del residente
       const reporte = await service.create(
         { ...createDto(), categoria: CategoriaReporte.ADMINISTRATIVO },
         pedro.id,

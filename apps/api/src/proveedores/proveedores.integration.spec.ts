@@ -17,6 +17,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { ProveedoresService } from './proveedores.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -36,6 +37,15 @@ describe('Proveedores Audit (Real DB)', () => {
         AuditContextService,
         AuditService,
         InventarioService,
+        {
+          provide: NotificacionesService,
+          useValue: {
+            emitirARol: jest.fn().mockResolvedValue(undefined),
+            emitirAUsuario: jest.fn().mockResolvedValue(undefined),
+            emitirATrabajador: jest.fn().mockResolvedValue(undefined),
+            emitirATorre: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         ProveedoresService,
       ],
     }).compile();

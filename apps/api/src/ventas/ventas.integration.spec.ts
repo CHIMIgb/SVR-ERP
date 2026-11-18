@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { VentasService, clearConfigCache } from './ventas.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
@@ -31,6 +32,8 @@ describe('Ventas Audit (Real DB)', () => {
   const createdRetiroIds: string[] = [];
   const createdCierreIds: string[] = [];
   const createdAperturaIds: string[] = [];
+  const TURNO_CLAVES = ['turno_apertura', 'turno_cierre'] as const;
+  let turnoOriginal: Array<{ clave: string; valor: string }> = [];
 
   // Dependencias del artículo de prueba (aisladas con UUIDs únicos)
   let catId: string;
@@ -39,7 +42,21 @@ describe('Ventas Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, VentasService],
+      providers: [
+        PrismaService,
+        AuditContextService,
+        AuditService,
+        {
+          provide: NotificacionesService,
+          useValue: {
+            emitirARol: jest.fn().mockResolvedValue(undefined),
+            emitirAUsuario: jest.fn().mockResolvedValue(undefined),
+            emitirATrabajador: jest.fn().mockResolvedValue(undefined),
+            emitirATorre: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        VentasService,
+      ],
     }).compile();
 
     app = module.createNestApplication();
@@ -48,6 +65,25 @@ describe('Ventas Audit (Real DB)', () => {
     prisma = module.get(PrismaService);
     service = module.get(VentasService);
     auditContext = module.get(AuditContextService);
+
+    // Varias ventas validan que la operación caiga dentro del turno; si la suite
+    // cruza la hora de cierre config, fallan por horario antes de llegar a lo que
+    // prueban. Fijamos un turno que cubre todo el día y lo restauramos al terminar.
+    turnoOriginal = await prisma.configuracion_sistema.findMany({
+      where: { clave: { in: [...TURNO_CLAVES] } },
+      select: { clave: true, valor: true },
+    });
+    for (const [clave, valor] of [
+      ['turno_apertura', '00:00'],
+      ['turno_cierre', '23:59'],
+    ] as const) {
+      await prisma.configuracion_sistema.upsert({
+        where: { clave },
+        create: { clave, valor, categoria: 'turno' },
+        update: { valor },
+      });
+    }
+    clearConfigCache();
 
     // Dependencias del catálogo (categoría/proveedor/unidad de prueba)
     catId = randomUUID();
@@ -148,6 +184,17 @@ describe('Ventas Audit (Real DB)', () => {
     await prisma.unidades_medida.deleteMany({ where: { id: uniId } });
     await prisma.proveedores.deleteMany({ where: { id: provId } });
     await prisma.categorias_inventario.deleteMany({ where: { id: catId } });
+
+    clearConfigCache();
+    for (const { clave, valor } of turnoOriginal) {
+      await prisma.configuracion_sistema.update({ where: { clave }, data: { valor } });
+    }
+    for (const clave of TURNO_CLAVES) {
+      if (!turnoOriginal.some((c) => c.clave === clave)) {
+        await prisma.configuracion_sistema.deleteMany({ where: { clave } });
+      }
+    }
+    clearConfigCache();
 
     await prisma.$disconnect();
     await app.close();
@@ -589,6 +636,7 @@ describe('Ventas Audit (Real DB)', () => {
         where: {
           action: AuditAction.VENTA_CREADA,
           error_code: 'CLIENTE_NO_ENCONTRADO',
+          entity_id: idFantasma,
         },
         orderBy: { timestamp: 'desc' },
       });
