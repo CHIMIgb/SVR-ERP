@@ -37,8 +37,8 @@ plan acordado mueve esos valores al `env:` del workflow, junto a
 - `git diff --check`: sin errores (validación del YAML del workflow).
 - Dispatch de sanity del punto 1 (trigger `pull_request` ya en `main`): run
   `44417002026`, **success** en 1m50s con los 292 tests de integración.
-- El dispatch de verificación de este punto se lanza tras el push y se anota su
-  run ID al cierre de la fase.
+- Dispatch de verificación de este punto: run `44417548136`, **success** con los
+  292 tests de integración (sin el error de `JwtStrategy` de `44411690109`).
 
 ## Pendientes y riesgos
 
@@ -48,3 +48,6 @@ plan acordado mueve esos valores al `env:` del workflow, junto a
   no se requiere ningún cambio para `npm run test:integration`.
 - El gate de `pull_request` sigue sin probarse de extremo a extremo (no hay PR
   autorizado); `integration` aún debe marcarse como *required check* en GitHub.
+- Punto 4 (checklist de Redeploy) documentado en
+  `2026-11-18-redeploy-checklist.md`. El punto 5 (quitar el bypass de `main`)
+  quedó fuera de alcance por decisión del usuario.

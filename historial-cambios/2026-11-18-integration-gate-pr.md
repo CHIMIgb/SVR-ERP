@@ -32,7 +32,8 @@ quedó explícitamente fuera de alcance.
 
 - `git diff --check`: sin errores (valida el YAML del workflow).
 - El disparo automático por `pull_request` NO se probó: no hay PR autorizado.
-  Se hará un `gh workflow run integration --ref main` de sanity tras el push.
+  Sanity con `gh workflow run integration --ref main`: run `44417002026`,
+  **success** en 1m50s (292 tests de integración).
 - Corridas previas de referencia (fase cerrada): `ci` 44412424027 (1417 tests),
   `integration` 44412424878 (292 tests), `build-web` 44405584912.
 
