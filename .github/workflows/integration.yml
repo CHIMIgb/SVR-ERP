@@ -16,6 +16,9 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/svr_erp
       TZ: America/Mexico_City
       TIMEZONE: America/Mexico_City
+      # JwtStrategy exige secretos aunque sean de prueba; valores dummy, nunca los reales.
+      JWT_ACCESS_SECRET: integration-access-secret
+      JWT_REFRESH_SECRET: integration-refresh-secret
     services:
       postgres:
         image: postgres:18
