@@ -1,6 +1,6 @@
 # Gates que hoy están verdes. lint NO entra: hay 21 errores de eslint.
-# Jest sí corre, con 2 tests de cobranza en it.skip por fechas fijas del mock;
-# reactivarlos al corregir esas fechas. Integración queda fuera (requiere BD real).
+# Jest corre los 1417 tests sin skips. Integración queda fuera: va en
+# integration.yml (requiere BD real y restore del dump).
 
 name: ci
 

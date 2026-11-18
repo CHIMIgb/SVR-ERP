@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-18
 **Autor:** Agente (análisis y plan solicitados por el usuario)
-**Estado:** Fases 0 y 1 **ejecutadas** (2026-11-18); fases 2-6 pendientes de autorización.
+**Estado:** Fases 0, 1 y 2 **ejecutadas** (2026-11-18); fases 3-6 pendientes de ejecución.
 
 ## Alcance y decisión previa
 
@@ -155,15 +155,15 @@ autorización explícita, porque son administración externa al repo.
   hay que ajustar los flags del comando, no el dump. Queda aviso
   `forceExit` de Jest (handle sin cerrar), no es un fallo.
 
-### Fase 2 — Limpieza documental de los "skips"
+### Fase 2 — Limpieza documental de los "skips" — ✅ EJECUTADA 2026-11-18
 
-- **Qué se toca:** comment de `.github/workflows/ci.yml` (líneas 1-3) y la
-  referencia en `AGENTS.md` a los "2 tests de cobranza en `it.skip`".
-- **Acción:** dejar constancia de que los 1417 tests corren sin skips y que la
-  integración va en `integration.yml` (ya corregido en la tabla de
-  `AGENTS.md`). **No hay tests que reactivar.**
-- **Verificación:** búsqueda de `it.skip|test.skip|xit` sobre `apps/api/src`
-  vuelve a dar 0 resultados; `git diff --check` limpio.
+- **Resultado:** comment de `.github/workflows/ci.yml` y la fila de `ci.yml` en
+  la tabla de `AGENTS.md` ahora dicen que los 1417 tests corren sin skips y que
+  la integración va en `integration.yml`. **No había tests que reactivar.**
+- **Verificación:** búsqueda de `it.skip|test.skip|describe.skip|xit|xdescribe`
+  sobre todos los `*.spec.ts` de `apps/api/src` → 0 resultados; búsqueda de las
+  frases viejas en `ci.yml`, `AGENTS.md` y `.opencode/agent/svr-erp.md` → 0
+  resultados; `git diff --check` limpio.
 - **Riesgo:** nulo (solo comentarios/docs).
 
 ### Fase 3 — `build-web`: smoke antes de mover `latest`
