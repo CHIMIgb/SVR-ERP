@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-18
 **Autor:** Agente (análisis y plan solicitados por el usuario)
-**Estado:** Fase 0 **ejecutada** (2026-11-18); fases 1-6 pendientes de autorización.
+**Estado:** Fases 0 y 1 **ejecutadas** (2026-11-18); fases 2-6 pendientes de autorización.
 
 ## Alcance y decisión previa
 
@@ -62,7 +62,7 @@ CI no puede ayudar sin antes arreglar deuda del producto.
 |---|---|---|---|---|
 | B1 | ~~Ruleset sin `required_status_checks`~~ **CERRADA** (Fase 0: checks `web`/`api`/`integration`, strict) | Un PR se puede mergear con checks rojos | Bajo (config GitHub) | 0 |
 | B2 | Comment desactualizado sobre skips en `ci.yml`/`AGENTS.md` | Nadie sabe si los 1417 son reales | Muy bajo | 1 |
-| B3 | Sin validación schema ↔ dump | Falsos verdes/rojos al cambiar `schema.prisma` | Bajo (1 paso en `integration`) | 1 |
+| B3 | ~~Sin validación schema ↔ dump~~ **CERRADA** (Fase 1: `migrate diff --exit-code` en `integration`) | Falsos verdes/rojos al cambiar `schema.prisma` | Bajo (1 paso en `integration`) | 1 |
 | B4 | `build-web` publica `latest` antes del smoke | Imagen rota en producción | Medio (reordenar pasos) | 1 |
 | B5 | `lint` con 21 errores fuera del CI | Errores nuevos entran sin aviso | Alto (proyecto) | 2 |
 | B6 | Cero tests frontend | Roturas de runtime invisibles al CI | Alto (infra + tests) | 2 |
@@ -123,21 +123,37 @@ autorización explícita, porque son administración externa al repo.
   owner. El gate protege PRs de los demás actores, no esos push. Limitación
   aceptada, no se mitiga en este plan.
 
-### Fase 1 — Coherencia schema ↔ dump en `integration`
+### Fase 1 — Coherencia schema ↔ dump en `integration` — ✅ EJECUTADA 2026-11-18
 
-- **Qué se toca:** `.github/workflows/integration.yml`.
-- **Acción:** tras "Restaurar dump de prueba", agregar un paso con
-  `npx prisma migrate diff --from-url <BD restaurada> --to-schema-datamodel prisma/schema.prisma --exit-code`
-  (la sintaxis exacta de Prisma 7 se confirma con Context7 antes de escribir).
-  Si hay diferencia, el job falla antes de correr los tests.
-- **Precondición ya verificada:** `schema.prisma` no declara geometrías, así
-  que no hay falso rojo por PostGIS.
-- **Verificación:** (a) con el dump actual, el paso da 0 y los 292 tests
-  pasan; (b) con un dump viejo deliberado, el paso falla — prueba negativa en
-  local, sin commitear el dump roto.
+- **Resultado:** paso "Verificar esquema del dump contra schema.prisma"
+  agregado a `.github/workflows/integration.yml` justo después de restaurar el
+  dump y antes de `npm run test:integration`. Comando confirmado con la doc de
+  Prisma 7 **y con el CLI instalado**:
+  `npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code`
+  (`--from-url` y `--to-schema-datamodel` ya no existen en v7; `--exit-code`:
+  0 sin diff, 1 error, 2 con diff).
+- **Desfase detectado por el check (decisión del usuario):** el dump y la BD
+  local traen el FK `fk_trabajadores_usuario`, pero `schema.prisma` esperaba
+  `trabajadores_usuario_id_fkey`; el único diff era
+  `ALTER TABLE "trabajadores" RENAME CONSTRAINT ...`. Se corrigió con
+  `map: "fk_trabajadores_usuario"` en la relation `trabajadores_cuenta`
+  (`apps/api/prisma/schema.prisma`) + `npx prisma generate`. **No se renombró
+  nada en la BD ni se regeneró el dump**: producción conserva el nombre legado.
+- **Verificación local:** (a) dump restaurado en BD efímera (93 tablas) →
+  `"No difference detected"`, exit 0; la BD local `svr_erp` da el mismo
+  resultado; (b) prueba negativa con `--from-empty` → exit 2; (c)
+  `npm run test:integration` → **26 suites, 292/292 tests**, exit 0. Un exit 2
+  intermedio fue falso: una restauración fallida dejó la BD vacía, no un
+  desfase real.
+- **Pendiente de verificación remota:** el dispatch de `integration` con el
+  paso nuevo requiere que el commit llegue al ref remoto; no se hizo push
+  porque el usuario no lo ordenó. (Qué se tocó según el plan original:
+  `.github/workflows/integration.yml`; se añadió además `schema.prisma` por el
+  desfase.)
 - **Riesgo:** `migrate diff` compara esquema final, no el historial
   baselined; si la BD del workflow trae `search_path` o extensiones distintas,
-  hay que ajustar los flags del comando, no el dump.
+  hay que ajustar los flags del comando, no el dump. Queda aviso
+  `forceExit` de Jest (handle sin cerrar), no es un fallo.
 
 ### Fase 2 — Limpieza documental de los "skips"
 
