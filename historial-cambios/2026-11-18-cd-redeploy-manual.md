@@ -34,7 +34,11 @@ variable en GitHub.
 
 - `git diff --check`: limpio.
 - Sintaxis YAML de `build-web.yml` validada con `js-yaml`.
-- No se corrió el workflow: sigue sin haberse hecho push a `main`.
+- Corrida real del CD: run `44389802058` (**SUCCESS**, `workflow_dispatch`,
+  1m3s). Publicó `ghcr.io/chimigb/svr-erp-web:latest` y el tag por SHA
+  `:57e35d84b099dff5ce8e9b74e037404e9bb366de`, digest
+  `sha256:6dcd42b028688273a3d06cee790a8847abbaabcbedd93ca22bd46c7744c367f3`.
+- CI verificado en GitHub: runs `44389263754` y `44389502671` (ambos SUCCESS).
 
 ## Pendientes y riesgos
 
