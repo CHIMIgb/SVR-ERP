@@ -1,0 +1,44 @@
+# Tests de integración contra BD real efímera. NO van en ci.yml: necesitan
+# restaurar el dump y registro_auditoria es inmutable (limpieza FK-safe).
+name: integration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/svr_erp
+      TZ: America/Mexico_City
+      TIMEZONE: America/Mexico_City
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: svr_erp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      # El historial de migraciones fue baselined: migrate deploy desde cero no
+      # crea las tablas base. Se restaura el dump sin PostGIS (0.22 MB).
+      - name: Restaurar dump de prueba
+        run: PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d svr_erp -f ../../svr_erp_export/svr_erp_sin_postgis.sql
+      - run: npm run test:integration

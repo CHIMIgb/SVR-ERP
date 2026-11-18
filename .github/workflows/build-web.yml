@@ -53,3 +53,23 @@ jobs:
             NEXT_PUBLIC_TZ=America/Mexico_City
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # La imagen ya está publicada cuando corre esto: avisa de un contenedor
+      # que no arranca, pero no impide publicarla. Cambiar el orden exige
+      # build local → smoke → push (más cambio del que vale hoy).
+      - name: Smoke del contenedor
+        run: |
+          docker run -d --name svr-web -p 3000:3000 ghcr.io/chimigb/svr-erp-web:latest
+          for i in $(seq 1 20); do
+            if curl -fsSL http://127.0.0.1:3000/ > /dev/null; then
+              echo "Contenedor respondiendo en el puerto 3000"
+              docker logs svr-web
+              docker rm -f svr-web
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "El contenedor no respondió en 60s"
+          docker logs svr-web
+          docker rm -f svr-web
+          exit 1
