@@ -122,17 +122,19 @@ export default function ReportesMovilPage() {
         });
       }
     } catch {
-      // Las stats son informativas: no bloquean la lista
+      // Stats informativas: si fallan, quedan en 0 (ya no se ve como "cargando")
+      setStats({ nuevos: 0, enCurso: 0, criticos: 0 });
     }
   }, []);
 
-  // Primera carga + recarga con debounce al cambiar filtro/búsqueda.
+  // Primera carga (lista + stats) + recarga con debounce al cambiar filtro/búsqueda.
   useEffect(() => {
     const t = window.setTimeout(() => {
       void recargar(1, true).then(() => setCargandoInicial(false));
+      void cargarStats();
     }, 400);
     return () => window.clearTimeout(t);
-  }, [recargar]);
+  }, [recargar, cargarStats]);
 
   // Al volver la señal: la cola pudo entregar capturas → refrescar todo.
   useEffect(() => {
