@@ -6,13 +6,21 @@
  * Cada envío lleva `idempotenciaKey` en el BODY (el UUID del teléfono): el
  * ValidationPipe solo lee el body, no los headers. El endpoint debe respetar
  * la key para que un reenvío no duplique filas (convención de la cola).
- * Los errores NO bloquean la cola: el elemento queda para reintentar.
+ * Los errores NO bloquean la cola: el elemento queda para reintentar. Un
+ * CONFLICTO de negocio (409) NO se reintenta: espera decisión humana.
  */
-import { pendientes, marcarEnviada, marcarError, contarPendientes, type ElementoCola } from "./offline";
+import {
+  pendientes,
+  marcarEnviada,
+  marcarError,
+  marcarConflicto,
+  contarPendientes,
+  type ElementoCola,
+} from "./offline";
 
 export type PuertoEnvio = (
   item: ElementoCola,
-) => Promise<{ ok: boolean }>;
+) => Promise<{ ok: boolean; conflicto?: boolean }>;
 
 /** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */
 const puertoPorDefecto: PuertoEnvio = async (item) => {
@@ -21,7 +29,10 @@ const puertoPorDefecto: PuertoEnvio = async (item) => {
     ...item.payload,
     idempotenciaKey: item.id,
   });
-  return { ok: res.success === true };
+  return {
+    ok: res.success === true,
+    conflicto: res.success === false && res.error.code === "CONFLICT",
+  };
 };
 
 let corriendo = false;
@@ -35,13 +46,16 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
   corriendo = true;
   let enviados = 0;
   try {
-    const cola = await pendientes();
+    // Los conflictos NO se reenvían: esperan decisión humana (descartar/reencolar).
+    const cola = (await pendientes()).filter((i) => i.estado !== "conflicto");
     for (const item of cola) {
       try {
-        const { ok } = await enviar(item);
+        const { ok, conflicto } = await enviar(item);
         if (ok) {
           await marcarEnviada(item.id);
           enviados++;
+        } else if (conflicto) {
+          await marcarConflicto(item.id);
         } else {
           await marcarError(item.id);
         }

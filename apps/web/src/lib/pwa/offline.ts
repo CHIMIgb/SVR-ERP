@@ -13,7 +13,7 @@ export interface ElementoCola {
   payload: Record<string, unknown>;
   creado_en: string;
   intentos: number;
-  estado: "pendiente" | "error";
+  estado: "pendiente" | "error" | "conflicto";
 }
 
 const DB_NOMBRE = "svr-pwa";
@@ -85,6 +85,27 @@ export async function marcarError(id: string): Promise<void> {
   if (!item) return;
   item.intentos += 1;
   item.estado = "error";
+  await conStore<void>("readwrite", (store) => store.put(item));
+}
+
+/** Marca un CONFLICTO de negocio (409): NO se reintenta; espera decisión humana. */
+export async function marcarConflicto(id: string): Promise<void> {
+  const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
+  if (!item) return;
+  item.estado = "conflicto";
+  await conStore<void>("readwrite", (store) => store.put(item));
+}
+
+/** Decisión humana sobre un conflicto: descartarlo (sale de la cola). */
+export async function descartar(id: string): Promise<void> {
+  await conStore<void>("readwrite", (store) => store.delete(id));
+}
+
+/** Decisión humana sobre un conflicto: volver a intentar (regresa a pendiente). */
+export async function reencolar(id: string): Promise<void> {
+  const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
+  if (!item) return;
+  item.estado = "pendiente";
   await conStore<void>("readwrite", (store) => store.put(item));
 }
 
