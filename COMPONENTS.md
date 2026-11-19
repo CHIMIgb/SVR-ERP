@@ -5083,13 +5083,17 @@ NO:** en pantallas solo de consulta o en el escritorio.
 
 ### 16.6 ModalNuevoReporte
 
-Captura de un reporte de campo, offline-first: SIEMPRE encola
-(`encolar('/reportes-campo', payload)` con la key de idempotencia del
-teléfono) y dispara `sincronizarAhora()`. Con señal hace ACK y se cierra
-solo; sin señal muestra «quedó guardado» y el estado lo pinta `EstadoCola`.
-Requiere descripción ≥5 y subcategoría **o** el toggle «es de mi área»
-(el backend rechaza con `CATEGORIA_REQUERIDA`). GPS best-effort (sin GPS
-la captura no se bloquea). Reinicia sus campos al CERRAR (no al abrir).
+Captura de un reporte de campo, **paridad 1:1 con el escritorio `/reportes`**:
+Área (a la que se envía) con optgroups + «Misma área» (hint con la torre del
+usuario), Subcategoría filtrada por área, Ubicación Proyecto/GPS (el GPS se
+captura al guardar, requiere HTTPS), Prioridad, Descripción e Imágenes de la
+avería (WebP local vía `convertirAWebp`, máx 4 × 2 MB). Offline-first:
+SIEMPRE encola (`encolar` con la key de idempotencia del teléfono) y dispara
+`sincronizarAhora()`; las fotos viajan con el item (`adjuntos`) y el
+sincronizador las adjunta tras el ACK. Con señal hace ACK y se cierra solo;
+sin señal muestra «quedó guardado» y el estado lo pinta `EstadoCola`.
+Payload idéntico al escritorio (`mismaArea` o `categoria`, `subcategoriaId`
+solo si no es misma área). Reinicia sus campos al CERRAR (no al abrir).
 
 **Archivos:**
 - `src/components/pwa/ModalNuevoReporte/ModalNuevoReporte.tsx` (+ `.styles.ts`, `index.ts`)
@@ -5105,12 +5109,14 @@ import { ModalNuevoReporte } from '@/components/pwa/ModalNuevoReporte';
 |------|------|---------|-------------|
 | `abierto` | `boolean` | *(requerido)* | Visibilidad |
 | `onCerrar` | `() => void` | *(requerido)* | Cierra (y reinicia los campos) |
-| `nombreUsuario` | `string` | *(requerido)* | Firma del reporte (`user.persona.nombre`) |
+| `nombreUsuario` | `string` | *(requerido)* | Firma del reporte — nombre completo de la persona |
+| `torreUsuario` | `string \| null` | `null` | Torre del usuario (`users.torre`) para el hint y el filtro |
 | `onEncolado` | `() => void` | `undefined` | Avisa al padre que la cola cambió |
 
 **Cuando USAR:** botón «Reportar» de `/m/reportes`. **Cuando NO:** para
 editar (el edit sigue en el escritorio) ni para capturar asistencia (su
-propio módulo).
+propio módulo). El select de Área es nativo — el kit `Select` no soporta
+optgroups (igual que el escritorio).
 
 ## 17. Componentes de Escritorio (workers)
 

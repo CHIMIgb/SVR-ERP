@@ -60,7 +60,11 @@ export default function ReportesMovilPage() {
     user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeCrear ?? false;
   const puedeEditar =
     user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeEditar ?? false;
-  const nombreUsuario = user?.persona?.nombre ?? user?.email ?? 'Usuario';
+  const nombreUsuario =
+    [user?.persona?.nombre, user?.persona?.apellidoPaterno, user?.persona?.apellidoMaterno]
+      .filter(Boolean)
+      .join(' ')
+      .trim() || user?.email?.split('@')[0] || 'Usuario';
 
   const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
   const [pagina, setPagina] = useState(1);
@@ -473,6 +477,7 @@ export default function ReportesMovilPage() {
         abierto={nuevoAbierto}
         onCerrar={cerrarNuevo}
         nombreUsuario={nombreUsuario}
+        torreUsuario={user?.torre ?? null}
         onEncolado={alEncolar}
       />
     </div>

@@ -1,36 +1,72 @@
 'use client';
 
 /**
- * Captura de un reporte de campo — offline-first desde el día 1: SIEMPRE
- * escribe primero en la cola local (`encolar`, con la key de idempotencia
- * del teléfono) y luego dispara una pasada del sincronizador. Con señal el
- * reporte sale al instante (ACK → el modal se cierra); sin señal queda
- * pendiente y se informa al operario. Requiere descripción + subcategoría
- * o el toggle "es de mi área" (el backend valida CATEGORIA_REQUERIDA).
+ * Captura de un reporte de campo — PARIDAD 1:1 con el escritorio /reportes:
+ * Área (a la que se envía) con optgroups, Subcategoría filtrada, Ubicación
+ * Proyecto/GPS (captura al guardar), Prioridad, Descripción e Imágenes
+ * (WebP local, máx 4 × 2 MB). Offline-first: SIEMPRE encola
+ * (`encolar` con la key de idempotencia del teléfono) y dispara el
+ * sincronizador; las fotos viajan con el item y se adjuntan tras el ACK.
+ * Payload idéntico al escritorio: `mismaArea` o `categoria`,
+ * `subcategoriaId` solo si no es misma área, `proyectoId` o lat/long.
  */
 import { useEffect, useState } from 'react';
-import { Loader2, MapPin } from 'lucide-react';
+import { ImagePlus, X } from 'lucide-react';
 import { FormModal } from '@/components/ui/Modal';
+import { FormField } from '@/components/ui/FormField';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
-import { FormField } from '@/components/ui/FormField';
-import { reportesCampoApi, type PrioridadReporteApi } from '@/lib/api';
-import { encolar } from '@/lib/pwa/offline';
+import {
+  reportesCampoApi,
+  type CategoriaReporteApi,
+  type PrioridadReporteApi,
+} from '@/lib/api';
+import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
+import {
+  encolar,
+  type AdjuntoPendiente,
+} from '@/lib/pwa/offline';
 import { sincronizarAhora } from '@/lib/pwa/sincronizador';
-import { modalNuevoReporteClasses } from './ModalNuevoReporte.styles';
+import { modalNuevoReporteClasses as c } from './ModalNuevoReporte.styles';
 
-const OPCIONES_PRIORIDAD = [
+/** Categoría responsable — el área a la que se ENVÍA el incidente (copia del escritorio). */
+const CATEGORIAS: { value: CategoriaReporteApi; label: string }[] = [
+  { value: 'MECANICO', label: 'Mecanico' },
+  { value: 'SOLDADOR', label: 'Soldador' },
+  { value: 'DIESEL', label: 'Diesel' },
+  { value: 'MANTENIMIENTO', label: 'Mantenimiento' },
+  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+  { value: 'RESIDENTE', label: 'Residente' },
+];
+
+const MISMA_AREA = 'MISMA_AREA';
+
+const PRIORIDADES: { value: PrioridadReporteApi; label: string }[] = [
   { value: 'BAJA', label: 'Baja' },
   { value: 'MEDIA', label: 'Media' },
   { value: 'ALTA', label: 'Alta' },
   { value: 'CRITICA', label: 'Crítica' },
 ];
 
+/** Áreas agrupadas según la guía de roles del cliente (optgroups, igual que escritorio). */
+const OPT_GROUPS = [
+  { label: 'Administración', opciones: ['ADMINISTRATIVO'] },
+  { label: 'Residentes', opciones: ['RESIDENTE'] },
+  { label: 'Técnicos', opciones: ['MECANICO', 'SOLDADOR', 'DIESEL', 'MANTENIMIENTO'] },
+] as const;
+
+/** Imagen del alta con key local (base64; el server aún no conoce el folio). */
+interface ImagenAlta extends AdjuntoPendiente {
+  key: string;
+}
+
 export interface ModalNuevoReporteProps {
   abierto: boolean;
   onCerrar: () => void;
-  /** Nombre que firma el reporte (persona del usuario autenticado). */
+  /** Quién reporta — nombre completo (persona) del usuario autenticado. */
   nombreUsuario: string;
+  /** Torre del usuario (`users.torre`) para el hint de "Misma área" y el filtro. */
+  torreUsuario?: string | null;
   /** Avisa al padre que la cola cambió (para refrescar su resumen). */
   onEncolado?: () => void;
 }
@@ -39,31 +75,40 @@ export function ModalNuevoReporte({
   abierto,
   onCerrar,
   nombreUsuario,
+  torreUsuario,
   onEncolado,
 }: ModalNuevoReporteProps) {
-  const [subcategorias, setSubcategorias] = useState<{ id: string; nombre: string }[]>([]);
+  const [subcategorias, setSubcategorias] = useState<{ id: string; nombre: string; categoria: string }[]>([]);
+  const [proyectos, setProyectos] = useState<{ id: string; nombre: string }[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+
+  const [area, setArea] = useState<'' | CategoriaReporteApi | typeof MISMA_AREA>('');
   const [subcategoriaId, setSubcategoriaId] = useState('');
-  const [mismaArea, setMismaArea] = useState(false);
-  const [descripcion, setDescripcion] = useState('');
+  const [ubicacionModo, setUbicacionModo] = useState<'' | 'proyecto' | 'gps'>('');
+  const [proyectoId, setProyectoId] = useState('');
   const [prioridad, setPrioridad] = useState('');
-  const [posicion, setPosicion] = useState<{ latitud: number; longitud: number } | null>(null);
+  const [descripcion, setDescripcion] = useState('');
+  const [imagenes, setImagenes] = useState<ImagenAlta[]>([]);
+
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Guardado en la cola pero sin ACK: el operario no debe capturar dos veces. */
   const [pendiente, setPendiente] = useState(false);
 
   const reiniciar = () => {
+    setArea('');
     setSubcategoriaId('');
-    setMismaArea(false);
-    setDescripcion('');
+    setUbicacionModo('');
+    setProyectoId('');
     setPrioridad('');
+    setDescripcion('');
+    setImagenes([]);
     setError(null);
     setPendiente(false);
   };
 
   /** Cerrar del modal SIEMPRE reinicia: la próxima captura arranca limpia
-   *  (y con el catálogo en "cargando", porque se vuelve a traer al abrir). */
+   *  (y con los catálogos en "cargando", porque se vuelven a traer al abrir). */
   const cerrar = () => {
     reiniciar();
     setCargandoCatalogo(true);
@@ -73,19 +118,16 @@ export function ModalNuevoReporte({
   useEffect(() => {
     if (!abierto) return;
     let vivo = true;
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (p) => setPosicion({ latitud: p.coords.latitude, longitud: p.coords.longitude }),
-        () => setPosicion(null), // sin GPS no se bloquea la captura
-        { timeout: 8000, maximumAge: 60_000 },
-      );
-    }
     void (async () => {
       try {
-        const res = await reportesCampoApi.subcategorias();
-        if (vivo && res.success) setSubcategorias(res.data);
+        const [resSub, resProy] = await Promise.all([
+          reportesCampoApi.subcategorias(),
+          reportesCampoApi.proyectos(),
+        ]);
+        if (vivo && resSub.success) setSubcategorias(resSub.data);
+        if (vivo && resProy.success) setProyectos(resProy.data);
       } catch {
-        // Sin catálogo solo queda "mi área": la captura NUNCA se bloquea por la red
+        // Sin catálogos la captura sigue (área propia + GPS): NUNCA la bloquea la red
       } finally {
         if (vivo) setCargandoCatalogo(false);
       }
@@ -95,31 +137,115 @@ export function ModalNuevoReporte({
     };
   }, [abierto]);
 
+  /** Torre destino ("misma área") + filtro de subcategoría — igual que el escritorio. */
+  const torreDelUsuario = CATEGORIAS.find((cat) => cat.value === torreUsuario)?.label ?? 'Administrativo';
+  const categoriaLabel =
+    area === MISMA_AREA ? torreDelUsuario : CATEGORIAS.find((cat) => cat.value === area)?.label;
+  const subcategoriasFiltradas = subcategorias.filter(
+    (s) => !!categoriaLabel && s.categoria === categoriaLabel,
+  );
+
+  /** Imagen del alta: convierte a WebP y apila (límites idénticos al escritorio). */
+  const agregarImagen = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('El archivo debe ser una imagen.');
+      return;
+    }
+    const webp = await convertirAWebp(file);
+    if (!webp) {
+      setError('No se pudo procesar la imagen (formato no soportado por el navegador).');
+      return;
+    }
+    if (webp.tamano > MAX_TAMANO_IMAGEN) {
+      setError('La imagen excede el máximo de 2 MB.');
+      return;
+    }
+    if (imagenes.length >= MAX_IMAGENES) {
+      setError(`Máximo ${MAX_IMAGENES} imágenes por incidente.`);
+      return;
+    }
+    setImagenes((prev) => [
+      ...prev,
+      {
+        // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
+        key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
+        mime: 'image/webp',
+        tamano: webp.tamano,
+        datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
+      },
+    ]);
+  };
+
   const enviar = async () => {
-    if (descripcion.trim().length < 5) {
-      setError('Describe el problema con al menos 5 caracteres.');
+    // Validaciones idénticas al escritorio
+    if (!area) {
+      setError('Selecciona el área a la que se envía el incidente.');
       return;
     }
-    if (!subcategoriaId && !mismaArea) {
-      setError('Elige una categoría o marca que es de tu área.');
+    if (ubicacionModo === 'proyecto' && !proyectoId) {
+      setError('Selecciona el proyecto en proceso para la ubicación.');
       return;
     }
+    if (!descripcion.trim()) {
+      setError('La descripción del reporte es obligatoria.');
+      return;
+    }
+
     setEnviando(true);
     setError(null);
+
+    // Ubicación: proyecto o GPS (captura al guardar — misma secuencia del escritorio)
+    let ubicacion: Partial<{ proyectoId: string; latitud: number; longitud: number }> = {};
+    if (ubicacionModo === 'proyecto' && proyectoId) {
+      ubicacion = { proyectoId };
+    } else if (ubicacionModo === 'gps') {
+      if (!window.isSecureContext || !('geolocation' in navigator)) {
+        setError('Tu navegador bloquea el GPS fuera de HTTPS. Usa localhost, activa el HTTPS (requisito del PWA) o elige el modo "Proyecto".');
+        setEnviando(false);
+        return;
+      }
+      const coords = await new Promise<GeolocationPosition | null>((resolve) =>
+        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 30000,
+        }),
+      );
+      if (!coords) {
+        setError('No se pudo capturar tu ubicación (señal débil o permiso denegado). Reintenta, activa el GPS del dispositivo o marca "Proyecto".');
+        setEnviando(false);
+        return;
+      }
+      ubicacion = { latitud: coords.coords.latitude, longitud: coords.coords.longitude };
+    }
+
     try {
-      await encolar('/reportes-campo', {
-        usuario: nombreUsuario,
-        descripcion: descripcion.trim(),
-        ...(subcategoriaId ? { subcategoriaId } : { mismaArea: true }),
-        ...(prioridad ? { prioridad: prioridad as PrioridadReporteApi } : {}),
-        ...(posicion ? { latitud: posicion.latitud, longitud: posicion.longitud } : {}),
-      });
+      const mismaArea = area === MISMA_AREA;
+      await encolar(
+        '/reportes-campo',
+        {
+          mismaArea,
+          ...(mismaArea ? {} : { categoria: area as CategoriaReporteApi }),
+          subcategoriaId: mismaArea ? undefined : subcategoriaId || undefined,
+          ...ubicacion,
+          usuario: nombreUsuario,
+          descripcion: descripcion.trim(),
+          prioridad: prioridad || undefined,
+        },
+        imagenes.map((img) => ({
+          nombre: img.nombre,
+          mime: img.mime,
+          tamano: img.tamano,
+          datos: img.datos,
+        })),
+      );
       const enviados = await sincronizarAhora();
       onEncolado?.();
       if (enviados > 0) {
-        cerrar(); // ACK: la vista refresca su lista
+        cerrar(); // ACK: fotos ya adjuntadas por el sincronizador
       } else {
-        setPendiente(true); // sin señal o en conflicto: el estado lo muestra EstadoCola
+        setPendiente(true); // sin señal o conflicto: el estado lo muestra EstadoCola
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar el reporte. Revisa tu señal.');
@@ -128,14 +254,13 @@ export function ModalNuevoReporte({
     }
   };
 
-  const c = modalNuevoReporteClasses;
   return (
     <FormModal
       open={abierto}
       onClose={cerrar}
       title="Nuevo reporte"
-      subtitle="Se guarda en tu teléfono y se envía solo"
-      submitLabel={pendiente ? 'Listo' : 'Guardar'}
+      subtitle="Registra un incidente — se guarda en tu teléfono y se envía solo"
+      submitLabel={pendiente ? 'Listo' : 'Registrar Reporte'}
       onSubmit={pendiente ? cerrar : () => void enviar()}
       isSubmitting={enviando}
       submitDisabled={enviando}
@@ -144,69 +269,150 @@ export function ModalNuevoReporte({
     >
       {pendiente ? (
         <p className={c.notaExito}>
-          Tu reporte quedó guardado en este teléfono. Con señal se enviará solo; abajo puedes
-          ver su estado.
+          Tu reporte quedó guardado en este teléfono. Con señal se enviará solo
+          (las fotos se suben después del reporte); abajo puedes ver su estado.
         </p>
       ) : (
         <>
-          <FormField label="Categoría" htmlFor="nuevo-reporte-categoria">
-            <Select
-              id="nuevo-reporte-categoria"
-              options={subcategorias.map((s) => ({ value: s.id, label: s.nombre }))}
-              value={subcategoriaId}
+          <FormField
+            label="Área (a la que se envía)"
+            htmlFor="nuevo-reporte-area"
+            required
+            hint={
+              area === MISMA_AREA
+                ? `Tu área: ${torreDelUsuario} — el incidente queda ahí.`
+                : 'Misma área deja el incidente con tu propia área; otra torre lo envía allá.'
+            }
+          >
+            {/* Select nativo: el kit no soporta optgroups (igual que el escritorio) */}
+            <select
+              id="nuevo-reporte-area"
+              className={c.selectArea}
+              value={area}
               onChange={(e) => {
-                setSubcategoriaId(e.target.value);
-                setMismaArea(false);
+                setArea(e.target.value as typeof area);
+                setSubcategoriaId('');
               }}
-              placeholder={cargandoCatalogo ? 'Cargando categorías...' : 'Seleccionar categoría...'}
-              disabled={mismaArea || (cargandoCatalogo && subcategorias.length === 0)}
+            >
+              <option value="">Seleccionar área destino...</option>
+              <option value={MISMA_AREA}>Misma área</option>
+              {OPT_GROUPS.map((grupo) => (
+                <optgroup key={grupo.label} label={grupo.label}>
+                  {grupo.opciones.map((valor) => (
+                    <option key={valor} value={valor}>
+                      {CATEGORIAS.find((cat) => cat.value === valor)!.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </FormField>
+
+          <FormField label="Subcategoría" htmlFor="nuevo-reporte-subcategoria" hint="Opcional — según el área destino.">
+            <Select
+              id="nuevo-reporte-subcategoria"
+              options={subcategoriasFiltradas.map((s) => ({ value: s.id, label: s.nombre }))}
+              value={subcategoriaId}
+              onChange={(e) => setSubcategoriaId(e.target.value)}
+              placeholder="Sin subcategoría"
+              disabled={!area || (cargandoCatalogo && subcategorias.length === 0)}
             />
           </FormField>
 
-          <label className={c.checkbox}>
-            <input
-              type="checkbox"
-              className={c.checkboxInput}
-              checked={mismaArea}
-              onChange={(e) => {
-                setMismaArea(e.target.checked);
-                if (e.target.checked) setSubcategoriaId('');
-              }}
-            />
-            <span className={c.checkboxTexto}>
-              Es de mi área — que la revise quien corresponda
-            </span>
-          </label>
+          <FormField
+            label="Ubicación"
+            htmlFor="nuevo-reporte-ubicacion"
+            hint={
+              ubicacionModo === 'gps'
+                ? 'Se captura al guardar — el GPS requiere HTTPS (en LAN usa Proyecto).'
+                : 'Proyecto en proceso o GPS.'
+            }
+          >
+            <div className={c.toggle} role="group" aria-label="Modo de ubicación">
+              <button
+                type="button"
+                onClick={() => setUbicacionModo('proyecto')}
+                className={`${c.toggleBtn} ${ubicacionModo === 'proyecto' ? c.toggleActivo : c.toggleInactivo}`}
+              >
+                Proyecto
+              </button>
+              <button
+                type="button"
+                onClick={() => setUbicacionModo('gps')}
+                className={`${c.toggleBtn} ${ubicacionModo === 'gps' ? c.toggleActivo : c.toggleInactivo}`}
+              >
+                Ubicación GPS
+              </button>
+            </div>
+            {ubicacionModo === 'gps' ? (
+              <p className={c.notaGps}>Se captura al guardar — el GPS requiere HTTPS (en LAN usa Proyecto)</p>
+            ) : (
+              <Select
+                id="nuevo-reporte-ubicacion"
+                options={proyectos.map((p) => ({ value: p.id, label: p.nombre }))}
+                value={proyectoId}
+                onChange={(e) => setProyectoId(e.target.value)}
+                placeholder={cargandoCatalogo && proyectos.length === 0 ? 'Cargando proyectos...' : 'Seleccionar proyecto...'}
+                disabled={ubicacionModo !== 'proyecto' || (cargandoCatalogo && proyectos.length === 0)}
+              />
+            )}
+          </FormField>
 
-          <FormField label="¿Qué está pasando?" htmlFor="nuevo-reporte-descripcion" required>
+          <FormField label="Prioridad" htmlFor="nuevo-reporte-prioridad" hint="Opcional — úsala para incidentes o urgencias.">
+            <Select
+              id="nuevo-reporte-prioridad"
+              options={PRIORIDADES}
+              value={prioridad}
+              onChange={(e) => setPrioridad(e.target.value)}
+              placeholder="Sin prioridad"
+            />
+          </FormField>
+
+          <FormField label="Descripción" htmlFor="nuevo-reporte-descripcion" required hint="La fecha y hora se registran automáticamente al guardar.">
             <Textarea
               id="nuevo-reporte-descripcion"
+              rows={4}
+              placeholder="Describe lo observado o realizado..."
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Describe el problema..."
-              rows={3}
               maxLength={2000}
             />
           </FormField>
 
-          <FormField label="Prioridad (opcional)" htmlFor="nuevo-reporte-prioridad">
-            <Select
-              id="nuevo-reporte-prioridad"
-              options={OPCIONES_PRIORIDAD}
-              value={prioridad}
-              onChange={(e) => setPrioridad(e.target.value)}
-              placeholder="Sin prioridad especial"
-            />
-          </FormField>
-
-          <p className={c.notaGps}>
-            {posicion ? (
-              <MapPin className="w-4 h-4 shrink-0" aria-hidden />
-            ) : (
-              <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" aria-hidden />
+          <FormField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una.`}>
+            <label className={c.agregar}>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void agregarImagen(file);
+                }}
+              />
+              <ImagePlus className="w-3.5 h-3.5" aria-hidden />
+              Agregar imagen
+            </label>
+            {imagenes.length > 0 && (
+              <div className={c.gridImagenes}>
+                {imagenes.map((img) => (
+                  <div key={img.key} className={c.imagen}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`data:${img.mime};base64,${img.datos}`} alt={img.nombre} className={c.imagenImg} />
+                    <button
+                      type="button"
+                      onClick={() => setImagenes((prev) => prev.filter((i) => i.key !== img.key))}
+                      aria-label={`Quitar ${img.nombre}`}
+                      className={c.quitar}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
-            {posicion ? 'Ubicación lista' : 'Buscando tu ubicación...'}
-          </p>
+          </FormField>
 
           {error && <p className={c.errorGeneral} role="alert">{error}</p>}
         </>
