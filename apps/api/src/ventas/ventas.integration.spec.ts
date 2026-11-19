@@ -14,6 +14,7 @@ import { AuditAction, MetodoPago } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { VentasService, clearConfigCache } from './ventas.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
@@ -39,7 +40,21 @@ describe('Ventas Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, VentasService],
+      providers: [
+        PrismaService,
+        AuditContextService,
+        AuditService,
+        {
+          provide: NotificacionesService,
+          useValue: {
+            emitirARol: jest.fn(),
+            emitirATorre: jest.fn(),
+            emitirATrabajador: jest.fn(),
+            emitirAUsuario: jest.fn(),
+          },
+        },
+        VentasService,
+      ],
     }).compile();
 
     app = module.createNestApplication();

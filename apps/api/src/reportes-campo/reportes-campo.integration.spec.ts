@@ -21,6 +21,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { ReportesCampoService } from './reportes-campo.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
@@ -42,7 +43,21 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService, AuditContextService, AuditService, ReportesCampoService],
+      providers: [
+        PrismaService,
+        AuditContextService,
+        AuditService,
+        {
+          provide: NotificacionesService,
+          useValue: {
+            emitirARol: jest.fn(),
+            emitirATorre: jest.fn(),
+            emitirATrabajador: jest.fn(),
+            emitirAUsuario: jest.fn(),
+          },
+        },
+        ReportesCampoService,
+      ],
     }).compile();
 
     app = module.createNestApplication();
