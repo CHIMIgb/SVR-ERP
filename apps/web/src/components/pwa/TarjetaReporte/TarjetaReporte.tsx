@@ -5,6 +5,9 @@
  * clave legibles bajo el sol, badges de estado/prioridad con icono+texto y
  * acciones explícitas (Ver + una acción opcional del rol, ej. Aceptar) con
  * targets táctiles ≥44px. Presentacional: el padre decide qué se puede.
+ * El API ya serializa estado/prioridad/categoría como texto es-MX
+ * (`ESTADO_LABELS`/`PRIORIDAD_LABELS`/`CATEGORIA_LABELS` del service) — no
+ * se vuelven a mapear aquí.
  */
 import { Eye } from 'lucide-react';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
@@ -12,39 +15,17 @@ import { Button } from '@/components/ui/Button';
 import { tarjetaReporteClasses } from './TarjetaReporte.styles';
 import type { ReporteCampoDTO } from '@/lib/api';
 
-export const ETIQUETA_ESTADO: Record<string, string> = {
-  NUEVO: 'Nuevo',
-  EN_CURSO: 'En curso',
-  CERRADO: 'Cerrado',
-};
-
-export const ETIQUETA_CATEGORIA: Record<string, string> = {
-  MECANICO: 'Mecánico',
-  SOLDADOR: 'Soldador',
-  DIESEL: 'Diésel',
-  MANTENIMIENTO: 'Mantenimiento',
-  ADMINISTRATIVO: 'Administrativo',
-  RESIDENTE: 'Residente',
-};
-
-export const ETIQUETA_PRIORIDAD: Record<string, string> = {
-  BAJA: 'Baja',
-  MEDIA: 'Media',
-  ALTA: 'Alta',
-  CRITICA: 'Crítica',
-};
-
 const VARIANTE_ESTADO: Record<string, BadgeVariant> = {
-  NUEVO: 'warning',
-  EN_CURSO: 'info',
-  CERRADO: 'success',
+  Nuevo: 'warning',
+  'En curso': 'info',
+  Cerrado: 'success',
 };
 
 const VARIANTE_PRIORIDAD: Record<string, BadgeVariant> = {
-  CRITICA: 'error',
-  ALTA: 'warning',
-  MEDIA: 'info',
-  BAJA: 'neutral',
+  Crítica: 'error',
+  Alta: 'warning',
+  Media: 'info',
+  Baja: 'neutral',
 };
 
 export interface TarjetaReporteProps {
@@ -69,11 +50,11 @@ export function TarjetaReporte({ reporte, accion, onVer }: TarjetaReporteProps) 
         <span className={c.badges}>
           {reporte.prioridad && (
             <Badge variant={VARIANTE_PRIORIDAD[reporte.prioridad] ?? 'neutral'} size="sm">
-              {ETIQUETA_PRIORIDAD[reporte.prioridad] ?? reporte.prioridad}
+              {reporte.prioridad}
             </Badge>
           )}
           <Badge variant={VARIANTE_ESTADO[reporte.estado] ?? 'neutral'} size="sm" dot>
-            {ETIQUETA_ESTADO[reporte.estado] ?? reporte.estado}
+            {reporte.estado}
           </Badge>
         </span>
       </div>
@@ -82,8 +63,7 @@ export function TarjetaReporte({ reporte, accion, onVer }: TarjetaReporteProps) 
 
       <p className={c.meta}>
         <span className={c.metaFuerte}>
-          {reporte.subcategoria ??
-            (reporte.categoria ? ETIQUETA_CATEGORIA[reporte.categoria] ?? reporte.categoria : reporte.tipo)}
+          {reporte.subcategoria ?? reporte.categoria ?? reporte.tipo}
         </span>
         <span aria-hidden>·</span>
         <span>{reporte.usuario}</span>

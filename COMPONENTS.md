@@ -5032,16 +5032,18 @@ dentro de pantallas móviles individuales.
 ### 16.4 TarjetaReporte
 
 Card de reporte de campo para la PWA (diseño «acción primero»): folio,
-badges de estado/prioridad (icono+texto), descripción breve truncada, meta
-(categoría · quién reportó · fecha) y acciones explícitas con targets
-táctiles ≥44px. Presentacional: el padre decide si hay acción y cuál.
+badges de estado/prioridad (variantes del `Badge` del kit), descripción
+breve truncada, meta (categoría · quién reportó · fecha) y acciones
+explícitas con targets táctiles ≥44px. Presentacional: el padre decide si
+hay acción y cuál. El API ya serializa estado/prioridad/categoría en
+texto es-MX — la tarjeta no re-mapea.
 
 **Archivos:**
 - `src/components/pwa/TarjetaReporte/TarjetaReporte.tsx` (+ `.styles.ts`, `index.ts`)
 
 **Importacion:**
 ```tsx
-import { TarjetaReporte, ETIQUETA_ESTADO, ETIQUETA_CATEGORIA, ETIQUETA_PRIORIDAD } from '@/components/pwa/TarjetaReporte';
+import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
 ```
 
 **Props:**
