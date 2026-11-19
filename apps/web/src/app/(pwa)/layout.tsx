@@ -53,11 +53,10 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola.
-  // En DEV no se registra y además se desregistran SWs existentes + se
-  // borran sus cachés: el SW persiste aunque quitemos el registro y su
-  // cache-first sobre los chunks de Turbopack sirve JS viejo → errores de
-  // hidratación (HTML nuevo vs JS viejo) y hot-reload roto.
+  // Service worker (§7c): SOLO producción. En DEV no se registra y además se
+  // desregistran SWs existentes + se borran sus cachés: el SW persiste aunque
+  // quitemos el registro y su cache-first sobre los chunks de Turbopack sirve
+  // JS viejo → errores de hidratación (HTML nuevo vs JS viejo) y hot-reload roto.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") {
@@ -68,6 +67,12 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       return;
     }
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  }, []);
+
+  // Sincronizador de la cola (§7c): corre en TODOS los entornos (también DEV,
+  // para poder probar el ciclo captura→reconexión→ACK en local). No depende
+  // del SW: usa navigator.onLine + evento online + intervalo de 2 min.
+  useEffect(() => {
     const parar = iniciarSincronizador();
     return () => {
       parar();
