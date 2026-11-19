@@ -5029,6 +5029,87 @@ dentro de pantallas móviles individuales.
 **Cuando USAR:** cualquier ruta `/m/*` de la base aún sin módulo.
 **Cuando NO:** cuando la pantalla ya tiene su módulo real.
 
+### 16.4 TarjetaReporte
+
+Card de reporte de campo para la PWA (diseño «acción primero»): folio,
+badges de estado/prioridad (icono+texto), descripción breve truncada, meta
+(categoría · quién reportó · fecha) y acciones explícitas con targets
+táctiles ≥44px. Presentacional: el padre decide si hay acción y cuál.
+
+**Archivos:**
+- `src/components/pwa/TarjetaReporte/TarjetaReporte.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { TarjetaReporte, ETIQUETA_ESTADO, ETIQUETA_CATEGORIA, ETIQUETA_PRIORIDAD } from '@/components/pwa/TarjetaReporte';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `reporte` | `ReporteCampoDTO` | *(requerido)* | El reporte a mostrar |
+| `onVer` | `() => void` | *(requerido)* | Abre el detalle |
+| `accion` | `{ etiqueta, onClick, ocupado? }` | `undefined` | Acción principal del rol (ej. Aceptar); sin ella solo se ve Ver |
+
+**Cuando USAR:** listados de reportes en vistas `/m/*`. **Cuando NO:** en
+el escritorio (usa la DataTable de `/reportes`) ni para otras entidades.
+
+### 16.5 EstadoCola
+
+Resumen de la cola offline dentro de la pantalla de captura. Muestra cada
+item con su estado (`Pendiente` / `Error de red` / `Conflicto`); los
+conflictos (409) esperan la decisión humana con botones Descartar
+(`descartar`) y Reintentar (`reencolar`). Se oculta con la cola vacía.
+
+**Archivos:**
+- `src/components/pwa/EstadoCola/EstadoCola.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { EstadoCola } from '@/components/pwa/EstadoCola';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `refreshKey` | `number` | `0` | El padre lo incrementa tras encolar para refrescar ya (además: evento `online` y sondeo de 30 s) |
+
+**Cuando USAR:** en toda pantalla `/m/*` que capture (encola). **Cuando
+NO:** en pantallas solo de consulta o en el escritorio.
+
+### 16.6 ModalNuevoReporte
+
+Captura de un reporte de campo, offline-first: SIEMPRE encola
+(`encolar('/reportes-campo', payload)` con la key de idempotencia del
+teléfono) y dispara `sincronizarAhora()`. Con señal hace ACK y se cierra
+solo; sin señal muestra «quedó guardado» y el estado lo pinta `EstadoCola`.
+Requiere descripción ≥5 y subcategoría **o** el toggle «es de mi área»
+(el backend rechaza con `CATEGORIA_REQUERIDA`). GPS best-effort (sin GPS
+la captura no se bloquea). Reinicia sus campos al CERRAR (no al abrir).
+
+**Archivos:**
+- `src/components/pwa/ModalNuevoReporte/ModalNuevoReporte.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { ModalNuevoReporte } from '@/components/pwa/ModalNuevoReporte';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `abierto` | `boolean` | *(requerido)* | Visibilidad |
+| `onCerrar` | `() => void` | *(requerido)* | Cierra (y reinicia los campos) |
+| `nombreUsuario` | `string` | *(requerido)* | Firma del reporte (`user.persona.nombre`) |
+| `onEncolado` | `() => void` | `undefined` | Avisa al padre que la cola cambió |
+
+**Cuando USAR:** botón «Reportar» de `/m/reportes`. **Cuando NO:** para
+editar (el edit sigue en el escritorio) ni para capturar asistencia (su
+propio módulo).
+
 ## 17. Componentes de Escritorio (workers)
 
 Componentes de vista del módulo Trabajadores en `src/components/workers/*`
