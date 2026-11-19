@@ -1,6 +1,5 @@
-# Gates que hoy están verdes. lint NO entra: hay 21 errores de eslint.
-# Jest corre los 1417 tests sin skips. Integración queda fuera: va en
-# integration.yml (requiere BD real y restore del dump).
+# Gates: typecheck, lint y tests del web; build, prisma validate y 1417 tests
+# de la API. Integración queda fuera: va en integration.yml (BD real + dump).
 
 name: ci
 
@@ -26,6 +25,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
+        working-directory: apps/web
+      - run: npm run lint
+        working-directory: apps/web
+      - run: npm test -- --runInBand
         working-directory: apps/web
 
   api:
