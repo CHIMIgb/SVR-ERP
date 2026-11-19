@@ -81,7 +81,7 @@ export function Modal({
         onClick={persistent ? undefined : onClose}
         blur
         offsetLeft={offsetLeft}
-        className="z-[9998] p-2 sm:p-4"
+        className="z-[9998] p-4"
       >
         <div
           className={cn(modalClasses.card, modalClasses.sizes[size], contentClassName)}
