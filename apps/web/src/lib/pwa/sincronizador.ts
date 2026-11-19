@@ -14,19 +14,14 @@ export type PuertoEnvio = (
   item: ElementoCola,
 ) => Promise<{ ok: boolean }>;
 
-/** Envío real (import perezoso del apiClient con el token en memoria). */
+/** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */
 const puertoPorDefecto: PuertoEnvio = async (item) => {
-  const { API_BASE_URL, getAccessToken } = await import("@/lib/api");
-  const token = getAccessToken();
-  const r = await fetch(`${API_BASE_URL}${item.endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ ...item.payload, idempotenciaKey: item.id }),
+  const { apiClient } = await import("@/lib/api");
+  const res = await apiClient.post(item.endpoint, {
+    ...item.payload,
+    idempotenciaKey: item.id,
   });
-  return { ok: r.status >= 200 && r.status < 300 };
+  return { ok: res.success === true };
 };
 
 let corriendo = false;
