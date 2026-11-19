@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToastItem, ToastType, ToastPosition, ToastTransition, ToastOptions, ToastContextValue } from './Toast.types';
@@ -47,31 +47,31 @@ function ToastItemComponent({
   onDismiss: (id: number) => void;
 }) {
   const [progress, setProgress] = useState(100);
-  const startTime = useRef(Date.now());
+  const startTime = useRef(0);
   const pausedAt = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  const tickRef = useRef<() => void>(() => {});
 
-  // Animacion de progreso
-  const tick = useCallback(() => {
-    if (pausedAt.current !== null) return;
-    const elapsed = Date.now() - startTime.current;
-    const remaining = Math.max(0, 100 - (elapsed / toast.duration) * 100);
-    setProgress(remaining);
-    if (remaining > 0) {
-      rafRef.current = requestAnimationFrame(tick);
-    } else {
-      onDismiss(toast.id);
-    }
-  }, [toast.duration, toast.id, onDismiss]);
-
-  // Iniciar progreso
-  useState(() => {
+  // Animacion de progreso: el bucle RAF vive en un effect (la fecha se toma
+  // fuera del render) y tickRef evita la autocaptura de la propia callback.
+  useEffect(() => {
+    tickRef.current = () => {
+      if (pausedAt.current !== null) return;
+      const elapsed = Date.now() - startTime.current;
+      const remaining = Math.max(0, 100 - (elapsed / toast.duration) * 100);
+      setProgress(remaining);
+      if (remaining > 0) {
+        rafRef.current = requestAnimationFrame(() => tickRef.current());
+      } else {
+        onDismiss(toast.id);
+      }
+    };
     startTime.current = Date.now();
-    rafRef.current = requestAnimationFrame(tick);
+    rafRef.current = requestAnimationFrame(() => tickRef.current());
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  });
+  }, [toast.duration, toast.id, onDismiss]);
 
   const handleMouseEnter = () => {
     pausedAt.current = Date.now();
@@ -83,7 +83,7 @@ function ToastItemComponent({
       const pausedDuration = Date.now() - pausedAt.current;
       startTime.current += pausedDuration;
       pausedAt.current = null;
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(() => tickRef.current());
     }
   };
 

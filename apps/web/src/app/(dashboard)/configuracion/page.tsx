@@ -129,7 +129,7 @@ export default function ConfiguracionPage() {
               </h3>
               <p className="text-sm text-ui-500">
                 Define el horario en que el punto de venta está habilitado para cobrar.
-                Fuera de este rango, el POS mostrará un mensaje de "Fuera de horario".
+                Fuera de este rango, el POS mostrará un mensaje de &quot;Fuera de horario&quot;.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

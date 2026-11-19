@@ -98,6 +98,8 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
 
   // Config real del turno (apertura/cierre 24h) desde el backend
   const [turnoConfig, setTurnoConfig] = useState<TurnoConfig>(DEFAULT_TURN);
+  // Cierre del día persistido (estado de aprobación) + modal de rechazo
+  const [cierreHoyData, setCierreHoyData] = useState<CierreVentaDTO | null>(null);
 
   // Si el cierre del día ya existe en BD, bloquear el turno al cargar;
   // además carga la config real y registra la apertura del turno si falta.
@@ -156,8 +158,6 @@ export function CorteCaja({ sales, cashierName, retiros, isAdmin, loading = fals
   // Guard anti doble-submit al cerrar caja (igual que en venta normal)
   const [isClosing, setIsClosing] = useState(false);
 
-  // Cierre del día persistido (estado de aprobación) + modal de rechazo
-  const [cierreHoyData, setCierreHoyData] = useState<CierreVentaDTO | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectMotivo, setRejectMotivo] = useState('');
 
