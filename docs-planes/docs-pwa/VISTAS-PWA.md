@@ -30,6 +30,28 @@ y `historial-cambios/2026-11-11-pwa-paso5-placeholders-guard.md`.
 | 12 | `/m/finanzas` | Finanzas | Sí (Administrador) |
 | 13 | `/m/modulos` | Módulos | Sí (Administrador) |
 
+## Clasificación por módulo (Comercial / Operaciones)
+
+Equivalencia entre la vista PWA y la ruta del escritorio del mismo módulo. El
+resto de las vistas (`/m`, `/m/asistencia`, `/m/contactos`, `/m/perfil`,
+`/m/flota-obras`, `/m/diesel` y `/m/modulos`) queda fuera de esta clasificación.
+
+### Operaciones
+
+| Vista PWA | Nombre en BD | Vista de escritorio |
+|---|---|---|
+| `/m/reportes` | Reportes | `/reportes` |
+| `/m/inventario` | Inventario | `/inventario` |
+| `/m/obras` | Obras | `/proyectos` |
+
+### Comercial
+
+| Vista PWA | Nombre en BD | Vista de escritorio |
+|---|---|---|
+| `/m/pos` | POS | `/ventas` |
+| `/m/corte` | Corte del día | `/ventas/corte` |
+| `/m/finanzas` | Finanzas | `/finanzas` |
+
 ## Rutas auxiliares que NO son vistas RBAC
 
 | Ruta | Para qué | Acceso |
