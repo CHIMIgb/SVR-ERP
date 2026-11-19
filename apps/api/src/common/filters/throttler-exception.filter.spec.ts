@@ -3,6 +3,7 @@ import { ThrottlerException } from '@nestjs/throttler';
 
 describe('ThrottlerExceptionFilter', () => {
   let filter: ThrottlerExceptionFilter;
+  const minutosEsperados = Number(process.env.THROTTLE_SHORT_TTL_MIN || 15);
 
   beforeEach(() => {
     filter = new ThrottlerExceptionFilter();
@@ -29,7 +30,9 @@ describe('ThrottlerExceptionFilter', () => {
         success: false,
         error: expect.objectContaining({
           code: 'RATE_LIMIT_EXCEEDED',
-          message: expect.stringContaining('Demasiadas solicitudes'),
+          message: expect.stringContaining(
+            `Demasiadas solicitudes. Intenta de nuevo en ${minutosEsperados} minuto(s).`,
+          ),
         }),
       }),
     );
@@ -53,6 +56,6 @@ describe('ThrottlerExceptionFilter', () => {
     const body = mockResponse.json.mock.calls[0][0];
     expect(body.error.details).toHaveProperty('retryAfter');
     expect(typeof body.error.details.retryAfter).toBe('number');
-    expect(body.error.details.retryAfter).toBeGreaterThan(0);
+    expect(body.error.details.retryAfter).toBe(minutosEsperados * 60);
   });
 });
