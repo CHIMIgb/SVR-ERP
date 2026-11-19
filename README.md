@@ -162,43 +162,11 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 
 ### Credenciales de Acceso (API)
 
-#### Administrador (acceso total a los 6 módulos)
-
-| Campo | Valor |
-|-------|-------|
-| **Email** | `admin@svr-constructora.com` |
-| **Contraseña** | `admin123` |
-| **Rol** | Administrador (nivel 100) |
-
-#### Administrativo de RRHH (módulo Recursos Humanos)
-
-| Campo | Valor |
-|-------|-------|
-| **Email** | `rrhh@svr-constructora.com` |
-| **Contraseña** | `rrhh123` |
-| **Rol** | Administrativo (nivel 80) — con los permisos de RRHH absorbidos |
-| **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
-| **No tiene acceso** | Maquinaria, Comercial, Sistema, Configuración |
-
-#### Roles de plantilla (5 — /reportes y dashboard)
-
-> **Estas cuentas ya no se crean con `migrate`** (review PR #17: ninguna
-> migración debe dejar usuarios con contraseña conocida en producción).
-> Se siembran a mano con `prisma/demo-seed.sql`, cuyo hash llega por variable
-> de psql — **la contraseña la define quien ejecuta el seed**, las de la
-> tabla son las sugeridas para dev. Ver las instrucciones en la cabecera de
-> ese archivo.
-
-| Email | Contraseña sugerida (seed dev) | Rol (nivel) | Área (torre) | En /reportes puede |
-|-------|------------|-------------|--------------|--------------------|
-| `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
-| `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |
-| `tecnico@svr-constructora.com` | `tecnico123` | Técnico (70) | Mecanico | ver, crear, editar |
-| `soldador@svr-constructora.com` | `tecnico123` | Técnico (70) | Soldador | ver, crear, editar |
-| `diesel@svr-constructora.com` | `tecnico123` | Técnico (70) | Diesel | ver, crear, editar |
-| `mantenimiento@svr-constructora.com` | `tecnico123` | Técnico (70) | Mantenimiento | ver, crear, editar |
-| `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | ver, crear (también /criba, /ventas y /ventas/corte) |
-| `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
+> Las cuentas y contraseñas de desarrollo viven en **`credenciales-dev.md`**
+> (raíz del repo), un archivo local **no versionado**: está en `.gitignore`
+> y nunca se sube — el repo es público. El archivo separa las cuentas por
+> uso (escritorio y PWA, una por rol); si no lo tienes, pídeselo a quien
+> armó tu ambiente o siémbralas tú mismo con `prisma/demo-seed.sql`.
 
 > Cada usuario hereda su **área (torre)** → el alta "Misma área" de /reportes
 > envía el incidente a esa torre automáticamente (y sus subcategorías). La

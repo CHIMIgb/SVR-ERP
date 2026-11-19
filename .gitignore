@@ -52,3 +52,6 @@ apps/web/.turbo/
 
 # Cache de Turborepo en la raiz (builds de prueba)
 .turbo/
+
+# Credenciales de dev (usuarios/contrasenas) — solo local, NUNCA al repo
+/credenciales-dev.md
