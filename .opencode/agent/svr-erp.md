@@ -365,3 +365,85 @@ duplicados. Al agregar uno NUEVO o al construir la Vista B:
 - Turbopack/CD: `.next`, `dist`, `*.tsbuildinfo` nunca van al PR.
 - Localización: TODO texto de UI en español — incluso errores de validación (class-validator con mensajes personalizados en español).
 - **Despliegue con proxy (⚠️ día del despliegue):** el bloqueo por IP usa `req.ip` — sin `trust proxy` es la IP directa de la conexión (hoy, en LAN, la real ✓). Con nginx: `app.set('trust proxy', 1)` en `main.ts` (SOLO el primer salto) y nginx SIEMPRE pisa `X-Forwarded-For` con `$remote_addr` — sin trust proxy todos comparten la IP del proxy (un mal actor bloquea a la oficina entera); con trust proxy abierto, un atacante suplanta `X-Forwarded-For` y rota IPs falsas para esquivar el bloqueo por IP. Detalle: README "Despliegue con servidor".
+
+## Guías de desarrollo — aplicación operativa
+
+El **criterio y el porqué** están en `AGENTS.md`, sección «Guías de desarrollo
+(web, PWA, componentes y CI/CD)». Aquí está solo lo que hay que HACER. Si una
+respuesta del mapa siguiente no es segura, **preguntar antes de escribir** (regla
+de plan previo).
+
+### 1. Mapa de impacto — antes de tocar nada
+
+| Qué revisar | Dónde | Pregunta que debe quedar respondida |
+|---|---|---|
+| Callers | `git grep` del símbolo, prop o endpoint | ¿Quién deja de compilar o cambia de forma? |
+| Contrato | `lib/api.ts` + DTO del dominio | ¿Cambia la forma de la respuesta o el enum? |
+| RBAC | `permissions`, `vistas`, seed, `RequirePermission` | ¿El permiso nuevo es propio o ya existe uno igual? |
+| BD | `schema.prisma` + última migración | ¿Hay índice único / transacción / rollback? |
+| UI | `COMPONENTS.md` + una vista de cada app | ¿Existe el componente y la variante documentada? |
+| Datos | `lib/formatters.ts` / `packages/shared` | ¿Estoy duplicando dinero, fecha o enum? |
+| Pipeline | `.github/workflows/*` | ¿El cambio exige gate, secreto o rebuild de imagen? |
+
+Tres fuentes manda siempre: el código real, `COMPONENTS.md` y la BD. La spec o un
+registro antiguo solo orientan; si contradicen a la BD, gana la BD.
+
+### 2. Árbol de decisiones
+
+- **¿Server o Client?** ¿Hay hooks, eventos o APIs del navegador? Si no, Server.
+  En este repo **no migrar una página existente** sin autorización (AGENTS §1).
+- **¿Componente nuevo?** `grep` en `src/components/ui` y `components/pwa`. Si
+  existe variante, reutilizar. Si es de dominio, va junto al dominio, no en `ui`.
+  Si es genérico y nuevo: patrón `.tsx` + `.styles.ts` + `index.ts` y doc en
+  `COMPONENTS.md` en el MISMO cambio (AGENTS §10).
+- **¿Endpoint nuevo?** `grep` en `lib/api.ts` y `apps/api/src`. Si existe para
+  escritorio, la PWA lo reutiliza: **prohibido duplicarlo**. Solo endpoints que
+  el flujo móvil exige y no tienen equivalente (AGENTS §2).
+- **¿Captura o decisión en móvil?** Captura → cola local primero con clave de
+  idempotencia estable; decisión (cerrar/aprobar) → exige red (AGENTS §2 y §4).
+- **¿Vista CRUD nueva?** Copiar `/inventario`: PageHeader, StatsCards,
+  SearchBar + filtros, DataTable con RBAC, Pagination, FormModal. Nunca desde
+  cero.
+- **¿Ruta `/m/*` nueva?** Migración seed con su concesión RBAC; la nav se deriva
+  de `user.vistas`, nunca se hardcodea en `rol-nav.ts` ni en la pantalla.
+- **¿Listado?** `take`/`skip`, default 10, techo 100. Sin excepción salvo los
+  exentos documentados (AGENTS, regla dura backend).
+
+### 3. Verificación por tipo de cambio
+
+| Tipo | Gates que corro | Qué queda SIN verificar (decirlo al cerrar) |
+|---|---|---|
+| Solo docs | `git diff --check` | No aplican gates de código |
+| Web | `npx tsc --noEmit`, `npm run lint`, smoke 320/768/1280 px | No hay tests front hoy |
+| PWA | lo anterior + smoke con señal cortada, cola y logout | No hay tests front hoy; no probé en APK |
+| API | `npm run build`, `npx prisma validate`, `npm run test -- --runInBand` | Suite de integración si no la corrí |
+| Auditoría / BD | además `npm run test:integration` con BD real | Nunca production |
+| Migración seed | `migrate deploy` + re-ejecución en `BEGIN/ROLLBACK` + consulta `psql` | Otros entornos |
+| Workflow | `git diff --check` + revisión YAML | No corro secretos ni deploy |
+
+`npm run lint` y `npm run test` pueden estar rojos por deuda conocida: reportar
+el resultado exacto, nunca llamarlos "verdes" ni silenciarlos.
+
+### 4. Checklists de revisión (antes de commit)
+
+**Web** — semántica y foco; 4 estados (carga/vacío/error/éxito);
+`mensajeErrorApi` en toasts; loaders del kit; RBAC en botones y en ruta; tablas
+con scroll; modales en `dvh`; sin `style={{}}` prohibido; `tsc` limpio.
+
+**PWA** — una acción principal; targets ≥44px y safe-areas; sin tablas del
+desktop; captura en cola antes del fetch; clave de idempotencia estable;
+estado pendiente/enviado/conflicto visible; cola limpia al logout; nav desde
+`user.vistas`; texto es-MX; escenario de 320px y sin señal probado.
+
+**Componente de kit** — tres callers reales o equivalente ausente; props con
+uniones literales (no booleanos en cascada); estilos en `.styles.ts` con `cn()`;
+`index.ts`; doc en `COMPONENTS.md` con «cuándo NO usar»; smoke en web y PWA;
+callers viejos revisados con `grep`.
+
+**Pipeline** — autorización explícita para tocar workflows; `git diff --check`;
+secretos fuera del diff; artefacto por SHA y promoción por digest; gates
+`web`/`api`/`integration` presentes; registro en `AGENTS.md`, este archivo y
+`historial-cambios/` en el mismo commit; push/PR solo si el usuario lo ordena.
+
+**Cierre de toda tarea:** un commit atómico en español + registro fechado, y una
+o dos líneas finales con lo que NO se verificó y el riesgo que conlleva.
