@@ -1547,6 +1547,7 @@ model registros_mantenimiento {
 model reportes_campo {
   id                                          String             @id @db.Uuid
   codigo                                      String?            @unique
+  idempotencia_key                            String?            @unique
   tipo                                        TipoReporteCampo
   categoria                                   CategoriaReporte?
   subcategoria_id                             String?            @db.Uuid

@@ -76,6 +76,19 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect('clienteId' in new CreateReporteCampoDto()).toBe(false);
     expect('montoServicio' in new CreateReporteCampoDto()).toBe(false);
   });
+
+  it('acepta idempotenciaKey UUID de la cola PWA', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, {
+      ...base,
+      idempotenciaKey: '550e8400-e29b-41d4-a716-446655440099',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza idempotenciaKey que no es UUID', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, { ...base, idempotenciaKey: 'no-es-uuid' });
+    expect((await validate(dto)).length).toBeGreaterThan(0);
+  });
 });
 
 describe('CambiarEstadoDto (flujo v2)', () => {

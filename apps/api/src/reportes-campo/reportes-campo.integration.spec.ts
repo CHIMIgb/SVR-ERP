@@ -13,6 +13,7 @@ import { INestApplication, BadRequestException, ConflictException, ForbiddenExce
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
+  AuditResult,
   CategoriaReporte,
   EstadoIncidente,
   Prioridad,
@@ -904,6 +905,47 @@ describe('ReportesCampo Audit (Real DB)', () => {
       });
       await expect(
         prisma.$executeRawUnsafe(`DELETE FROM registro_auditoria WHERE event_id = '${fail!.event_id}'`),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('IDEMPOTENCIA PWA — reenvío de la cola (BD real)', () => {
+    it('doble envío con la misma key crea una sola fila y un solo SUCCESS', async () => {
+      const key = randomUUID();
+      const original = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      createdIds.push(original.id);
+
+      const reenvio = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      expect(reenvio.id).toBe(original.id);
+
+      const filas = await prisma.reportes_campo.findMany({ where: { idempotencia_key: key } });
+      expect(filas).toHaveLength(1);
+
+      const successes = (await findAudits(AuditAction.REPORTE_CREADO, original.id)).filter(
+        (a) => a.result === AuditResult.SUCCESS,
+      );
+      expect(successes).toHaveLength(1);
+    });
+
+    it('el índice único rechaza un duplicado insertado directamente', async () => {
+      const key = randomUUID();
+      const original = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      createdIds.push(original.id);
+
+      await expect(
+        prisma.reportes_campo.create({
+          data: {
+            id: randomUUID(),
+            codigo: `INC-DUP-${TEST_ID}`,
+            idempotencia_key: key,
+            tipo: TipoReporteCampo.DIESEL,
+            fecha: new Date(),
+            hora: new Date('1970-01-01T12:00:00Z'),
+            descripcion: 'duplicado directo de prueba',
+            usuario: 'Prueba idempotencia',
+            obra_texto: 'Sin obra asociada',
+          },
+        }),
       ).rejects.toThrow();
     });
   });

@@ -499,6 +499,16 @@ export class ReportesCampoService {
   //  CREAR
   // ────────────────────────────────────────────
   async create(dto: CreateReporteCampoDto, userId: string) {
+    // Reenvío de la cola PWA: la key del teléfono identifica la captura.
+    // Devolver el original evita consumir folio y auditar dos veces.
+    if (dto.idempotenciaKey) {
+      const existente = await this.prisma.reportes_campo.findUnique({
+        where: { idempotencia_key: dto.idempotenciaKey },
+        include: REPORTE_INCLUDE,
+      });
+      if (existente) return this.serialize(existente);
+    }
+
     // Torre destino del incidente: explícita (otra torre) o resuelta con el
     // puesto del que reporta ("misma área").
     let torre = dto.categoria ?? null;
@@ -560,6 +570,7 @@ export class ReportesCampoService {
             descripcion: dto.descripcion.trim(),
             estado: EstadoIncidente.NUEVO,
             prioridad: dto.prioridad ?? null,
+            idempotencia_key: dto.idempotenciaKey ?? null,
             creado_por: userId,
             actualizado_por: userId,
             actualizado_en: new Date(),
@@ -568,6 +579,15 @@ export class ReportesCampoService {
         });
         break;
       } catch (e) {
+        // Carrera real: dos reenvíos con la misma key pasan el findUnique de
+        // arriba y chocan en el índice único. El que pierde devuelve al ganador.
+        if (dto.idempotenciaKey) {
+          const ganador = await this.prisma.reportes_campo.findUnique({
+            where: { idempotencia_key: dto.idempotenciaKey },
+            include: REPORTE_INCLUDE,
+          });
+          if (ganador) return this.serialize(ganador);
+        }
         // Patrón cobranza/proveedores (idioma-neutral): único unique
         // colisionable en este create es `codigo` (ver facturas.service).
         if (

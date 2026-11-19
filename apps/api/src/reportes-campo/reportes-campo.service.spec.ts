@@ -7,6 +7,7 @@ import {
   TipoReporteCampo,
   AuditAction,
   AuditResult,
+  Prisma,
 } from '@prisma/client';
 import { ReportesCampoService } from './reportes-campo.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -432,6 +433,38 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
           errorCode: 'CATEGORIA_REQUERIDA',
         }),
       );
+    });
+
+    it('reenvío con la misma idempotenciaKey devuelve el original y NO crea otro folio', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440099';
+      prisma.reportes_campo.findUnique.mockResolvedValueOnce(null); // primer envío: aún no existe
+      const original = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
+      const reenvio = await service.create({ ...createDto, idempotenciaKey: key }, 'user-2');
+      expect(reenvio).toEqual(original);
+      expect(prisma.reportes_campo.create).toHaveBeenCalledTimes(1);
+      expect(prisma.reportes_campo.count).toHaveBeenCalledTimes(1);
+    });
+
+    it('persiste la idempotenciaKey del dispositivo', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440098';
+      prisma.reportes_campo.findUnique.mockResolvedValueOnce(null);
+      await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
+      expect(prisma.reportes_campo.create.mock.calls.at(-1)[0].data.idempotencia_key).toBe(key);
+    });
+
+    it('carrera: P2002 por key devuelve al ganador en vez de lanzar', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440097';
+      prisma.reportes_campo.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ ...mockReporte, id: 'reporte-ganador' });
+      prisma.reportes_campo.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('duplicate key', {
+          code: 'P2002',
+          clientVersion: '7.0.0',
+        }),
+      );
+      const resultado = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
+      expect(resultado.id).toBe('reporte-ganador');
     });
   });
 
