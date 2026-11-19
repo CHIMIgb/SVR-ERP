@@ -27,6 +27,10 @@ describe('AsistenciaController', () => {
     resolverOmision: jest.fn().mockResolvedValue(mockRegistro),
     resolverOmisionSinMarcaje: jest.fn().mockResolvedValue(mockRegistro),
     registrarUbicacionObra: jest.fn().mockResolvedValue({ id: 'obra-1' }),
+    findMia: jest.fn().mockResolvedValue({ registroHoy: null }),
+    marcarEntradaPropia: jest.fn().mockResolvedValue(mockRegistro),
+    marcarSalidaPropia: jest.fn().mockResolvedValue(mockRegistro),
+    findEquipo: jest.fn().mockResolvedValue({ miembros: [] }),
   };
 
   beforeEach(async () => {
@@ -136,5 +140,38 @@ describe('AsistenciaController', () => {
         accion: 'editar',
       });
     }
+  });
+
+  describe('asistencia propia y del equipo (PWA)', () => {
+    it('findMia toma al usuario del JWT, no de la petición', async () => {
+      await controller.findMia(mockRequest);
+      expect(service.findMia).toHaveBeenCalledWith('user-1');
+    });
+
+    it('marcarEntradaPropia pasa el dto y el userId del JWT', async () => {
+      const dto = { obraId: 'obra-1', lat: 19.4, lng: -99.1, dispositivo: 'Móvil' };
+      await controller.marcarEntradaPropia(dto, mockRequest);
+      expect(service.marcarEntradaPropia).toHaveBeenCalledWith(dto, 'user-1');
+    });
+
+    it('marcarSalidaPropia pasa el dto y el userId del JWT', async () => {
+      const dto = { lat: 19.4, lng: -99.1, dispositivo: 'Móvil' };
+      await controller.marcarSalidaPropia(dto, mockRequest);
+      expect(service.marcarSalidaPropia).toHaveBeenCalledWith(dto, 'user-1');
+    });
+
+    it('findEquipo pasa el userId del JWT y la consulta', async () => {
+      await controller.findEquipo({ fecha: '2026-11-17' }, mockRequest);
+      expect(service.findEquipo).toHaveBeenCalledWith('user-1', { fecha: '2026-11-17' });
+    });
+
+    it('usan los permisos propios, no los de RRHH que abren a todos los trabajadores', () => {
+      const reflector = new Reflector();
+      const permiso = (m: keyof AsistenciaController) => reflector.get(REQUIRE_PERMISSION_KEY, AsistenciaController.prototype[m]);
+      expect(permiso('findMia')).toEqual({ modulo: 'rrhh', recurso: 'mi_asistencia', accion: 'ver' });
+      expect(permiso('marcarEntradaPropia')).toEqual({ modulo: 'rrhh', recurso: 'mi_asistencia', accion: 'crear' });
+      expect(permiso('marcarSalidaPropia')).toEqual({ modulo: 'rrhh', recurso: 'mi_asistencia', accion: 'crear' });
+      expect(permiso('findEquipo')).toEqual({ modulo: 'rrhh', recurso: 'mi_equipo', accion: 'ver' });
+    });
   });
 });

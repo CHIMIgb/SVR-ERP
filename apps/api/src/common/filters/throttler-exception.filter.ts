@@ -21,13 +21,16 @@ export class ThrottlerExceptionFilter implements ExceptionFilter {
         : undefined;
 
     const retryAfterSeconds =
-      typeof ttl === 'number' ? Math.ceil(ttl / 1000) : 60;
+      typeof ttl === 'number'
+        ? Math.ceil(ttl / 1000)
+        : Number(process.env.THROTTLE_SHORT_TTL_MIN || 15) * 60;
+    const retryAfterMinutes = Math.ceil(retryAfterSeconds / 60);
 
     response.status(429).json({
       success: false,
       error: {
         code: 'RATE_LIMIT_EXCEEDED',
-        message: `Demasiadas solicitudes. Intenta de nuevo en ${retryAfterSeconds} segundo(s).`,
+        message: `Demasiadas solicitudes. Intenta de nuevo en ${retryAfterMinutes} minuto(s).`,
         details: {
           retryAfter: retryAfterSeconds,
         },

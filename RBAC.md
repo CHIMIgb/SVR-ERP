@@ -479,3 +479,15 @@ El sidebar de ese supervisor **solo mostrará esas 4 rutas**, con los botones qu
 | `operaciones` | operaciones, reportes_campo, criba, inventario, proyectos | ver, crear, editar, eliminar, exportar |
 | `comercial` | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
 | `sistema` | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |
+
+**Autoservicio de la PWA (migración `20261117010000_asistencia_propia_permisos`).** Son permisos aparte de
+`rrhh.asistencia`, porque ese recurso abre a todos los trabajadores (el `trabajadorId` viaja en el body):
+
+| Permiso | Endpoints | Roles |
+|---------|-----------|-------|
+| `rrhh.mi_asistencia:ver` | `GET /asistencia/mia` | Todos los roles activos |
+| `rrhh.mi_asistencia:crear` | `POST /asistencia/mia/entrada`, `POST /asistencia/mia/salida` | Todos los roles activos |
+| `rrhh.mi_equipo:ver` | `GET /asistencia/equipo` | Residente, Administrador |
+
+En esos endpoints el trabajador sale del token (`trabajadores.usuario_id`); el equipo son las cuentas con
+`users.jefe_user_id` = usuario. Nunca devuelven sueldos.
