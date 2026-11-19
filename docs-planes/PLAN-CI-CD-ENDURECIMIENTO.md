@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-18
 **Autor:** Agente (análisis y plan solicitados por el usuario)
-**Estado:** Fases 0, 1, 2, 3 y 4 **ejecutadas** (2026-11-18); fases 5-6 pendientes de ejecución.
+**Estado:** Fases 0 a 5 **ejecutadas** (2026-11-18); Fase 6 pendiente de ejecución.
 
 ## Alcance y decisión previa
 
@@ -67,7 +67,7 @@ reales + excepción de regla solo en 11 páginas).
 | B4 | `build-web` publica `latest` antes del smoke | Imagen rota en producción | Medio (reordenar pasos) | 1 |
 | B5 | ~~`lint` con 21 errores fuera del CI~~ **CERRADA** (Fase 4: 0 errores; 10 arreglos reales + excepción acotada) | Errores nuevos entran sin aviso | Alto (proyecto) | 2 |
 | B6 | ~~Cero tests frontend~~ **CERRADA** (Fase 4: Jest + RTL, 4 tests en CI) | Roturas de runtime invisibles al CI | Alto (infra + tests) | 2 |
-| B7 | Dump con datos de negocio reales de demo | Riesgo si el repo se vuelve público | Medio | 3 |
+| B7 | ~~Dump con datos de negocio reales de demo~~ **CERRADA para el dump de CI** (Fase 5: anonimizado y verificado 292/292). Quedan los otros dos export y el historial git | Repo ya es público | Medio | 3 |
 | B8 | Specs de integración comparten BD (`maxWorkers: 1`, worker que no cierra) | Acoplamiento, ruido al terminar | Medio | 3 |
 | B9 | `integration` sin `concurrency` y sin filtro `branches: [main]` | Runs acumulados en pushes rápidos | Muy bajo | 3 |
 
@@ -226,18 +226,26 @@ acotado + gate en CI).
   en `useEffect`; para quitarla hay que migrarlas a caché de datos. El gate se
   activa con 37 warnings, que no bloquean `eslint` (sin `--max-warnings`).
 
-### Fase 5 — Dump: datos de negocio
+### Fase 5 — Dump: datos de negocio — ✅ EJECUTADA 2026-11-18
 
-- **Qué se toca:** `svr_erp_export/svr_erp_sin_postgis.sql` y el script de
-  regeneración.
-- **Acción:** decidir entre anonimizar clientes/usuarios/proyectos de demo en
-  el dump, o moverlo a un artefacto privado. La decisión es del usuario; el
-  plan no la toma.
-- **Verificación:** tras anonimizar, `npm run test:integration` contra una BD
-  efímera debe dar 292/292 (los specs usan usuarios semilla reales: revisar
-  `trabajador@svr-constructora.com` antes de renombrar).
-- **Riesgo:** anonimizar mal rompe los specs que dependen de usuarios semilla;
-  por eso va después de la Fase 1 y con prueba negativa.
+- **Decisión del usuario:** anonimizar (no artefacto privado). El repo resultó
+  ser **público**, con 14 clientes, 90 proveedores, 427 personas y 18
+  proyectos con datos reales de demo en el dump de integración.
+- **Resultado:** nuevo `apps/api/scripts/anonimizar-dump.cjs`, determinista e
+  idempotente, que sustituye las columnas de identidad en los bloques `COPY`
+  por valores `DEMO...` / `@ejemplo.invalid`. Se conectó a
+  `regenerar-dump-integracion.ps1` para que futuras regeneraciones también
+  salgan anonimizadas. Conserva los 17 correos `@svr-constructora.com` que
+  usan los specs y deja UUID, fechas y `\N` intactos.
+- **Verificación:** dump restaurado en BD efímera (93 tablas, borrada después);
+  `migrate diff --exit-code` → "No difference detected", exit 0;
+  `npm run test:integration` → **26 suites, 292/292 tests**, exit 0;
+  segunda pasada del anonimizador sin reemplazos; `git diff --check` limpio.
+- **Riesgo que queda:** los otros dos export (`svr_erp.sql` y `svr_erp.dump`)
+  siguen con los datos originales, y el historial de git conserva las
+  versiones previas de todos. Limpiar eso exige otra decisión autorizada que
+  incluya reescritura de historial. Los campos de texto libre tampoco se
+  anonimizaron.
 
 ### Fase 6 — Menores
 

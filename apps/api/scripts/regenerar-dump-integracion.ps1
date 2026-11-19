@@ -16,6 +16,10 @@ $exclusiones = $tablas | ForEach-Object { "--exclude-table-data=public.$_" }
 & pg_dump -h localhost -U postgres -d svr_erp --no-owner --no-privileges $exclusiones -f $Salida
 if ($LASTEXITCODE -ne 0) { throw "pg_dump falló con código $LASTEXITCODE" }
 
+# El repo es público: el dump de integración no debe llevar datos de negocio.
+node (Join-Path $PSScriptRoot 'anonimizar-dump.cjs') $Salida
+if ($LASTEXITCODE -ne 0) { throw "La anonimización falló con código $LASTEXITCODE" }
+
 $dump = Get-Content $Salida -Raw
 foreach ($tabla in $tablas) {
   if ($dump -match "(?m)^COPY public\.$tabla ") { throw "El dump aún contiene datos de $tabla" }
