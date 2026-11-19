@@ -14,7 +14,7 @@ import {
 import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
 import { fechaLocalHoy } from '@/lib/formatters';
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 interface FetchOptions extends RequestInit {
@@ -1012,6 +1012,7 @@ export interface ReporteCampoCreateInput {
   longitud?: number;
   usuario: string;
   descripcion: string;
+  idempotenciaKey?: string;
   prioridad?: PrioridadReporteApi;
 }
 

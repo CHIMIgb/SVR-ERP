@@ -3,8 +3,9 @@
 /**
  * Sincronizador (plan §7c): envía la cola FIFO cuando hay señal.
  * Disparadores: al abrir la app · evento `online` · intervalo de 2 min.
- * Cada envío lleva `X-Idempotencia-Key` (el UUID del teléfono) — los
- * reenvíos NUNCA duplican filas en el servidor.
+ * Cada envío lleva `idempotenciaKey` en el BODY (el UUID del teléfono): el
+ * ValidationPipe solo lee el body, no los headers. El endpoint debe respetar
+ * la key para que un reenvío no duplique filas (convención de la cola).
  * Los errores NO bloquean la cola: el elemento queda para reintentar.
  */
 import { pendientes, marcarEnviada, marcarError, contarPendientes, type ElementoCola } from "./offline";
@@ -15,16 +16,15 @@ export type PuertoEnvio = (
 
 /** Envío real (import perezoso del apiClient con el token en memoria). */
 const puertoPorDefecto: PuertoEnvio = async (item) => {
-  const { getAccessToken } = await import("@/lib/api");
+  const { API_BASE_URL, getAccessToken } = await import("@/lib/api");
   const token = getAccessToken();
-  const r = await fetch(`/api${item.endpoint}`, {
+  const r = await fetch(`${API_BASE_URL}${item.endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Idempotencia-Key": item.id,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify(item.payload),
+    body: JSON.stringify({ ...item.payload, idempotenciaKey: item.id }),
   });
   return { ok: r.status >= 200 && r.status < 300 };
 };
