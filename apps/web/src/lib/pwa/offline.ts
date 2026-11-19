@@ -7,6 +7,14 @@
  * generado EN EL TELÉFONO → los reenvíos son idempotentes en el servidor.
  */
 
+/** Foto del alta: base64 puro (WebP convertido localmente, sin red). */
+export interface AdjuntoPendiente {
+  nombre: string;
+  mime: string;
+  tamano: number;
+  datos: string;
+}
+
 export interface ElementoCola {
   id: string;
   endpoint: string;
@@ -14,6 +22,11 @@ export interface ElementoCola {
   creado_en: string;
   intentos: number;
   estado: "pendiente" | "error" | "conflicto";
+  /**
+   * Fotos del alta — NO van en el payload (el ValidationPipe rechazaría el
+   * POST). Tras el ACK del reporte el sincronizador las adjunta en secuencia.
+   */
+  adjuntos?: AdjuntoPendiente[];
 }
 
 const DB_NOMBRE = "svr-pwa";
@@ -49,7 +62,11 @@ export function nuevoId(): string {
 }
 
 /** Encola una captura para sincronizar cuando haya señal. */
-export async function encolar(endpoint: string, payload: Record<string, unknown>): Promise<ElementoCola> {
+export async function encolar(
+  endpoint: string,
+  payload: Record<string, unknown>,
+  adjuntos?: AdjuntoPendiente[],
+): Promise<ElementoCola> {
   const item: ElementoCola = {
     id: nuevoId(),
     endpoint,
@@ -57,6 +74,7 @@ export async function encolar(endpoint: string, payload: Record<string, unknown>
     creado_en: new Date().toISOString(),
     intentos: 0,
     estado: "pendiente",
+    ...(adjuntos && adjuntos.length > 0 ? { adjuntos } : {}),
   };
   await conStore<void>("readwrite", (store) => store.add(item));
   return item;

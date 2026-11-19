@@ -34,6 +34,7 @@ import {
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
 import { ApiError } from '@svr-erp/shared';
+import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -70,49 +71,6 @@ function descripcionBreve(texto: string, max = 40): string {
   return texto.length > max ? `${texto.slice(0, max)}…` : texto;
 }
 
-/**
- * Convierte cualquier imagen (image/*) a WebP con canvas (calidad 0.85) para
- * que pesen menos. Devuelve el data URI WebP + su tamaño, o null si el navegador
- * no pudo decodificar/convertir (formato ajeno al canvas, p.ej. HEIC viejo).
- */
-async function convertirAWebp(
-  file: File,
-): Promise<{ dataUrl: string; tamano: number } | null> {
-  try {
-    const dataUrlSrc = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error());
-      reader.readAsDataURL(file);
-    });
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error());
-      image.src = dataUrlSrc;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', 0.85),
-    );
-    if (!blob) return null;
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error());
-      reader.readAsDataURL(blob);
-    });
-    return { dataUrl, tamano: blob.size };
-  } catch {
-    return null;
-  }
-}
-
 const STATS_CERO: ReportesCampoStats = {
   nuevos: 0,
   enCurso: 0,
@@ -131,8 +89,6 @@ const emptyForm = {
 };
 
 /** Límites de imagen idénticos al detalle (backend los revalida). */
-const MAX_IMAGENES = 4;
-const MAX_TAMANO_IMAGEN = 2 * 1024 * 1024; // 2 MB
 
 /** Imagen en espera durante el alta (base64; el server aún no conoce el folio). */
 interface AdjuntoImagenAlta {

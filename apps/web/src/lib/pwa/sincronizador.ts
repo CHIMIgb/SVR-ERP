@@ -20,7 +20,7 @@ import {
 
 export type PuertoEnvio = (
   item: ElementoCola,
-) => Promise<{ ok: boolean; conflicto?: boolean }>;
+) => Promise<{ ok: boolean; conflicto?: boolean; data?: unknown }>;
 
 /** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */
 const puertoPorDefecto: PuertoEnvio = async (item) => {
@@ -31,7 +31,8 @@ const puertoPorDefecto: PuertoEnvio = async (item) => {
   });
   return {
     ok: res.success === true,
-    conflicto: res.success === false && res.error.code === "CONFLICT",
+    conflicto: res.success === false && res.error.code === 'CONFLICT',
+    data: res.success === true ? res.data : undefined,
   };
 };
 
@@ -50,8 +51,24 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
     const cola = (await pendientes()).filter((i) => i.estado !== "conflicto");
     for (const item of cola) {
       try {
-        const { ok, conflicto } = await enviar(item);
+        const { ok, conflicto, data } = await enviar(item);
         if (ok) {
+          // Fotos del alta: el reporte ya existe (ACK) — adjuntar en secuencia,
+          // igual que el escritorio. Si una falla, el reporte queda guardado.
+          const nuevoId =
+            data && typeof data === 'object' && 'id' in data && typeof (data as { id: unknown }).id === 'string'
+              ? (data as { id: string }).id
+              : null;
+          if (item.adjuntos?.length && nuevoId) {
+            const { reportesCampoApi } = await import('@/lib/api');
+            for (const adj of item.adjuntos) {
+              try {
+                await reportesCampoApi.adjuntar(nuevoId, adj);
+              } catch (e) {
+                console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre, e);
+              }
+            }
+          }
           await marcarEnviada(item.id);
           enviados++;
         } else if (conflicto) {
