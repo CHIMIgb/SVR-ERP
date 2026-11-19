@@ -40,13 +40,12 @@ jobs:
 
       # Las NEXT_PUBLIC_* se hornean en build time (van dentro del bundle del
       # navegador). No son secretas: son URLs públicas.
+      # Primero solo el tag por SHA: si el smoke falla, latest no se mueve.
       - uses: docker/build-push-action@v7.4.0
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/chimigb/svr-erp-web:latest
-            ghcr.io/chimigb/svr-erp-web:${{ github.sha }}
+          tags: ghcr.io/chimigb/svr-erp-web:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_URL=https://svr-erp.up.railway.app/api
             NEXT_PUBLIC_APP_URL=https://svr-prod.up.railway.app
@@ -54,12 +53,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # La imagen ya está publicada cuando corre esto: avisa de un contenedor
-      # que no arranca, pero no impide publicarla. Cambiar el orden exige
-      # build local → smoke → push (más cambio del que vale hoy).
       - name: Smoke del contenedor
         run: |
-          docker run -d --name svr-web -p 3000:3000 ghcr.io/chimigb/svr-erp-web:latest
+          docker run -d --name svr-web -p 3000:3000 ghcr.io/chimigb/svr-erp-web:${{ github.sha }}
           for i in $(seq 1 20); do
             if curl -fsSL http://127.0.0.1:3000/ > /dev/null; then
               echo "Contenedor respondiendo en el puerto 3000"
@@ -73,3 +69,7 @@ jobs:
           docker logs svr-web
           docker rm -f svr-web
           exit 1
+
+      # El smoke pasó: promover el mismo manifiesto a latest, sin recompilar.
+      - name: Publicar latest
+        run: docker buildx imagetools create --prefer-index=false -t ghcr.io/chimigb/svr-erp-web:latest ghcr.io/chimigb/svr-erp-web:${{ github.sha }}

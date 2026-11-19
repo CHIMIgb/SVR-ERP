@@ -228,7 +228,7 @@ Un PR que incumpla cualquiera = Request Changes.
 | Workflow | Disparadores | Función |
 |---|---|---|
 | `.github/workflows/ci.yml` | PR a `main`, push a `main`, `workflow_dispatch` | Gates verdes: `tsc --noEmit` del web, `npm run build` de la API, `npx prisma validate` y `npm run test -- --runInBand` (1417 tests). Sin lint. |
-| `.github/workflows/build-web.yml` | push a `main` con cambios de web/packages/lockfiles/`Dockerfile`/workflow + `workflow_dispatch` | Imagen GHCR `chimigb/svr-erp-web` (`latest` + SHA) y smoke del contenedor. El deploy en Railway es manual. |
+| `.github/workflows/build-web.yml` | push a `main` con cambios de web/packages/lockfiles/`Dockerfile`/workflow + `workflow_dispatch` | Publica el tag por SHA de `chimigb/svr-erp-web`, smoke del contenedor y solo entonces promueve `latest` con `imagetools create` (sin recompilar). El deploy en Railway es manual. |
 | `.github/workflows/integration.yml` | PR a `main`, `workflow_dispatch` | Tests de integración con Postgres 18 efímero y restore del dump sin PostGIS; no van en `ci.yml`. |
 
 **Cómo diagnosticar una falla de CI/CD:**

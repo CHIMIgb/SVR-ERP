@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-18
 **Autor:** Agente (análisis y plan solicitados por el usuario)
-**Estado:** Fases 0, 1 y 2 **ejecutadas** (2026-11-18); fases 3-6 pendientes de ejecución.
+**Estado:** Fases 0, 1, 2 y 3 **ejecutadas** (2026-11-18); fases 4-6 pendientes de ejecución.
 
 ## Alcance y decisión previa
 
@@ -166,19 +166,30 @@ autorización explícita, porque son administración externa al repo.
   resultados; `git diff --check` limpio.
 - **Riesgo:** nulo (solo comentarios/docs).
 
-### Fase 3 — `build-web`: smoke antes de mover `latest`
+### Fase 3 — `build-web`: smoke antes de mover `latest` — ✅ EJECUTADA 2026-11-18
 
-- **Qué se toca:** `.github/workflows/build-web.yml`.
-- **Acción:** publicar primero solo el tag por SHA; correr el smoke contra ese
-  tag; si pasa, publicar `latest` (segundo `build-push` reutilizando caché, sin
-  recompilar). El smoke deja de ser aviso posterior y pasa a ser condición.
-- **Verificación:** `gh workflow run build-web --ref main` y comprobar en el
-  log que el push de `latest` ocurre después de "Contenedor respondiendo";
-  anotar en `historial-cambios/` el SHA y el digest que imprima este run (la
-  referencia anterior es `sha256:222efb49b22947f50f2e5a31f265486ced6e8eb6c434e4cefd425ef53080f3e1`).
-- **Riesgo:** publicar en dos pasos consume dos acciones de `build-push`; con
-  `cache-from/cache-to: type=gha` el segundo es rápido. Si el smoke falla,
-  `latest` queda en la imagen anterior (comportamiento deseado).
+- **Resultado:** `.github/workflows/build-web.yml` publica primero solo
+  `:${{ github.sha }}`, corre el smoke contra ese tag y, solo si pasa, promueve
+  `latest`. Si el smoke falla, `latest` se queda en la imagen anterior.
+- **Desviación del plan (más simple):** en vez de un segundo `build-push` con
+  caché, se usa
+  `docker buildx imagetools create --prefer-index=false -t ...:latest ...:${{ github.sha }}`:
+  re-apunta `latest` al mismo manifiesto, sin recompilar ni subir capas (1
+  línea en vez de ~12). Sintaxis y semántica confirmadas con la doc de Docker
+  Buildx: la fuente debe existir en el mismo registry (la publicó el paso 1) y
+  `--prefer-index=false` preserva el formato del manifiesto original.
+- **Verificación:** `git diff --check` limpio y orden de pasos revisado en el
+  archivo final. No se corrió el workflow: el cambio está local y un
+  `gh workflow run build-web --ref main` ejecutaría la versión anterior. No hay
+  parser YAML ni Docker en la máquina local, así que tampoco se validó el YAML
+  ni el comando en vivo.
+- **Pendiente al llegar a un ref remoto:** correr `build-web`, comprobar en el
+  log que "Publicar latest" ocurre después de "Contenedor respondiendo" y
+  anotar SHA + digest en `historial-cambios/` (referencia anterior:
+  `sha256:222efb49b22947f50f2e5a31f265486ced6e8eb6c434e4cefd425ef53080f3e1`).
+- **Riesgo:** si `imagetools create` falla en el runner, el job falla y
+  `latest` no se mueve (fallo visible, no silencioso). El Redeploy en Railway
+  sigue siendo manual.
 
 ### Fase 4 — `lint` como gate (proyecto, no parche)
 

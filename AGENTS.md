@@ -533,7 +533,7 @@ Estado real a 2026-11-18: el repo **sí tiene Actions** (no repetir lo contrario
 | Workflow | Disparadores | Qué hace |
 |---|---|---|
 | `.github/workflows/ci.yml` | `pull_request` a `main`, `push` a `main`, `workflow_dispatch` | Gates verdes: `npx tsc --noEmit` del web, `npm run build` de la API, `npx prisma validate` y `npm run test -- --runInBand` (1417 tests, sin skips). |
-| `.github/workflows/build-web.yml` | `push` a `main` que toque web/packages/lockfiles/`Dockerfile`/workflow, más `workflow_dispatch` | Construye y publica `ghcr.io/chimigb/svr-erp-web` (`latest` + SHA) y hace smoke del contenedor. El despliegue en Railway es manual. |
+| `.github/workflows/build-web.yml` | `push` a `main` que toque web/packages/lockfiles/`Dockerfile`/workflow, más `workflow_dispatch` | Publica el tag por SHA de `ghcr.io/chimigb/svr-erp-web`, hace smoke del contenedor y solo entonces promueve `latest` con `imagetools create` (sin recompilar). El despliegue en Railway es manual. |
 | `.github/workflows/integration.yml` | `pull_request` a `main`, `workflow_dispatch` | Tests de integración con Postgres 18 efímero y restore de `svr_erp_export/svr_erp_sin_postgis.sql`; no van en `ci.yml`. |
 
 ### Reglas duras
