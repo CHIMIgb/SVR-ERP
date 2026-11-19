@@ -1,0 +1,57 @@
+# Tests de integración contra BD real efímera. NO van en ci.yml: necesitan
+# restaurar el dump y registro_auditoria es inmutable (limpieza FK-safe).
+name: integration
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/svr_erp
+      TZ: America/Mexico_City
+      TIMEZONE: America/Mexico_City
+      # JwtStrategy exige secretos aunque sean de prueba; valores dummy, nunca los reales.
+      JWT_ACCESS_SECRET: integration-access-secret
+      JWT_REFRESH_SECRET: integration-refresh-secret
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: svr_erp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      # El historial de migraciones fue baselined: migrate deploy desde cero no
+      # crea las tablas base. Se restaura el dump sin PostGIS (0.22 MB).
+      - name: Restaurar dump de prueba
+        run: PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d svr_erp -f ../../svr_erp_export/svr_erp_sin_postgis.sql
+      # Prisma 7: --from-url y --to-schema-datamodel ya no existen.
+      # --exit-code: 0 sin diff, 2 con diff (falla antes de correr los tests).
+      - name: Verificar esquema del dump contra schema.prisma
+        run: npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code
+      - run: npm run test:integration

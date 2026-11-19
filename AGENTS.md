@@ -23,7 +23,8 @@ npm run start     # Serve production build
 npm run lint      # ESLint (flat config, eslint-config-next)
 ```
 
-No test runner is configured. No CI pipeline exists.
+Jest corre en `apps/api`; el front aún no tiene runner de tests.
+CI/CD: ver la sección "CI/CD (GitHub Actions)" al final de este archivo.
 
 ## Path Aliases
 
@@ -524,3 +525,24 @@ placeholders y las de escritorio son mock). Todo es smoke manual.
   ciegas son lo primero que muerde con dos desarrolladores en paralelo.
 - **Prioridad: media-alta** — se activa ANTES de que existan 3+
   pantallas reales (el esqueleto 8/10 decae rápido sin red de seguridad).
+
+## CI/CD (GitHub Actions)
+
+Estado real a 2026-11-18: el repo **sí tiene Actions** (no repetir lo contrario).
+
+| Workflow | Disparadores | Qué hace |
+|---|---|---|
+| `.github/workflows/ci.yml` | `pull_request` a `main`, `push` a `main`, `workflow_dispatch` | Gates: `npx tsc --noEmit`, `npm run lint` y `npm test -- --runInBand` del web (Jest + RTL); `npm run build` de la API, `npx prisma validate` y `npm run test -- --runInBand` (1417 tests, sin skips). |
+| `.github/workflows/build-web.yml` | `push` a `main` que toque web/packages/lockfiles/`Dockerfile`/workflow, más `workflow_dispatch` | Publica el tag por SHA de `ghcr.io/chimigb/svr-erp-web`, hace smoke del contenedor y solo entonces promueve `latest` con `imagetools create` (sin recompilar). El despliegue en Railway es manual. |
+| `.github/workflows/integration.yml` | `pull_request` a `main`, `workflow_dispatch` | Tests de integración con Postgres 18 efímero y restore de `svr_erp_export/svr_erp_sin_postgis.sql`; no van en `ci.yml`. |
+
+### Reglas duras
+
+1. Node **26** y npm **11.20.0** en los runners (igual que el Dockerfile y la máquina de desarrollo). `apps/api` está fuera de los workspaces: su `npm ci` corre dentro de `apps/api` con su propio lockfile; el de la raíz instala solo web + shared. Ese `npm ci` **no genera el cliente Prisma** (no hay `postinstall`): el job `api` corre `npx prisma generate` antes de compilar, si no el build muere con `TS2339` sobre los modelos de `PrismaService`. Las actions están fijadas a versiones consultadas con `gh api repos/<owner>/<repo>/tags` (checkout v7.0.1, setup-node v7.1.0, buildx v4.4.1, login v4.8.0, build-push v7.4.0); el runner se deja en `ubuntu-latest` (ya migró a Ubuntu 26).
+2. `npx prisma validate` necesita `DATABASE_URL` aunque no abra conexión: en CI se usa un valor dummy. La URL real jamás se escribe en un workflow.
+3. `NEXT_PUBLIC_*` se hornea en build time (build-args del Dockerfile): cambiar un `build-arg` del workflow exige nuevo build de imagen, no basta con redeploy. La zona horaria vive solo en `.env` (`NEXT_PUBLIC_TZ` / `TZ`), nunca hardcodeada en Actions.
+4. Deploy a Railway: **manual**, sin secretos de GitHub. Checklist: (1) confirmar en el servicio Web que la imagen apunta al tag mutable `:latest` — con un tag por SHA el Redeploy repite la imagen vieja; (2) tomar el SHA y el digest que imprimió `build-web`; (3) entrar al servicio Web → **Redeploy**; (4) verificar que la URL responda y anotar SHA + digest en `historial-cambios/`. El paquete GHCR debe ser público o tener credenciales `read:packages` en Registry Credentials. El smoke de `build-web` corre después de publicar: detecta contenedores que no arrancan, pero no impide publicar la imagen.
+5. Los tests de integración van en `integration.yml` (`pull_request` + `workflow_dispatch`), no en `ci.yml`: usan Postgres 18 efímero y restauran `svr_erp_export/svr_erp_sin_postgis.sql` (sin PostGIS; el historial de migraciones fue baselined, `migrate deploy` desde cero no crea las tablas base). El job valida con `npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code` que el dump siga coincidiendo con `schema.prisma` (flags de Prisma 7: `--from-url` ya no existe). Los secretos JWT dummy viven en el `env:` del workflow, no en `jest.integration.config.js`. Para regenerar el dump: `PGPASSWORD` en el entorno + `pwsh apps/api/scripts/regenerar-dump-integracion.ps1` (excluye las 9 tablas efímeras y anonimiza con `apps/api/scripts/anonimizar-dump.cjs`; el repo es público). `registro_auditoria` es inmutable. El workflow tiene `concurrency` con `cancel-in-progress: true` (como `ci.yml`) y `pull_request.branches: [main]`. También se corren en local con `npm run test:integration` y se documentan en `historial-cambios/`.
+6. `npm run lint` **sí es gate** desde la Fase 4: 0 errores, 37 warnings preexistentes (no bloquean). Los 10 errores locales se arreglaron de verdad; `react-hooks/set-state-in-effect` sigue desactivado **solo** en las 11 páginas del dashboard que cargan datos al montar (`eslint.config.mjs`), pendiente de migrarlas a caché de datos. Los unitarios de la API corren completos (`npm run test -- --runInBand`); los tests de integración corren en PR y en el disparo manual (regla 5).
+7. Todo cambio de workflow requiere autorización explícita, se valida con `git diff --check` y se registra en `historial-cambios/` en el mismo commit. Push y PR siguen siendo solo cuando el usuario lo ordene.
+8. El ruleset `Protección main` (id `21267691`) exige los checks `web`, `api` e `integration` en modo estricto desde 2026-11-18. El `bypass_always` de `CHIMIgb` se conserva por decisión explícita del usuario: los push directos del owner siguen saltándose los gates. Verificar con `gh api repos/CHIMIgb/SVR-ERP/rulesets/21267691`.

@@ -1,0 +1,319 @@
+# Plan de endurecimiento de CI/CD — SVR-ERP
+
+**Fecha:** 2026-11-18
+**Autor:** Agente (análisis y plan solicitados por el usuario)
+**Estado:** Fases 0 a 6 **ejecutadas** (2026-11-18). Plan completo.
+
+## Alcance y decisión previa
+
+Cubre lo que falta para que el CI/CD deje de ser informativo y pase a ser una
+red de seguridad: checks obligatorios, coherencia del dump con el esquema,
+publicación de imágenes, lint y deuda de tests.
+
+**Decisión del usuario, intocable:** el `bypass_always` de `CHIMIgb` en el
+ruleset de `main` **se mantiene**. No se quita, no se limita, no se propone
+alternativa. El plan asume esa limitación y la registra como riesgo aceptado
+(§5). Tampoco se automatiza el deploy en Railway (el usuario descartó pagar).
+
+---
+
+## 1. Análisis
+
+### 1.1 Estado real verificado
+
+| Hecho | Evidencia |
+|---|---|
+| 3 workflows activos: `ci`, `integration`, `build-web` | `gh api repos/CHIMIgb/SVR-ERP/actions/workflows` |
+| `main` no tiene *branch protection* clásica | `GET .../branches/main/protection` → 404 |
+| Sí existe el ruleset `Protección main` (id `21267691`), activo, sobre `refs/heads/main` | `GET .../rulesets/21267691` |
+| Reglas del ruleset: `deletion`, `non_fast_forward`, `creation`, `update`, `pull_request` (1 aprobación, `dismiss_stale_reviews_on_push`, aprobación extra para cambios no atribuidos) | ídem |
+| **No existe la regla `required_status_checks`** en el ruleset | ídem — ningún check es obligatorio para mergear |
+| `bypass_actors`: `CHIMIgb` (id `156728324`), `bypass_mode: always` | ídem — por eso los push directos de hoy entraron con "Bypassed rule violations" |
+| `ci.yml`: jobs `web` (`tsc --noEmit`) y `api` (build, `prisma validate`, Jest con `--runInBand`), 1417 tests | `.github/workflows/ci.yml`; run `44412424027` |
+| **No hay tests en `it.skip`/`test.skip`/`xit`** en `apps/api/src` | búsqueda con `Select-String` sobre todos los `*.spec.ts` |
+| `integration.yml`: `pull_request` + `workflow_dispatch`, Postgres 18 efímero, dump, secrets JWT dummy en `env:`, 292 tests | `.github/workflows/integration.yml`; runs `44417002026`, `44417548136` |
+| `build-web.yml`: publica `:latest` y tag por SHA **antes** del smoke; el smoke no bloquea la publicación | `.github/workflows/build-web.yml`, líneas 43-75 |
+| ~~`npm run lint`: 21 errores, fuera del CI~~ → 0 errores, gate desde Fase 4 | `eslint.config.mjs`; job `web` de `ci.yml` |
+| ~~No hay infra de tests frontend~~ → Jest + RTL con 4 tests en CI | `apps/web/jest.config.ts`; Fase 4 |
+| Dump `svr_erp_export/svr_erp_sin_postgis.sql` (660,276 bytes, 9 tablas excluidas) sin validación de esquema en CI | script `apps/api/scripts/regenerar-dump-integracion.ps1`; run `44405584912` |
+| `schema.prisma` **no declara** `Unsupported`, `geometry` ni `geography` | búsqueda en `apps/api/prisma/schema.prisma` |
+
+Corrección al análisis verbal anterior: el comment de `ci.yml` (y el de
+`AGENTS.md`) dice que hay 2 tests de cobranza en `it.skip`, pero ya no es cierto:
+los 1417 tests corren sin skips. Es deuda documental, no deuda de tests.
+
+### 1.2 Diagnóstico de fondo
+
+Los workflows están bien escritos y verdes, pero **no tienen poder de bloqueo**:
+el ruleset no exige ningún check y el owner tiene bypass permanente. Verde no
+significa "no se puede mergear rojo"; significa "alguien miró el run".
+
+El segundo problema es de **fiducia del verde**: nada verifica que el dump siga
+coincidiendo con `schema.prisma`, y `build-web` publica `latest` antes de saber
+si el contenedor arranca. El CI puede estar verde sobre un esquema viejo o
+publicar una imagen muerta.
+
+El tercero era de **cobertura**: lint fuera del CI y cero tests frontend. Se
+cerró en la Fase 4 con la opción acotada elegida por el usuario (arreglos
+reales + excepción de regla solo en 11 páginas).
+
+### 1.3 Brechas priorizadas
+
+| ID | Brecha | Impacto | Esfuerzo | Prioridad |
+|---|---|---|---|---|
+| B1 | ~~Ruleset sin `required_status_checks`~~ **CERRADA** (Fase 0: checks `web`/`api`/`integration`, strict) | Un PR se puede mergear con checks rojos | Bajo (config GitHub) | 0 |
+| B2 | Comment desactualizado sobre skips en `ci.yml`/`AGENTS.md` | Nadie sabe si los 1417 son reales | Muy bajo | 1 |
+| B3 | ~~Sin validación schema ↔ dump~~ **CERRADA** (Fase 1: `migrate diff --exit-code` en `integration`) | Falsos verdes/rojos al cambiar `schema.prisma` | Bajo (1 paso en `integration`) | 1 |
+| B4 | `build-web` publica `latest` antes del smoke | Imagen rota en producción | Medio (reordenar pasos) | 1 |
+| B5 | ~~`lint` con 21 errores fuera del CI~~ **CERRADA** (Fase 4: 0 errores; 10 arreglos reales + excepción acotada) | Errores nuevos entran sin aviso | Alto (proyecto) | 2 |
+| B6 | ~~Cero tests frontend~~ **CERRADA** (Fase 4: Jest + RTL, 4 tests en CI) | Roturas de runtime invisibles al CI | Alto (infra + tests) | 2 |
+| B7 | ~~Dump con datos de negocio reales de demo~~ **CERRADA para el dump de CI** (Fase 5: anonimizado y verificado 292/292). Quedan los otros dos export y el historial git | Repo ya es público | Medio | 3 |
+| B8 | Specs de integración comparten BD (`maxWorkers: 1`, worker que no cierra) — **investigado en Fase 6, sin cambio**: el ruido es `forceExit`, no un handle; `maxWorkers: 1` sigue siendo obligatorio | Acoplamiento, ruido al terminar | Medio | 3 |
+| B9 | ~~`integration` sin `concurrency` y sin filtro `branches: [main]`~~ **CERRADA** (Fase 6) | Runs acumulados en pushes rápidos | Muy bajo | 3 |
+
+### 1.4 Lo que ya funciona y no se rehace
+
+- Actions fijadas (checkout `v7.0.1`, setup-node `v7.1.0`, buildx `v4.4.1`,
+  login `v4.8.0`, build-push `v7.4.0`), Node 26 / npm 11.20.0.
+- `npx prisma generate` antes del build de la API (`apps/api` está fuera de
+  workspaces; `npm ci` no lo instala ni genera el cliente).
+- `DATABASE_URL` dummy en `prisma validate` y secrets JWT dummy en el `env:` de
+  `integration.yml`; nunca valores reales en el repo.
+- Restore del dump sin PostGIS; `migrate deploy` desde cero **no** se intenta
+  (historial baselined).
+- Deploy manual en Railway con SHA + digest anotados en `historial-cambios/`.
+
+---
+
+## 2. Plan de ejecución
+
+Cada fase se ejecuta como un cambio atómico, con su registro en
+`historial-cambios/`, `git diff --check` y verificación antes de seguir. No se
+mezclan fases en un mismo commit. Los cambios de GitHub (Fase 0) se hacen con
+autorización explícita, porque son administración externa al repo.
+
+### Fase 0 — Checks obligatorios en el ruleset — ✅ EJECUTADA 2026-11-18
+
+- **Resultado:** regla `required_status_checks` agregada al ruleset `21267691`
+  con contexts `web`, `api`, `integration` y
+  `strict_required_status_checks_policy: true`. `bypass_actors` intacto
+  (`CHIMIgb`, id `156728324`, `always`). El nombre del ruleset, que se
+  mojibakeó durante el primer PUT, fue corregido a `Protección main` y
+  verificado por codepoints (`ó` = 243).
+- **Verificación:** `gh api .../rulesets/21267691` devuelve 6 reglas (las 5
+  originales + la nueva); los check runs publicados en el SHA de `main` se
+  llaman exactamente `integration`, `api` y `web`, así que los contexts
+  coinciden.
+- **Hallazgo al cerrar la fase:** en el head de `main` el check `api` está en
+  `failure` — run `44422735359`, 2 tests de `ventas.service.spec.ts` dependientes
+  del turno de cierre ("se habilita después de las 00:00 y hasta antes de las
+  23:00"), 1415 pasaron de 1417. No lo causó la Fase 0, pero con el gate activo
+  bloquea los PR hasta que esos tests dejen de depender de la hora. Requiere
+  autorización para arreglarse (fuera de esta fase).
+- **Qué se tocó (según el plan original):** ruleset `21267691` en GitHub, **nada en el repo**.
+- **Acción:** agregar la regla `required_status_checks` con los checks
+  `web`, `api` e `integration` (nombres reales de los jobs). Excluir `build-web`:
+  no dispara en PR y dejaría un check pendiente para siempre. Modo estricto
+  (`strict`) para que un push nuevo invalide aprobaciones/checks viejos.
+- **No se toca:** `bypass_actors`. `CHIMIgb` conserva `always` por decisión del
+  usuario (§5).
+- **Verificación:** `gh api repos/CHIMIgb/SVR-ERP/rulesets/21267691 --jq '.rules'`
+  debe incluir `required_status_checks`; prueba práctica con un PR de prueba:
+  un check rojo debe bloquear el merge para una cuenta sin bypass.
+- **Riesgo conocido:** el bypass `always` sigue permitiendo push directo del
+  owner. El gate protege PRs de los demás actores, no esos push. Limitación
+  aceptada, no se mitiga en este plan.
+
+### Fase 1 — Coherencia schema ↔ dump en `integration` — ✅ EJECUTADA 2026-11-18
+
+- **Resultado:** paso "Verificar esquema del dump contra schema.prisma"
+  agregado a `.github/workflows/integration.yml` justo después de restaurar el
+  dump y antes de `npm run test:integration`. Comando confirmado con la doc de
+  Prisma 7 **y con el CLI instalado**:
+  `npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code`
+  (`--from-url` y `--to-schema-datamodel` ya no existen en v7; `--exit-code`:
+  0 sin diff, 1 error, 2 con diff).
+- **Desfase detectado por el check (decisión del usuario):** el dump y la BD
+  local traen el FK `fk_trabajadores_usuario`, pero `schema.prisma` esperaba
+  `trabajadores_usuario_id_fkey`; el único diff era
+  `ALTER TABLE "trabajadores" RENAME CONSTRAINT ...`. Se corrigió con
+  `map: "fk_trabajadores_usuario"` en la relation `trabajadores_cuenta`
+  (`apps/api/prisma/schema.prisma`) + `npx prisma generate`. **No se renombró
+  nada en la BD ni se regeneró el dump**: producción conserva el nombre legado.
+- **Verificación local:** (a) dump restaurado en BD efímera (93 tablas) →
+  `"No difference detected"`, exit 0; la BD local `svr_erp` da el mismo
+  resultado; (b) prueba negativa con `--from-empty` → exit 2; (c)
+  `npm run test:integration` → **26 suites, 292/292 tests**, exit 0. Un exit 2
+  intermedio fue falso: una restauración fallida dejó la BD vacía, no un
+  desfase real.
+- **Pendiente de verificación remota:** el dispatch de `integration` con el
+  paso nuevo requiere que el commit llegue al ref remoto; no se hizo push
+  porque el usuario no lo ordenó. (Qué se tocó según el plan original:
+  `.github/workflows/integration.yml`; se añadió además `schema.prisma` por el
+  desfase.)
+- **Riesgo:** `migrate diff` compara esquema final, no el historial
+  baselined; si la BD del workflow trae `search_path` o extensiones distintas,
+  hay que ajustar los flags del comando, no el dump. Queda aviso
+  `forceExit` de Jest (handle sin cerrar), no es un fallo.
+
+### Fase 2 — Limpieza documental de los "skips" — ✅ EJECUTADA 2026-11-18
+
+- **Resultado:** comment de `.github/workflows/ci.yml` y la fila de `ci.yml` en
+  la tabla de `AGENTS.md` ahora dicen que los 1417 tests corren sin skips y que
+  la integración va en `integration.yml`. **No había tests que reactivar.**
+- **Verificación:** búsqueda de `it.skip|test.skip|describe.skip|xit|xdescribe`
+  sobre todos los `*.spec.ts` de `apps/api/src` → 0 resultados; búsqueda de las
+  frases viejas en `ci.yml`, `AGENTS.md` y `.opencode/agent/svr-erp.md` → 0
+  resultados; `git diff --check` limpio.
+- **Riesgo:** nulo (solo comentarios/docs).
+
+### Fase 3 — `build-web`: smoke antes de mover `latest` — ✅ EJECUTADA 2026-11-18
+
+- **Resultado:** `.github/workflows/build-web.yml` publica primero solo
+  `:${{ github.sha }}`, corre el smoke contra ese tag y, solo si pasa, promueve
+  `latest`. Si el smoke falla, `latest` se queda en la imagen anterior.
+- **Desviación del plan (más simple):** en vez de un segundo `build-push` con
+  caché, se usa
+  `docker buildx imagetools create --prefer-index=false -t ...:latest ...:${{ github.sha }}`:
+  re-apunta `latest` al mismo manifiesto, sin recompilar ni subir capas (1
+  línea en vez de ~12). Sintaxis y semántica confirmadas con la doc de Docker
+  Buildx: la fuente debe existir en el mismo registry (la publicó el paso 1) y
+  `--prefer-index=false` preserva el formato del manifiesto original.
+- **Verificación:** `git diff --check` limpio y orden de pasos revisado en el
+  archivo final. No se corrió el workflow: el cambio está local y un
+  `gh workflow run build-web --ref main` ejecutaría la versión anterior. No hay
+  parser YAML ni Docker en la máquina local, así que tampoco se validó el YAML
+  ni el comando en vivo.
+- **Pendiente al llegar a un ref remoto:** correr `build-web`, comprobar en el
+  log que "Publicar latest" ocurre después de "Contenedor respondiendo" y
+  anotar SHA + digest en `historial-cambios/` (referencia anterior:
+  `sha256:222efb49b22947f50f2e5a31f265486ced6e8eb6c434e4cefd425ef53080f3e1`).
+- **Riesgo:** si `imagetools create` falla en el runner, el job falla y
+  `latest` no se mueve (fallo visible, no silencioso). El Redeploy en Railway
+  sigue siendo manual.
+
+### Fase 4 — `lint` como gate — ✅ EJECUTADA 2026-11-18
+
+Se ejecutó en tres commits: `edd27f24` (infra Jest + RTL y smoke de `Portal`),
+`25a0a062` (10 arreglos reales con tests) y el cierre de esta fase (override
+acotado + gate en CI).
+
+1. **Infra de tests frontend:** Jest 30 + jsdom + RTL 16 con `next/jest`;
+   script `npm test`. Smoke de `Portal` (`Portal.test.tsx`).
+2. **Arreglos reales (10):** `Portal` → `useSyncExternalStore`; `Toast` → bucle
+   RAF en `useEffect` con `tickRef` (corrige además un cleanup que nunca se
+   ejecutaba); `Tooltip` → `useId()`; `CorteCaja` → estado declarado antes de
+   su uso; `configuración` → comillas escapadas. Tests nuevos de `Toast` y
+   `Tooltip` (ids únicos y `aria-describedby`).
+3. **Excepción acotada (11):** `react-hooks/set-state-in-effect` se desactiva
+   **solo** en las 11 páginas del dashboard que cargan datos al montar,
+   listadas una a una en `eslint.config.mjs`. Comprobación negativa: un archivo
+   fuera de la lista con `setState` en un effect sigue dando error.
+4. **Gate:** `npm run lint` y `npm test -- --runInBand` añadidos al job `web`
+   de `ci.yml` (el segundo, adición pequeña para que los tests nuevos no sean
+   código muerto).
+- **Desviación deliberada del plan:** el plan decía "no se ataja desactivando
+  reglas de ESLint". El usuario eligió expresamente la opción "excepción
+  acotada + arreglos reales" al ver que migrar 11 páginas a TanStack Query era
+  un cambio de arquitectura fuera de esta fase.
+- **Verificación local:** `npm run lint` → **0 errores, 37 warnings**
+  preexistentes, exit 0; `npm test -- --runInBand` → 3 suites, 4 tests, exit 0;
+  `npx tsc --noEmit` → exit 0; `git diff --check` → exit 0.
+- **Pendiente de verificación remota:** el job `web` con los pasos nuevos no se
+  corrió: el cambio está local y un dispatch con `--ref main` ejecutaría la
+  versión anterior. Tampoco se probó una PR con un error introducido a propósito.
+- **Riesgo:** la excepción es deuda explícita — esas 11 páginas siguen cargando
+  en `useEffect`; para quitarla hay que migrarlas a caché de datos. El gate se
+  activa con 37 warnings, que no bloquean `eslint` (sin `--max-warnings`).
+
+### Fase 5 — Dump: datos de negocio — ✅ EJECUTADA 2026-11-18
+
+- **Decisión del usuario:** anonimizar (no artefacto privado). El repo resultó
+  ser **público**, con 14 clientes, 90 proveedores, 427 personas y 18
+  proyectos con datos reales de demo en el dump de integración.
+- **Resultado:** nuevo `apps/api/scripts/anonimizar-dump.cjs`, determinista e
+  idempotente, que sustituye las columnas de identidad en los bloques `COPY`
+  por valores `DEMO...` / `@ejemplo.invalid`. Se conectó a
+  `regenerar-dump-integracion.ps1` para que futuras regeneraciones también
+  salgan anonimizadas. Conserva los 17 correos `@svr-constructora.com` que
+  usan los specs y deja UUID, fechas y `\N` intactos.
+- **Verificación:** dump restaurado en BD efímera (93 tablas, borrada después);
+  `migrate diff --exit-code` → "No difference detected", exit 0;
+  `npm run test:integration` → **26 suites, 292/292 tests**, exit 0;
+  segunda pasada del anonimizador sin reemplazos; `git diff --check` limpio.
+- **Riesgo que queda:** los otros dos export (`svr_erp.sql` y `svr_erp.dump`)
+  siguen con los datos originales, y el historial de git conserva las
+  versiones previas de todos. Limpiar eso exige otra decisión autorizada que
+  incluya reescritura de historial. Los campos de texto libre tampoco se
+  anonimizaron.
+
+### Fase 6 — Menores — ✅ EJECUTADA 2026-11-18
+
+- `integration.yml`: agregado `concurrency` con `cancel-in-progress: true`
+  (grupo `integration-${{ github.workflow }}-${{ github.ref }}`, mismo patrón
+  que `ci.yml`) y `pull_request.branches: [main]`. YAML validado con
+  `js-yaml` y `git diff --check`.
+- `jest.integration.config.js`: **investigado, sin cambio**. Con
+  `--detectOpenHandles --runInBand` sobre el spec de GPS: 0 handles abiertos,
+  13/13 tests. El mensaje `Force exiting Jest: ...` aparece igual con y sin
+  `--runInBand`: lo emite de forma incondicional `forceExit: true`, no un
+  handle real. El aviso `worker process failed to exit gracefully` es el
+  worker hijo que se termina al forzar la salida; el run termina exit 0 con
+  292/292. No hay fix pequeño sin quitar `forceExit` (que podría colgar un run
+  con handles reales) o `maxWorkers: 1` (que los specs compartiendo BD hacen
+  obligatorio). Se documenta, como permitía el plan.
+- **No se quitó `maxWorkers: 1`** ni `forceExit: true`.
+- **No verificado en remoto:** el workflow editado no se corrió (sin push
+  autorizado).
+
+---
+
+## 3. Fuera de alcance (decisiones firmes)
+
+- **Quitar o limitar el `bypass_always` de `CHIMIgb`: NO.** Decisión del
+  usuario, explícita y definitiva. No se toca en ninguna fase.
+- Automatizar el Redeploy en Railway: no (cuesta dinero; el usuario lo
+  descartó).
+- Rehacer el historial de migraciones ni correr `migrate deploy` desde cero.
+- Publicar imágenes con `latest` antes del smoke.
+- Activar lint desactivando reglas para "pasar" el gate.
+
+## 4. Criterio de terminado
+
+El CI/CD queda "bien" cuando, **además de los runs verdes actuales**:
+
+1. El ruleset exige `web`, `api` e `integration` en PR, con modo estricto.
+2. Un PR con un check rojo no se puede mergear (probado con PR de prueba).
+3. `integration` falla si el dump no coincide con `schema.prisma`.
+4. `latest` solo se publica si el smoke del tag SHA pasó.
+5. `npm run lint` corre en `ci` con 0 errores, con tests frontend nuevos.
+6. Los comments de `ci.yml` y `AGENTS.md` coinciden con el código (sin skips
+   fantasmas).
+7. El dump tiene decidido su tratamiento de datos (anonimizado o privado).
+
+## 5. Riesgos residuales (aceptados)
+
+- **Bypass `always` de `CHIMIgb`:** con o sin required checks, el owner puede
+  hacer push directo a `main` saltándose todos los gates. Es una decisión del
+  usuario y no se modifica. Los push de hoy son el ejemplo concreto.
+- **Cero tests frontend hasta terminar la Fase 4:** `tsc` no detecta roturas
+  en runtime; cada cambio de UI sigue requiriendo smoke manual documentado.
+- **Specs de integración acoplados:** `maxWorkers: 1` evita carreras, pero los
+  specs no están aislados de verdad; cualquier spec nuevo que comparta estado
+  puede reintroducir el problema.
+- **CI no verifica producción:** aunque `latest` sea sano, el Redeploy en
+  Railway sigue siendo manual y la versión desplegada se anota a mano en
+  `historial-cambios/`.
+
+---
+
+## Referencia de la fase ya cerrada (2026-11-18)
+
+Commits: `6230da88` (gate de PR), `81d0e8f4` (secrets dummy en `env:`),
+`1a5e6c70` (script de dump), `7c200394` (checklist de Redeploy), `de79fed1`
+(run IDs). Runs: `ci` `44412424027`, `integration` `44412424878` /
+`44417002026` / `44417548136`, `build-web` `44405584912` (digest
+`sha256:222efb49b22947f50f2e5a31f265486ced6e8eb6c434e4cefd425ef53080f3e1`).
+Deuda histórica (ya cerrada en Fase 4): `npm run lint` tenía 21 errores y
+estaba fuera del CI. Deuda que queda: la excepción de `set-state-in-effect` en
+11 páginas y los 37 warnings no bloqueantes.

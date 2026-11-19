@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useEffect,
   useCallback,
+  useId,
 } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -175,7 +176,7 @@ export function Tooltip({
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
-  const tooltipId = useRef(`tooltip-${Math.random().toString(36).slice(2, 9)}`);
+  const tooltipId = `tooltip-${useId()}`;
 
   const show = useCallback(() => {
     if (disabled || !content) return;
@@ -234,7 +235,7 @@ export function Tooltip({
       onFocus={show}
       onBlur={hide}
       onClick={isVisible ? hide : undefined}
-      aria-describedby={isVisible ? tooltipId.current : undefined}
+      aria-describedby={isVisible ? tooltipId : undefined}
     >
       {children}
 
@@ -242,7 +243,7 @@ export function Tooltip({
         <div
           ref={tooltipRef}
           role="tooltip"
-          id={tooltipId.current}
+          id={tooltipId}
           className="pointer-events-none animate-[fadeIn_0.1s_ease-out]"
           style={{
             position: 'fixed',

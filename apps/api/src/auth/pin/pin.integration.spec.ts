@@ -36,8 +36,14 @@ describe('PinService Integration (Real DB)', () => {
   let numeroEmpleado: string;
   const sessionIds: string[] = [];
 
+  const IPS_PRUEBA = ['10.98.0.1', '10.98.0.2', '10.98.0.3', '10.98.0.4', '10.98.0.5', '10.98.0.6', '10.98.0.7', '10.98.0.8'];
+
   const limpiar = async () => {
     // FK-safe: refresh → sessions → user (registro_auditoria es inmutable)
+    // Los bloqueos por IP sobreviven al usuario (user_id nulo): limpiarlos
+    // aquí hace el spec idempotente aunque corra varias veces sobre la misma BD.
+    await prisma.usuarios_bloqueados.deleteMany({ where: { ip_address: { in: IPS_PRUEBA } } });
+    await prisma.intentos_login.deleteMany({ where: { ip_address: { in: IPS_PRUEBA } } });
     const ses = await prisma.sessions.findMany({
       where: { user_id: userId },
       select: { id: true },
@@ -77,6 +83,9 @@ describe('PinService Integration (Real DB)', () => {
     service = module.get(PinService);
     authService = module.get(AuthService);
     jwtService = module.get(JwtService);
+
+    await prisma.usuarios_bloqueados.deleteMany({ where: { ip_address: { in: IPS_PRUEBA } } });
+    await prisma.intentos_login.deleteMany({ where: { ip_address: { in: IPS_PRUEBA } } });
 
     // persona + user de prueba con numero_empleado único
     personaId = randomUUID();

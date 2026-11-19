@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 
 export interface PortalProps {
@@ -8,14 +8,16 @@ export interface PortalProps {
   container?: HTMLElement | null;
 }
 
+// En el servidor no hay document: se renderiza nada y React hidrata igual,
+// luego useSyncExternalStore entrega el valor real del cliente.
+const suscribir = () => () => {};
+const cliente = () => true;
+const servidor = () => false;
+
 export function Portal({ children, container }: PortalProps) {
-  const [mounted, setMounted] = useState(false);
+  const montado = useSyncExternalStore(suscribir, cliente, servidor);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
+  if (!montado) return null;
 
   const target = container || document.body;
   return createPortal(children, target);

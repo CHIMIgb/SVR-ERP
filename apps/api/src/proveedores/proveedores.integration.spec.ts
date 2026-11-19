@@ -40,10 +40,10 @@ describe('Proveedores Audit (Real DB)', () => {
         {
           provide: NotificacionesService,
           useValue: {
-            emitirARol: jest.fn(),
-            emitirATorre: jest.fn(),
-            emitirATrabajador: jest.fn(),
-            emitirAUsuario: jest.fn(),
+            emitirARol: jest.fn().mockResolvedValue(undefined),
+            emitirAUsuario: jest.fn().mockResolvedValue(undefined),
+            emitirATrabajador: jest.fn().mockResolvedValue(undefined),
+            emitirATorre: jest.fn().mockResolvedValue(undefined),
           },
         },
         ProveedoresService,

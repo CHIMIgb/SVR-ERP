@@ -218,8 +218,32 @@ Un PR que incumpla cualquiera = Request Changes.
 - Branch main: `main`. Naming histórico válido: `vistas-<dominio>`, `fix/<tema>`, nombres descriptivos de feature (ej. `proveedores-cobranza`). El branch solo se decide si el usuario pide PR/push.
 - Commits atómicos por bloque lógico; 1 fix = 1 commit que cierra su incidente verificable.
 - Si te ordenan PR: push del branch + `gh pr create --base main` + plantilla actualizada `.github/PULL_REQUEST_TEMPLATE.md` (checklists frontend/backend/tests/BD — ya reflejan este stack, no Expo).
-- Validación previa a un push ordenado: `npm run lint` (raíz), `npx tsc --noEmit` (apps/web), `npm run test` (apps/api); si tocó Prisma `npx prisma validate`.
-- CI/CD: **el repo NO tiene GitHub Actions todavía** (solo existe la plantilla de PR en `.github/`). Puedes crear el workflow SOLO cuando el usuario lo pida explícitamente — nunca de tu cuenta. Propuesta si lo piden: job `ci` con PostgreSQL 18 como service → checkout, setup-node 26 + `npm ci`, turbo `lint` + `tsc --noEmit` web, `jest` unitarios api (con BD del service para los `test:integration` marcados).
+- Validación previa a un push ordenado: `npx tsc --noEmit` (apps/web), `npm run build` (apps/api) y `npx prisma validate` si tocó Prisma. `npm run lint` y `npm run test` hoy están rojos por deuda conocida (ver CI/CD): menciona el resultado en el registro, no los silencies ni los llames "verdes".
+- CI/CD: ver la sección "CI/CD — conocimiento especializado" más abajo. **El repo SÍ tiene GitHub Actions** (no repetir la afirmación vieja de que no los hay).
+
+## CI/CD — conocimiento especializado
+
+**Inventario real (verificar siempre con `git ls-tree -r --name-only HEAD -- .github/workflows`):**
+
+| Workflow | Disparadores | Función |
+|---|---|---|
+| `.github/workflows/ci.yml` | PR a `main`, push a `main`, `workflow_dispatch` | Gates: `tsc --noEmit`, `lint` y `npm test -- --runInBand` del web (Jest + RTL); `npm run build` de la API, `npx prisma validate` y `npm run test -- --runInBand` (1417 tests). |
+| `.github/workflows/build-web.yml` | push a `main` con cambios de web/packages/lockfiles/`Dockerfile`/workflow + `workflow_dispatch` | Publica el tag por SHA de `chimigb/svr-erp-web`, smoke del contenedor y solo entonces promueve `latest` con `imagetools create` (sin recompilar). El deploy en Railway es manual. |
+| `.github/workflows/integration.yml` | PR a `main`, `workflow_dispatch` | Tests de integración con Postgres 18 efímero y restore del dump sin PostGIS; no van en `ci.yml`. |
+
+**Cómo diagnosticar una falla de CI/CD:**
+
+- `apps/api` NO está en los workspaces: `npm ci` de la raíz no lo instala. El job de la API corre `npm ci` dentro de `apps/api` con su lockfile propio. Ese `npm ci` no genera el cliente Prisma (no hay `postinstall`): si el build falla con `TS2339` sobre `prisma.users`, `prisma.sessions`, etc., falta el paso `npx prisma generate` antes de `npm run build`.
+- Node 26 / npm 11.20.0. El lockfile se generó en Windows: los binarios nativos Linux (lightningcss, oxide, sharp) se instalan explícito en el `Dockerfile`, pero `tsc` y `nest build` no los necesitan — no "arregles" el CI copiando ese truco sin motivo. Las actions están fijadas a checkout v7.0.1, setup-node v7.1.0, buildx v4.4.1, login v4.8.0 y build-push v7.4.0; para actualizarlas, consultar `gh api repos/<owner>/<repo>/tags`, nunca adivinar el número.
+- `prisma validate` necesita `DATABASE_URL` aunque no conecte: CI usa un valor dummy. Nunca escribas la URL real ni secretos en un workflow.
+- El deploy en Railway es **manual**, sin secretos de GitHub. Checklist: (1) confirmar que el servicio Web apunte al tag mutable `:latest` (con tag por SHA, el Redeploy repite la imagen vieja); (2) tomar el SHA y el digest del run de `build-web`; (3) **Redeploy** en el servicio Web; (4) verificar la URL y registrar SHA + digest en `historial-cambios/`. Si el paquete GHCR es privado, Railway necesita un token `read:packages` en Registry Credentials (no el `GITHUB_TOKEN` del workflow).
+- `NEXT_PUBLIC_*` va horneado en el bundle en build time: cambiar un build-arg exige rebuild de imagen, no solo redeploy. TZ solo desde `.env`, nunca hardcodeada en Actions.
+- Tests de integración NO van en `ci.yml`: corren en `integration.yml` (`pull_request` + `workflow_dispatch`) con Postgres 18 efímero y restore de `svr_erp_export/svr_erp_sin_postgis.sql` (sin PostGIS; el historial de migraciones fue baselined). No corras `migrate deploy` desde cero. El job valida con `npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code` que el dump siga coincidiendo con `schema.prisma` (flags de Prisma 7: `--from-url` ya no existe). Los secretos JWT dummy viven en el `env:` del workflow, no en `jest.integration.config.js`. Para regenerar el dump: `PGPASSWORD` en el entorno + `pwsh apps/api/scripts/regenerar-dump-integracion.ps1` (excluye las 9 tablas efímeras y anonimiza con `apps/api/scripts/anonimizar-dump.cjs`; el repo es público). `registro_auditoria` es inmutable. El workflow tiene `concurrency` con `cancel-in-progress: true` y `pull_request.branches: [main]`. También se corren local con `npm run test:integration`.
+- `npm run lint` es gate desde la Fase 4: 0 errores, 37 warnings preexistentes (no bloquean). Los 10 errores locales se arreglaron con tests (Jest + RTL, 4 tests del web en CI). `react-hooks/set-state-in-effect` queda desactivado solo en las 11 páginas del dashboard que cargan datos al montar (`eslint.config.mjs`); migrarlas a caché de datos para quitar la excepción. Los 1417 tests de la API pasan sin `skip`.
+
+**Reglas para el agente:** no editar workflows, secretos ni variables de GitHub/Railway sin autorización explícita; nunca imprimir tokens; validar YAML con `git diff --check` y documentar todo cambio de CI/CD en `AGENTS.md`, este archivo y `historial-cambios/` en el mismo commit; push y PR solo cuando el usuario lo ordene.
+
+- El ruleset `Protección main` (id `21267691`) exige los checks `web`, `api` e `integration` en modo estricto desde 2026-11-18. El `bypass_always` de `CHIMIgb` se conserva por decisión explícita del usuario: los push directos del owner siguen saltándose los gates. Verificar con `gh api repos/CHIMIgb/SVR-ERP/rulesets/21267691`.
 
 ## Reglas que también aplican (sincronizado de AGENTS.md)
 

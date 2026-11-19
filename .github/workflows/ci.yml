@@ -1,0 +1,55 @@
+# Gates: typecheck, lint y tests del web; build, prisma validate y 1417 tests
+# de la API. Integración queda fuera: va en integration.yml (BD real + dump).
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+        working-directory: apps/web
+      - run: npm run lint
+        working-directory: apps/web
+      - run: npm test -- --runInBand
+        working-directory: apps/web
+
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      # prisma validate lee la config, pero no conecta a la BD.
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/svr_erp
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      # npm ci no dispara generate (no hay postinstall en apps/api): sin esto
+      # @prisma/client queda con tipos stub y el build falla con TS2339.
+      - run: npx prisma generate
+      - run: npm run build
+      - run: npx prisma validate
+      - run: npm run test -- --runInBand
