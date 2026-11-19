@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-18
 **Autor:** Agente (análisis y plan solicitados por el usuario)
-**Estado:** Fases 0 a 5 **ejecutadas** (2026-11-18); Fase 6 pendiente de ejecución.
+**Estado:** Fases 0 a 6 **ejecutadas** (2026-11-18). Plan completo.
 
 ## Alcance y decisión previa
 
@@ -68,8 +68,8 @@ reales + excepción de regla solo en 11 páginas).
 | B5 | ~~`lint` con 21 errores fuera del CI~~ **CERRADA** (Fase 4: 0 errores; 10 arreglos reales + excepción acotada) | Errores nuevos entran sin aviso | Alto (proyecto) | 2 |
 | B6 | ~~Cero tests frontend~~ **CERRADA** (Fase 4: Jest + RTL, 4 tests en CI) | Roturas de runtime invisibles al CI | Alto (infra + tests) | 2 |
 | B7 | ~~Dump con datos de negocio reales de demo~~ **CERRADA para el dump de CI** (Fase 5: anonimizado y verificado 292/292). Quedan los otros dos export y el historial git | Repo ya es público | Medio | 3 |
-| B8 | Specs de integración comparten BD (`maxWorkers: 1`, worker que no cierra) | Acoplamiento, ruido al terminar | Medio | 3 |
-| B9 | `integration` sin `concurrency` y sin filtro `branches: [main]` | Runs acumulados en pushes rápidos | Muy bajo | 3 |
+| B8 | Specs de integración comparten BD (`maxWorkers: 1`, worker que no cierra) — **investigado en Fase 6, sin cambio**: el ruido es `forceExit`, no un handle; `maxWorkers: 1` sigue siendo obligatorio | Acoplamiento, ruido al terminar | Medio | 3 |
+| B9 | ~~`integration` sin `concurrency` y sin filtro `branches: [main]`~~ **CERRADA** (Fase 6) | Runs acumulados en pushes rápidos | Muy bajo | 3 |
 
 ### 1.4 Lo que ya funciona y no se rehace
 
@@ -247,14 +247,24 @@ acotado + gate en CI).
   incluya reescritura de historial. Los campos de texto libre tampoco se
   anonimizaron.
 
-### Fase 6 — Menores
+### Fase 6 — Menores — ✅ EJECUTADA 2026-11-18
 
-- `integration.yml`: agregar `concurrency` con `cancel-in-progress: true` y
-  alinear `pull_request.branches: [main]` con `ci.yml`.
-- `jest.integration.config.js`: investigar el aviso
-  `worker process failed to exit gracefully` (handle sin cerrar). No es un
-  fallo; se documenta si no se resuelve en un cambio pequeño.
-- **No se quita `maxWorkers: 1`** mientras los specs compartan BD.
+- `integration.yml`: agregado `concurrency` con `cancel-in-progress: true`
+  (grupo `integration-${{ github.workflow }}-${{ github.ref }}`, mismo patrón
+  que `ci.yml`) y `pull_request.branches: [main]`. YAML validado con
+  `js-yaml` y `git diff --check`.
+- `jest.integration.config.js`: **investigado, sin cambio**. Con
+  `--detectOpenHandles --runInBand` sobre el spec de GPS: 0 handles abiertos,
+  13/13 tests. El mensaje `Force exiting Jest: ...` aparece igual con y sin
+  `--runInBand`: lo emite de forma incondicional `forceExit: true`, no un
+  handle real. El aviso `worker process failed to exit gracefully` es el
+  worker hijo que se termina al forzar la salida; el run termina exit 0 con
+  292/292. No hay fix pequeño sin quitar `forceExit` (que podría colgar un run
+  con handles reales) o `maxWorkers: 1` (que los specs compartiendo BD hacen
+  obligatorio). Se documenta, como permitía el plan.
+- **No se quitó `maxWorkers: 1`** ni `forceExit: true`.
+- **No verificado en remoto:** el workflow editado no se corrió (sin push
+  autorizado).
 
 ---
 

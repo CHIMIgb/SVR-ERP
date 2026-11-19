@@ -4,7 +4,12 @@ name: integration
 
 on:
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration:
