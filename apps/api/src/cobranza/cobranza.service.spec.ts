@@ -40,7 +40,7 @@ describe('CobranzaService', () => {
     proyecto_id: null,
     monto: 1000,
     monto_pagado: 0,
-    fecha_vencimiento: new Date('2026-10-01'),
+    fecha_vencimiento: new Date(Date.now() + 30 * 86400000),
     estado: 'PENDIENTE',
     activo: true,
     creado_en: new Date('2026-09-01'),
