@@ -259,7 +259,7 @@ grupo de rutas `(pwa)` en `apps/web` con pantallas `/m/*` — NUNCA crear
 `apps/pwa` ni duplicar sesión/apiClient. Reglas duras de las vistas móviles:
 diseño "acción primero" (prohibido apretar tablas del desktop en el teléfono),
 reusar el kit `src/components/ui/*` primero y los nuevos en
-`src/components/pwa/*` documentados en `COMPONENTS.md`, nav inferior construida
+`src/components/pwa/*` documentados en `COMPONENTS-PWA.md`, nav inferior construida
 desde `user.vistas` (`lib/pwa/rol-nav.ts` — PROHIBIDO hardcodear el menú por
 rol), objetivos táctiles ≥44px + safe-areas, texto 100% es-MX con
 `mensajeErrorApi`, offline-first DESDE EL DÍA 1 (capturas → cola local
@@ -291,7 +291,8 @@ componentes UI con patrón `Componente.tsx` + `Componente.styles.ts` +
 usar SIEMPRE `scrollbar-none` (nunca inventar variantes); `cn()` de
 `@/lib/utils`; al crear o refactorizar vistas, reemplazar los patrones
 manuales por el kit UI (tabla completa de equivalencias en AGENTS.md;
-`COMPONENTS.md` documenta props y cuándo NO usar cada componente).
+`COMPONENTS.md` documenta el kit compartido y `COMPONENTS-PWA.md` los
+componentes de la PWA — props y cuándo NO usar cada uno).
 
 **Convención de idioma en la BD (no renombrar lo existente):** tablas de
 DOMINIO/negocio en español (`reportes_campo`, `trabajadores`…) y las de
@@ -395,7 +396,8 @@ registro antiguo solo orientan; si contradicen a la BD, gana la BD.
 - **¿Componente nuevo?** `grep` en `src/components/ui` y `components/pwa`. Si
   existe variante, reutilizar. Si es de dominio, va junto al dominio, no en `ui`.
   Si es genérico y nuevo: patrón `.tsx` + `.styles.ts` + `index.ts` y doc en
-  `COMPONENTS.md` en el MISMO cambio (AGENTS §10).
+  `COMPONENTS.md` (kit `ui/`) o `COMPONENTS-PWA.md` (componentes `pwa/`) en el
+  MISMO cambio (AGENTS §10).
 - **¿Endpoint nuevo?** `grep` en `lib/api.ts` y `apps/api/src`. Si existe para
   escritorio, la PWA lo reutiliza: **prohibido duplicarlo**. Solo endpoints que
   el flujo móvil exige y no tienen equivalente (AGENTS §2).
