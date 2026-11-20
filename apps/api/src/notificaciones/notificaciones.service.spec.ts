@@ -187,12 +187,35 @@ describe('NotificacionesService', () => {
           OR: [
             { destinatario_user_id: USER_ID },
             { audiencia_torre: TORRE },
-            { audiencia_rol_id: null },
+            // "para todos" = SIN ninguna audiencia dirigida (fuga 2026-11-20:
+            // antes bastaba audiencia_rol_id null y una fila de TORRE se le
+            // escapaba a usuarios de otras torres)
+            {
+              AND: [
+                { audiencia_rol_id: null },
+                { audiencia_torre: null },
+                { destinatario_user_id: null },
+              ],
+            },
             { audiencia_rol_id: { in: ['rol-a', 'rol-b'] } },
           ],
         },
       ]);
       expect(result.items[0].leida).toBe(false);
+    });
+
+    it('una fila dirigida solo por TORRE no entra por la rama "para todos"', async () => {
+      // Caso real (fuga verificada en BD): reporte a torre DIESEL visto por un
+      // técnico Mecanico. La fila de torre tiene audiencia_rol_id null — con el
+      // where viejo ({ audiencia_rol_id: null }) era visible para cualquiera.
+      prisma.users.findUnique.mockResolvedValue({ torre: 'MECANICO' });
+      await service.findMine(USER_ID, { page: 1, limit: 10 });
+      const or = prisma.notificaciones.findMany.mock.calls[0][0].where.AND[1].OR;
+      const global = or.find((b: { AND?: unknown }) => b.AND);
+      // La rama global exige audiencia_torre null → la fila de DIESEL no casa
+      expect(global.AND).toContainEqual({ audiencia_torre: null });
+      // y el usuario solo recibe la audiencia de SU torre
+      expect(or).toContainEqual({ audiencia_torre: 'MECANICO' });
     });
 
     it('el conteo noLeidas descuenta lo ya leído por el usuario', async () => {

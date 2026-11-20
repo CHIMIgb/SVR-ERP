@@ -182,7 +182,16 @@ export class NotificacionesService {
           OR: [
             { destinatario_user_id: userId },
             ...(user?.torre ? [{ audiencia_torre: user.torre }] : []),
-            { audiencia_rol_id: null },
+            // "Para todos": SOLO filas sin ninguna audiencia dirigida — si no,
+            // una fila dirigida solo por TORRE (audiencia_rol_id null) se le
+            // escapaba a usuarios de otras torres (fuga 2026-11-20).
+            {
+              AND: [
+                { audiencia_rol_id: null },
+                { audiencia_torre: null },
+                { destinatario_user_id: null },
+              ],
+            },
             ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
           ],
         },
