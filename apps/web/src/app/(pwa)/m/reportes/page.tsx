@@ -96,6 +96,7 @@ export default function ReportesMovilPage() {
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
   /** Preview de imagen en modal (en lugar de abrir pestaña nueva). */
   const [preview, setPreview] = useState<{ mime: string; datos: string; nombre: string } | null>(null);
+  const [ubicacionModal, setUbicacionModal] = useState<{ nombre: string; direccion: string | null } | null>(null);
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
@@ -220,6 +221,15 @@ export default function ReportesMovilPage() {
   };
 
   const cerrarDetalle = () => setDetalle(null);
+
+  /** Ubicación desde la tarjeta: obra → domicilio (modal); GPS → Google Maps. */
+  const abrirUbicacion = (r: ReporteCampoDTO) => {
+    if (r.proyectoId && r.proyecto) {
+      setUbicacionModal({ nombre: r.proyecto, direccion: r.proyectoDireccion });
+    } else if (r.latitud != null && r.longitud != null) {
+      window.open(`https://maps.google.com/?q=${r.latitud},${r.longitud}`, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   /** Refetch del detalle tras comentar/adjuntar (igual que el escritorio). */
   const refetchDetalle = useCallback(async (id: string): Promise<void> => {
@@ -477,6 +487,11 @@ export default function ReportesMovilPage() {
                 key={r.id}
                 reporte={r}
                 onVer={() => void verDetalle(r.id)}
+                onUbicacion={
+                  (r.proyectoId && r.proyecto) || (r.latitud != null && r.longitud != null)
+                    ? () => abrirUbicacion(r)
+                    : undefined
+                }
                 accion={
                   puedeEditar && !esResidente && r.estado === 'Nuevo' && !r.asignadoANombre
                     ? {
@@ -782,6 +797,31 @@ export default function ReportesMovilPage() {
                   Cerrar
                 </Button>
               </div>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
+
+      {/* Domicilio de la obra — desde la tarjeta (sin salir de la app) */}
+      <Modal open={ubicacionModal !== null} onClose={() => setUbicacionModal(null)} size="md">
+        {ubicacionModal && (
+          <>
+            <ModalHeader
+              title={ubicacionModal.nombre}
+              subtitle="Domicilio de la obra"
+              onClose={() => setUbicacionModal(null)}
+            />
+            <ModalBody>
+              {ubicacionModal.direccion ? (
+                <p className="text-sm text-ui-900 break-words">{ubicacionModal.direccion}</p>
+              ) : (
+                <p className="text-sm text-ui-400">Sin domicilio registrado</p>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="secondary" className="min-h-[44px] w-full" onClick={() => setUbicacionModal(null)}>
+                Cerrar
+              </Button>
             </ModalFooter>
           </>
         )}

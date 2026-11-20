@@ -161,6 +161,7 @@ import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
 | `reporte` | `ReporteCampoDTO` | *(requerido)* | El reporte a mostrar |
 | `onVer` | `() => void` | *(requerido)* | Abre el detalle |
 | `accion` | `{ etiqueta, onClick, ocupado? }` | `undefined` | Acción principal del rol (ej. Aceptar); sin ella solo se ve Ver |
+| `onUbicacion` | `() => void` | `undefined` | Botón «Ubicación» (MapPin): el padre decide obra → modal de domicilio / GPS → Google Maps. Proveerla SOLO si el reporte tiene dónde ver |
 
 **Cuando USAR:** listados de reportes en vistas `/m/*`. **Cuando NO:** en
 el escritorio (usa la DataTable de `/reportes`) ni para otras entidades.

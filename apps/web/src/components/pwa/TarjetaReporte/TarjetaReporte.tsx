@@ -9,7 +9,7 @@
  * (`ESTADO_LABELS`/`PRIORIDAD_LABELS`/`CATEGORIA_LABELS` del service) — no
  * se vuelven a mapear aquí.
  */
-import { Eye } from 'lucide-react';
+import { Eye, MapPin } from 'lucide-react';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { tarjetaReporteClasses } from './TarjetaReporte.styles';
@@ -33,6 +33,9 @@ export interface TarjetaReporteProps {
   /** Acción principal opcional del rol (ej. Aceptar para el técnico). */
   accion?: { etiqueta: string; onClick: () => void; ocupado?: boolean };
   onVer: () => void;
+  /** Ubicación: obra → domicilio (modal); GPS → Google Maps. El padre la
+   *  provee SOLO si el reporte tiene dónde ver (proyecto o coordenadas). */
+  onUbicacion?: () => void;
 }
 
 /** Fecha corta dd/mm — string puro de la BD (columna date), sin zona horaria. */
@@ -41,7 +44,7 @@ function fechaCorta(iso: string): string {
   return d.length === 10 ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d;
 }
 
-export function TarjetaReporte({ reporte, accion, onVer }: TarjetaReporteProps) {
+export function TarjetaReporte({ reporte, accion, onVer, onUbicacion }: TarjetaReporteProps) {
   const c = tarjetaReporteClasses;
   return (
     <article className={c.root}>
@@ -83,6 +86,19 @@ export function TarjetaReporte({ reporte, accion, onVer }: TarjetaReporteProps) 
         >
           Ver
         </Button>
+        {onUbicacion && (
+          <Button
+            variant="secondary"
+            size="md"
+            icon={<MapPin className="w-4 h-4" />}
+            onClick={onUbicacion}
+            aria-label="Ver ubicación"
+            title="Ver ubicación"
+            className={c.boton}
+          >
+            Ubicación
+          </Button>
+        )}
         {accion && (
           <Button
             variant="primary"
