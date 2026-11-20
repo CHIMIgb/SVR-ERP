@@ -142,7 +142,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     .join("");
 
   return (
-    <ToastProvider>
+    <ToastProvider posicionPorDefecto="top-center">
       <NotificationProvider>
       <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
       {/* Header del shell — mismo look que el Topbar del escritorio.
@@ -171,7 +171,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
       {/* Contenido con safe-areas — flex column para que las vistas puedan
           anclar elementos al fondo (ej. cerrar sesión en /m/perfil) */}
-      <main className="flex-1 px-4 py-5 overflow-y-auto scrollbar-none flex flex-col">{children}</main>
+      <main className="min-h-0 flex-1 px-4 py-5 overflow-y-auto scrollbar-none flex flex-col">{children}</main>
 
       {/* Nav inferior por rol (plan §7b) */}
       <RoleNav pendientes={pendientes} />
