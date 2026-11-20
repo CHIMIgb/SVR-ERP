@@ -27,6 +27,7 @@ import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
+import { Pagination } from '@/components/ui/Pagination';
 import { FormField } from '@/components/ui/FormField';
 import { FormModal, Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/Modal';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
@@ -77,7 +78,8 @@ export default function ReportesMovilPage() {
 
   const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
   const [pagina, setPagina] = useState(1);
-  const [hayMas, setHayMas] = useState(false);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [totalPaginas, setTotalPaginas] = useState(1);
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -100,9 +102,9 @@ export default function ReportesMovilPage() {
   const [trabajadores, setTrabajadores] = useState<{ id: string; nombre: string; puesto: string }[]>([]);
   const [cargandoTrabajadores, setCargandoTrabajadores] = useState(true);
 
-  /** Listado paginado server-side (techo del backend: 100). */
+  /** Listado paginado server-side (una página a la vez, como el escritorio). */
   const recargar = useCallback(
-    async (paginaPedida: number, reemplazar: boolean): Promise<void> => {
+    async (paginaPedida: number): Promise<void> => {
       try {
         const res = await reportesCampoApi.listar({
           page: paginaPedida,
@@ -115,16 +117,10 @@ export default function ReportesMovilPage() {
           return;
         }
         const data = res.data;
-        // Dedupe al agregar: una carrera (ej. el finally de otra recarga que
-        // re-habilita «Cargar más» a mitad de vuelo) podía meter la misma
-        // página dos veces → keys duplicadas de React.
-        setReportes((prev) => {
-          if (reemplazar) return data.items;
-          const ids = new Set(prev.map((p) => p.id));
-          return [...prev, ...data.items.filter((i) => !ids.has(i.id))];
-        });
+        setReportes(data.items);
         setPagina(data.pagination.page);
-        setHayMas(data.pagination.page < data.pagination.totalPages);
+        setTotalRegistros(data.pagination.total);
+        setTotalPaginas(data.pagination.totalPages);
         setErrorCarga(null);
       } catch (e) {
         setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar los reportes.');
@@ -154,7 +150,7 @@ export default function ReportesMovilPage() {
   // Primera carga (lista + stats) + recarga con debounce al cambiar filtro/búsqueda.
   useEffect(() => {
     const t = window.setTimeout(() => {
-      void recargar(1, true).then(() => setCargandoInicial(false));
+      void recargar(1).then(() => setCargandoInicial(false));
       void cargarStats();
     }, 400);
     return () => window.clearTimeout(t);
@@ -164,7 +160,7 @@ export default function ReportesMovilPage() {
   useEffect(() => {
     const alVolver = () => {
       setRefrescando(true);
-      void recargar(1, true);
+      void recargar(1);
       void cargarStats();
     };
     window.addEventListener('online', alVolver);
@@ -175,7 +171,7 @@ export default function ReportesMovilPage() {
   const alEncolar = () => {
     setColaKey((k) => k + 1);
     setRefrescando(true);
-    void recargar(1, true);
+    void recargar(1);
     void cargarStats();
   };
 
@@ -194,7 +190,7 @@ export default function ReportesMovilPage() {
           `Aceptado${res.data.codigo ? ` ${res.data.codigo}` : ''} — quedaste como responsable.`,
         );
         setRefrescando(true);
-        await recargar(1, true);
+        await recargar(1);
         await cargarStats();
       } else {
         setMensaje(mensajeErrorApi(res.error, 'No se pudo aceptar el reporte.'));
@@ -287,7 +283,7 @@ export default function ReportesMovilPage() {
         cerrarAsignar();
         await refetchDetalle(detalle.reporte.id);
         setRefrescando(true);
-        await recargar(1, true);
+        await recargar(1);
         await cargarStats();
       } else {
         setMensaje(mensajeErrorApi(res.error, 'No se pudo asignar el responsable.'));
@@ -374,7 +370,7 @@ export default function ReportesMovilPage() {
         setDetalle({ ...detalle, reporte: res.data });
         setMensaje(`Reporte ${res.data.estado}.`);
         setRefrescando(true);
-        await recargar(1, true);
+        await recargar(1);
         await cargarStats();
       } else {
         setMensaje(mensajeErrorApi(res.error, 'No se pudo cambiar el estado.'));
@@ -507,18 +503,18 @@ export default function ReportesMovilPage() {
         )}
       </div>
 
-      {hayMas && !cargandoInicial && (
-        <Button
-          variant="secondary"
-          fullWidth
-          loading={refrescando}
-          onClick={() => {
+      {/* Paginación server-side (kit compartido) — una página a la vez */}
+      {!cargandoInicial && totalPaginas > 1 && (
+        <Pagination
+          currentPage={pagina}
+          totalPages={totalPaginas}
+          totalRecords={totalRegistros}
+          pageSize={10}
+          onPageChange={(p) => {
             setRefrescando(true);
-            void recargar(pagina + 1, false);
+            void recargar(p);
           }}
-        >
-          Cargar más
-        </Button>
+        />
       )}
 
       {mensaje && (
