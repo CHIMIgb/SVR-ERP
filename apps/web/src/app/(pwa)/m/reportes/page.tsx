@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   mensajeErrorApi,
   reportesCampoApi,
+  trabajadoresApi,
   type EstadoIncidenteApi,
   type ReporteCampoDTO,
   type ReportesIncidenteDetalle,
@@ -26,8 +27,10 @@ import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
-import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/Modal';
+import { FormField } from '@/components/ui/FormField';
+import { FormModal, Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/Modal';
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { Textarea } from '@/components/ui/Textarea';
@@ -91,6 +94,11 @@ export default function ReportesMovilPage() {
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
+  const [asignarAbierto, setAsignarAbierto] = useState(false);
+  const [asignando, setAsignando] = useState(false);
+  const [asignarForm, setAsignarForm] = useState({ asignadoA: '', asignadoNombre: '' });
+  const [trabajadores, setTrabajadores] = useState<{ id: string; nombre: string; puesto: string }[]>([]);
+  const [cargandoTrabajadores, setCargandoTrabajadores] = useState(true);
 
   /** Listado paginado server-side (techo del backend: 100). */
   const recargar = useCallback(
@@ -224,6 +232,72 @@ export default function ReportesMovilPage() {
       // El detalle en pantalla sigue válido; el error ya se mostró en la acción
     }
   }, []);
+
+  // ── ASIGNAR "quién le cae" (solo Admin, paridad del escritorio) ──
+  const abrirAsignar = () => {
+    const r = reporteDetalle;
+    setAsignarForm({
+      asignadoA: r?.asignadoAId ?? '',
+      asignadoNombre: r?.asignadoAId ? '' : r?.asignadoANombre ?? '',
+    });
+    setMensaje(null);
+    setAsignarAbierto(true);
+  };
+
+  const cerrarAsignar = () => {
+    setAsignarAbierto(false);
+    setAsignarForm({ asignadoA: '', asignadoNombre: '' });
+    setCargandoTrabajadores(true);
+  };
+
+  // Catálogo de trabajadores para el select (exento de paginación; misma llamada del escritorio).
+  useEffect(() => {
+    if (!asignarAbierto) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const res = await trabajadoresApi.listar({ limit: 100 });
+        if (vivo && res.success) setTrabajadores(res.data.items);
+      } catch {
+        // Sin catálogo queda el nombre libre
+      } finally {
+        if (vivo) setCargandoTrabajadores(false);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [asignarAbierto]);
+
+  const handleAsignar = async (): Promise<void> => {
+    if (!detalle) return;
+    if (!asignarForm.asignadoA && !asignarForm.asignadoNombre.trim()) {
+      setMensaje('Asigna un trabajador o un nombre.');
+      return;
+    }
+    setAsignando(true);
+    setMensaje(null);
+    try {
+      const res = await reportesCampoApi.asignar(detalle.reporte.id, {
+        asignadoA: asignarForm.asignadoA || null,
+        asignadoNombre: asignarForm.asignadoA ? null : asignarForm.asignadoNombre.trim(),
+      });
+      if (res.success) {
+        setMensaje('Responsable asignado exitosamente.');
+        cerrarAsignar();
+        await refetchDetalle(detalle.reporte.id);
+        setRefrescando(true);
+        await recargar(1, true);
+        await cargarStats();
+      } else {
+        setMensaje(mensajeErrorApi(res.error, 'No se pudo asignar el responsable.'));
+      }
+    } catch (e) {
+      setMensaje(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+    } finally {
+      setAsignando(false);
+    }
+  };
 
   const handleComentar = async (): Promise<void> => {
     if (!detalle || !comentarioTexto.trim()) {
@@ -508,21 +582,6 @@ export default function ReportesMovilPage() {
                     Tel: <a href={`tel:${detalle.reportadoPor.telefono}`} className="font-bold text-primary underline">{detalle.reportadoPor.telefono}</a>
                   </p>
                 )}
-                {detalle.actividades.length > 0 && (
-                  <div className="border-t border-ui-100 pt-2">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
-                      Bitácora
-                    </p>
-                    <ul className="mt-1.5 space-y-1.5">
-                      {detalle.actividades.map((a) => (
-                        <li key={a.id} className="text-[13px] text-ui-700 break-words">
-                          <span className="font-bold">{a.autorNombre}</span> · {a.texto}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
                 {/* Imágenes adjuntas — visibles a todos; adjuntar como el escritorio */}
                 <div className="border-t border-ui-100 pt-2">
                   <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
@@ -586,32 +645,62 @@ export default function ReportesMovilPage() {
                   )}
                 </div>
 
-                {/* Comentar — gated por puedeEditar (el server exige permiso editar) */}
-                {puedeEditar && detalle.reporte.estado !== 'Cerrado' && (
-                  <div className="border-t border-ui-100 pt-3">
-                    <Textarea
-                      rows={2}
-                      value={comentarioTexto}
-                      onChange={(e) => setComentarioTexto(e.target.value)}
-                      placeholder="Describe lo que se trabajó o revisó..."
-                      aria-label="Nuevo comentario"
-                      maxLength={2000}
-                    />
-                    <Button
-                      variant="primary"
-                      className="min-h-[44px] mt-2"
-                      disabled={!comentarioTexto.trim() || comentando}
-                      loading={comentando}
-                      onClick={() => void handleComentar()}
-                    >
-                      Publicar
-                    </Button>
-                  </div>
-                )}
+                {/* Actividades — caja de comentario PRIMERO, cards debajo con scroll (paridad escritorio) */}
+                <div className="border-t border-ui-100 pt-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
+                    Actividades ({detalle.actividades.length})
+                  </p>
+                  {puedeEditar && detalle.reporte.estado !== 'Cerrado' && (
+                    <div className="flex gap-2 mt-2">
+                      <div className="flex-1 min-w-0">
+                        <Textarea
+                          rows={2}
+                          value={comentarioTexto}
+                          onChange={(e) => setComentarioTexto(e.target.value)}
+                          placeholder="Describe lo que se trabajó o revisó..."
+                          aria-label="Nuevo comentario"
+                          maxLength={2000}
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        className="min-h-[44px] shrink-0 self-start"
+                        disabled={!comentarioTexto.trim() || comentando}
+                        loading={comentando}
+                        onClick={() => void handleComentar()}
+                      >
+                        Publicar
+                      </Button>
+                    </div>
+                  )}
+                  {detalle.actividades.length > 0 && (
+                    <div className="mt-2 max-h-64 overflow-y-auto scrollbar-none space-y-2">
+                      {detalle.actividades.map((a) => (
+                        <div key={a.id} className="bg-surface border border-ui-100 rounded-xl p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black text-ui-800 truncate">{a.autorNombre}</span>
+                            <span className="text-[10px] font-bold text-ui-400 shrink-0">
+                              {new Date(a.creadoEn).toLocaleString('es-MX', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-[13px] text-ui-700 break-words mt-0.5">{a.texto}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </ModalBody>
             <ModalFooter>
               <div className="flex flex-wrap gap-2 w-full">
+                {puedeEditar && esAdminReportes && (
+                  <Button variant="secondary" onClick={abrirAsignar}>
+                    {reporteDetalle?.asignadoANombre ? 'Reasignar' : 'Asignar'}
+                  </Button>
+                )}
                 {puedeEditar && detalle.reporte.estado === 'Nuevo' && detalle.reporte.asignadoANombre && (
                   <Button
                     variant="primary"
@@ -647,6 +736,46 @@ export default function ReportesMovilPage() {
         torreUsuario={user?.torre ?? null}
         onEncolado={alEncolar}
       />
+
+      {/* Asignar Responsable (solo Admin — paridad del escritorio) */}
+      <FormModal
+        open={asignarAbierto}
+        onClose={cerrarAsignar}
+        title="Asignar Responsable"
+        subtitle="Quién debe resolver este incidente. Trabajador del sistema o nombre libre."
+        submitLabel="Asignar"
+        onSubmit={() => void handleAsignar()}
+        isSubmitting={asignando}
+        size="md"
+      >
+        <FormField label="Trabajador del sistema" htmlFor="asignar-trabajador" hint="Al elegir uno, el nombre libre se ignora.">
+          <Select
+            id="asignar-trabajador"
+            options={trabajadores.map((t) => ({ value: t.id, label: `${t.nombre} — ${t.puesto}` }))}
+            value={asignarForm.asignadoA}
+            onChange={(e) => setAsignarForm((f) => ({ ...f, asignadoA: e.target.value }))}
+            placeholder={cargandoTrabajadores ? 'Cargando trabajadores...' : 'Sin trabajador del sistema...'}
+            disabled={cargandoTrabajadores && trabajadores.length === 0}
+          />
+        </FormField>
+
+        <FormField label="O nombre libre" htmlFor="asignar-nombre-libre" hint="Para externos o empleados aún no catalogados.">
+          <Input
+            id="asignar-nombre-libre"
+            placeholder="Ej: Panchito el externo"
+            value={asignarForm.asignadoNombre}
+            onChange={(e) => setAsignarForm((f) => ({ ...f, asignadoNombre: e.target.value }))}
+            disabled={!!asignarForm.asignadoA}
+            maxLength={120}
+          />
+        </FormField>
+
+        {detalle && (
+          <p className="text-xs text-ui-500 text-center">
+            Responsable actual: <strong>{detalle.reporte.asignadoANombre ?? 'sin asignar'}</strong>
+          </p>
+        )}
+      </FormModal>
     </div>
   );
 }
