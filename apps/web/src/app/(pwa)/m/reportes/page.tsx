@@ -378,12 +378,6 @@ export default function ReportesMovilPage() {
   };
 
   const reporteDetalle = detalle?.reporte;
-  const ubicacion = reporteDetalle
-    ? reporteDetalle.proyecto ??
-      (reporteDetalle.latitud != null && reporteDetalle.longitud != null
-        ? `${reporteDetalle.latitud.toFixed(5)}, ${reporteDetalle.longitud.toFixed(5)}`
-        : '—')
-    : '—';
 
   return (
     <div className="space-y-4">
@@ -551,7 +545,30 @@ export default function ReportesMovilPage() {
                     <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">
                       Ubicación
                     </dt>
-                    <dd className="text-ui-900 break-words">{ubicacion}</dd>
+                    {detalle.reporte.proyectoId && detalle.reporte.proyecto ? (
+                      <dd className="text-ui-900 break-words">
+                        {detalle.reporte.proyecto}
+                        {detalle.reporte.proyectoDireccion && (
+                          <span className="block text-[11px] font-medium text-ui-500">
+                            {detalle.reporte.proyectoDireccion}
+                          </span>
+                        )}
+                      </dd>
+                    ) : detalle.reporte.latitud != null ? (
+                      <dd className="text-ui-900 break-words">
+                        GPS {detalle.reporte.latitud.toFixed(4)}, {detalle.reporte.longitud?.toFixed(4)}
+                        <a
+                          href={`https://maps.google.com/?q=${detalle.reporte.latitud},${detalle.reporte.longitud}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-[11px] font-bold text-primary underline"
+                        >
+                          Ver en Google Maps
+                        </a>
+                      </dd>
+                    ) : (
+                      <dd className="text-ui-400">Sin ubicación</dd>
+                    )}
                   </div>
                   <div className="min-w-0">
                     <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">
