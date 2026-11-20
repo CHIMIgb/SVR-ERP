@@ -225,3 +225,56 @@ import { ModalNuevoReporte } from '@/components/pwa/ModalNuevoReporte';
 editar (el edit sigue en el escritorio) ni para capturar asistencia (su
 propio módulo). El select de Área es nativo — el kit `Select` no soporta
 optgroups (igual que el escritorio).
+
+## 8. NotificacionesModal
+
+Centro de notificaciones del teléfono. **REUTILIZA el provider compartido**
+(`NotificationProvider` del escritorio: polling de 60 s, sin lógica nueva):
+lista el buzón con badge de tipo (Alerta/Info), destacado de no leídas y
+acciones Marcar todas leídas / Vaciar (descartar). Tap en un item lo marca
+leído. La navegación al reporte referenciado queda como mejora (el provider
+compartido aún no expone `referenciaTipo`/`referenciaId`).
+
+**Archivos:**
+- `src/components/pwa/NotificacionesModal/NotificacionesModal.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { NotificacionesModal } from '@/components/pwa/NotificacionesModal';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `abierto` | `boolean` | *(requerido)* | Visibilidad |
+| `onCerrar` | `() => void` | *(requerido)* | Cierra el centro |
+
+**Cuando USAR:** desde `CampanaNotificaciones` (ya cableado). **Cuando NO:**
+en el escritorio (su campana vive en el `Topbar`) ni montado fuera del
+`NotificationProvider`.
+
+## 9. CampanaNotificaciones
+
+Campana del header PWA: botón ≥44px con badge del número de no leídas
+(`unreadCount` del provider) que abre `NotificacionesModal`. Vive DEBAJO de
+`NotificationProvider` (montado en el shell `(pwa)`).
+
+**Archivos:**
+- `src/components/pwa/CampanaNotificaciones/CampanaNotificaciones.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { CampanaNotificaciones } from '@/components/pwa/CampanaNotificaciones';
+```
+
+**Props:** ninguna (consume el provider y maneja su estado de apertura).
+
+**Cuando USAR:** solo en el header del shell `(pwa)` (ya cableado — no
+montar en pantallas individuales). **Cuando NO:** en el escritorio (regla
+de independencia).
+
+**Cuando USAR:** botón «Reportar» de `/m/reportes`. **Cuando NO:** para
+editar (el edit sigue en el escritorio) ni para capturar asistencia (su
+propio módulo). El select de Área es nativo — el kit `Select` no soporta
+optgroups (igual que el escritorio).

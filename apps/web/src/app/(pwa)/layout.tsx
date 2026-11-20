@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
 import { ToastProvider } from "@/components/layout/Toast";
+import { NotificationProvider } from "@/components/layout/NotificationContext";
+import { CampanaNotificaciones } from "@/components/pwa/CampanaNotificaciones";
 import { RoleNav } from "@/components/pwa/RoleNav";
 import ModalInstalar from "@/components/pwa/ModalInstalar";
 import { estaInstaladaEnDispositivo } from "@/lib/pwa/instalar";
@@ -142,6 +143,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
+      <NotificationProvider>
       <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
       {/* Header del shell — mismo look que el Topbar del escritorio.
           El bloque avatar+nombre+rol abre el perfil (todos los roles). */}
@@ -164,13 +166,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          aria-label="Notificaciones"
-          className="w-9 h-9 rounded-xl bg-ui-100 border border-ui-200 flex items-center justify-center text-ui-600 hover:bg-ui-200/60 transition-colors shrink-0 relative"
-        >
-          <Bell className="w-5 h-5" />
-        </button>
+        <CampanaNotificaciones />
       </header>
 
       {/* Contenido con safe-areas — flex column para que las vistas puedan
@@ -197,6 +193,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       {/* Instalación: modal propio en cada acceso si no está instalada */}
       {!instalada && <ModalInstalar onCerrar={() => setInstalada(true)} />}
       </div>
+      </NotificationProvider>
     </ToastProvider>
   );
 }
