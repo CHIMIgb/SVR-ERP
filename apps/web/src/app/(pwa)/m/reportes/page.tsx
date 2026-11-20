@@ -390,9 +390,12 @@ export default function ReportesMovilPage() {
   const reporteDetalle = detalle?.reporte;
 
   return (
-    <div className="space-y-4">
-      {/* Todo lo de arriba FIJO: solo la lista de reportes desliza (sticky sobre el scroll de la página) */}
-      <div className="sticky top-0 z-20 bg-canvas -mx-4 px-4 pb-3 space-y-4">
+    /* La página mide EXACTAMENTE el alto del main (menos su py-5 = 2.5rem):
+       todo lo de arriba queda FUERA del contenedor que scrollea (fijo de
+       verdad) y SOLO la lista tiene overflow-y-auto. */
+    <div className="flex h-[calc(100%-2.5rem)] flex-col">
+      {/* Bloque superior FIJO (encabezado + stats + cola + búsqueda + chips) */}
+      <div className="shrink-0 -mx-4 px-4 pb-3 space-y-4">
       {/* Encabezado + acción principal */}
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -464,8 +467,8 @@ export default function ReportesMovilPage() {
       </div>
       </div>
 
-      {/* Lista (server-side paginada, patrón móvil: cards + cargar más) */}
-      <div className="relative">
+      {/* Lista (server-side paginada) — el ÚNICO contenedor que desliza */}
+      <div className="relative flex-1 min-h-0 overflow-y-auto scrollbar-none">
         <RefreshOverlay show={refrescando && !cargandoInicial} />
         {cargandoInicial ? (
           <div className="space-y-3" aria-busy="true">
@@ -510,18 +513,20 @@ export default function ReportesMovilPage() {
         )}
       </div>
 
-      {/* Paginación server-side (kit compartido) — siempre visible, también con 1 página */}
+      {/* Paginación server-side (kit compartido) — fija fuera del scroll, siempre visible */}
       {!cargandoInicial && (
-        <Pagination
-          currentPage={pagina}
-          totalPages={totalPaginas}
-          totalRecords={totalRegistros}
-          pageSize={10}
-          onPageChange={(p) => {
-            setRefrescando(true);
-            void recargar(p);
-          }}
-        />
+        <div className="shrink-0">
+          <Pagination
+            currentPage={pagina}
+            totalPages={totalPaginas}
+            totalRecords={totalRegistros}
+            pageSize={10}
+            onPageChange={(p) => {
+              setRefrescando(true);
+              void recargar(p);
+            }}
+          />
+        </div>
       )}
 
       {/* Detalle del reporte (conexión requerida para las acciones) */}
