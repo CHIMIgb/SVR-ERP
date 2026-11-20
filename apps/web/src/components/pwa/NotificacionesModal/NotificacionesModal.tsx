@@ -50,7 +50,7 @@ export function NotificacionesModal({ abierto, onCerrar }: NotificacionesModalPr
   };
 
   return (
-    <Modal open={abierto} onClose={onCerrar} size="md">
+    <Modal open={abierto} onClose={onCerrar} size="sm">
       <ModalBody>
         {/* Banner de activación del push — los 4 estados del permiso */}
         {pushEstado?.estado === 'por-activar' && (
