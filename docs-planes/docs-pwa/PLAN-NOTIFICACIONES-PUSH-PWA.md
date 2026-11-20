@@ -1,10 +1,11 @@
 # Plan — Notificaciones PUSH en la PWA (Web Push, «como cualquier app del teléfono»)
 
 **Fecha:** 2026-11-20
-**Estado:** fases a y b IMPLEMENTADAS (commits `9f442bf6`, `cc34cae6`,
-`54a04b17`, `1a79c670`); fase c implementada (commit de rediseño + banner +
-suscripción — ver `historial-cambios/` de 2026-11-20). **Pendiente: smoke en
-dispositivos.**
+**Estado:** IMPLEMENTADO COMPLETO y **verificado en dispositivo por el
+usuario** (2026-11-20 — fases a/b/c: `9f442bf6`, `cc34cae6`, `54a04b17`,
+`1a79c670`, `a03f20e4`, `d71719c9`, `696637bb`, `9b3c405e` y los ajustes de
+la burbuja). El smoke en el teléfono (instalada vía HTTPS de LAN) funciona:
+el push llega con la app cerrada y la campana se actualiza al instante.
 **Alcance:** notificaciones que llegan con la app CERRADA como notificaciones del sistema, vía **Web Push** (el estándar de PWAs).
 
 ## Por qué Web Push (y no la alternativa fácil)
