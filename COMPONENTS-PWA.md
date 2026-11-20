@@ -229,13 +229,15 @@ optgroups (igual que el escritorio).
 
 ## 8. NotificacionesModal
 
-Centro de notificaciones del teléfono. **REUTILIZA el provider compartido**
-(`NotificationProvider` del escritorio: polling de 60 s, sin lógica nueva).
-Diseño paritario con el «Centro de Alertas» del escritorio (Topbar):
-encabezado con «Centro de Alertas / N no leídas» + acciones de ícono
-(`CheckCheck` = marcar todas leídas, `Trash2` = vaciar/descartar), estado
-vacío con campana grande, y lista con badge de tipo (Alerta/Info) y
-destacado de no leídas. Tap en un item lo marca leído.
+Centro de alertas del teléfono — **burbuja flotante compacta anclada arriba a
+la derecha** (bajo la campana, paridad del «Centro de Alertas» del
+escritorio). **REUTILIZA el provider compartido** (`NotificationProvider`
+del escritorio: polling de 60 s, sin lógica nueva). Encabezado con
+«Centro de Alertas / N no leídas» + acciones de ícono (`CheckCheck` =
+marcar todas leídas, `Trash2` = vaciar/descartar), lista compacta con
+ícono por tipo (alerta/info), fecha y cuerpo truncado, y **su propio
+scroll** (`max-h` de la tarjeta + `overflow-y-auto`). Tap en un item lo
+marca leído.
 
 **Banner de activación del push** (parte superior, 4 estados de
 `estadoPush()` de `lib/pwa/push.ts`): `por-activar` → botón «Activar» (el
@@ -257,7 +259,7 @@ import { NotificacionesModal } from '@/components/pwa/NotificacionesModal';
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
 | `abierto` | `boolean` | *(requerido)* | Visibilidad |
-| `onCerrar` | `() => void` | *(requerido)* | Cierra el centro |
+| `onCerrar` | `() => void` | *(requerido)* | Cierra el centro (overlay tap / campana / Escape) |
 
 **Cuando USAR:** desde `CampanaNotificaciones` (ya cableado). **Cuando NO:**
 en el escritorio (su campana vive en el `Topbar`) ni montado fuera del
