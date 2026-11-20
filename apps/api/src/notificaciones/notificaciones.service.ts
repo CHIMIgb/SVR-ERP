@@ -12,6 +12,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import * as webpush from 'web-push';
+import { configVapid } from './push.config';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -47,6 +49,107 @@ export class NotificacionesService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Usuarios del alcance de una notificación (fase b del push): convierte la
+   * audiencia de la fila a USUARIOS concretos para buscar sus suscripciones
+   * Web Push. Excluye al actor (`creadoPor`) — igual que el buzón.
+   */
+  async usuariosDelAlcance(
+    input: Pick<EmitirNotificacionInput, 'audienciaRolId' | 'audienciaTorre' | 'destinatarioUserId'>,
+    creadoPor?: string,
+  ): Promise<string[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let usuarios: any[] = [];
+    if (input.destinatarioUserId) {
+      usuarios = [{ id: input.destinatarioUserId }];
+    } else if (input.audienciaTorre) {
+      usuarios = await this.prisma.users.findMany({
+        where: { torre: input.audienciaTorre, activo: true },
+        select: { id: true },
+      });
+    } else if (input.audienciaRolId) {
+      const roles = await this.prisma.users_roles.findMany({
+        where: { rol_id: input.audienciaRolId, activo: true },
+        select: { user_id: true },
+      });
+      usuarios = roles.map((r: { user_id: string }) => ({ id: r.user_id }));
+    } else {
+      // "para todos": todos los usuarios activos (vigilar volumen al crecer)
+      usuarios = await this.prisma.users.findMany({ where: { activo: true }, select: { id: true } });
+    }
+    return [...new Set(usuarios.map((u: { id: string }) => u.id))].filter((id) => id !== creadoPor);
+  }
+
+  /**
+   * Envío Web Push best-effort (fase b): FIRE-AND-FORGET desde emitir() — el
+   * fallo del push JAMÁS toca el negocio. Sin VAPID configurado no envía nada.
+   * 410/404 = suscripción muerta → se elimina de BD.
+   */
+  async enviarPushesBestEffort(
+    notificacion: {
+      titulo: string;
+      cuerpo: string;
+      referenciaTipo?: string | null;
+      referenciaId?: string | null;
+    },
+    usuarios: string[],
+  ): Promise<{ enviados: number; limpiadas: number }> {
+    const vapid = configVapid();
+    if (!vapid || usuarios.length === 0) return { enviados: 0, limpiadas: 0 };
+
+    const payload = JSON.stringify({
+      titulo: notificacion.titulo,
+      cuerpo: notificacion.cuerpo,
+      referenciaTipo: notificacion.referenciaTipo ?? null,
+      referenciaId: notificacion.referenciaId ?? null,
+    });
+    const suscripciones = await this.prisma.push_suscripciones.findMany({
+      where: { user_id: { in: usuarios } },
+      select: { endpoint: true, p256dh: true, auth: true },
+    });
+
+    webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+    let enviados = 0;
+    let limpiadas = 0;
+    await Promise.allSettled(
+      suscripciones.map(async (s) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            payload,
+          );
+          enviados++;
+        } catch (error) {
+          const status = (error as { statusCode?: number }).statusCode;
+          if (status === 410 || status === 404) {
+            await this.prisma.push_suscripciones.deleteMany({ where: { endpoint: s.endpoint } });
+            limpiadas++;
+          } else {
+            this.logger.warn(
+              `Push falló para ${s.endpoint}: ${error instanceof Error ? error.message : error}`,
+            );
+          }
+        }
+      }),
+    );
+    return { enviados, limpiadas };
+  }
+
+  /**
+   * Envío push de una emisión: resuelve el alcance y envía. Se invoca como
+   * `void` desde emitir() (fire-and-forget) y se traga sus propios fallos.
+   */
+  async enviarPushesDeEmision(input: EmitirNotificacionInput): Promise<void> {
+    try {
+      const usuarios = await this.usuariosDelAlcance(input, input.creadoPor);
+      await this.enviarPushesBestEffort(input, usuarios);
+    } catch (error) {
+      this.logger.warn(
+        `Push de "${input.titulo}" no enviado: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
 
   /**
    * Emite una notificación de forma BEST-EFFORT: si falla (BD caída, datos

@@ -1,9 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AuditAction, AuditResult, TipoNotificacion } from '@prisma/client';
 import { NotFoundException } from '@nestjs/common';
+import { AuditAction, AuditResult, TipoNotificacion } from '@prisma/client';
 import { NotificacionesService } from './notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import * as webpush from 'web-push';
+
+jest.mock('web-push', () => ({
+  setVapidDetails: jest.fn(),
+  sendNotification: jest.fn().mockResolvedValue(undefined),
+}));
 
 describe('NotificacionesService', () => {
   let service: NotificacionesService;
@@ -45,6 +51,7 @@ describe('NotificacionesService', () => {
       users: {
         findUnique: jest.fn().mockResolvedValue({ torre: TORRE }),
         findFirst: jest.fn().mockResolvedValue({ id: 'user-del-trabajador' }),
+        findMany: jest.fn().mockResolvedValue([{ id: 'user-a' }, { id: 'user-b' }]),
       },
       push_suscripciones: {
         upsert: jest.fn().mockResolvedValue({
@@ -53,6 +60,9 @@ describe('NotificacionesService', () => {
           creado_en: new Date(),
         }),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([
+          { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'p', auth: 'a' },
+        ]),
       },
       roles: {
         findFirst: jest.fn().mockResolvedValue({ id: 'rol-administrativo' }),
@@ -371,6 +381,99 @@ describe('NotificacionesService', () => {
         }),
       );
       expect(result.descartadas).toBe(1);
+    });
+  });
+
+  describe('PUSH fase b — usuariosDelAlcance + enviarPushesBestEffort', () => {
+    const ENV_ORIGINALES = { ...process.env };
+    const inputTorre = {
+      tipo: TipoNotificacion.ALERTA,
+      titulo: 'Nuevo reporte INC0001',
+      cuerpo: 'Alta — algo',
+      referenciaTipo: 'reportes_campo',
+      referenciaId: 'id-reporte',
+      audienciaTorre: TORRE,
+      creadoPor: 'user-a',
+    };
+
+    beforeEach(() => {
+      process.env.VAPID_PUBLIC_KEY = 'clave-publica-test';
+      process.env.VAPID_PRIVATE_KEY = 'clave-privada-test';
+      (webpush.sendNotification as jest.Mock).mockClear().mockResolvedValue(undefined);
+      (webpush.setVapidDetails as jest.Mock).mockClear();
+    });
+
+    afterAll(() => {
+      process.env = ENV_ORIGINALES;
+    });
+
+    it('usuariosDelAlcance: torre → usuarios con esa torre, sin el actor', async () => {
+      const usuarios = await service.usuariosDelAlcance(inputTorre, 'user-a');
+      expect(prisma.users.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { torre: TORRE, activo: true } }),
+      );
+      // user-a es el actor: excluido
+      expect(usuarios).toEqual(['user-b']);
+    });
+
+    it('usuariosDelAlcance: rol → users_roles activos de ese rol', async () => {
+      prisma.users_roles.findMany.mockResolvedValue([{ user_id: 'user-a' }, { user_id: 'user-b' }]);
+      const usuarios = await service.usuariosDelAlcance({ audienciaRolId: 'rol-a' }, undefined);
+      expect(prisma.users_roles.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { rol_id: 'rol-a', activo: true } }),
+      );
+      expect(usuarios).toEqual(['user-a', 'user-b']);
+    });
+
+    it('usuariosDelAlcance: "para todos" → todos los users activos', async () => {
+      const usuarios = await service.usuariosDelAlcance({}, undefined);
+      expect(usuarios).toEqual(['user-a', 'user-b']);
+    });
+
+    it('enviarPushesBestEffort: sin VAPID configurado no envía nada', async () => {
+      delete process.env.VAPID_PUBLIC_KEY;
+      delete process.env.VAPID_PRIVATE_KEY;
+      const r = await service.enviarPushesBestEffort(inputTorre, ['user-b']);
+      expect(r).toEqual({ enviados: 0, limpiadas: 0 });
+      expect(webpush.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('enviarPushesBestEffort: envía a las suscripciones de los usuarios del alcance', async () => {
+      const r = await service.enviarPushesBestEffort(inputTorre, ['user-b']);
+      expect(webpush.setVapidDetails).toHaveBeenCalledWith(
+        'mailto:dev@svr-constructora.com',
+        'clave-publica-test',
+        'clave-privada-test',
+      );
+      expect(webpush.sendNotification).toHaveBeenCalledWith(
+        { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'p', auth: 'a' } },
+        JSON.stringify({
+          titulo: inputTorre.titulo,
+          cuerpo: inputTorre.cuerpo,
+          referenciaTipo: 'reportes_campo',
+          referenciaId: 'id-reporte',
+        }),
+      );
+      expect(r.enviados).toBe(1);
+    });
+
+    it('enviarPushesBestEffort: 410 Gone → limpia la suscripción muerta', async () => {
+      const error410 = Object.assign(new Error('gone'), { statusCode: 410 });
+      (webpush.sendNotification as jest.Mock).mockRejectedValueOnce(error410);
+      const r = await service.enviarPushesBestEffort(inputTorre, ['user-b']);
+      expect(prisma.push_suscripciones.deleteMany).toHaveBeenCalledWith({
+        where: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc' },
+      });
+      expect(r.limpiadas).toBe(1);
+    });
+
+    it('enviarPushesBestEffort: error 5xx NO limpia la suscripción (solo warn)', async () => {
+      const error500 = Object.assign(new Error('boom'), { statusCode: 500 });
+      (webpush.sendNotification as jest.Mock).mockRejectedValueOnce(error500);
+      const r = await service.enviarPushesBestEffort(inputTorre, ['user-b']);
+      expect(prisma.push_suscripciones.deleteMany).not.toHaveBeenCalled();
+      expect(r.limpiadas).toBe(0);
+      expect(r.enviados).toBe(0);
     });
   });
 });
