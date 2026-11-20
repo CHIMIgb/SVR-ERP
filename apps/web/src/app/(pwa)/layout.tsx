@@ -55,17 +55,15 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Service worker (§7c): SOLO producción. En DEV no se registra y además se
-  // desregistran SWs existentes + se borran sus cachés: el SW persiste aunque
-  // quitemos el registro y su cache-first sobre los chunks de Turbopack sirve
-  // JS viejo → errores de hidratación (HTML nuevo vs JS viejo) y hot-reload roto.
+  // Service worker (§7c + push fase c): producción registra el SW completo
+  // (caché del shell + push). En DEV se registra el MISMO script con
+  // `?modo=dev` — el SW omite sus handlers de caché (Turbopack sirve chunks
+  // sin hash que se pudrirían en su cache-first) pero MANTIENE push y
+  // notificationclick: así el push es testeable en dev:https:ip.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        registrations.forEach((registration) => registration.unregister());
-      });
-      caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      navigator.serviceWorker.register("/sw.js?modo=dev").catch(() => undefined);
       return;
     }
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
