@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, FolderOpen, ImageOff, ImagePlus, Loader2, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/components/layout/Toast';
 import {
   mensajeErrorApi,
   reportesCampoApi,
@@ -62,6 +63,7 @@ const STATS_CARGANDO: StatsMini = { nuevos: null, enCurso: null, criticos: null 
 
 export default function ReportesMovilPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const puedeCrear =
     user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeCrear ?? false;
   const puedeEditar =
@@ -83,7 +85,6 @@ export default function ReportesMovilPage() {
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const [mensaje, setMensaje] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<'' | EstadoIncidenteApi>('');
   const [busqueda, setBusqueda] = useState('');
   const [stats, setStats] = useState<StatsMini>(STATS_CARGANDO);
@@ -182,21 +183,21 @@ export default function ReportesMovilPage() {
 
   const aceptar = async (item: ReporteCampoDTO): Promise<void> => {
     setAceptandoId(item.id);
-    setMensaje(null);
     try {
       const res = await reportesCampoApi.aceptar(item.id);
       if (res.success) {
-        setMensaje(
+        showToast(
           `Aceptado${res.data.codigo ? ` ${res.data.codigo}` : ''} — quedaste como responsable.`,
+          'success',
         );
         setRefrescando(true);
         await recargar(1);
         await cargarStats();
       } else {
-        setMensaje(mensajeErrorApi(res.error, 'No se pudo aceptar el reporte.'));
+        showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el reporte.'), 'error');
       }
     } catch (e) {
-      setMensaje(e instanceof Error ? e.message : 'No se pudo aceptar el reporte.');
+      showToast(e instanceof Error ? e.message : 'No se pudo aceptar el reporte.', 'error');
     } finally {
       setAceptandoId(null);
     }
@@ -205,13 +206,12 @@ export default function ReportesMovilPage() {
   const verDetalle = async (id: string): Promise<void> => {
     setCargandoDetalle(true);
     setDetalle(null);
-    setMensaje(null);
     try {
       const res = await reportesCampoApi.detalle(id);
       if (res.success) setDetalle(res.data);
-      else setMensaje(mensajeErrorApi(res.error, 'No se pudo cargar el detalle.'));
+      else showToast(mensajeErrorApi(res.error, 'No se pudo cargar el detalle.'), 'error');
     } catch (e) {
-      setMensaje(e instanceof Error ? e.message : 'No se pudo cargar el detalle.');
+      showToast(e instanceof Error ? e.message : 'No se pudo cargar el detalle.', 'error');
     } finally {
       setCargandoDetalle(false);
     }
@@ -236,7 +236,6 @@ export default function ReportesMovilPage() {
       asignadoA: r?.asignadoAId ?? '',
       asignadoNombre: r?.asignadoAId ? '' : r?.asignadoANombre ?? '',
     });
-    setMensaje(null);
     setAsignarAbierto(true);
   };
 
@@ -268,28 +267,27 @@ export default function ReportesMovilPage() {
   const handleAsignar = async (): Promise<void> => {
     if (!detalle) return;
     if (!asignarForm.asignadoA && !asignarForm.asignadoNombre.trim()) {
-      setMensaje('Asigna un trabajador o un nombre.');
+      showToast('Asigna un trabajador o un nombre.', 'error');
       return;
     }
     setAsignando(true);
-    setMensaje(null);
     try {
       const res = await reportesCampoApi.asignar(detalle.reporte.id, {
         asignadoA: asignarForm.asignadoA || null,
         asignadoNombre: asignarForm.asignadoA ? null : asignarForm.asignadoNombre.trim(),
       });
       if (res.success) {
-        setMensaje('Responsable asignado exitosamente.');
+        showToast('Responsable asignado exitosamente.', 'success');
         cerrarAsignar();
         await refetchDetalle(detalle.reporte.id);
         setRefrescando(true);
         await recargar(1);
         await cargarStats();
       } else {
-        setMensaje(mensajeErrorApi(res.error, 'No se pudo asignar el responsable.'));
+        showToast(mensajeErrorApi(res.error, 'No se pudo asignar el responsable.'), 'error');
       }
     } catch (e) {
-      setMensaje(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+      showToast(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.', 'error');
     } finally {
       setAsignando(false);
     }
@@ -297,22 +295,20 @@ export default function ReportesMovilPage() {
 
   const handleComentar = async (): Promise<void> => {
     if (!detalle || !comentarioTexto.trim()) {
-      setMensaje('Escribe el comentario antes de publicar.');
+      showToast('Escribe el comentario antes de publicar.', 'error');
       return;
     }
     setComentando(true);
-    setMensaje(null);
     try {
       const res = await reportesCampoApi.comentar(detalle.reporte.id, comentarioTexto.trim());
       if (res.success) {
         setComentarioTexto('');
-        setMensaje('Comentario publicado.');
         await refetchDetalle(detalle.reporte.id);
       } else {
-        setMensaje(mensajeErrorApi(res.error, 'No se pudo publicar el comentario.'));
+        showToast(mensajeErrorApi(res.error, 'No se pudo publicar el comentario.'), 'error');
       }
     } catch (e) {
-      setMensaje(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+      showToast(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.', 'error');
     } finally {
       setComentando(false);
     }
@@ -322,23 +318,22 @@ export default function ReportesMovilPage() {
   const handleAdjuntar = async (file: File): Promise<void> => {
     if (!detalle) return;
     if (!file.type.startsWith('image/')) {
-      setMensaje('El archivo debe ser una imagen.');
+      showToast('El archivo debe ser una imagen.', 'error');
       return;
     }
     setAdjuntando(true);
-    setMensaje(null);
     try {
       const webp = await convertirAWebp(file);
       if (!webp) {
-        setMensaje('No se pudo procesar la imagen (formato no soportado por el navegador).');
+        showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
         return;
       }
       if (webp.tamano > MAX_TAMANO_IMAGEN) {
-        setMensaje('La imagen excede el máximo de 2 MB.');
+        showToast('La imagen excede el máximo de 2 MB.', 'error');
         return;
       }
       if (detalle.adjuntos.length >= MAX_IMAGENES) {
-        setMensaje(`Máximo ${MAX_IMAGENES} imágenes por incidente.`);
+        showToast(`Máximo ${MAX_IMAGENES} imágenes por incidente.`, 'error');
         return;
       }
       const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
@@ -347,13 +342,13 @@ export default function ReportesMovilPage() {
         datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
       });
       if (res.success) {
-        setMensaje('Imagen adjuntada exitosamente.');
+        showToast('Imagen adjuntada exitosamente.', 'success');
         await refetchDetalle(detalle.reporte.id);
       } else {
-        setMensaje(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'));
+        showToast(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'), 'error');
       }
     } catch (e) {
-      setMensaje(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+      showToast(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.', 'error');
     } finally {
       setAdjuntando(false);
     }
@@ -362,20 +357,19 @@ export default function ReportesMovilPage() {
   const cambiarEstado = async (estado: 'EN_CURSO' | 'CERRADO'): Promise<void> => {
     if (!detalle) return;
     setCambiandoEstado(true);
-    setMensaje(null);
     try {
       const res = await reportesCampoApi.cambiarEstado(detalle.reporte.id, estado);
       if (res.success) {
         setDetalle({ ...detalle, reporte: res.data });
-        setMensaje(`Reporte ${res.data.estado}.`);
+        showToast(`Reporte ${res.data.estado}.`, 'success');
         setRefrescando(true);
         await recargar(1);
         await cargarStats();
       } else {
-        setMensaje(mensajeErrorApi(res.error, 'No se pudo cambiar el estado.'));
+        showToast(mensajeErrorApi(res.error, 'No se pudo cambiar el estado.'), 'error');
       }
     } catch (e) {
-      setMensaje(e instanceof Error ? e.message : 'No se pudo cambiar el estado.');
+      showToast(e instanceof Error ? e.message : 'No se pudo cambiar el estado.', 'error');
     } finally {
       setCambiandoEstado(false);
     }
@@ -514,12 +508,6 @@ export default function ReportesMovilPage() {
             void recargar(p);
           }}
         />
-      )}
-
-      {mensaje && (
-        <p className="text-sm text-ui-600 px-1" role="status">
-          {mensaje}
-        </p>
       )}
 
       {/* Detalle del reporte (conexión requerida para las acciones) */}

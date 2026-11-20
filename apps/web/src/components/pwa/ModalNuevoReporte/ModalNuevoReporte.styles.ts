@@ -19,5 +19,4 @@ export const modalNuevoReporteClasses = {
   imagenImg: 'h-20 w-full object-cover',
   quitar:
     'absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600',
-  errorGeneral: 'text-sm text-red-600 dark:text-red-400',
 };

@@ -22,6 +22,7 @@ import {
   type PrioridadReporteApi,
 } from '@/lib/api';
 import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
+import { useToast } from '@/components/layout/Toast';
 import {
   encolar,
   type AdjuntoPendiente,
@@ -78,6 +79,7 @@ export function ModalNuevoReporte({
   torreUsuario,
   onEncolado,
 }: ModalNuevoReporteProps) {
+  const { showToast } = useToast();
   const [subcategorias, setSubcategorias] = useState<{ id: string; nombre: string; categoria: string }[]>([]);
   const [proyectos, setProyectos] = useState<{ id: string; nombre: string }[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
@@ -91,7 +93,6 @@ export function ModalNuevoReporte({
   const [imagenes, setImagenes] = useState<ImagenAlta[]>([]);
 
   const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   /** Guardado en la cola pero sin ACK: el operario no debe capturar dos veces. */
   const [pendiente, setPendiente] = useState(false);
 
@@ -103,7 +104,6 @@ export function ModalNuevoReporte({
     setPrioridad('');
     setDescripcion('');
     setImagenes([]);
-    setError(null);
     setPendiente(false);
   };
 
@@ -148,20 +148,20 @@ export function ModalNuevoReporte({
   /** Imagen del alta: convierte a WebP y apila (límites idénticos al escritorio). */
   const agregarImagen = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      setError('El archivo debe ser una imagen.');
+      showToast('El archivo debe ser una imagen.', 'error');
       return;
     }
     const webp = await convertirAWebp(file);
     if (!webp) {
-      setError('No se pudo procesar la imagen (formato no soportado por el navegador).');
+      showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
       return;
     }
     if (webp.tamano > MAX_TAMANO_IMAGEN) {
-      setError('La imagen excede el máximo de 2 MB.');
+      showToast('La imagen excede el máximo de 2 MB.', 'error');
       return;
     }
     if (imagenes.length >= MAX_IMAGENES) {
-      setError(`Máximo ${MAX_IMAGENES} imágenes por incidente.`);
+      showToast(`Máximo ${MAX_IMAGENES} imágenes por incidente.`, 'error');
       return;
     }
     setImagenes((prev) => [
@@ -180,20 +180,19 @@ export function ModalNuevoReporte({
   const enviar = async () => {
     // Validaciones idénticas al escritorio
     if (!area) {
-      setError('Selecciona el área a la que se envía el incidente.');
+      showToast('Selecciona el área a la que se envía el incidente.', 'error');
       return;
     }
     if (ubicacionModo === 'proyecto' && !proyectoId) {
-      setError('Selecciona el proyecto en proceso para la ubicación.');
+      showToast('Selecciona el proyecto en proceso para la ubicación.', 'error');
       return;
     }
     if (!descripcion.trim()) {
-      setError('La descripción del reporte es obligatoria.');
+      showToast('La descripción del reporte es obligatoria.', 'error');
       return;
     }
 
     setEnviando(true);
-    setError(null);
 
     // Ubicación: proyecto o GPS (captura al guardar — misma secuencia del escritorio)
     let ubicacion: Partial<{ proyectoId: string; latitud: number; longitud: number }> = {};
@@ -201,7 +200,7 @@ export function ModalNuevoReporte({
       ubicacion = { proyectoId };
     } else if (ubicacionModo === 'gps') {
       if (!window.isSecureContext || !('geolocation' in navigator)) {
-        setError('Tu navegador bloquea el GPS fuera de HTTPS. Usa localhost, activa el HTTPS (requisito del PWA) o elige el modo "Proyecto".');
+        showToast('Tu navegador bloquea el GPS fuera de HTTPS. Usa localhost, activa el HTTPS (requisito del PWA) o elige el modo "Proyecto".', 'error');
         setEnviando(false);
         return;
       }
@@ -213,7 +212,7 @@ export function ModalNuevoReporte({
         }),
       );
       if (!coords) {
-        setError('No se pudo capturar tu ubicación (señal débil o permiso denegado). Reintenta, activa el GPS del dispositivo o marca "Proyecto".');
+        showToast('No se pudo capturar tu ubicación (señal débil o permiso denegado). Reintenta, activa el GPS del dispositivo o marca "Proyecto".', 'error');
         setEnviando(false);
         return;
       }
@@ -243,12 +242,14 @@ export function ModalNuevoReporte({
       const enviados = await sincronizarAhora();
       onEncolado?.();
       if (enviados > 0) {
+        showToast('Incidente registrado exitosamente.', 'success'); // paridad del escritorio
         cerrar(); // ACK: fotos ya adjuntadas por el sincronizador
       } else {
+        showToast('Tu reporte quedó guardado en este teléfono y se enviará solo.', 'info');
         setPendiente(true); // sin señal o conflicto: el estado lo muestra EstadoCola
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar el reporte. Revisa tu señal.');
+      showToast(e instanceof Error ? e.message : 'No se pudo guardar el reporte. Revisa tu señal.', 'error');
     } finally {
       setEnviando(false);
     }
@@ -430,8 +431,6 @@ export function ModalNuevoReporte({
               </div>
             )}
           </FormField>
-
-          {error && <p className={c.errorGeneral} role="alert">{error}</p>}
         </>
       )}
     </FormModal>

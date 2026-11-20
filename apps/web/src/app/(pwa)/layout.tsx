@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
+import { ToastProvider } from "@/components/layout/Toast";
 import { RoleNav } from "@/components/pwa/RoleNav";
 import ModalInstalar from "@/components/pwa/ModalInstalar";
 import { estaInstaladaEnDispositivo } from "@/lib/pwa/instalar";
@@ -140,7 +141,8 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     .join("");
 
   return (
-    <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
+    <ToastProvider>
+      <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
       {/* Header del shell — mismo look que el Topbar del escritorio.
           El bloque avatar+nombre+rol abre el perfil (todos los roles). */}
       <header className="bg-surface border-b border-ui-200 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-3 sticky top-0 z-30">
@@ -194,6 +196,7 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
       {/* Instalación: modal propio en cada acceso si no está instalada */}
       {!instalada && <ModalInstalar onCerrar={() => setInstalada(true)} />}
-    </div>
+      </div>
+    </ToastProvider>
   );
 }
