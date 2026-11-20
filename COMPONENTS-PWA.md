@@ -163,6 +163,11 @@ import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
 | `accion` | `{ etiqueta, onClick, ocupado? }` | `undefined` | Acción principal del rol (ej. Aceptar); sin ella solo se ve Ver |
 | `onUbicacion` | `() => void` | `undefined` | Botón «Ubicación» (MapPin): el padre decide obra → modal de domicilio / GPS → Google Maps. Proveerla SOLO si el reporte tiene dónde ver |
 
+**Meta:** la línea inferior muestra `categoría · persona · hace 2 h` con
+**tiempo relativo es-MX** (`haceTiempo()` de `lib/formatters.ts`, que
+interpreta fecha+hora en la zona del .env) — la fecha exacta vive en el
+detalle.
+
 **Cuando USAR:** listados de reportes en vistas `/m/*`. **Cuando NO:** en
 el escritorio (usa la DataTable de `/reportes`) ni para otras entidades.
 

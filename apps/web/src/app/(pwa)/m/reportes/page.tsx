@@ -10,7 +10,7 @@
  * editar leen la vista de escritorio `/reportes` (permiso ya existente).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, FolderOpen, ImageOff, ImagePlus, Loader2, Plus } from 'lucide-react';
+import { AlertTriangle, FolderOpen, ImageOff, ImagePlus, Loader2, Plus, Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
 import {
@@ -56,10 +56,11 @@ function subtituloDelRol(nombreRol: string | undefined): string {
 interface StatsMini {
   nuevos: number | null;
   enCurso: number | null;
+  cerrados: number | null;
   criticos: number | null;
 }
 
-const STATS_CARGANDO: StatsMini = { nuevos: null, enCurso: null, criticos: null };
+const STATS_CARGANDO: StatsMini = { nuevos: null, enCurso: null, cerrados: null, criticos: null };
 
 export default function ReportesMovilPage() {
   const { user } = useAuth();
@@ -142,12 +143,13 @@ export default function ReportesMovilPage() {
         setStats({
           nuevos: res.data.nuevos,
           enCurso: res.data.enCurso,
+          cerrados: res.data.cerrados,
           criticos: res.data.criticosActivos,
         });
       }
     } catch {
       // Stats informativas: si fallan, quedan en 0 (ya no se ve como "cargando")
-      setStats({ nuevos: 0, enCurso: 0, criticos: 0 });
+      setStats({ nuevos: 0, enCurso: 0, cerrados: 0, criticos: 0 });
     }
   }, []);
 
@@ -436,34 +438,43 @@ export default function ReportesMovilPage() {
       )}
 
       {/* Búsqueda + chips de estado */}
-      <Input
-        type="search"
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        placeholder="Buscar por folio, persona o texto..."
-        aria-label="Buscar reportes"
-      />
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ui-400 pointer-events-none" aria-hidden />
+        <Input
+          type="search"
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar por folio, persona o texto..."
+          aria-label="Buscar reportes"
+          className="pl-9"
+        />
+      </div>
       <div
         className="flex items-center gap-2 overflow-x-auto scrollbar-none"
         role="group"
         aria-label="Filtrar por estado"
       >
-        {FILTROS.map((f) => (
-          <button
-            key={f.valor || 'todos'}
-            type="button"
-            onClick={() => setFiltro(f.valor)}
-            aria-pressed={filtro === f.valor}
-            className={cn(
-              'shrink-0 min-h-[44px] px-4 rounded-full text-sm font-bold border transition-colors',
-              filtro === f.valor
-                ? 'bg-primary text-white border-primary'
-                : 'bg-surface text-ui-600 border-ui-200',
-            )}
-          >
-            {f.etiqueta}
-          </button>
-        ))}
+        {FILTROS.map((f) => {
+          const conteo =
+            f.valor === 'NUEVO' ? stats.nuevos : f.valor === 'EN_CURSO' ? stats.enCurso : f.valor === 'CERRADO' ? stats.cerrados : null;
+          return (
+            <button
+              key={f.valor || 'todos'}
+              type="button"
+              onClick={() => setFiltro(f.valor)}
+              aria-pressed={filtro === f.valor}
+              className={cn(
+                'shrink-0 min-h-[44px] px-4 rounded-full text-sm font-bold border transition-colors',
+                filtro === f.valor
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-surface text-ui-600 border-ui-200',
+              )}
+            >
+              {f.etiqueta}
+              {f.valor && conteo != null && <span className="ml-1.5 opacity-80">{conteo}</span>}
+            </button>
+          );
+        })}
       </div>
       </div>
 

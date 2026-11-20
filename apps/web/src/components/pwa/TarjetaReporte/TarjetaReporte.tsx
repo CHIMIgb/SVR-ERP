@@ -13,6 +13,7 @@ import { Eye, MapPin } from 'lucide-react';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { tarjetaReporteClasses } from './TarjetaReporte.styles';
+import { haceTiempo } from '@/lib/formatters';
 import type { ReporteCampoDTO } from '@/lib/api';
 
 const VARIANTE_ESTADO: Record<string, BadgeVariant> = {
@@ -36,12 +37,6 @@ export interface TarjetaReporteProps {
   /** Ubicación: obra → domicilio (modal); GPS → Google Maps. El padre la
    *  provee SOLO si el reporte tiene dónde ver (proyecto o coordenadas). */
   onUbicacion?: () => void;
-}
-
-/** Fecha corta dd/mm — string puro de la BD (columna date), sin zona horaria. */
-function fechaCorta(iso: string): string {
-  const d = iso.slice(0, 10);
-  return d.length === 10 ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d;
 }
 
 export function TarjetaReporte({ reporte, accion, onVer, onUbicacion }: TarjetaReporteProps) {
@@ -71,9 +66,7 @@ export function TarjetaReporte({ reporte, accion, onVer, onUbicacion }: TarjetaR
         <span aria-hidden>·</span>
         <span>{reporte.usuario}</span>
         <span aria-hidden>·</span>
-        <span>
-          {fechaCorta(reporte.fecha)} {reporte.hora?.slice(0, 5)}
-        </span>
+        <span>{haceTiempo(reporte.fecha, reporte.hora)}</span>
       </p>
 
       <div className={c.acciones}>
