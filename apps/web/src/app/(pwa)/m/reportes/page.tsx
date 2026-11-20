@@ -438,17 +438,14 @@ export default function ReportesMovilPage() {
       )}
 
       {/* Búsqueda + chips de estado */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ui-400 pointer-events-none" aria-hidden />
-        <Input
-          type="search"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por folio, persona o texto..."
-          aria-label="Buscar reportes"
-          className="pl-9"
-        />
-      </div>
+      <Input
+        type="search"
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar por folio, persona o texto..."
+        aria-label="Buscar reportes"
+        icon={<Search className="w-4 h-4" aria-hidden />}
+      />
       <div
         className="flex items-center gap-2 overflow-x-auto scrollbar-none"
         role="group"
