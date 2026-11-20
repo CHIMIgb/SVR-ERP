@@ -114,7 +114,7 @@ La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/
 Reglas duras al construir vistas móviles (aplican igual que las de escritorio, con estos matices):
 
 1. **Diseño "acción primero"** (spec del cliente): tarjetas grandes con 2-3 datos y UNA acción principal por pantalla. PROHIBIDO apretar tablas del desktop en el teléfono — cada módulo móvil es una vista nueva, no un responsive.
-2. **REUSA el kit existente primero** (`src/components/ui/*`: Input, Modal/FormModal, Badge, Skeleton, Button, StatsCard, EmptyState, Pagination…). Solo crea componentes NUEVOS en `src/components/pwa/*` cuando no exista equivalente — y **documéntalos en `COMPONENTS.md`** (props, import/uso, cuándo usar / cuándo no) igual que los del kit. No negociable.
+2. **REUSA el kit existente primero** (`src/components/ui/*`: Input, Modal/FormModal, Badge, Skeleton, Button, StatsCard, EmptyState, Pagination…). Solo crea componentes NUEVOS en `src/components/pwa/*` cuando no exista equivalente — y **documéntalos en `COMPONENTS-PWA.md`** (props, import/uso, cuándo usar / cuándo no) igual que los del kit. No negociable.
 3. **Navegación inferior por rol** construida desde `user.vistas` (`lib/pwa/rol-nav.ts`) — PROHIBIDO hardcodear el menú por rol dentro de cada pantalla.
 4. **Objetivos táctiles ≥ 44px de alto** en botones/acciones (dedos con guantes) y respeto de safe-areas (`env(safe-area-inset-*)`) en header/nav inferior.
 5. Sin CSS inline (regla global), tokens `@theme` de `globals.css`, clases de componente en `*.styles.ts` — las mismas reglas de estilos del desktop aplican.
@@ -152,6 +152,7 @@ o elimina sin autorización explícita.
 - **ALL COMPONENTS MUST BE RESPONSIVE:** Every UI component (existing and future) MUST be responsive. Use Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`) for layouts, flex direction changes, grid adjustments, and text sizing. Tables must scroll horizontally on mobile. Modals must adapt to small screens. Forms stack on mobile. This is the #1 rule — no exceptions.
 - **NO DUPLICATE KEYS:** Before writing any `.map()` over arrays that render JSX, ALWAYS verify there are no duplicate `key` values. Duplicated keys cause React console errors and broken rendering. Use unique identifiers (IDs, unique names, or index + prefix if no unique data exists). Run `npx tsc --noEmit` after changes to catch issues.
 - **DOCUMENT EVERYTHING:** Every UI component created in `src/components/ui/` MUST be documented in `COMPONENTS.md` with: Props table, Import example, Usage example, "When to use" and "When NOT to use" sections. This is non-negotiable.
+- **DOCUMENT PWA COMPONENTS:** Every component created in `src/components/pwa/` MUST be documented in `COMPONENTS-PWA.md` with the same sections (Props table, Import, Usage, "When to use" / "When NOT to use") in the SAME change. This is non-negotiable.
 - **NUEVA VISTA = PLANTILLA `/inventario`:** Toda vista nueva se construye tomando la vista `/inventario` como base (PageHeader, StatsCards, SearchBar + filtros, DataTable con acciones por RBAC, Pagination, FormModal). Nunca se construye una vista CRUD desde cero.
 - **PLAN ANTES DE CÓDIGO (obligatorio):** Para cada cambio o cosa nueva, SIEMPRE presentar primero un plan de implementación (qué archivos se tocarán, qué harás, impacto) y esperar la autorización del usuario. **Nunca se crea ni se modifica código sin autorización previa.**
 - **TESTS REALES OBLIGATORIOS en vistas/edges de datos:** Toda vista nueva o modificación debe llevar: pruebas de unicidad (índices únicos / duplicados por carrera), pruebas de integración contra la BD real (PostgreSQL, `npm run test:integration`) que inserten registros reales, y tests específicos para la tabla `registro_auditoria` (SUCCESS/FAIL + error_code) también con inserciones reales. Los mocks unitarios no bastan para estos 3 tipos.
@@ -837,10 +838,12 @@ sensatos, `className` para extender, `children` para composición. Rechazar prop
 que solo cambian un color —para eso existe `variant`. Si el componente necesita
 saber de RBAC o de la API, no es un componente de UI.
 
-**Documentación no negociable:** en `COMPONENTS.md`, tabla de props, import,
-ejemplo de uso, «cuándo usar» y **«cuándo NO usar»**. Ese último apartado es el
-que evita que `Skeleton` se use para un spinner de KPI o que `ModalFooter` se
-invente a mano. Un componente sin documentación es deuda desde el día 1.
+**Documentación no negociable:** en `COMPONENTS.md` (kit `src/components/ui/*`,
+compartido escritorio+PWA) o en `COMPONENTS-PWA.md` (componentes de
+`src/components/pwa/*`), tabla de props, import, ejemplo de uso, «cuándo
+usar» y **«cuándo NO usar»**. Ese último apartado es el que evita que
+`Skeleton` se use para un spinner de KPI o que `ModalFooter` se invente a
+mano. Un componente sin documentación es deuda desde el día 1.
 
 **Compatibilidad:** cambiar una prop compartida rompe escritorio y PWA a la vez.
 Antes, `grep` de todos los callers; después, smoke en una vista de cada app y
