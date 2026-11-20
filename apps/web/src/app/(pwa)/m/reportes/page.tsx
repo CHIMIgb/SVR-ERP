@@ -10,7 +10,7 @@
  * editar leen la vista de escritorio `/reportes` (permiso ya existente).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ImageOff, ImagePlus, Loader2, Plus } from 'lucide-react';
+import { AlertTriangle, FolderOpen, ImageOff, ImagePlus, Loader2, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   mensajeErrorApi,
@@ -529,19 +529,35 @@ export default function ReportesMovilPage() {
                     Imágenes ({detalle.adjuntos.length}/{MAX_IMAGENES})
                   </p>
                   {puedeEditar && !esResidente && detalle.reporte.estado !== 'Cerrado' && (
-                    <label className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          e.target.value = '';
-                          if (file) void handleAdjuntar(file);
-                        }}
-                      />
-                      {adjuntando ? 'Subiendo...' : <><ImagePlus className="w-3.5 h-3.5" aria-hidden /> Agregar imagen</>}
-                    </label>
+                    <div className="flex gap-4 flex-wrap mt-2">
+                      <label className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) void handleAdjuntar(file);
+                          }}
+                        />
+                        {adjuntando ? 'Subiendo...' : <><ImagePlus className="w-3.5 h-3.5" aria-hidden /> Tomar foto</>}
+                      </label>
+                      <label className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) void handleAdjuntar(file);
+                          }}
+                        />
+                        <FolderOpen className="w-3.5 h-3.5" aria-hidden /> Galería
+                      </label>
+                    </div>
                   )}
                   {detalle.adjuntos.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2 mt-2">

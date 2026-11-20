@@ -11,7 +11,7 @@
  * `subcategoriaId` solo si no es misma área, `proyectoId` o lat/long.
  */
 import { useEffect, useState } from 'react';
-import { ImagePlus, X } from 'lucide-react';
+import { FolderOpen, ImagePlus, X } from 'lucide-react';
 import { FormModal } from '@/components/ui/Modal';
 import { FormField } from '@/components/ui/FormField';
 import { Select } from '@/components/ui/Select';
@@ -380,20 +380,37 @@ export function ModalNuevoReporte({
           </FormField>
 
           <FormField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una.`}>
-            <label className={c.agregar}>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (file) void agregarImagen(file);
-                }}
-              />
-              <ImagePlus className="w-3.5 h-3.5" aria-hidden />
-              Agregar imagen
-            </label>
+            <div className="flex gap-4 flex-wrap">
+              <label className={c.agregar}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) void agregarImagen(file);
+                  }}
+                />
+                <ImagePlus className="w-3.5 h-3.5" aria-hidden />
+                Tomar foto
+              </label>
+              <label className={c.agregar}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) void agregarImagen(file);
+                  }}
+                />
+                <FolderOpen className="w-3.5 h-3.5" aria-hidden />
+                Galería
+              </label>
+            </div>
             {imagenes.length > 0 && (
               <div className={c.gridImagenes}>
                 {imagenes.map((img) => (
