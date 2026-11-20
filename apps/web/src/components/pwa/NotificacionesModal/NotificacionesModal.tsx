@@ -10,10 +10,13 @@
  * `referenciaTipo`/`referenciaId`).
  */
 import { Bell, CheckCheck, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { useToast } from '@/components/layout/Toast';
 import { useNotifications } from '@/components/layout/NotificationContext';
+import { activarPush, estadoPush, type EstadoPush } from '@/lib/pwa/push';
 import { notificacionesModalClasses as c } from './NotificacionesModal.styles';
 
 export interface NotificacionesModalProps {
@@ -23,10 +26,64 @@ export interface NotificacionesModalProps {
 
 export function NotificacionesModal({ abierto, onCerrar }: NotificacionesModalProps) {
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotifications } = useNotifications();
+  const { showToast } = useToast();
+  const [pushEstado, setPushEstado] = useState<EstadoPush | null>(null);
+  const [activando, setActivando] = useState(false);
+
+  useEffect(() => {
+    if (!abierto) return;
+    let vivo = true;
+    void estadoPush().then((e) => {
+      if (vivo) setPushEstado(e);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [abierto]);
+
+  const activar = async () => {
+    setActivando(true);
+    const r = await activarPush();
+    setActivando(false);
+    showToast(r.mensaje, r.ok ? 'success' : 'error');
+    if (r.ok) void estadoPush().then((e) => setPushEstado(e));
+  };
 
   return (
     <Modal open={abierto} onClose={onCerrar} size="md">
       <ModalBody>
+        {/* Banner de activación del push — los 4 estados del permiso */}
+        {pushEstado?.estado === 'por-activar' && (
+          <div className={c.banner}>
+            <div className="min-w-0">
+              <p className={c.bannerTitulo}>Activa las notificaciones del teléfono</p>
+              <p className={c.bannerTexto}>Llegan aunque tengas la app cerrada.</p>
+            </div>
+            <Button variant="primary" size="md" loading={activando} onClick={() => void activar()} className="min-h-[44px] shrink-0">
+              Activar
+            </Button>
+          </div>
+        )}
+        {pushEstado?.estado === 'bloqueadas' && (
+          <div className={c.banner}>
+            <p className={c.bannerTexto}>
+              Notificaciones bloqueadas — habilítalas en los ajustes del navegador (sitio → notificaciones).
+            </p>
+          </div>
+        )}
+        {pushEstado?.estado === 'no-soportado' && (
+          <div className={c.banner}>
+            <p className={c.bannerTexto}>
+              Las notificaciones del sistema requieren la app instalada en el teléfono.
+            </p>
+          </div>
+        )}
+        {pushEstado?.estado === 'activadas' && (
+          <div className={c.banner}>
+            <p className={c.bannerTexto}>Notificaciones del teléfono activadas ✓</p>
+          </div>
+        )}
+
         {/* Encabezado — igual que el Centro de Alertas del escritorio */}
         <div className={c.header}>
           <div className="min-w-0">

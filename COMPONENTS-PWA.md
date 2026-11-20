@@ -234,9 +234,14 @@ Diseño paritario con el «Centro de Alertas» del escritorio (Topbar):
 encabezado con «Centro de Alertas / N no leídas» + acciones de ícono
 (`CheckCheck` = marcar todas leídas, `Trash2` = vaciar/descartar), estado
 vacío con campana grande, y lista con badge de tipo (Alerta/Info) y
-destacado de no leídas. Tap en un item lo marca leído. La navegación al
-reporte referenciado queda como mejora (el provider compartido aún no expone
-`referenciaTipo`/`referenciaId`).
+destacado de no leídas. Tap en un item lo marca leído.
+
+**Banner de activación del push** (parte superior, 4 estados de
+`estadoPush()` de `lib/pwa/push.ts`): `por-activar` → botón «Activar» (el
+GESTO que pide el permiso y suscribe el dispositivo vía VAPID);
+`activadas` → confirmación; `bloqueadas` → instrucción de desbloqueo del
+navegador; `no-soportado` → «requiere la app instalada»; `sin-sw` (dev) →
+no muestra banner (el SW no corre en dev — push solo en producción).
 
 **Archivos:**
 - `src/components/pwa/NotificacionesModal/NotificacionesModal.tsx` (+ `.styles.ts`, `index.ts`)

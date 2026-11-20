@@ -11,6 +11,9 @@ export const notificacionesModalClasses = {
   vacio: 'py-10 flex flex-col items-center gap-2',
   vacioIcono: 'w-12 h-12 text-ui-300',
   vacioTexto: 'text-sm text-ui-400 font-medium',
+  banner: 'bg-ui-50 dark:bg-ui-900/40 border border-ui-200 rounded-xl p-3 flex items-center justify-between gap-2 mb-3',
+  bannerTitulo: 'text-xs font-black text-ui-900',
+  bannerTexto: 'text-xs text-ui-600 break-words',
   item:
     'w-full text-left rounded-xl border border-ui-200 p-3 hover:bg-ui-50 transition-colors cursor-pointer',
   itemNoLeida: 'bg-primary/5 border-primary/30',

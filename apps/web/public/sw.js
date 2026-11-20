@@ -22,7 +22,6 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return; // los POST van directo (la cola es IndexedDB)
-
   // estáticos de Next: cache-first (inmutables, con hash)
   if (req.url.includes("/_next/static/")) {
     event.respondWith(
@@ -50,5 +49,49 @@ self.addEventListener("fetch", (event) => {
         return res;
       })
       .catch(() => caches.match(req).then((cached) => cached || Promise.reject("offline"))),
+  );
+});
+
+/* WEB PUSH (fase c del plan de push): la notificación llega con la app
+   CERRADA, como la de cualquier app del teléfono. El payload lo envía el
+   API (NotificacionesService.emitir → web-push). */
+self.addEventListener("push", (event) => {
+  let datos = { titulo: "SVR-ERP", cuerpo: "Tienes una notificación nueva", referenciaTipo: null };
+  try {
+    const payload = event.data ? event.data.json() : {};
+    datos = {
+      titulo: payload.titulo || datos.titulo,
+      cuerpo: payload.cuerpo || datos.cuerpo,
+      referenciaTipo: payload.referenciaTipo ?? null,
+    };
+  } catch {
+    // payload no-JSON: se usa el fallback de arriba
+  }
+  event.waitUntil(
+    self.registration.showNotification(datos.titulo, {
+      body: datos.cuerpo,
+      icon: "/icons/pwa-192.png",
+      badge: "/icons/pwa-192.png",
+      data: { referenciaTipo: datos.referenciaTipo },
+    }),
+  );
+});
+
+/* Al tocar la notificación: enfoca la app abierta o la abre en la sección
+   correspondiente (deep-link fino por referencia queda como mejora). */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destino =
+    event.notification.data?.referenciaTipo === "reportes_campo" ? "/m/reportes" : "/m";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((lista) => {
+      for (const cliente of lista) {
+        if (cliente.url.includes("/m")) {
+          cliente.focus();
+          return cliente.navigate(destino);
+        }
+      }
+      return self.clients.openWindow(destino);
+    }),
   );
 });

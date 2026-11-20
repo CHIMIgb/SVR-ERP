@@ -2653,6 +2653,17 @@ export const notificacionesApi = {
   /** Basura del centro: descarta todas (desaparecen y no vuelven; quedan en BD). */
   descartarTodas: () =>
     apiClient.patch<{ message: string; descartadas: number }>('/notificaciones/descartar-todas', {}),
+
+  /** Clave pública VAPID para suscribir el dispositivo (fase c del push). */
+  vapidPublica: () =>
+    apiClient.get<{ clavePublica: string | null }>('/notificaciones/push-vapid-publica'),
+
+  /** Registra la suscripción Web Push del dispositivo (fase a: upsert por endpoint). */
+  suscribirPush: (data: { endpoint: string; llaves: { p256dh: string; auth: string } }) =>
+    apiClient.post<{ message: string; suscripcion: { id: string; endpoint: string } }>(
+      '/notificaciones/push-suscripcion',
+      data,
+    ),
 };
 
 // ────────────────────────────────────────────────────────────

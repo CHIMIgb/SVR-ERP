@@ -1,7 +1,10 @@
 # Plan — Notificaciones PUSH en la PWA (Web Push, «como cualquier app del teléfono»)
 
 **Fecha:** 2026-11-20
-**Estado:** plan por fases — NO se escribió código para estas fases (solo el rediseño del centro in-app, commit hermano).
+**Estado:** fases a y b IMPLEMENTADAS (commits `9f442bf6`, `cc34cae6`,
+`54a04b17`, `1a79c670`); fase c implementada (commit de rediseño + banner +
+suscripción — ver `historial-cambios/` de 2026-11-20). **Pendiente: smoke en
+dispositivos.**
 **Alcance:** notificaciones que llegan con la app CERRADA como notificaciones del sistema, vía **Web Push** (el estándar de PWAs).
 
 ## Por qué Web Push (y no la alternativa fácil)
