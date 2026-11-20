@@ -415,6 +415,14 @@ al dominio — nunca se construye una vista CRUD desde cero:
 
 Referencias vivas: `/inventario` (con API), `/criba` y `/proyectos`.
 
+### Notificaciones — catálogo obligatorio (`notificaciones/catalogo.ts`)
+
+- Toda emisión de notificación usa `construirAlerta(ALERTAS.X, contexto, referenciaId, creadoPor)` del catálogo — **PROHIBIDO escribir `titulo`/`cuerpo` inline** en los services. El texto vive en el catálogo, no en el punto de emisión.
+- Una alerta nueva nace en `catalogo.ts`: definición (`clave` única, tipo, textos como funciones del contexto, `referenciaTipo`) + su fila en la tabla del encabezado (que es el inventario de alertas existentes).
+- Audiencia con los helpers (`emitirATorre`, `emitirARol`, `emitirAUsuario`, `emitirATrabajador`); `TipoNotificacion` NO se extiende — la semántica de dominio vive en la `clave`.
+- El filtro del buzón (`filtroDeBuzon`) excluye al actor y las filas «para todos» exigen las **tres** audiencias vacías — NO relajarlo (fuga de torres corregida 2026-11-20).
+- Flujo completo, reglas del buzón y paso a paso: README «Sistema de notificaciones y alertas».
+
 ## Testing — Mandatory Rule
 
 **EVERY NEW FUNCTION OR MODULE IMPLEMENTED MUST INCLUDE UNIT TESTS.**

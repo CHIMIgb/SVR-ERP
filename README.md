@@ -351,6 +351,24 @@ npm run test:integration  # Ejecutar tests de integración (requiere PostgreSQL)
 
 **Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Los tests de integración usan el sufijo `*.integration.spec.ts` y se ejecutan por separado. Ver `AGENTS.md` para las reglas completas de testing.
 
+### Sistema de notificaciones y alertas
+
+Flujo end-to-end:
+
+1. **Emisión (backend, best-effort):** cualquier service llama a `NotificacionesService` con la entrada construida por **`construirAlerta(ALERTAS.X, contexto, referenciaId, creadoPor)`** — `apps/api/src/notificaciones/catalogo.ts` es la **única fuente de textos** (prohibido escribirlos inline). Después se elige la audiencia con un helper: `emitirATorre` (área), `emitirARol` (rol por nombre), `emitirAUsuario` (personal) o `emitirATrabajador` (resuelve `trabajadores.usuario_id`). Si la emisión falla, solo se loggea — **jamás revierte la acción de negocio**.
+2. **Persistencia:** una fila por aviso en la tabla `notificaciones` con la audiencia en UNA de tres formas: `destinatario_user_id` (personal), `audiencia_torre` (área), `audiencia_rol_id` (rol), o las tres vacías = «para todos». `creado_por` guarda al actor (no recibe su propio aviso). El estado leído/descartado **por usuario** vive en `notificaciones_lecturas` — el buzón es un MERGE; la fila nunca se muta.
+3. **Buzón (API):** `GET /notificaciones` (permiso `sistema/notificaciones/ver`) responde `{items, noLeidas}` con `filtroDeBuzon`: le llega a alguien si (a) no la descartó, (b) no la disparó él, y (c) va dirigida a él: personal, **SU torre** (`users.torre`, la del puesto), sus roles activos, o filas «para todos» (las tres audiencias vacías — ver fuga corregida 2026-11-20).
+4. **Consumo (escritorio):** `NotificationProvider` hace **polling cada 60 s** (no hay websockets) con `GET /notificaciones?limit=50`; la campana del `Topbar` muestra el contador no leídas y la lista; marcar leída / descartar escribe en `notificaciones_lecturas`.
+5. **PWA:** pendiente — la campana del header aún no está conectada (no monta `NotificationProvider`), aunque el backend ya emite (reportes, nómina, proveedores, ventas).
+
+**Cómo crear una alerta nueva (paso a paso):**
+
+1. Agrega la definición a `ALERTAS` en `catalogo.ts`: `clave` única (la semántica de dominio vive aquí — el enum `TipoNotificacion` se queda con ALERTA/INFO/CORREO), textos como funciones del contexto (cada definición trunca su cuerpo), `referenciaTipo` — y su fila en la tabla del encabezado.
+2. Emite desde el service: `construirAlerta(ALERTAS.TU_CLAVE, contexto, id, userId)` + el helper de audiencia que corresponda.
+3. Test que aserte la llamada a `emitir*` (mock de `NotificacionesService`).
+
+El aviso aparece en el escritorio en ≤60 s. AGENTS.md trae la regla operativa (catálogo obligatorio).
+
 ### Base de Datos — Prisma
 
 ```bash
