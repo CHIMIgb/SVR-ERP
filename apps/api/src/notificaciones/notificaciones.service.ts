@@ -12,7 +12,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import * as webpush from 'web-push';
 import { configVapid } from './push.config';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
@@ -109,6 +108,10 @@ export class NotificacionesService {
       select: { endpoint: true, p256dh: true, auth: true },
     });
 
+    // IMPORT LAZY: `web-push` es CJS y Jest no puede parsearlo estático —
+    // cargado solo cuando realmente se envía (los tests lo mockean).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const webpush = (await import('web-push')) as any;
     webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
     let enviados = 0;
     let limpiadas = 0;
