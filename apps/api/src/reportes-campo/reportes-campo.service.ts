@@ -12,12 +12,12 @@ import {
   Prioridad,
   TipoReporteCampo,
   CategoriaReporte,
-  TipoNotificacion,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ALERTAS, construirAlerta } from '../notificaciones/catalogo';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
@@ -499,14 +499,19 @@ export class ReportesCampoService {
     // B5.10: aviso al CREADOR de que su reporte fue aceptado (y por quién).
     if (existente.usuario_id && existente.usuario_id !== userId) {
       const nombreAceptor = (await this.nombreDeUsuario(userId)) ?? nombre;
-      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `${nombreAceptor} aceptó tu reporte ${serialized.codigo ?? ''}`,
-        cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirAUsuario(
+        existente.usuario_id,
+        construirAlerta(
+          ALERTAS.REPORTE_ACEPTADO_AUTOR,
+          {
+            nombreAceptor,
+            codigo: serialized.codigo ?? null,
+            descripcion: serialized.descripcion ?? null,
+          },
+          id,
+          userId,
+        ),
+      );
     }
 
     return serialized;
@@ -660,14 +665,19 @@ export class ReportesCampoService {
     });
 
     // B5.10: aviso a TODA el área del reporte (torre destino).
-    await this.notificacionesService.emitirATorre(torre, {
-      tipo: TipoNotificacion.ALERTA,
-      titulo: `Nuevo reporte ${serialized.codigo ?? ''}`,
-      cuerpo: `${(dto.prioridad ? PRIORIDAD_LABELS[dto.prioridad] : undefined) ?? 'Reporte'} — ${dto.descripcion.slice(0, 140)}`,
-      referenciaTipo: 'reportes_campo',
-      referenciaId: reporte.id,
-      creadoPor: userId,
-    });
+    await this.notificacionesService.emitirATorre(
+      torre,
+      construirAlerta(
+        ALERTAS.REPORTE_NUEVO_TORRE,
+        {
+          codigo: serialized.codigo ?? null,
+          prioridadLabel: (dto.prioridad ? PRIORIDAD_LABELS[dto.prioridad] : undefined) ?? 'Reporte',
+          descripcion: dto.descripcion,
+        },
+        reporte.id,
+        userId,
+      ),
+    );
 
     return serialized;
   }
@@ -912,35 +922,42 @@ export class ReportesCampoService {
     // B5.10/B5.13: al (re)asignar se avisa al NUEVO asignado (si cambió y tiene
     // cuenta) y al ANTERIOR, a quien le quitaron el reporte.
     if (asignadoA && asignadoA !== existente.asignado_a_id) {
-      await this.notificacionesService.emitirATrabajador(asignadoA, {
-        tipo: TipoNotificacion.ALERTA,
-        titulo: `Te asignaron el reporte ${serialized.codigo ?? ''}`,
-        cuerpo: `${PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte'} — ${existente.descripcion.slice(0, 140)}`,
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirATrabajador(
+        asignadoA,
+        construirAlerta(
+          ALERTAS.REPORTE_ASIGNADO_TRABAJADOR,
+          {
+            codigo: serialized.codigo ?? null,
+            prioridadLabel: PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte',
+            descripcion: existente.descripcion,
+          },
+          id,
+          userId,
+        ),
+      );
     }
     if (existente.asignado_a_id && existente.asignado_a_id !== asignadoA) {
-      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `El reporte ${serialized.codigo ?? ''} fue reasignado a otra persona`,
-        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirATrabajador(
+        existente.asignado_a_id,
+        construirAlerta(
+          ALERTAS.REPORTE_REASIGNADO_EX_ANTERIOR,
+          { codigo: serialized.codigo ?? null, descripcion: existente.descripcion ?? null },
+          id,
+          userId,
+        ),
+      );
     } else if (!existente.asignado_a_id && existente.asignado_user_id && existente.asignado_user_id !== userId) {
       // Antes lo tenía asignado un USUARIO (lo aceptó por texto): se le avisa
       // que el reporte fue reasignado (a quien corresponda).
-      await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `El reporte ${serialized.codigo ?? ''} que aceptaste fue reasignado a otra persona`,
-        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirAUsuario(
+        existente.asignado_user_id,
+        construirAlerta(
+          ALERTAS.REPORTE_REASIGNADO_ACEPTADOR,
+          { codigo: serialized.codigo ?? null, descripcion: existente.descripcion ?? null },
+          id,
+          userId,
+        ),
+      );
     }
 
     return serialized;
@@ -1057,23 +1074,25 @@ export class ReportesCampoService {
     // defecto, el USUARIO responsable (quien aceptó); si no hay ninguno, nada.
     if (dto.estado === EstadoIncidente.CERRADO) {
       if (existente.asignado_a_id) {
-        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Cerraron el reporte ${serialized.codigo ?? ''} que tenías asignado`,
-          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirATrabajador(
+          existente.asignado_a_id,
+          construirAlerta(
+            ALERTAS.REPORTE_CERRADO_ASIGNADO,
+            { codigo: serialized.codigo ?? null, descripcion: serialized.descripcion ?? null },
+            id,
+            userId,
+          ),
+        );
       } else if (existente.asignado_user_id) {
-        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Cerraron tu reporte ${serialized.codigo ?? ''}`,
-          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirAUsuario(
+          existente.asignado_user_id,
+          construirAlerta(
+            ALERTAS.REPORTE_CERRADO_AUTOR,
+            { codigo: serialized.codigo ?? null, descripcion: serialized.descripcion ?? null },
+            id,
+            userId,
+          ),
+        );
       }
     }
 
@@ -1151,33 +1170,36 @@ export class ReportesCampoService {
     // publicó el asignado (u otro) → el creador.
     if (userId === existente.usuario_id && (existente.asignado_a_id || existente.asignado_user_id)) {
       if (existente.asignado_a_id) {
-        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
-          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirATrabajador(
+          existente.asignado_a_id,
+          construirAlerta(
+            ALERTAS.REPORTE_ACTIVIDAD,
+            { codigo: existente.codigo ?? null, nombreAutor, texto: dto.texto },
+            id,
+            userId,
+          ),
+        );
       } else {
-        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id!, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
-          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirAUsuario(
+          existente.asignado_user_id!,
+          construirAlerta(
+            ALERTAS.REPORTE_ACTIVIDAD,
+            { codigo: existente.codigo ?? null, nombreAutor, texto: dto.texto },
+            id,
+            userId,
+          ),
+        );
       }
     } else if (userId !== existente.usuario_id && existente.usuario_id) {
-      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `Nueva actividad en tu reporte ${existente.codigo ?? ''}`,
-        cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirAUsuario(
+        existente.usuario_id,
+        construirAlerta(
+          ALERTAS.REPORTE_ACTIVIDAD,
+          { codigo: existente.codigo ?? null, nombreAutor, texto: dto.texto },
+          id,
+          userId,
+        ),
+      );
     }
 
     return {
