@@ -42,6 +42,13 @@ describe('ReportesCampo Audit (Real DB)', () => {
 
   const createdIds: string[] = [];
 
+  /** Usuario demo por email (los helpers de los describes de abajo no alcanzan aquí). */
+  const buscarUsuarioDemo = async (email: string): Promise<{ id: string }> => {
+    const u = await prisma.users.findUnique({ where: { email }, select: { id: true } });
+    if (!u) throw new Error(`Usuario demo no encontrado: ${email}`);
+    return u as { id: string };
+  };
+
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -483,6 +490,87 @@ describe('ReportesCampo Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
       const fail = audits.find((a) => a.result === 'FAIL');
       expect(fail?.error_code).toBe('MIME_NO_PERMITIDO');
+    });
+
+    it('REGLA DEL AUTOR: el Trabajador (solo `crear`) adjunta a SU reporte Nuevo — SUCCESS real', async () => {
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+      const reporte = await service.create(createDto(), trabajador.id);
+      createdIds.push(reporte.id);
+
+      const adjunto = await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        () =>
+          service.adjuntar(
+            reporte.id,
+            { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+            trabajador.id,
+          ),
+      );
+      expect(adjunto.mime).toBe('image/png');
+
+      const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('REGLA DEL AUTOR: el Trabajador NO adjunta a reporte ajeno (ámbito lo corta: REPORTE_ACCESO_DENEGADO, FAIL real)', async () => {
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+      const reporteAjeno = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporteAjeno.id);
+
+      await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporteAjeno.id,
+              { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+              trabajador.id,
+            ),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporteAjeno.id, action: AuditAction.REPORTE_ADJUNTO, error_code: 'REPORTE_ACCESO_DENEGADO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
+      const adjuntos = await prisma.reportes_adjuntos.count({ where: { reporte_id: reporteAjeno.id } });
+      expect(adjuntos).toBe(0);
+    });
+
+    it('REGLA DEL AUTOR: en reporte EN_CURSO ya solo la torre (ADJUNTO_SOLO_AUTOR_NUEVO, FAIL real)', async () => {
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+      const reporte = await service.create(createDto(), trabajador.id);
+      createdIds.push(reporte.id);
+      // el autor pasa su reporte a En curso: deja de admitir adjuntos del autor
+      await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        async () => {
+          await service.cambiarEstado(reporte.id, { estado: EstadoIncidente.EN_CURSO }, trabajador.id);
+        },
+      );
+
+      await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+              trabajador.id,
+            ),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, action: AuditAction.REPORTE_ADJUNTO, error_code: 'ADJUNTO_SOLO_AUTOR_NUEVO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
     });
 
     it('corta en 4 adjuntos (LIMITE_ADJUNTOS, FAIL auditado)', async () => {

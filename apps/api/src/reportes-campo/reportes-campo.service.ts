@@ -257,6 +257,47 @@ export class ReportesCampoService {
   }
 
   /**
+   * Permisos reales del actor sobre reportes_campo (rol → role_permissions).
+   * La ruta de adjuntos NO usa PermissionsGuard: la regla del autor requiere
+   * OR(editar, crear-con-condiciones) y la decisión vive aquí, con FAIL
+   * auditado cuando se deniega.
+   */
+  private async permisosReportesDe(userId: string): Promise<{ crear: boolean; editar: boolean }> {
+    if (await this.esUsuarioAdmin(userId)) return { crear: true, editar: true };
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        users_roles_users_roles_user_idTousers: {
+          select: {
+            roles: {
+              select: {
+                role_permissions: {
+                  select: { permissions: { select: { modulo: true, recurso: true, accion: true } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const roles = user?.users_roles_users_roles_user_idTousers ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tiene = (accion: string) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      roles.some((ur: any) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ur.roles.role_permissions ?? []).some(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (rp: any) =>
+            rp.permissions.modulo === 'operaciones' &&
+            rp.permissions.recurso === 'reportes_campo' &&
+            rp.permissions.accion === accion,
+        ),
+      );
+    return { crear: tiene('crear'), editar: tiene('editar') };
+  }
+
+  /**
    * Ámbito de visibilidad: nivel 100 (Administrador) ve todo. Los Residentes ven
    * los suyos + los de SUS trabajadores (jefe_user_id). El resto solo los de su
    * torre (user.torre ?? torre del rol) — y sin torre (Trabajador) solo los suyos.
@@ -1196,6 +1237,24 @@ export class ReportesCampoService {
         ForbiddenException,
         'No tienes acceso a este incidente',
       );
+    }
+
+    // Regla de fotos (opción 2, 2026-11-20): quien tiene `editar` (la torre que
+    // atiende) sube imágenes a cualquier reporte de su ámbito; quien SOLO tiene
+    // `crear` (Trabajador/Cobrador) completa con fotos SU reporte mientras
+    // siga Nuevo — el operario fotografió su hallazgo al levantarlo.
+    const permisos = await this.permisosReportesDe(userId);
+    if (!permisos.editar) {
+      const esAutorPropio = existente.usuario_id === userId;
+      if (!permisos.crear || !esAutorPropio || (existente.estado as EstadoIncidente) !== EstadoIncidente.NUEVO) {
+        return this.fallir(
+          AuditAction.REPORTE_ADJUNTO,
+          id,
+          'ADJUNTO_SOLO_AUTOR_NUEVO',
+          ForbiddenException,
+          'Las imágenes las agrega la torre que atiende; el autor solo puede completar su reporte mientras siga Nuevo',
+        );
+      }
     }
 
     if (!MIMES_ADJUNTO.includes(dto.mime)) {

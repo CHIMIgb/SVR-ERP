@@ -763,12 +763,113 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
   describe('adjuntar (imágenes)', () => {
     const adjuntoBase = { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1 };
 
+    /** Actor con ambos permisos (enAmbito/esUsuarioAdmin/permisos leen el mismo mock). */
+    const usuarioConPermisos = {
+      users_roles_users_roles_user_idTousers: [
+        {
+          roles: {
+            nombre: 'Administrador',
+            nivel: 100,
+            torre: 'MECANICO',
+            role_permissions: [
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear' } },
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'editar' } },
+            ],
+          },
+        },
+      ],
+    };
+    /** Solo `crear` (Trabajador/Cobrador): la regla del autor. */
+    const usuarioSoloCrear = {
+      users_roles_users_roles_user_idTousers: [
+        {
+          roles: {
+            nombre: 'Trabajador',
+            nivel: 20,
+            torre: null,
+            role_permissions: [
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear' } },
+            ],
+          },
+        },
+      ],
+    };
+    const usuarioSinPermisos = {
+      users_roles_users_roles_user_idTousers: [
+        { roles: { nombre: 'Otro', nivel: 20, torre: null, role_permissions: [] } },
+      ],
+    };
+
+    beforeEach(() => {
+      prisma.users.findUnique.mockResolvedValue(usuarioConPermisos);
+    });
+
     it('adjunta imagen y audita REPORTE_ADJUNTO SUCCESS', async () => {
       const result = await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
       expect(result.mime).toBe('image/png');
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.REPORTE_ADJUNTO, result: AuditResult.SUCCESS }),
       );
+    });
+
+    it('el AUTOR con solo `crear` adjunta a SU reporte Nuevo (regla del autor)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSoloCrear);
+      const result = await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+      expect(result.mime).toBe('image/png');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ADJUNTO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('el autor con solo `crear` NO adjunta a reporte ajeno (el ámbito lo corta: REPORTE_ACCESO_DENEGADO, FAIL)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSoloCrear);
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        usuario_id: 'otro-user',
+      });
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'REPORTE_ACCESO_DENEGADO',
+        }),
+      );
+    });
+
+    it('el autor con solo `crear` NO adjunta cuando ya no está Nuevo (ADJUNTO_SOLO_AUTOR_NUEVO)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSoloCrear);
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.EN_CURSO,
+      });
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'ADJUNTO_SOLO_AUTOR_NUEVO',
+        }),
+      );
+    });
+
+    it('sin `crear` ni `editar` → ADJUNTO_SOLO_AUTOR_NUEVO (FAIL auditado)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSinPermisos);
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'ADJUNTO_SOLO_AUTOR_NUEVO',
+        }),
+      );
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
     });
 
     it('rechaza mime ajeno (MIME_NO_PERMITIDO) sin insertar', async () => {

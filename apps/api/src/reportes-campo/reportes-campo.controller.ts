@@ -158,9 +158,10 @@ export class ReportesCampoController {
   /**
    * POST /api/reportes-campo/:id/adjuntos
    * Adjunta una imagen al incidente (base64, máx 2 MB).
-   * Permiso: operaciones.reportes_campo.editar
+   * SIN PermissionsGuard: la regla del autor (crear-solo → su reporte en Nuevo)
+   * exige OR(editar, crear condicionado) y vive en el service, que audita los
+   * fallos (ADJUNTO_SOLO_AUTOR_NUEVO). Ref: opción 2, 2026-11-20.
    */
-  @RequirePermission('operaciones', 'reportes_campo', 'editar')
   @Post(':id/adjuntos')
   @HttpCode(HttpStatus.CREATED)
   async adjuntar(
