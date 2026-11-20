@@ -136,8 +136,8 @@ Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuest
 ### 2.1 /finanzas
 | # | Punto (sección del doc) | Estado | Implicación |
 |---|---|---|---|
-| F1 | ¿El diésel y el mantenimiento se cargan al costo de obra? ¿Por máquina, obra o centro de costos? (§8 Costos) | ⚠️ SIN RESPUESTA | Define el modelo de costeo completo (transacciones + `proyectos.finanzas`) |
-| F2 | ¿Cómo se reparte una carga de combustible usada en varias obras? (§8) | ⚠️ Sin respuesta | Prorrateo de egresos entre obras |
+| F1 | ¿El diésel y el mantenimiento se cargan al costo de obra? ¿Por máquina, obra o centro de costos? (§8 Costos) | ✅ RESPONDIDA (2026-11-20, `PRODUCTIVIDAD.txt` P6): **NO se carga a la obra — se lleva a PARTE (por camión)** para los rendimientos internos | El costeo es **por camión/máquina** (combustible ya lo modela); el desglose por proyecto solo con costos directos |
+| F2 | ¿Cómo se reparte una carga de combustible usada en varias obras? (§8) | ✅ RESPONDIDA (Ídem): NO hay reparto — el gasto va por camión | Sin prorrateo de egresos entre obras; rendimiento por camión aparte |
 | F3 | Egresos reales de combustible/mantenimiento (hoy demo — §10 error 4) | ✅ | Ingesta de egresos reales |
 | F4 | Renta mensual del GPS: **$350/equipo sin contrato** (proveedor) | ✅ | Egreso recurrente por equipo con GPS — transacción de `/finanzas` |
 
