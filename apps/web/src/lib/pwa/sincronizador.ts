@@ -63,7 +63,12 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
             const { reportesCampoApi } = await import('@/lib/api');
             for (const adj of item.adjuntos) {
               try {
-                await reportesCampoApi.adjuntar(nuevoId, adj);
+                // SIN `tamano`: el server lo calcula del base64 (whitelist lo rechaza)
+                await reportesCampoApi.adjuntar(nuevoId, {
+                  nombre: adj.nombre,
+                  mime: adj.mime,
+                  datos: adj.datos,
+                });
               } catch (e) {
                 console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre, e);
               }

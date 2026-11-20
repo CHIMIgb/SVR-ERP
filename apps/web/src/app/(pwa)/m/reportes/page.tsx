@@ -344,7 +344,6 @@ export default function ReportesMovilPage() {
       const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
         nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
         mime: 'image/webp',
-        tamano: webp.tamano,
         datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
       });
       if (res.success) {

@@ -1073,10 +1073,10 @@ export const reportesCampoApi = {
   comentar: (id: string, texto: string) =>
     apiClient.post<ActividadDTO>(`/reportes-campo/${id}/actividades`, { texto }),
 
-  /** Adjunta una imagen (base64) al incidente. */
+  /** Adjunta una imagen (base64) al incidente — el server calcula el tamaño real del base64. */
   adjuntar: (
     id: string,
-    data: { nombre: string; mime: string; tamano: number; datos: string },
+    data: { nombre: string; mime: string; datos: string },
   ) => apiClient.post<AdjuntoDTO>(`/reportes-campo/${id}/adjuntos`, data),
 
   eliminar: (id: string) =>

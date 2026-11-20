@@ -529,7 +529,6 @@ export default function ReportesOperacionesPage() {
         const resAdj = await reportesCampoApi.adjuntar(nuevo.id, {
           nombre: img.nombre,
           mime: img.mime,
-          tamano: img.tamano,
           datos: img.datos,
         });
         if (!resAdj.success) fallidas.push(img.nombre);
@@ -745,7 +744,6 @@ export default function ReportesOperacionesPage() {
         const res = await reportesCampoApi.adjuntar(reporteId, {
           nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
           mime: 'image/webp',
-          tamano: webp.tamano,
           datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
         });
         if (!res.success) {
