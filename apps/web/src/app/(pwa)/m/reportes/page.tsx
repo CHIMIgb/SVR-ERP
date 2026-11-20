@@ -525,28 +525,18 @@ export default function ReportesMovilPage() {
             />
             <ModalBody>
               <div className="space-y-3 text-sm">
-                <p className="text-ui-900 break-words">{detalle.reporte.descripcion}</p>
-                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[13px]">
+                {/* Info del incidente — los mismos campos y orden del escritorio */}
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-[13px]">
                   <div className="min-w-0">
-                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">
-                      Categoría
-                    </dt>
-                    <dd className="text-ui-900 break-words">
-                      {detalle.reporte.subcategoria ?? detalle.reporte.categoria ?? detalle.reporte.tipo}
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Fecha</dt>
+                    <dd className="font-bold text-ui-900 break-words">
+                      {detalle.reporte.hora} · {detalle.reporte.fecha}
                     </dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">
-                      Reportó
-                    </dt>
-                    <dd className="text-ui-900 break-words">{detalle.reporte.usuario}</dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">
-                      Ubicación
-                    </dt>
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Ubicación</dt>
                     {detalle.reporte.proyectoId && detalle.reporte.proyecto ? (
-                      <dd className="text-ui-900 break-words">
+                      <dd className="font-bold text-ui-900 break-words">
                         {detalle.reporte.proyecto}
                         {detalle.reporte.proyectoDireccion && (
                           <span className="block text-[11px] font-medium text-ui-500">
@@ -555,7 +545,7 @@ export default function ReportesMovilPage() {
                         )}
                       </dd>
                     ) : detalle.reporte.latitud != null ? (
-                      <dd className="text-ui-900 break-words">
+                      <dd className="font-bold text-ui-900 break-words">
                         GPS {detalle.reporte.latitud.toFixed(4)}, {detalle.reporte.longitud?.toFixed(4)}
                         <a
                           href={`https://maps.google.com/?q=${detalle.reporte.latitud},${detalle.reporte.longitud}`}
@@ -567,23 +557,46 @@ export default function ReportesMovilPage() {
                         </a>
                       </dd>
                     ) : (
-                      <dd className="text-ui-400">Sin ubicación</dd>
+                      <dd className="font-bold text-ui-400">Sin ubicación</dd>
                     )}
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">
-                      Asignado
-                    </dt>
-                    <dd className="text-ui-900 break-words">
-                      {detalle.reporte.asignadoANombre ?? '—'}
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Área</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.categoria ?? 'Sin área'}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Prioridad</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.prioridad ?? '—'}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Estado</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.estado}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Responsable</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.asignadoANombre ?? 'Sin asignar'}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Levantó</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.usuario}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Teléfono</dt>
+                    <dd className="font-bold text-ui-900 break-words">
+                      {detalle.reportadoPor?.telefono ? (
+                        <a href={`tel:${detalle.reportadoPor.telefono}`} className="text-primary underline">{detalle.reportadoPor.telefono}</a>
+                      ) : '—'}
                     </dd>
                   </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Puesto / Rol</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reportadoPor?.rol ?? '—'}</dd>
+                  </div>
                 </dl>
-                {detalle.reportadoPor?.telefono && (
-                  <p className="text-[13px] text-ui-600">
-                    Tel: <a href={`tel:${detalle.reportadoPor.telefono}`} className="font-bold text-primary underline">{detalle.reportadoPor.telefono}</a>
-                  </p>
-                )}
+                <div className="mt-3 pt-3 border-t border-ui-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">Descripción</p>
+                  <p className="text-sm text-ui-900 break-words whitespace-pre-wrap mt-1">{detalle.reporte.descripcion}</p>
+                </div>
                 {/* Imágenes adjuntas — visibles a todos; adjuntar como el escritorio */}
                 <div className="border-t border-ui-100 pt-2">
                   <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
