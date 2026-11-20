@@ -391,6 +391,8 @@ export default function ReportesMovilPage() {
 
   return (
     <div className="space-y-4">
+      {/* Todo lo de arriba FIJO: solo la lista de reportes desliza (sticky sobre el scroll de la página) */}
+      <div className="sticky top-0 z-20 bg-canvas -mx-4 px-4 pb-3 space-y-4">
       {/* Encabezado + acción principal */}
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -439,7 +441,7 @@ export default function ReportesMovilPage() {
         aria-label="Buscar reportes"
       />
       <div
-        className="flex items-center gap-2 overflow-x-auto scrollbar-none -mx-4 px-4"
+        className="flex items-center gap-2 overflow-x-auto scrollbar-none"
         role="group"
         aria-label="Filtrar por estado"
       >
@@ -459,6 +461,7 @@ export default function ReportesMovilPage() {
             {f.etiqueta}
           </button>
         ))}
+      </div>
       </div>
 
       {/* Lista (server-side paginada, patrón móvil: cards + cargar más) */}
