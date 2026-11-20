@@ -51,6 +51,7 @@ export function NotificacionesModal({ abierto, onCerrar }: NotificacionesModalPr
       open={abierto}
       onClose={onCerrar}
       contentClassName={c.tarjeta}
+      blur={false}
       aria-label="Centro de alertas"
     >
       {/* Encabezado — igual que el Centro de Alertas del escritorio */}
