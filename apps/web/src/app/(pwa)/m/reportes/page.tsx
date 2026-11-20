@@ -94,6 +94,8 @@ export default function ReportesMovilPage() {
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [aceptandoId, setAceptandoId] = useState<string | null>(null);
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  /** Preview de imagen en modal (en lugar de abrir pestaña nueva). */
+  const [preview, setPreview] = useState<{ mime: string; datos: string; nombre: string } | null>(null);
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentando, setComentando] = useState(false);
   const [adjuntando, setAdjuntando] = useState(false);
@@ -604,12 +606,12 @@ export default function ReportesMovilPage() {
                   {detalle.adjuntos.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       {detalle.adjuntos.map((a) => (
-                        <a
+                        <button
                           key={a.id}
-                          href={`data:${a.mime};base64,${a.datos}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="relative rounded-xl overflow-hidden border border-ui-200"
+                          type="button"
+                          onClick={() => setPreview({ mime: a.mime, datos: a.datos, nombre: a.nombre })}
+                          aria-label={`Ampliar ${a.nombre}`}
+                          className="relative rounded-xl overflow-hidden border border-ui-200 cursor-pointer"
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -617,7 +619,7 @@ export default function ReportesMovilPage() {
                             alt={a.nombre}
                             className="h-24 w-full object-cover"
                           />
-                        </a>
+                        </button>
                       ))}
                     </div>
                   ) : (
@@ -719,6 +721,41 @@ export default function ReportesMovilPage() {
         torreUsuario={user?.torre ?? null}
         onEncolado={alEncolar}
       />
+
+      {/* Preview de imagen — sin salir del reporte */}
+      <Modal open={preview !== null} onClose={() => setPreview(null)} size="xl">
+        {preview && (
+          <>
+            <ModalHeader
+              title={preview.nombre}
+              subtitle="Vista previa"
+              onClose={() => setPreview(null)}
+            />
+            <ModalBody>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${preview.mime};base64,${preview.datos}`}
+                alt={preview.nombre}
+                className="w-full max-h-[70dvh] object-contain rounded-xl bg-ui-50"
+              />
+            </ModalBody>
+            <ModalFooter>
+              <div className="flex gap-2 w-full">
+                <a
+                  href={`data:${preview.mime};base64,${preview.datos}`}
+                  download={preview.nombre}
+                  className="min-h-[44px] px-4 rounded-xl bg-primary text-white font-bold text-sm flex items-center justify-center"
+                >
+                  Descargar
+                </a>
+                <Button variant="secondary" className="min-h-[44px] flex-1" onClick={() => setPreview(null)}>
+                  Cerrar
+                </Button>
+              </div>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
 
       {/* Asignar Responsable (solo Admin — paridad del escritorio) */}
       <FormModal
