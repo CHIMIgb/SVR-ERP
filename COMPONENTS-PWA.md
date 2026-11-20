@@ -229,11 +229,14 @@ optgroups (igual que el escritorio).
 ## 8. NotificacionesModal
 
 Centro de notificaciones del teléfono. **REUTILIZA el provider compartido**
-(`NotificationProvider` del escritorio: polling de 60 s, sin lógica nueva):
-lista el buzón con badge de tipo (Alerta/Info), destacado de no leídas y
-acciones Marcar todas leídas / Vaciar (descartar). Tap en un item lo marca
-leído. La navegación al reporte referenciado queda como mejora (el provider
-compartido aún no expone `referenciaTipo`/`referenciaId`).
+(`NotificationProvider` del escritorio: polling de 60 s, sin lógica nueva).
+Diseño paritario con el «Centro de Alertas» del escritorio (Topbar):
+encabezado con «Centro de Alertas / N no leídas» + acciones de ícono
+(`CheckCheck` = marcar todas leídas, `Trash2` = vaciar/descartar), estado
+vacío con campana grande, y lista con badge de tipo (Alerta/Info) y
+destacado de no leídas. Tap en un item lo marca leído. La navegación al
+reporte referenciado queda como mejora (el provider compartido aún no expone
+`referenciaTipo`/`referenciaId`).
 
 **Archivos:**
 - `src/components/pwa/NotificacionesModal/NotificacionesModal.tsx` (+ `.styles.ts`, `index.ts`)

@@ -1,7 +1,16 @@
-/** Estilos del centro de notificaciones PWA — aplicados con cn(). */
+/** Estilos del centro de notificaciones PWA — aplicados con cn(). Paridad con el Centro de Alertas del escritorio. */
 export const notificacionesModalClasses = {
-  acciones: 'flex gap-2 mb-3',
-  boton: 'min-h-[44px] flex-1',
+  header: 'flex items-start justify-between gap-2 mb-3',
+  headerTitulo: 'text-sm font-black uppercase tracking-wider text-ui-900',
+  headerSub: 'text-[9px] font-bold uppercase tracking-widest text-ui-400 mt-0.5',
+  acciones: 'flex gap-1 shrink-0',
+  accionIcono:
+    'h-11 w-11 rounded-xl flex items-center justify-center text-ui-500 hover:bg-ui-100 hover:text-ui-800 transition-colors',
+  accionIconoRojo:
+    'h-11 w-11 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-300 transition-colors',
+  vacio: 'py-10 flex flex-col items-center gap-2',
+  vacioIcono: 'w-12 h-12 text-ui-300',
+  vacioTexto: 'text-sm text-ui-400 font-medium',
   item:
     'w-full text-left rounded-xl border border-ui-200 p-3 hover:bg-ui-50 transition-colors cursor-pointer',
   itemNoLeida: 'bg-primary/5 border-primary/30',
