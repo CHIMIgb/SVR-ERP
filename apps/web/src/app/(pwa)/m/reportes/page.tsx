@@ -492,8 +492,8 @@ export default function ReportesMovilPage() {
         )}
       </div>
 
-      {/* Paginación server-side (kit compartido) — una página a la vez */}
-      {!cargandoInicial && totalPaginas > 1 && (
+      {/* Paginación server-side (kit compartido) — siempre visible, también con 1 página */}
+      {!cargandoInicial && (
         <Pagination
           currentPage={pagina}
           totalPages={totalPaginas}
