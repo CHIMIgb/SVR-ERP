@@ -322,6 +322,53 @@ export class NotificacionesService {
   }
 
   /**
+   * SUSCRIBIR Web Push (fase a del plan de push): guarda/actualiza la
+   * suscripción del dispositivo autenticado. Upsert por `endpoint` (único
+   * por dispositivo/permiso): si el endpoint ya existía (de otro usuario o
+   * del mismo), se reasigna con las llaves nuevas.
+   */
+  async suscribirPush(
+    userId: string,
+    dto: { endpoint: string; llaves: { p256dh: string; auth: string } },
+  ) {
+    try {
+      const suscripcion = await this.prisma.push_suscripciones.upsert({
+        where: { endpoint: dto.endpoint },
+        create: {
+          id: randomUUID(),
+          user_id: userId,
+          endpoint: dto.endpoint,
+          p256dh: dto.llaves.p256dh,
+          auth: dto.llaves.auth,
+        },
+        update: {
+          user_id: userId,
+          p256dh: dto.llaves.p256dh,
+          auth: dto.llaves.auth,
+        },
+        select: { id: true, endpoint: true, creado_en: true },
+      });
+      return {
+        message: 'Suscripción de push registrada',
+        suscripcion,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo registrar la suscripción push de ${userId}: ${error instanceof Error ? error.message : error}`,
+      );
+      throw new NotFoundException('No se pudo registrar la suscripción de push');
+    }
+  }
+
+  /** BAJA de push: elimina la suscripción cuyo endpoint sea del propio usuario. */
+  async cancelarSuscripcionPush(userId: string, endpoint: string) {
+    const baja = await this.prisma.push_suscripciones.deleteMany({
+      where: { endpoint, user_id: userId },
+    });
+    return { message: 'Suscripción de push cancelada', canceladas: baja.count };
+  }
+
+  /**
    * Basura del centro: descarta SOLO para este usuario (estado por usuario) —
    * desaparecen y no vuelven para él; el resto del rol sigue viéndolas.
    */

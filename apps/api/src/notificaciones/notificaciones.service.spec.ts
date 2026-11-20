@@ -46,6 +46,14 @@ describe('NotificacionesService', () => {
         findUnique: jest.fn().mockResolvedValue({ torre: TORRE }),
         findFirst: jest.fn().mockResolvedValue({ id: 'user-del-trabajador' }),
       },
+      push_suscripciones: {
+        upsert: jest.fn().mockResolvedValue({
+          id: 'push-1',
+          endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+          creado_en: new Date(),
+        }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       roles: {
         findFirst: jest.fn().mockResolvedValue({ id: 'rol-administrativo' }),
       },
@@ -232,6 +240,44 @@ describe('NotificacionesService', () => {
       await service.findMine(USER_ID, { page: 1, limit: 10 });
       const where = prisma.notificaciones.findMany.mock.calls[0][0].where;
       expect(where.AND[1].OR).not.toContainEqual({ audiencia_torre: TORRE });
+    });
+  });
+
+  describe('suscribirPush / cancelarSuscripcionPush (fase a del plan de push)', () => {
+    const dtoBase = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      llaves: { p256dh: 'llave-p256dh', auth: 'llave-auth' },
+    };
+
+    it('suscribe: upsert por endpoint con el usuario del JWT', async () => {
+      await service.suscribirPush(USER_ID, dtoBase);
+      expect(prisma.push_suscripciones.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { endpoint: dtoBase.endpoint },
+          create: expect.objectContaining({
+            user_id: USER_ID,
+            endpoint: dtoBase.endpoint,
+            p256dh: 'llave-p256dh',
+            auth: 'llave-auth',
+          }),
+          update: expect.objectContaining({ user_id: USER_ID }),
+        }),
+      );
+    });
+
+    it('cancela: deleteMany acotado al endpoint Y al usuario propio', async () => {
+      const r = await service.cancelarSuscripcionPush(USER_ID, dtoBase.endpoint);
+      expect(r.canceladas).toBe(1);
+      expect(prisma.push_suscripciones.deleteMany).toHaveBeenCalledWith({
+        where: { endpoint: dtoBase.endpoint, user_id: USER_ID },
+      });
+    });
+
+    it('si el upsert falla, lanza NotFound (best-effort con log)', async () => {
+      prisma.push_suscripciones.upsert.mockRejectedValueOnce(new Error('BD caída'));
+      await expect(service.suscribirPush(USER_ID, dtoBase)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
