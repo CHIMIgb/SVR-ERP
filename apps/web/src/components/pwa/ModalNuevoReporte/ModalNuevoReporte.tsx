@@ -4,7 +4,7 @@
  * Captura de un reporte de campo — PARIDAD 1:1 con el escritorio /reportes:
  * Área (a la que se envía) con optgroups, Subcategoría filtrada, Ubicación
  * Proyecto/GPS (captura al guardar), Prioridad, Descripción e Imágenes
- * (WebP local, máx 4 × 2 MB). Offline-first: SIEMPRE encola
+ * (WebP local, máx 4 × 10 MB). Offline-first: SIEMPRE encola
  * (`encolar` con la key de idempotencia del teléfono) y dispara el
  * sincronizador; las fotos viajan con el item y se adjuntan tras el ACK.
  * Payload idéntico al escritorio: `mismaArea` o `categoria`,
@@ -157,7 +157,7 @@ export function ModalNuevoReporte({
       return;
     }
     if (webp.tamano > MAX_TAMANO_IMAGEN) {
-      showToast('La imagen excede el máximo de 2 MB.', 'error');
+      showToast('La imagen excede el máximo de 10 MB.', 'error');
       return;
     }
     if (imagenes.length >= MAX_IMAGENES) {
@@ -380,7 +380,7 @@ export function ModalNuevoReporte({
             />
           </FormField>
 
-          <FormField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una.`}>
+          <FormField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 10 MB cada una.`}>
             <div className="flex gap-4 flex-wrap">
               <label className={c.agregar}>
                 <input

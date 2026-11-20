@@ -334,7 +334,7 @@ export default function ReportesOperacionesPage() {
         return;
       }
       if (webp.tamano > MAX_TAMANO_IMAGEN) {
-        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        showToast('La imagen excede el máximo de 10 MB.', 'error');
         return;
       }
       setImagenesAlta((prev) => {
@@ -737,7 +737,7 @@ export default function ReportesOperacionesPage() {
         return null;
       }
       if (webp.tamano > MAX_TAMANO_IMAGEN) {
-        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        showToast('La imagen excede el máximo de 10 MB.', 'error');
         return null;
       }
       try {
@@ -1223,7 +1223,7 @@ export default function ReportesOperacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una.`} className="sm:col-span-2">
+          <ModalField label="Imágenes de la avería" hint={`Opcional - máx ${MAX_IMAGENES}, 10 MB cada una.`} className="sm:col-span-2">
             <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark mb-2">
               <input
                 type="file"
@@ -1701,7 +1701,7 @@ export default function ReportesOperacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Imágenes del incidente" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una. Se suben al guardar la imagen.`} className="sm:col-span-2">
+          <ModalField label="Imágenes del incidente" hint={`Opcional - máx ${MAX_IMAGENES}, 10 MB cada una. Se suben al guardar la imagen.`} className="sm:col-span-2">
             {editAdjuntos === null ? (
               <p className="text-xs font-medium text-ui-400">Cargando imágenes…</p>
             ) : (

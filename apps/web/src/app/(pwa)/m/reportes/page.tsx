@@ -329,7 +329,7 @@ export default function ReportesMovilPage() {
         return;
       }
       if (webp.tamano > MAX_TAMANO_IMAGEN) {
-        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        showToast('La imagen excede el máximo de 10 MB.', 'error');
         return;
       }
       if (detalle.adjuntos.length >= MAX_IMAGENES) {

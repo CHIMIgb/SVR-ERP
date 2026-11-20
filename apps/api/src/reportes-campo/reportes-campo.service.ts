@@ -1276,7 +1276,7 @@ export class ReportesCampoService {
         id,
         'ADJUNTO_MUY_GRANDE',
         BadRequestException,
-        'La imagen excede el máximo de 2 MB',
+        'La imagen excede el máximo de 10 MB',
       );
     }
 

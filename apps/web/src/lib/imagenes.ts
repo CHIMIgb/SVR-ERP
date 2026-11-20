@@ -6,7 +6,7 @@
 
 /** Límites de imagen (los mismos del detalle — backend revalida). */
 export const MAX_IMAGENES = 4;
-export const MAX_TAMANO_IMAGEN = 2 * 1024 * 1024; // 2 MB
+export const MAX_TAMANO_IMAGEN = 10 * 1024 * 1024; // 10 MB (fotos de teléfono)
 
 export interface ImagenConvertida {
   dataUrl: string;
@@ -33,11 +33,16 @@ export async function convertirAWebp(file: File): Promise<ImagenConvertida | nul
       image.src = dataUrlSrc;
     });
     const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    // Reducción a 2048px de lado mayor: una foto de 12 MP comprimida a WebP
+    // q0.85 pesa 1-3 MB; a 2048px queda en ~300-800 KB sin perder legibilidad
+    // como evidencia (y así entra de sobra en el tope de 10 MB).
+    const LADO_MAX = 2048;
+    const escala = Math.min(1, LADO_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    canvas.width = Math.round(img.naturalWidth * escala);
+    canvas.height = Math.round(img.naturalHeight * escala);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, 'image/webp', 0.85),
     );

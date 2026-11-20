@@ -166,9 +166,9 @@ describe('AdjuntoDto (sin tamano del cliente — review PR #17)', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('rechaza datos por arriba del tope de 2 MB de base64', async () => {
-    // > 2,800,004 chars de base64 = más de 2 MB decodificados
-    const dto = plainToInstance(AdjuntoDto, { ...base, datos: 'A'.repeat(2_800_050) });
+  it('rechaza datos por arriba del tope de 10 MB de base64', async () => {
+    // > 13,981,018 chars de base64 = más de 10 MB decodificados
+    const dto = plainToInstance(AdjuntoDto, { ...base, datos: 'A'.repeat(14_000_000) });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });

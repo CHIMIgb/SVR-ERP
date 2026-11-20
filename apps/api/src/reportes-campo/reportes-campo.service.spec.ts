@@ -883,9 +883,9 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
     });
 
-    it('rechaza tamaño inflado (base64 real > 2 MB → ADJUNTO_MUY_GRANDE)', async () => {
-      // 3MB de base64 real aunque tamano declare 67
-      const datos = 'A'.repeat(4 * 1024 * 1024);
+    it('rechaza tamaño inflado (base64 real > 10 MB → ADJUNTO_MUY_GRANDE)', async () => {
+      // ~10.5 MB decodificados (14M chars de base64) para superar el tope nuevo
+      const datos = 'A'.repeat(14 * 1024 * 1024);
       await expect(
         service.adjuntar(mockReporte.id, { ...adjuntoBase, datos }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
