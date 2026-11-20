@@ -8,9 +8,9 @@
 - **PINs creados vía la API** (mismo flujo: `pin/reinicio` con admin →
   `login-pin` con temporal → `pin/cambio` al permanente) para los técnicos
   de las torres faltantes:
-  - `TEC-008` (Soldador, `soldador@`) → `Sold26Pm`
-  - `TEC-009` (Diesel, `diesel@`) → `Dies26Pt`
-  - `TEC-010` (Mantenimiento, `mantenimiento@`) → `Mant26Ps`
+  - `TEC-008` (Soldador, `soldador@`) → (PIN en credenciales-dev.md)
+  - `TEC-009` (Diesel, `diesel@`) → (PIN en credenciales-dev.md)
+  - `TEC-010` (Mantenimiento, `mantenimiento@`) → (PIN en credenciales-dev.md)
   PINs validados contra las reglas de `pin.validator.ts` (8 alfanuméricos,
   sin repetidos, sin secuencias, sin contener el número de empleado).
 - **Verificado en BD:** los 3 con `pin_hash` presente y

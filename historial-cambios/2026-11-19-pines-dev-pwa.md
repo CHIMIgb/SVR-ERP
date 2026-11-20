@@ -13,8 +13,8 @@
 - **PINs creados vía la API** (no SQL, según lo pedido), respetando el
   validador (`pin.validator.ts`: 8 alfanuméricos, sin caracteres repetidos,
   sin secuencias, sin contener el número de empleado):
-  - `ADM-01` → `Admin26P` · `RES-014` → `Resi26Pz` · `TEC-007` → `Tecn26Pw`
-  - `COB-003` → `Cobr26Px` · `TRA-0142` → `Trab26Pq`
+  - `ADM-01` → (PIN en credenciales-dev.md) · `RES-014` → (PIN en credenciales-dev.md) · `TEC-007` → (PIN en credenciales-dev.md)
+  - `COB-003` → (PIN en credenciales-dev.md) · `TRA-0142` → (PIN en credenciales-dev.md)
 - Flujo ejecutado por usuario contra `localhost:3001/api`:
   1. `POST /auth/login` con el admin (mesa de ayuda).
   2. `POST /auth/pin/reinicio {userId}` → PIN temporal 24 h.
