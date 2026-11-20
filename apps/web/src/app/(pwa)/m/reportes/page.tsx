@@ -60,6 +60,10 @@ export default function ReportesMovilPage() {
     user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeCrear ?? false;
   const puedeEditar =
     user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeEditar ?? false;
+  /** Solo un Administrador edita reportes ajenos / cierra / asigna (igual que el escritorio). */
+  const esAdminReportes = (user?.roles ?? []).some((r) => r.nivel >= 100);
+  /** Los Residentes solo dan seguimiento: no aceptan incidentes (server: RESIDENTE_SOLO_SEGUIMIENTO). */
+  const esResidente = (user?.roles ?? []).some((r) => r.nombre === 'Residente');
   const nombreUsuario =
     [user?.persona?.nombre, user?.persona?.apellidoPaterno, user?.persona?.apellidoMaterno]
       .filter(Boolean)
@@ -167,7 +171,7 @@ export default function ReportesMovilPage() {
     alEncolar();
   };
 
-  const aceptar = async (item: ReporteCampoDTO, esDetalle = false): Promise<void> => {
+  const aceptar = async (item: ReporteCampoDTO): Promise<void> => {
     setAceptandoId(item.id);
     setMensaje(null);
     try {
@@ -176,9 +180,6 @@ export default function ReportesMovilPage() {
         setMensaje(
           `Aceptado${res.data.codigo ? ` ${res.data.codigo}` : ''} — quedaste como responsable.`,
         );
-        if (esDetalle && detalle?.reporte.id === item.id) {
-          setDetalle({ ...detalle, reporte: res.data });
-        }
         setRefrescando(true);
         await recargar(1, true);
         await cargarStats();
@@ -338,7 +339,7 @@ export default function ReportesMovilPage() {
                 reporte={r}
                 onVer={() => void verDetalle(r.id)}
                 accion={
-                  puedeEditar && r.estado === 'Nuevo'
+                  puedeEditar && !esResidente && r.estado === 'Nuevo' && !r.asignadoANombre
                     ? {
                         etiqueta: 'Aceptar',
                         onClick: () => void aceptar(r),
@@ -445,31 +446,22 @@ export default function ReportesMovilPage() {
             </ModalBody>
             <ModalFooter>
               <div className="flex flex-wrap gap-2 w-full">
-                {puedeEditar && detalle.reporte.estado === 'Nuevo' && (
+                {puedeEditar && detalle.reporte.estado === 'Nuevo' && detalle.reporte.asignadoANombre && (
                   <Button
                     variant="primary"
-                    onClick={() => void aceptar(detalle.reporte, true)}
-                    loading={aceptandoId === detalle.reporte.id}
-                  >
-                    Aceptar
-                  </Button>
-                )}
-                {puedeEditar && detalle.reporte.estado === 'Nuevo' && (
-                  <Button
-                    variant="secondary"
                     onClick={() => void cambiarEstado('EN_CURSO')}
                     loading={cambiandoEstado}
                   >
-                    En curso
+                    Iniciar
                   </Button>
                 )}
-                {puedeEditar && detalle.reporte.estado === 'En curso' && (
+                {puedeEditar && esAdminReportes && detalle.reporte.estado !== 'Cerrado' && (
                   <Button
-                    variant="primary"
+                    variant="success"
                     onClick={() => void cambiarEstado('CERRADO')}
                     loading={cambiandoEstado}
                   >
-                    Cerrar reporte
+                    Cerrar incidente
                   </Button>
                 )}
                 <Button variant="secondary" onClick={cerrarDetalle}>
