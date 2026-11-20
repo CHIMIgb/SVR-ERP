@@ -11,7 +11,7 @@ import { StatsCard } from '@/components/ui/StatsCard';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
+import { FormModal, Modal, ModalBody, ModalFooter, ModalHeader, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -160,6 +160,8 @@ export default function ReportesOperacionesPage() {
   const [adjuntando, setAdjuntando] = useState(false);
   /** Imágenes en espera del alta (mismos límites del detalle: máx 4, 2MB). */
   const [imagenesAlta, setImagenesAlta] = useState<AdjuntoImagenAlta[]>([]);
+  /** Preview de imagen en modal (en lugar de pestaña nueva con data-URI). */
+  const [preview, setPreview] = useState<{ mime: string; datos: string; nombre: string } | null>(null);
   /** Adjuntos existentes en el modal Editar (null = cargando). */
   const [editAdjuntos, setEditAdjuntos] = useState<AdjuntoDTO[] | null>(null);
 
@@ -1419,12 +1421,12 @@ export default function ReportesOperacionesPage() {
               {detalle.adjuntos.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {detalle.adjuntos.map((a: AdjuntoDTO) => (
-                    <a
+                    <button
                       key={a.id}
-                      href={`data:${a.mime};base64,${a.datos}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative rounded-xl overflow-hidden border border-ui-200"
+                      type="button"
+                      onClick={() => setPreview({ mime: a.mime, datos: a.datos, nombre: a.nombre })}
+                      aria-label={`Ampliar ${a.nombre}`}
+                      className="group relative rounded-xl overflow-hidden border border-ui-200 cursor-pointer"
                       title={a.nombre}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1433,7 +1435,7 @@ export default function ReportesOperacionesPage() {
                         alt={a.nombre}
                         className="h-24 w-full object-cover group-hover:scale-105 transition-transform"
                       />
-                    </a>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1522,6 +1524,41 @@ export default function ReportesOperacionesPage() {
           </div>
         )}
       </FormModal>
+
+      {/* Preview de imagen — igual que la PWA: sin pestaña nueva */}
+      <Modal open={preview !== null} onClose={() => setPreview(null)} size="xl">
+        {preview && (
+          <>
+            <ModalHeader
+              title={preview.nombre}
+              subtitle="Vista previa"
+              onClose={() => setPreview(null)}
+            />
+            <ModalBody>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${preview.mime};base64,${preview.datos}`}
+                alt={preview.nombre}
+                className="w-full max-h-[70dvh] object-contain rounded-xl bg-ui-50"
+              />
+            </ModalBody>
+            <ModalFooter>
+              <div className="flex gap-2 w-full">
+                <a
+                  href={`data:${preview.mime};base64,${preview.datos}`}
+                  download={preview.nombre}
+                  className="min-h-[44px] px-4 rounded-xl bg-primary text-white font-bold text-sm flex items-center justify-center"
+                >
+                  Descargar
+                </a>
+                <Button variant="secondary" className="min-h-[44px] flex-1" onClick={() => setPreview(null)}>
+                  Cerrar
+                </Button>
+              </div>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
 
       {/* Modal de ASIGNACIÓN — quién lo debe resolver */}
       <FormModal
