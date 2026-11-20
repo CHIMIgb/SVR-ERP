@@ -115,7 +115,7 @@ export function NotificacionesModal({ abierto, onCerrar }: NotificacionesModalPr
       )}
       {pushEstado?.estado === 'activadas' && (
         <div className={c.banner}>
-          <p className={c.bannerTexto}>Notificaciones del teléfono activadas ✓</p>
+          <p className={c.bannerTexto}>Notificaciones del teléfono activadas</p>
         </div>
       )}
 
