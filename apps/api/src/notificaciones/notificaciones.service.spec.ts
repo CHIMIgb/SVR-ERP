@@ -125,6 +125,37 @@ describe('NotificacionesService', () => {
         service.emitir({ tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' }),
       ).resolves.toBeUndefined();
     });
+
+    it('fase b: tras el insert resuelve el alcance y dispara el push (fire-and-forget)', async () => {
+      process.env.VAPID_PUBLIC_KEY = 'clave-publica-test';
+      process.env.VAPID_PRIVATE_KEY = 'clave-privada-test';
+      const flush = async () => {
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      };
+      await service.emitir({
+        tipo: TipoNotificacion.INFO,
+        titulo: 'X',
+        cuerpo: 'Y',
+        destinatarioUserId: 'user-destino',
+        creadoPor: USER_ID,
+      });
+      await flush();
+      expect(prisma.users.findMany).not.toHaveBeenCalled(); // personal: no resuelve por torre
+      expect(webpush.sendNotification).toHaveBeenCalledWith(
+        { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'p', auth: 'a' } },
+        JSON.stringify({ titulo: 'X', cuerpo: 'Y', referenciaTipo: null, referenciaId: null }),
+      );
+    });
+
+    it('fase b: si la BD del insert falla, el push tampoco se dispara', async () => {
+      prisma.notificaciones.create.mockRejectedValue(new Error('BD caída'));
+      const flush = async () => {
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      };
+      await service.emitir({ tipo: TipoNotificacion.INFO, titulo: 'X', cuerpo: 'Y' });
+      await flush();
+      expect(webpush.sendNotification).not.toHaveBeenCalled();
+    });
   });
 
   describe('emitirAUsuario / emitirATorre / emitirATrabajador', () => {

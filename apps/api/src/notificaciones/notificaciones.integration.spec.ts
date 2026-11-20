@@ -1,7 +1,8 @@
-/**
+﻿/**
  * Integration tests for NotificacionesService — suscripciones Web Push.
  * Real DB, no mocks: insertan suscripciones reales en `push_suscripciones`
- * (fase a del plan de push: docs-planes/docs-pwa/PLAN-NOTIFICACIONES-PUSH-PWA.md).
+ * (fases a/b del plan de push: docs-planes/docs-pwa/PLAN-NOTIFICACIONES-PUSH-PWA.md).
+ * `web-push` está simulado (no se le pega a FCM desde tests); la BD es real.
  * No tocan `registro_auditoria` (la suscripción no audita).
  * Run with: npm run test:integration -- --testPathPattern="notificaciones"
  */
@@ -11,6 +12,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
 import { NotificacionesService } from './notificaciones.service';
+
+jest.mock('web-push', () => ({
+  setVapidDetails: jest.fn(),
+  sendNotification: jest.fn().mockResolvedValue(undefined),
+}));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import * as webpush from 'web-push';
 
 describe('Notificaciones PUSH — suscripciones (BD real)', () => {
   let prisma: PrismaService;
@@ -32,12 +40,17 @@ describe('Notificaciones PUSH — suscripciones (BD real)', () => {
 
     prisma = module.get(PrismaService);
     service = module.get(NotificacionesService);
+    process.env.VAPID_PUBLIC_KEY = 'clave-publica-test';
+    process.env.VAPID_PRIVATE_KEY = 'clave-privada-test';
   });
 
   afterAll(async () => {
     if (!prisma) return;
     await prisma.push_suscripciones.deleteMany({
       where: { endpoint: { startsWith: ENDPOINT_BASE } },
+    });
+    await prisma.notificaciones.deleteMany({
+      where: { titulo: { startsWith: 'PUSH TEST' } },
     });
     await prisma.$disconnect();
   });
@@ -83,5 +96,56 @@ describe('Notificaciones PUSH — suscripciones (BD real)', () => {
     const propia = await service.cancelarSuscripcionPush(admin.id, endpoint);
     expect(propia.canceladas).toBe(1);
     expect(await prisma.push_suscripciones.findUnique({ where: { endpoint } })).toBeNull();
+  });
+
+  describe('PUSH fase b — emitir() dispara el push a los suscritos (web-push simulado)', () => {
+    it('emitir personal al suscrito envía el push a SU endpoint y excluye al actor', async () => {
+      const trabajador = await buscarUsuario('trabajador@svr-constructora.com');
+      const admin = await buscarUsuario('admin@svr-constructora.com');
+      const endpoint = `${ENDPOINT_BASE}${randomUUID()}`;
+      await service.suscribirPush(trabajador.id, { endpoint, llaves });
+
+      (webpush.sendNotification as jest.Mock).mockClear();
+      await service.emitir({
+        tipo: 'ALERTA' as never,
+        titulo: 'PUSH TEST personal',
+        cuerpo: 'prueba de envío',
+        destinatarioUserId: trabajador.id,
+        creadoPor: admin.id,
+      });
+      // el push es fire-and-forget: la cadena incluye consultas reales de BD
+      // (macrotareas) — cede el turno con temporizador, no solo microtareas
+      await new Promise((r) => setTimeout(r, 300));
+
+      const llamadas = (webpush.sendNotification as jest.Mock).mock.calls;
+      const endpoints = llamadas.map((l) => (l[0] as { endpoint: string }).endpoint);
+      expect(endpoints).toContain(endpoint);
+      const payload = JSON.parse(
+        llamadas.find((l) => (l[0] as { endpoint: string }).endpoint === endpoint)![1],
+      );
+      expect(payload.titulo).toBe('PUSH TEST personal');
+    });
+
+    it('emitir con audiencia de torre llega a los suscritos de ESA torre', async () => {
+      const residente = await buscarUsuario('residente@svr-constructora.com');
+      const admin = await buscarUsuario('admin@svr-constructora.com');
+      const endpoint = `${ENDPOINT_BASE}${randomUUID()}`;
+      await service.suscribirPush(residente.id, { endpoint, llaves });
+
+      (webpush.sendNotification as jest.Mock).mockClear();
+      await service.emitir({
+        tipo: 'ALERTA' as never,
+        titulo: 'PUSH TEST torre',
+        cuerpo: 'prueba de envío',
+        audienciaTorre: 'RESIDENTE' as never,
+        creadoPor: admin.id, // FK real: el actor debe existir en users
+      });
+      await new Promise((r) => setTimeout(r, 300));
+
+      const endpoints = (webpush.sendNotification as jest.Mock).mock.calls.map(
+        (l) => (l[0] as { endpoint: string }).endpoint,
+      );
+      expect(endpoints).toContain(endpoint);
+    });
   });
 });

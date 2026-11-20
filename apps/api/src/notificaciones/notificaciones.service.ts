@@ -176,7 +176,13 @@ export class NotificacionesService {
       this.logger.warn(
         `No se pudo emitir la notificación "${input.titulo}": ${error instanceof Error ? error.message : error}`,
       );
+      return;
     }
+
+    // Fase b del push (fire-and-forget): tras el insert exitoso, intenta
+    // enviar notificaciones del sistema a los usuarios del alcance. El fallo
+    // del push JAMÁS afecta el negocio (el método se traga sus propios errores).
+    void this.enviarPushesDeEmision(input);
   }
 
   /**

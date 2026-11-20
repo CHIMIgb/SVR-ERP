@@ -58,6 +58,16 @@ export class NotificacionesController {
   }
 
   /**
+   * GET /notificaciones/push-vapid-publica — clave pública VAPID para que el
+   * navegador genere la suscripción (fase c). No es secreta, pero vive bajo
+   * auth por orden; si el push no está configurado devuelve null.
+   */
+  @Get('push-vapid-publica')
+  vapidPublica() {
+    return { clavePublica: process.env.VAPID_PUBLIC_KEY ?? null };
+  }
+
+  /**
    * POST /notificaciones/push-suscripcion — fase a del plan de push:
    * registra/actualiza la suscripción Web Push del dispositivo autenticado
    * (el user_id SIEMPRE viene del JWT, nunca del body).
