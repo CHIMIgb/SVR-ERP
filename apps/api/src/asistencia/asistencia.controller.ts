@@ -11,6 +11,8 @@ import { QueryAsistenciaDto } from './dto/query-asistencia.dto';
 import { QuerySemanalDto } from './dto/query-semanal.dto';
 import { ResolverOmisionDto, ResolverOmisionSinMarcajeDto } from './dto/resolver-omision.dto';
 import { RegistrarUbicacionObraDto } from './dto/registrar-ubicacion-obra.dto';
+import { MarcarEntradaPropiaDto, MarcarSalidaPropiaDto } from './dto/marcar-propia.dto';
+import { QueryEquipoDto } from './dto/query-equipo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/guards/require-permission.decorator';
@@ -30,6 +32,39 @@ export class AsistenciaController {
   @Get('semanal')
   async findSemanal(@Query() query: QuerySemanalDto) {
     return this.asistenciaService.findSemanal(query);
+  }
+
+  // ── PWA: asistencia propia y del equipo. El trabajador sale del token, nunca del body. Van antes de
+  //    ':id' para que esa ruta no las capture.
+
+  @RequirePermission('rrhh', 'mi_asistencia', 'ver')
+  @Get('mia')
+  async findMia(@Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.findMia(user.id);
+  }
+
+  @RequirePermission('rrhh', 'mi_asistencia', 'crear')
+  @Post('mia/entrada')
+  @HttpCode(HttpStatus.CREATED)
+  async marcarEntradaPropia(@Body() dto: MarcarEntradaPropiaDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.marcarEntradaPropia(dto, user.id);
+  }
+
+  @RequirePermission('rrhh', 'mi_asistencia', 'crear')
+  @Post('mia/salida')
+  @HttpCode(HttpStatus.OK)
+  async marcarSalidaPropia(@Body() dto: MarcarSalidaPropiaDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.marcarSalidaPropia(dto, user.id);
+  }
+
+  @RequirePermission('rrhh', 'mi_equipo', 'ver')
+  @Get('equipo')
+  async findEquipo(@Query() query: QueryEquipoDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.asistenciaService.findEquipo(user.id, query);
   }
 
   @RequirePermission('rrhh', 'asistencia', 'ver')

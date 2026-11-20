@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditAction, AuditResult, EstadoAsistencia, EstadoHoraExtra, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +13,8 @@ import { QueryAsistenciaDto } from './dto/query-asistencia.dto';
 import { QuerySemanalDto } from './dto/query-semanal.dto';
 import { ResolverOmisionDto, ResolverOmisionSinMarcajeDto } from './dto/resolver-omision.dto';
 import { RegistrarUbicacionObraDto } from './dto/registrar-ubicacion-obra.dto';
+import { MarcarEntradaPropiaDto, MarcarSalidaPropiaDto } from './dto/marcar-propia.dto';
+import { QueryEquipoDto } from './dto/query-equipo.dto';
 
 export interface HorasExtraResponse {
   id: string;
@@ -99,6 +101,55 @@ export interface AsistenciaSemanalResponse {
   /** Pendientes o en curso: todavía no se pagan; la nómina las avisa al sincronizar. */
   totalHorasExtraSinAutorizar: number;
 }
+
+/** Lo que ve el propio trabajador en la PWA (Inicio y Asistencia). Nunca incluye sueldos. */
+export interface MiAsistenciaResponse {
+  trabajador: {
+    id: string;
+    nombre: string;
+    puesto: string;
+    estado: 'ACTIVO' | 'INACTIVO' | 'VACACIONES';
+    /** Hora de entrada programada "HH:mm" (referencia del retardo). */
+    entradaProgramada?: string;
+  };
+  /** Obras donde puede checar: las de sus proyectos activos. `tieneUbicacion` false = aún no se puede checar ahí. */
+  obras: { id: string; nombre: string; tieneUbicacion: boolean }[];
+  /** Registro de hoy o, si sigue abierto, el turno nocturno de ayer (la salida de hoy lo cierra). */
+  registroHoy: RegistroAsistenciaResponse | null;
+  turnoNocturnoAbierto: boolean;
+  /** Semana Lun-Sáb en curso; null si el trabajador no está activo (no se le registra asistencia). */
+  semana: AsistenciaSemanalResponse | null;
+}
+
+export interface MiembroEquipoResponse {
+  trabajadorId: string;
+  nombre: string;
+  puesto: string;
+  telefono: string;
+  estadoTrabajador: 'ACTIVO' | 'INACTIVO' | 'VACACIONES';
+  /** Estado del día consultado; null en domingo o si el trabajador no está activo. */
+  dia: DiaAsistenciaSemanaResponse | null;
+}
+
+export interface EquipoAsistenciaResponse {
+  fecha: string;
+  totales: {
+    miembros: number;
+    /** Checaron y cuentan como asistencia (puntual, retardo, justificado o salida anticipada). */
+    presentes: number;
+    retardos: number;
+    faltas: number;
+    /** Llegaron tarde o no han checado y todavía pueden justificarse hoy. */
+    omisiones: number;
+    /** Hoy, aún dentro de su tolerancia de entrada. */
+    pendientes: number;
+  };
+  miembros: MiembroEquipoResponse[];
+}
+
+const ESTADOS_PRESENTE: DiaAsistenciaSemanaResponse['estado'][] = ['Puntual', 'Retardo', 'Justificado', 'Salida Anticipada'];
+const MSG_SIN_TRABAJADOR =
+  'Tu cuenta no está enlazada a un trabajador; pide a la oficina que la enlace para poder checar';
 
 const ESTADO_DB_A_UI: Record<EstadoAsistencia, RegistroAsistenciaResponse['estado']> = {
   PUNTUAL: 'Puntual',
@@ -1308,7 +1359,11 @@ export class AsistenciaService {
     return this.toResponse(registro);
   }
 
-  async findSemanal(query: QuerySemanalDto): Promise<AsistenciaSemanalResponse[]> {
+  /**
+   * `trabajadorIds` (uso interno): acota a esos trabajadores. Lo usa la vista del equipo del residente; un
+   * arreglo vacío devuelve vacío (no "todos").
+   */
+  async findSemanal(query: QuerySemanalDto, trabajadorIds?: string[]): Promise<AsistenciaSemanalResponse[]> {
     const fechaBase = query.fecha ? this.soloFecha(new Date(query.fecha)) : this.fechaHoy();
     const lunes = this.lunesDeLaSemana(fechaBase);
     const sabado = new Date(Date.UTC(lunes.getUTCFullYear(), lunes.getUTCMonth(), lunes.getUTCDate() + 5));
@@ -1320,6 +1375,7 @@ export class AsistenciaService {
         eliminado_en: null,
         estado: 'ACTIVO',
         ...(query.trabajadorId ? { id: query.trabajadorId } : {}),
+        ...(trabajadorIds ? { id: { in: trabajadorIds } } : {}),
       },
       orderBy: { nombre: 'asc' },
     });
@@ -1469,6 +1525,156 @@ export class AsistenciaService {
         montoHorasExtraAprobadas: Number(montoHorasExtraAprobadas.toFixed(2)),
         totalHorasExtraSinAutorizar: Number(totalHorasExtraSinAutorizar.toFixed(2)),
       };
+    });
+  }
+
+  // ────────────────────────────────────────────
+  //  ASISTENCIA PROPIA Y DEL EQUIPO (PWA)
+  //  El trabajador sale SIEMPRE del token (trabajadores.usuario_id), nunca del body.
+  // ────────────────────────────────────────────
+
+  async findMia(userId: string): Promise<MiAsistenciaResponse> {
+    const trabajador = await this.trabajadorDeCuenta(userId);
+    if (!trabajador) throw new NotFoundException(MSG_SIN_TRABAJADOR);
+
+    const hoy = this.fechaHoy();
+    const ahora = new Date();
+    const [obras, registroDeHoy, semanal] = await Promise.all([
+      this.obrasAsignadas(trabajador.id),
+      this.prisma.registros_asistencia.findFirst({
+        where: { trabajador_id: trabajador.id, fecha: hoy, eliminado_en: null },
+        include: REGISTRO_INCLUDE,
+      }),
+      this.findSemanal({}, [trabajador.id]),
+    ]);
+    const nocturno = registroDeHoy ? null : await this.entradaNocturnaAbierta(trabajador.id, hoy, ahora);
+    const registro = registroDeHoy ?? nocturno;
+
+    return {
+      trabajador: {
+        id: trabajador.id,
+        nombre: trabajador.nombre,
+        puesto: trabajador.puesto,
+        estado: trabajador.estado,
+        entradaProgramada: this.horaUtcAString(trabajador.entrada),
+      },
+      obras: obras.map((o) => ({ id: o.id, nombre: o.nombre, tieneUbicacion: this.geocercaDeObra(o) !== null })),
+      registroHoy: registro ? this.toResponse(registro) : null,
+      turnoNocturnoAbierto: nocturno !== null,
+      semana: semanal[0] ?? null,
+    };
+  }
+
+  async marcarEntradaPropia(dto: MarcarEntradaPropiaDto, userId: string): Promise<RegistroAsistenciaResponse> {
+    const accion = AuditAction.ASISTENCIA_ENTRADA_REGISTRADA;
+    const trabajador = await this.trabajadorDeCuenta(userId);
+    if (!trabajador) {
+      return this.fallir(accion, ENTITY_TYPE, null, 'SIN_TRABAJADOR_ENLAZADO', NotFoundException, MSG_SIN_TRABAJADOR);
+    }
+    const obras = await this.obrasAsignadas(trabajador.id);
+    if (obras.length === 0) {
+      return this.fallir(
+        accion,
+        ENTITY_TYPE,
+        null,
+        'SIN_OBRA_ASIGNADA',
+        BadRequestException,
+        'No tienes una obra asignada; pide a tu encargado que te asigne a un proyecto',
+      );
+    }
+    if (!obras.some((o) => o.id === dto.obraId)) {
+      return this.fallir(
+        accion,
+        ENTITY_TYPE,
+        null,
+        'OBRA_NO_ASIGNADA',
+        ForbiddenException,
+        'Solo puedes checar en una obra que tengas asignada',
+      );
+    }
+    // Misma regla que el marcaje de RRHH (activo, geocerca, una entrada por día, tarde = omisión).
+    return this.marcarEntrada({ ...dto, trabajadorId: trabajador.id }, userId);
+  }
+
+  async marcarSalidaPropia(dto: MarcarSalidaPropiaDto, userId: string): Promise<RegistroAsistenciaResponse> {
+    const trabajador = await this.trabajadorDeCuenta(userId);
+    if (!trabajador) {
+      return this.fallir(
+        AuditAction.ASISTENCIA_SALIDA_REGISTRADA,
+        ENTITY_TYPE,
+        null,
+        'SIN_TRABAJADOR_ENLAZADO',
+        NotFoundException,
+        MSG_SIN_TRABAJADOR,
+      );
+    }
+    return this.marcarSalida({ ...dto, trabajadorId: trabajador.id }, userId);
+  }
+
+  /**
+   * Equipo del usuario: los trabajadores cuya cuenta lo tiene como jefe (`users.jefe_user_id`, lo que se
+   * arma en /equipos). Quien no tiene cuenta enlazada no aparece. Sin sueldos: solo contacto y estado del día.
+   */
+  async findEquipo(userId: string, query: QueryEquipoDto): Promise<EquipoAsistenciaResponse> {
+    const fecha = query.fecha ? this.soloFecha(new Date(query.fecha)) : this.fechaHoy();
+    const fechaIso = fecha.toISOString().split('T')[0];
+
+    const cuentas = await this.prisma.users.findMany({
+      where: { jefe_user_id: userId, eliminado_en: null, activo: true },
+      select: { id: true },
+    });
+    const trabajadores = cuentas.length
+      ? await this.prisma.trabajadores.findMany({
+          where: { usuario_id: { in: cuentas.map((c) => c.id) }, eliminado_en: null },
+          orderBy: { nombre: 'asc' },
+        })
+      : [];
+    const semanal = trabajadores.length
+      ? await this.findSemanal({ fecha: fechaIso }, trabajadores.map((t) => t.id))
+      : [];
+    const semanaPorTrabajador = new Map(semanal.map((s) => [s.trabajadorId, s]));
+
+    const miembros: MiembroEquipoResponse[] = trabajadores.map((t) => ({
+      trabajadorId: t.id,
+      nombre: t.nombre,
+      puesto: t.puesto,
+      telefono: t.telefono,
+      estadoTrabajador: t.estado,
+      dia: semanaPorTrabajador.get(t.id)?.dias.find((d) => d.fecha === fechaIso) ?? null,
+    }));
+
+    const contar = (pred: (e: DiaAsistenciaSemanaResponse['estado']) => boolean) =>
+      miembros.filter((m) => m.dia && pred(m.dia.estado)).length;
+
+    return {
+      fecha: fechaIso,
+      totales: {
+        miembros: miembros.length,
+        presentes: contar((e) => ESTADOS_PRESENTE.includes(e)),
+        retardos: contar((e) => e === 'Retardo'),
+        faltas: contar((e) => e === 'Falta'),
+        omisiones: contar((e) => e === 'Omisión'),
+        pendientes: contar((e) => e === 'Pendiente'),
+      },
+      miembros,
+    };
+  }
+
+  /** Trabajador enlazado a la cuenta (B5.11, `trabajadores.usuario_id` único); null si no tiene. */
+  private trabajadorDeCuenta(userId: string) {
+    return this.prisma.trabajadores.findFirst({ where: { usuario_id: userId, eliminado_en: null } });
+  }
+
+  /** Obras de los proyectos activos del trabajador (obra 1:1 con su proyecto). */
+  private async obrasAsignadas(trabajadorId: string) {
+    const asignaciones = await this.prisma.trabajadores_proyectos.findMany({
+      where: { trabajador_id: trabajadorId, activo: true, eliminado_en: null },
+      select: { proyecto_id: true },
+    });
+    if (asignaciones.length === 0) return [];
+    return this.prisma.obras.findMany({
+      where: { proyecto_id: { in: asignaciones.map((a) => a.proyecto_id) }, activo: true, eliminado_en: null },
+      orderBy: { nombre: 'asc' },
     });
   }
 
