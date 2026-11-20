@@ -10,7 +10,7 @@
  * editar leen la vista de escritorio `/reportes` (permiso ya existente).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Plus } from 'lucide-react';
+import { AlertTriangle, ImageOff, ImagePlus, Loader2, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   mensajeErrorApi,
@@ -19,6 +19,7 @@ import {
   type ReporteCampoDTO,
   type ReportesIncidenteDetalle,
 } from '@/lib/api';
+import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
 import { EstadoCola } from '@/components/pwa/EstadoCola';
 import { ModalNuevoReporte } from '@/components/pwa/ModalNuevoReporte';
 import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
@@ -29,6 +30,7 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/Moda
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatsCard } from '@/components/ui/StatsCard';
+import { Textarea } from '@/components/ui/Textarea';
 import { cn } from '@/lib/utils';
 
 const FILTROS: { valor: '' | EstadoIncidenteApi; etiqueta: string }[] = [
@@ -86,6 +88,9 @@ export default function ReportesMovilPage() {
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [aceptandoId, setAceptandoId] = useState<string | null>(null);
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  const [comentarioTexto, setComentarioTexto] = useState('');
+  const [comentando, setComentando] = useState(false);
+  const [adjuntando, setAdjuntando] = useState(false);
 
   /** Listado paginado server-side (techo del backend: 100). */
   const recargar = useCallback(
@@ -209,6 +214,81 @@ export default function ReportesMovilPage() {
   };
 
   const cerrarDetalle = () => setDetalle(null);
+
+  /** Refetch del detalle tras comentar/adjuntar (igual que el escritorio). */
+  const refetchDetalle = useCallback(async (id: string): Promise<void> => {
+    try {
+      const res = await reportesCampoApi.detalle(id);
+      if (res.success) setDetalle(res.data);
+    } catch {
+      // El detalle en pantalla sigue válido; el error ya se mostró en la acción
+    }
+  }, []);
+
+  const handleComentar = async (): Promise<void> => {
+    if (!detalle || !comentarioTexto.trim()) {
+      setMensaje('Escribe el comentario antes de publicar.');
+      return;
+    }
+    setComentando(true);
+    setMensaje(null);
+    try {
+      const res = await reportesCampoApi.comentar(detalle.reporte.id, comentarioTexto.trim());
+      if (res.success) {
+        setComentarioTexto('');
+        setMensaje('Comentario publicado.');
+        await refetchDetalle(detalle.reporte.id);
+      } else {
+        setMensaje(mensajeErrorApi(res.error, 'No se pudo publicar el comentario.'));
+      }
+    } catch (e) {
+      setMensaje(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+    } finally {
+      setComentando(false);
+    }
+  };
+
+  /** Adjuntar desde el detalle: WebP local + límites, igual que el escritorio. */
+  const handleAdjuntar = async (file: File): Promise<void> => {
+    if (!detalle) return;
+    if (!file.type.startsWith('image/')) {
+      setMensaje('El archivo debe ser una imagen.');
+      return;
+    }
+    setAdjuntando(true);
+    setMensaje(null);
+    try {
+      const webp = await convertirAWebp(file);
+      if (!webp) {
+        setMensaje('No se pudo procesar la imagen (formato no soportado por el navegador).');
+        return;
+      }
+      if (webp.tamano > MAX_TAMANO_IMAGEN) {
+        setMensaje('La imagen excede el máximo de 2 MB.');
+        return;
+      }
+      if (detalle.adjuntos.length >= MAX_IMAGENES) {
+        setMensaje(`Máximo ${MAX_IMAGENES} imágenes por incidente.`);
+        return;
+      }
+      const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
+        nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
+        mime: 'image/webp',
+        tamano: webp.tamano,
+        datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
+      });
+      if (res.success) {
+        setMensaje('Imagen adjuntada exitosamente.');
+        await refetchDetalle(detalle.reporte.id);
+      } else {
+        setMensaje(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'));
+      }
+    } catch (e) {
+      setMensaje(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+    } finally {
+      setAdjuntando(false);
+    }
+  };
 
   const cambiarEstado = async (estado: 'EN_CURSO' | 'CERRADO'): Promise<void> => {
     if (!detalle) return;
@@ -440,6 +520,76 @@ export default function ReportesMovilPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {/* Imágenes adjuntas — visibles a todos; adjuntar como el escritorio */}
+                <div className="border-t border-ui-100 pt-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
+                    Imágenes ({detalle.adjuntos.length}/{MAX_IMAGENES})
+                  </p>
+                  {puedeEditar && !esResidente && detalle.reporte.estado !== 'Cerrado' && (
+                    <label className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void handleAdjuntar(file);
+                        }}
+                      />
+                      {adjuntando ? 'Subiendo...' : <><ImagePlus className="w-3.5 h-3.5" aria-hidden /> Agregar imagen</>}
+                    </label>
+                  )}
+                  {detalle.adjuntos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      {detalle.adjuntos.map((a) => (
+                        <a
+                          key={a.id}
+                          href={`data:${a.mime};base64,${a.datos}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="relative rounded-xl overflow-hidden border border-ui-200"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`data:${a.mime};base64,${a.datos}`}
+                            alt={a.nombre}
+                            className="h-24 w-full object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-ui-400 border border-dashed border-ui-200 rounded-xl p-3 mt-2">
+                      <ImageOff className="w-4 h-4" aria-hidden />
+                      Sin imágenes todavía
+                    </div>
+                  )}
+                </div>
+
+                {/* Comentar — gated por puedeEditar (el server exige permiso editar) */}
+                {puedeEditar && detalle.reporte.estado !== 'Cerrado' && (
+                  <div className="border-t border-ui-100 pt-3">
+                    <Textarea
+                      rows={2}
+                      value={comentarioTexto}
+                      onChange={(e) => setComentarioTexto(e.target.value)}
+                      placeholder="Describe lo que se trabajó o revisó..."
+                      aria-label="Nuevo comentario"
+                      maxLength={2000}
+                    />
+                    <Button
+                      variant="primary"
+                      className="min-h-[44px] mt-2"
+                      disabled={!comentarioTexto.trim() || comentando}
+                      loading={comentando}
+                      onClick={() => void handleComentar()}
+                    >
+                      Publicar
+                    </Button>
                   </div>
                 )}
               </div>
