@@ -98,7 +98,14 @@ export default function ReportesMovilPage() {
           return;
         }
         const data = res.data;
-        setReportes((prev) => (reemplazar ? data.items : [...prev, ...data.items]));
+        // Dedupe al agregar: una carrera (ej. el finally de otra recarga que
+        // re-habilita «Cargar más» a mitad de vuelo) podía meter la misma
+        // página dos veces → keys duplicadas de React.
+        setReportes((prev) => {
+          if (reemplazar) return data.items;
+          const ids = new Set(prev.map((p) => p.id));
+          return [...prev, ...data.items.filter((i) => !ids.has(i.id))];
+        });
         setPagina(data.pagination.page);
         setHayMas(data.pagination.page < data.pagination.totalPages);
         setErrorCarga(null);
