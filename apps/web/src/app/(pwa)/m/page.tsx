@@ -232,26 +232,26 @@ function ReportesResidente() {
           href="/m/reportes"
           className={`rounded-2xl p-4 flex flex-col gap-1.5 border transition-colors ${
             conCriticos
-              ? "bg-red-50 border-red-200 hover:bg-red-100/70 active:bg-red-100"
+              ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 hover:bg-red-100/70 active:bg-red-100 dark:hover:bg-red-500/20 dark:active:bg-red-500/20"
               : "bg-surface border-ui-200 hover:bg-ui-50 active:bg-ui-100"
           }`}
         >
           <span
             className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${
-              conCriticos ? "text-red-700" : "text-ui-500"
+              conCriticos ? "text-red-700 dark:text-red-300" : "text-ui-500"
             }`}
           >
-            <TriangleAlert className={`w-4 h-4 ${conCriticos ? "text-red-600" : "text-ui-400"}`} aria-hidden />
+            <TriangleAlert className={`w-4 h-4 ${conCriticos ? "text-red-600 dark:text-red-400" : "text-ui-400"}`} aria-hidden />
             Requieren tu atención
           </span>
           <span
             className={`text-3xl font-display font-black leading-none ${
-              conCriticos ? "text-red-700" : "text-ui-400"
+              conCriticos ? "text-red-700 dark:text-red-300" : "text-ui-400"
             }`}
           >
             {d.criticos}
           </span>
-          <span className={`text-xs ${conCriticos ? "text-red-600" : "text-ui-500"}`}>
+          <span className={`text-xs ${conCriticos ? "text-red-600 dark:text-red-400" : "text-ui-500"}`}>
             {conCriticos ? "Críticos sin cerrar" : "Sin críticos abiertos"}
           </span>
         </Link>
