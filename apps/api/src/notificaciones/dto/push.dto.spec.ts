@@ -19,6 +19,32 @@ describe('SuscripcionPushDto', () => {
     expect((await validate(dto)).length).toBeGreaterThan(0);
   });
 
+  it('rechaza endpoint de IP interna (SSRF — bloqueante 2 PR #23)', async () => {
+    const dto = plainToInstance(SuscripcionPushDto, { ...base, endpoint: 'https://192.168.0.10:8080/hook' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(1);
+    expect(errores[0].property).toBe('endpoint');
+  });
+
+  it('rechaza lookalike del host de push (evil-fcm.googleapis.com)', async () => {
+    const dto = plainToInstance(SuscripcionPushDto, {
+      ...base,
+      endpoint: 'https://evil-fcm.googleapis.com/fcm/send/abc',
+    });
+    expect((await validate(dto)).length).toBeGreaterThan(0);
+  });
+
+  it('acepta subdominios legítimos de los servicios push', async () => {
+    for (const endpoint of [
+      'https://db5.notify.windows.com/token/abc',
+      'https://updates.push.services.mozilla.com/wpush/v2/abc',
+      'https://api.push.apple.com:443/3/device/abc',
+    ]) {
+      const dto = plainToInstance(SuscripcionPushDto, { ...base, endpoint });
+      expect(await validate(dto)).toHaveLength(0);
+    }
+  });
+
   it('rechaza llaves ausentes o incompletas', async () => {
     const dto = plainToInstance(SuscripcionPushDto, { endpoint: base.endpoint });
     expect((await validate(dto)).length).toBeGreaterThan(0);
@@ -38,6 +64,11 @@ describe('BajaSuscripcionPushDto', () => {
 
   it('rechaza un endpoint que no es https', async () => {
     const dto = plainToInstance(BajaSuscripcionPushDto, { endpoint: 'ftp://raro/abc' });
+    expect((await validate(dto)).length).toBeGreaterThan(0);
+  });
+
+  it('rechaza un endpoint fuera de la lista blanca de push (IP interna)', async () => {
+    const dto = plainToInstance(BajaSuscripcionPushDto, { endpoint: 'https://10.0.0.5/x' });
     expect((await validate(dto)).length).toBeGreaterThan(0);
   });
 });

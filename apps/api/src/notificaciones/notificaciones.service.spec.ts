@@ -144,6 +144,7 @@ describe('NotificacionesService', () => {
       expect(webpush.sendNotification).toHaveBeenCalledWith(
         { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'p', auth: 'a' } },
         JSON.stringify({ titulo: 'X', cuerpo: 'Y', referenciaTipo: null, referenciaId: null }),
+        { timeout: 10000 },
       );
     });
 
@@ -484,8 +485,25 @@ describe('NotificacionesService', () => {
           referenciaTipo: 'reportes_campo',
           referenciaId: 'id-reporte',
         }),
+        { timeout: 10000 },
       );
       expect(r.enviados).toBe(1);
+    });
+
+    it('enviarPushesBestEffort: endpoint fuera de la lista blanca NO se envía (SSRF, bloqueante 2 PR #23)', async () => {
+      // arrange: una suscripción vieja guardada con la regla antigua (host ajeno)
+      prisma.push_suscripciones.findMany.mockResolvedValue([
+        { endpoint: 'https://192.168.0.10:8080/hook', p256dh: 'p', auth: 'a' },
+      ]);
+
+      // act
+      const r = await service.enviarPushesBestEffort(inputTorre, ['user-b']);
+
+      // assert: ni envío ni limpieza — solo queda excluida
+      expect(webpush.sendNotification).not.toHaveBeenCalled();
+      expect(prisma.push_suscripciones.deleteMany).not.toHaveBeenCalled();
+      expect(r.enviados).toBe(0);
+      expect(r.limpiadas).toBe(0);
     });
 
     it('enviarPushesBestEffort: 410 Gone → limpia la suscripción muerta', async () => {

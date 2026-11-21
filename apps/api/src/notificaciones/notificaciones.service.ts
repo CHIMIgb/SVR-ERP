@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { configVapid } from './push.config';
+import { esEndpointPushPermitido } from './push-hosts';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -117,10 +118,18 @@ export class NotificacionesService {
     let limpiadas = 0;
     await Promise.allSettled(
       suscripciones.map(async (s) => {
+        // Defensa en profundidad (bloqueante 2 PR #23 — SSRF): el DTO ya
+        // valida el host, pero endpoints guardados con la regla antigua se
+        // filtran aquí — un host ajeno NUNCA recibe POST del server.
+        if (!esEndpointPushPermitido(s.endpoint)) {
+          this.logger.warn(`Push descartado: endpoint fuera de la lista blanca (${s.endpoint})`);
+          return;
+        }
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
             payload,
+            { timeout: 10000 },
           );
           enviados++;
         } catch (error) {
