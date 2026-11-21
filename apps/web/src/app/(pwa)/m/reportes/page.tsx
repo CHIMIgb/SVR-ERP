@@ -314,8 +314,11 @@ export default function ReportesMovilPage() {
       try {
         const res = await trabajadoresApi.listar({ limit: 100 });
         if (vivo && res.success) {
-          setTrabajadores(res.data.items);
-          if (userId) guardarDatos(userId, 'trabajadores', res.data);
+          // I-2 revisión PR #23: al snapshot no va el DTO completo (sueldos y
+          // contactos) — misma proyección que datos-offline.ts
+          const items = res.data.items.map(({ id, nombre, puesto }) => ({ id, nombre, puesto }));
+          setTrabajadores(items);
+          if (userId) guardarDatos(userId, 'trabajadores', { ...res.data, items });
         }
       } catch {
         // Sin señal queda el snapshot; sin snapshot, el nombre libre
