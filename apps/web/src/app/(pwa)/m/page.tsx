@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatsCard } from "@/components/ui/StatsCard";
+import { PanelEmpresa, puedeVerPanelEmpresa } from "./PanelEmpresa";
 
 /**
  * Inicio de la PWA (rebanada 2): saludo, estado de la asistencia de hoy, conteo de la semana y accesos
@@ -39,6 +40,9 @@ export default function InicioMovilPage() {
   const [carga, setCarga] = useState<Carga>({ tipo: "cargando" });
   const solicitudRef = useRef(0);
   const hoy = new Date();
+  const rutas = new Set(navDelRol(user).map((r) => r.ruta));
+  // Sin /m/asistencia en su menú (p. ej. el Administrador, como en el diseño) no se pide ni se muestra su asistencia.
+  const conAsistencia = rutas.has("/m/asistencia");
 
   // Sin setState antes del await: el estado inicial ya es "cargando" (regla react-hooks/set-state-in-effect).
   const cargar = useCallback(async () => {
@@ -51,17 +55,17 @@ export default function InicioMovilPage() {
   }, []);
 
   useEffect(() => {
+    if (!conAsistencia) return;
     (async () => {
       await cargar();
     })();
-  }, [cargar]);
+  }, [cargar, conAsistencia]);
 
   const reintentar = () => {
     setCarga({ tipo: "cargando" });
     void cargar();
   };
 
-  const rutas = new Set(navDelRol(user).map((r) => r.ruta));
   const datos = carga.tipo === "ok" ? carga.datos : null;
   const nombre = (user?.persona?.nombre ?? "").split(" ").filter(Boolean)[0] ?? "";
   const iniciales = [user?.persona?.nombre, user?.persona?.apellidoPaterno]
@@ -75,7 +79,7 @@ export default function InicioMovilPage() {
       ]
         .filter(Boolean)
         .join(" · ")
-    : (user?.roles?.[0]?.nombre ?? "");
+    : [user?.roles?.[0]?.nombre, conAsistencia ? null : fechaLarga(hoy)].filter(Boolean).join(" · ");
   const jefe = user?.jefe ?? null;
   const semana = datos?.semana ?? null;
 
@@ -91,20 +95,19 @@ export default function InicioMovilPage() {
         </div>
       </div>
 
-      <TarjetaHoy
-        carga={carga}
-        hoy={hoy}
-        puedeIrAAsistencia={rutas.has("/m/asistencia")}
-        onReintentar={reintentar}
-      />
+      {conAsistencia && (
+        <TarjetaHoy carga={carga} hoy={hoy} puedeIrAAsistencia onReintentar={reintentar} />
+      )}
 
-      {semana && (
+      {conAsistencia && semana && (
         <div className="grid grid-cols-3 gap-2">
           <StatsCard label="Asistencias" value={semana.totalDiasAsistidos} hint="esta semana" />
           <StatsCard label="Retardos" value={semana.totalRetardos} hint="esta semana" />
           <StatsCard label="Faltas" value={semana.totalFaltas} hint="esta semana" />
         </div>
       )}
+
+      {puedeVerPanelEmpresa(user) && <PanelEmpresa user={user} rutas={rutas} />}
 
       {(rutas.has("/m/reportes") || jefe) && (
         <div className="grid grid-cols-2 gap-2">
