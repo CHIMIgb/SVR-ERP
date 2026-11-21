@@ -48,12 +48,17 @@ export default function InicioMovilPage() {
 
   // Sin setState antes del await: el estado inicial ya es "cargando" (regla react-hooks/set-state-in-effect).
   const cargar = useCallback(async () => {
-    const solicitud = ++solicitudRef.current;
-    const res = await asistenciaApi.mia();
-    if (solicitud !== solicitudRef.current) return;
-    if (res.success) setCarga({ tipo: "ok", datos: res.data });
-    else if (res.error.code === "NOT_FOUND") setCarga({ tipo: "sin-enlace" });
-    else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu asistencia.") });
+    try {
+      const solicitud = ++solicitudRef.current;
+      const res = await asistenciaApi.mia();
+      if (solicitud !== solicitudRef.current) return;
+      if (res.success) setCarga({ tipo: "ok", datos: res.data });
+      else if (res.error.code === "NOT_FOUND") setCarga({ tipo: "sin-enlace" });
+      else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu asistencia.") });
+    } catch {
+      // API caída: estado de error con Reintentar (no unhandledRejection)
+      setCarga({ tipo: "error", mensaje: "Sin conexión con el servidor. Revisa tu señal e intenta de nuevo." });
+    }
   }, []);
 
   useEffect(() => {
@@ -261,11 +266,16 @@ function EquipoHoy({ esResidente }: { esResidente: boolean }) {
   const solicitudRef = useRef(0);
 
   const cargar = useCallback(async () => {
-    const solicitud = ++solicitudRef.current;
-    const res = await asistenciaApi.equipo();
-    if (solicitud !== solicitudRef.current) return;
-    if (res.success) setCarga({ tipo: "ok", datos: res.data });
-    else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu equipo.") });
+    try {
+      const solicitud = ++solicitudRef.current;
+      const res = await asistenciaApi.equipo();
+      if (solicitud !== solicitudRef.current) return;
+      if (res.success) setCarga({ tipo: "ok", datos: res.data });
+      else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu equipo.") });
+    } catch {
+      // API caída: estado de error con Reintentar (no unhandledRejection)
+      setCarga({ tipo: "error", mensaje: "Sin conexión con el servidor. Revisa tu señal e intenta de nuevo." });
+    }
   }, []);
 
   useEffect(() => {
