@@ -13,6 +13,7 @@ import { INestApplication, BadRequestException, ConflictException, ForbiddenExce
 import { randomUUID } from 'crypto';
 import {
   AuditAction,
+  AuditResult,
   CategoriaReporte,
   EstadoIncidente,
   Prioridad,
@@ -40,6 +41,13 @@ describe('ReportesCampo Audit (Real DB)', () => {
   let auditContext: any;
 
   const createdIds: string[] = [];
+
+  /** Usuario demo por email (los helpers de los describes de abajo no alcanzan aquí). */
+  const buscarUsuarioDemo = async (email: string): Promise<{ id: string }> => {
+    const u = await prisma.users.findUnique({ where: { email }, select: { id: true } });
+    if (!u) throw new Error(`Usuario demo no encontrado: ${email}`);
+    return u as { id: string };
+  };
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -484,6 +492,87 @@ describe('ReportesCampo Audit (Real DB)', () => {
       expect(fail?.error_code).toBe('MIME_NO_PERMITIDO');
     });
 
+    it('REGLA DEL AUTOR: el Trabajador (solo `crear`) adjunta a SU reporte Nuevo — SUCCESS real', async () => {
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+      const reporte = await service.create(createDto(), trabajador.id);
+      createdIds.push(reporte.id);
+
+      const adjunto = await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        () =>
+          service.adjuntar(
+            reporte.id,
+            { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+            trabajador.id,
+          ),
+      );
+      expect(adjunto.mime).toBe('image/png');
+
+      const audits = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('REGLA DEL AUTOR: el Trabajador NO adjunta a reporte ajeno (ámbito lo corta: REPORTE_ACCESO_DENEGADO, FAIL real)', async () => {
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+      const reporteAjeno = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporteAjeno.id);
+
+      await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporteAjeno.id,
+              { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+              trabajador.id,
+            ),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporteAjeno.id, action: AuditAction.REPORTE_ADJUNTO, error_code: 'REPORTE_ACCESO_DENEGADO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
+      const adjuntos = await prisma.reportes_adjuntos.count({ where: { reporte_id: reporteAjeno.id } });
+      expect(adjuntos).toBe(0);
+    });
+
+    it('REGLA DEL AUTOR: en reporte EN_CURSO ya solo la torre (ADJUNTO_SOLO_AUTOR_NUEVO, FAIL real)', async () => {
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+      const reporte = await service.create(createDto(), trabajador.id);
+      createdIds.push(reporte.id);
+      // el autor pasa su reporte a En curso: deja de admitir adjuntos del autor
+      await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'PATCH' },
+        async () => {
+          await service.cambiarEstado(reporte.id, { estado: EstadoIncidente.EN_CURSO }, trabajador.id);
+        },
+      );
+
+      await auditContext.run(
+        { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+              trabajador.id,
+            ),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+
+      const fail = await prisma.registro_auditoria.findFirst({
+        where: { entity_id: reporte.id, action: AuditAction.REPORTE_ADJUNTO, error_code: 'ADJUNTO_SOLO_AUTOR_NUEVO' },
+        orderBy: { timestamp: 'desc' },
+      });
+      expect(fail).not.toBeNull();
+      expect(fail!.result).toBe('FAIL');
+    });
+
     it('corta en 4 adjuntos (LIMITE_ADJUNTOS, FAIL auditado)', async () => {
       const reporte = await service.create(createDto(), ACTOR_USER_ID);
       createdIds.push(reporte.id);
@@ -905,6 +994,142 @@ describe('ReportesCampo Audit (Real DB)', () => {
       await expect(
         prisma.$executeRawUnsafe(`DELETE FROM registro_auditoria WHERE event_id = '${fail!.event_id}'`),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('IDEMPOTENCIA PWA — reenvío de la cola (BD real)', () => {
+    it('doble envío con la misma key crea una sola fila y un solo SUCCESS', async () => {
+      const key = randomUUID();
+      const original = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      createdIds.push(original.id);
+
+      const reenvio = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      expect(reenvio.id).toBe(original.id);
+
+      const filas = await prisma.reportes_campo.findMany({ where: { idempotencia_key: key } });
+      expect(filas).toHaveLength(1);
+
+      const successes = (await findAudits(AuditAction.REPORTE_CREADO, original.id)).filter(
+        (a) => a.result === AuditResult.SUCCESS,
+      );
+      expect(successes).toHaveLength(1);
+    });
+
+    it('el índice único rechaza un duplicado insertado directamente', async () => {
+      const key = randomUUID();
+      const original = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      createdIds.push(original.id);
+
+      await expect(
+        prisma.reportes_campo.create({
+          data: {
+            id: randomUUID(),
+            codigo: `INC-DUP-${TEST_ID}`,
+            idempotencia_key: key,
+            tipo: TipoReporteCampo.DIESEL,
+            fecha: new Date(),
+            hora: new Date('1970-01-01T12:00:00Z'),
+            descripcion: 'duplicado directo de prueba',
+            usuario: 'Prueba idempotencia',
+            obra_texto: 'Sin obra asociada',
+          },
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('ROL DESACTIVADO — los permisos de adjuntos respetan users_roles.activo (bloqueante 3 PR #23, BD real)', () => {
+    const idsLocales: { usersRoles: string[]; adjuntos: string[] } = {
+      usersRoles: [],
+      adjuntos: [],
+    };
+
+    afterAll(async () => {
+      // FK-safe: adjuntos → users_roles. El user/persona NO se borra: las
+      // filas de registro_auditoria (inmutable) lo referencian y el trigger
+      // bloquea el DELETE — la convención del repo es dejarlos (emails únicos
+      // por TEST_ID los aíslan). Los reportes los limpia el afterAll general.
+      if (idsLocales.adjuntos.length > 0) {
+        await prisma.reportes_adjuntos.deleteMany({ where: { id: { in: idsLocales.adjuntos } } });
+      }
+      if (idsLocales.usersRoles.length > 0) {
+        await prisma.users_roles.deleteMany({ where: { id: { in: idsLocales.usersRoles } } });
+      }
+    });
+
+    it('un rol con editar/crear pero ACTIVO: false NO concede adjuntar; al activarlo sí', async () => {
+      // arrange: persona + user de prueba con torre DIESEL (ámbito del reporte)
+      const personaId = randomUUID();
+      const userId = randomUUID();
+      await prisma.personas.create({
+        data: {
+          id: personaId,
+          nombre: 'RolActivo',
+          apellido_paterno: TEST_ID,
+          actualizado_en: new Date(),
+        },
+      });
+      await prisma.users.create({
+        data: {
+          id: userId,
+          persona_id: personaId,
+          email: `rolactivo-${TEST_ID}@svr-erp.local`,
+          password_hash: 'no-usada',
+          torre: CategoriaReporte.DIESEL,
+          actualizado_en: new Date(),
+        },
+      });
+
+      // users_roles hacia el rol Administrador (tiene editar/crear sobre
+      // reportes_campo en el seed) pero DESACTIVADO
+      const rol = await prisma.roles.findFirst({
+        where: { nombre: 'Administrador' },
+        select: { id: true },
+      });
+      if (!rol) throw new Error('Rol Administrador del seed no encontrado');
+      const urId = randomUUID();
+      idsLocales.usersRoles.push(urId);
+      await prisma.users_roles.create({
+        data: { id: urId, user_id: userId, rol_id: rol.id, activo: false },
+      });
+
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      // act + assert 1: el rol desactivado NO concede — 403 FAIL auditado
+      await auditContext.run(
+        { jwtUserId: userId, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+              userId,
+            ),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+      const fallos = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(fallos[0].result).toBe('FAIL');
+      expect(fallos[0].error_code).toBe('ADJUNTO_SOLO_AUTOR_NUEVO');
+
+      // act + assert 2 (control positivo): SOLO cambiar activo → true concede
+      await prisma.users_roles.update({
+        where: { id: urId },
+        data: { activo: true },
+      });
+      const adjunto = await auditContext.run(
+        { jwtUserId: userId, endpoint: '/api/reportes-campo', method: 'POST' },
+        () =>
+          service.adjuntar(
+            reporte.id,
+            { nombre: 'activada.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+            userId,
+          ),
+      );
+      idsLocales.adjuntos.push(adjunto.id);
+      const auditsDespues = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(auditsDespues[0].result).toBe('SUCCESS');
     });
   });
 });

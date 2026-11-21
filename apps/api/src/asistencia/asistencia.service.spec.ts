@@ -1080,8 +1080,13 @@ describe('AsistenciaService', () => {
         });
         expect(JSON.stringify(r)).not.toContain('9999');
         expect(r.obras).toEqual([
-          { id: mockObra.id, nombre: mockObra.nombre, tieneUbicacion: true },
-          { id: 'obra-2', nombre: 'Obra sin ubicacion', tieneUbicacion: false },
+          {
+            id: mockObra.id,
+            nombre: mockObra.nombre,
+            tieneUbicacion: true,
+            geocerca: { lat: mockObra.lat, lng: mockObra.lng, radioMetros: 2000 },
+          },
+          { id: 'obra-2', nombre: 'Obra sin ubicacion', tieneUbicacion: false, geocerca: null },
         ]);
         expect(r.registroHoy?.id).toBe(baseRegistro.id);
         expect(r.turnoNocturnoAbierto).toBe(false);

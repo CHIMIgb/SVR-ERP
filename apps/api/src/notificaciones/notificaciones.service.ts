@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -12,6 +13,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { configVapid } from './push.config';
+import { esEndpointPushPermitido } from './push-hosts';
 
 /** Placeholder para auditoría de fallos donde aún no hay entidad conocida. */
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
@@ -49,6 +52,130 @@ export class NotificacionesService {
   ) {}
 
   /**
+   * Usuarios del alcance de una notificación (fase b del push): convierte la
+   * audiencia de la fila a USUARIOS concretos para buscar sus suscripciones
+   * Web Push. Excluye al actor (`creadoPor`) — igual que el buzón.
+   */
+  async usuariosDelAlcance(
+    input: Pick<EmitirNotificacionInput, 'audienciaRolId' | 'audienciaTorre' | 'destinatarioUserId'>,
+    creadoPor?: string,
+  ): Promise<string[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let usuarios: any[] = [];
+    if (input.destinatarioUserId) {
+      // Menor 2 PR #23: una cuenta dada de baja deja de recibir push — el
+      // destinatario personal se verifica ACTIVO antes de incluirlo.
+      const user = await this.prisma.users.findUnique({
+        where: { id: input.destinatarioUserId },
+        select: { id: true, activo: true },
+      });
+      if (user?.activo) usuarios = [{ id: user.id }];
+    } else if (input.audienciaTorre) {
+      usuarios = await this.prisma.users.findMany({
+        where: { torre: input.audienciaTorre, activo: true },
+        select: { id: true },
+      });
+    } else if (input.audienciaRolId) {
+      // users_roles ACTIVOS cuyo usuario TAMBIÉN está activo (menor 2 PR #23)
+      const roles = await this.prisma.users_roles.findMany({
+        where: {
+          rol_id: input.audienciaRolId,
+          activo: true,
+          users_users_roles_user_idTousers: { activo: true },
+        },
+        select: { user_id: true },
+      });
+      usuarios = roles.map((r: { user_id: string }) => ({ id: r.user_id }));
+    } else {
+      // "para todos": todos los usuarios activos (vigilar volumen al crecer)
+      usuarios = await this.prisma.users.findMany({ where: { activo: true }, select: { id: true } });
+    }
+    return [...new Set(usuarios.map((u: { id: string }) => u.id))].filter((id) => id !== creadoPor);
+  }
+
+  /**
+   * Envío Web Push best-effort (fase b): FIRE-AND-FORGET desde emitir() — el
+   * fallo del push JAMÁS toca el negocio. Sin VAPID configurado no envía nada.
+   * 410/404 = suscripción muerta → se elimina de BD.
+   */
+  async enviarPushesBestEffort(
+    notificacion: {
+      titulo: string;
+      cuerpo: string;
+      referenciaTipo?: string | null;
+      referenciaId?: string | null;
+    },
+    usuarios: string[],
+  ): Promise<{ enviados: number; limpiadas: number }> {
+    const vapid = configVapid();
+    if (!vapid || usuarios.length === 0) return { enviados: 0, limpiadas: 0 };
+
+    const payload = JSON.stringify({
+      titulo: notificacion.titulo,
+      cuerpo: notificacion.cuerpo,
+      referenciaTipo: notificacion.referenciaTipo ?? null,
+      referenciaId: notificacion.referenciaId ?? null,
+    });
+    const suscripciones = await this.prisma.push_suscripciones.findMany({
+      where: { user_id: { in: usuarios } },
+      select: { endpoint: true, p256dh: true, auth: true },
+    });
+
+    // IMPORT LAZY: `web-push` es CJS y Jest no puede parsearlo estático —
+    // cargado solo cuando realmente se envía (los tests lo mockean).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const webpush = (await import('web-push')) as any;
+    webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+    let enviados = 0;
+    let limpiadas = 0;
+    await Promise.allSettled(
+      suscripciones.map(async (s) => {
+        // Defensa en profundidad (bloqueante 2 PR #23 — SSRF): el DTO ya
+        // valida el host, pero endpoints guardados con la regla antigua se
+        // filtran aquí — un host ajeno NUNCA recibe POST del server.
+        if (!esEndpointPushPermitido(s.endpoint)) {
+          this.logger.warn(`Push descartado: endpoint fuera de la lista blanca (${s.endpoint})`);
+          return;
+        }
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            payload,
+            { timeout: 10000 },
+          );
+          enviados++;
+        } catch (error) {
+          const status = (error as { statusCode?: number }).statusCode;
+          if (status === 410 || status === 404) {
+            await this.prisma.push_suscripciones.deleteMany({ where: { endpoint: s.endpoint } });
+            limpiadas++;
+          } else {
+            this.logger.warn(
+              `Push falló para ${s.endpoint}: ${error instanceof Error ? error.message : error}`,
+            );
+          }
+        }
+      }),
+    );
+    return { enviados, limpiadas };
+  }
+
+  /**
+   * Envío push de una emisión: resuelve el alcance y envía. Se invoca como
+   * `void` desde emitir() (fire-and-forget) y se traga sus propios fallos.
+   */
+  async enviarPushesDeEmision(input: EmitirNotificacionInput): Promise<void> {
+    try {
+      const usuarios = await this.usuariosDelAlcance(input, input.creadoPor);
+      await this.enviarPushesBestEffort(input, usuarios);
+    } catch (error) {
+      this.logger.warn(
+        `Push de "${input.titulo}" no enviado: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  /**
    * Emite una notificación de forma BEST-EFFORT: si falla (BD caída, datos
    * raros), se registra el warning y NUNCA revierte el evento de negocio que
    * la originó. Para uso interno de los services del ERP.
@@ -73,7 +200,13 @@ export class NotificacionesService {
       this.logger.warn(
         `No se pudo emitir la notificación "${input.titulo}": ${error instanceof Error ? error.message : error}`,
       );
+      return;
     }
+
+    // Fase b del push (fire-and-forget): tras el insert exitoso, intenta
+    // enviar notificaciones del sistema a los usuarios del alcance. El fallo
+    // del push JAMÁS afecta el negocio (el método se traga sus propios errores).
+    void this.enviarPushesDeEmision(input);
   }
 
   /**
@@ -182,7 +315,16 @@ export class NotificacionesService {
           OR: [
             { destinatario_user_id: userId },
             ...(user?.torre ? [{ audiencia_torre: user.torre }] : []),
-            { audiencia_rol_id: null },
+            // "Para todos": SOLO filas sin ninguna audiencia dirigida — si no,
+            // una fila dirigida solo por TORRE (audiencia_rol_id null) se le
+            // escapaba a usuarios de otras torres (fuga 2026-11-20).
+            {
+              AND: [
+                { audiencia_rol_id: null },
+                { audiencia_torre: null },
+                { destinatario_user_id: null },
+              ],
+            },
             ...(roleIds.length ? [{ audiencia_rol_id: { in: roleIds } }] : []),
           ],
         },
@@ -310,6 +452,84 @@ export class NotificacionesService {
     });
 
     return { message: 'Notificaciones marcadas como leídas', marcadas: faltantes.length };
+  }
+
+  /**
+   * SUSCRIBIR Web Push (fase a del plan de push): guarda/actualiza la
+   * suscripción del dispositivo autenticado. Upsert por `endpoint` (único
+   * por dispositivo/permiso): si el endpoint ya existía (de otro usuario o
+   * del mismo), se reasigna con las llaves nuevas. Audita SUCCESS/FAIL
+   * (menor 3 PR #23).
+   */
+  async suscribirPush(
+    userId: string,
+    dto: { endpoint: string; llaves: { p256dh: string; auth: string } },
+  ) {
+    try {
+      const suscripcion = await this.prisma.push_suscripciones.upsert({
+        where: { endpoint: dto.endpoint },
+        create: {
+          id: randomUUID(),
+          user_id: userId,
+          endpoint: dto.endpoint,
+          p256dh: dto.llaves.p256dh,
+          auth: dto.llaves.auth,
+        },
+        update: {
+          user_id: userId,
+          p256dh: dto.llaves.p256dh,
+          auth: dto.llaves.auth,
+        },
+        select: { id: true, endpoint: true, creado_en: true },
+      });
+
+      await this.auditService.log({
+        action: AuditAction.PWA_PUSH_SUSCRITO,
+        entityType: 'push_suscripciones',
+        entityId: suscripcion.id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        newValue: { endpoint: dto.endpoint, usuario: userId },
+      });
+
+      return {
+        message: 'Suscripción de push registrada',
+        suscripcion,
+      };
+    } catch (error) {
+      // El 404 era mentira semántica (nada "no se encontró"): fallo interno
+      // → 500, con FAIL auditado ANTES de lanzar (estándar del repo).
+      return this.fallir(
+        AuditAction.PWA_PUSH_SUSCRITO,
+        null,
+        'PUSH_SUSCRIPCION_FALLIDA',
+        InternalServerErrorException,
+        'No se pudo registrar la suscripción de push',
+        userId,
+      );
+    }
+  }
+
+  /** BAJA de push: elimina la suscripción cuyo endpoint sea del propio usuario. */
+  async cancelarSuscripcionPush(userId: string, endpoint: string) {
+    const baja = await this.prisma.push_suscripciones.deleteMany({
+      where: { endpoint, user_id: userId },
+    });
+
+    await this.auditService.log({
+      action: AuditAction.PWA_PUSH_BAJA,
+      entityType: 'push_suscripciones',
+      entityId: ENTITY_PLACEHOLDER,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { endpoint, canceladas: baja.count, usuario: userId },
+    });
+
+    return { message: 'Suscripción de push cancelada', canceladas: baja.count };
   }
 
   /**

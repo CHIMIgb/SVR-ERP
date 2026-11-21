@@ -277,7 +277,7 @@ de retiros de F3, según el hilo) + F3/Cl3 para el estado de cuenta.
 
 | # | Tema | Decisión por defecto de la app | Archivo de duda original |
 |---|---|---|---|
-| A1 | Folio del retiro | ÚNICO y no repetible; se asume que es el ticket de la báscula (se nombrará así) | PRODUCTIVIDAD d1 |
+| A1 | Folio del retiro | ÚNICO y no repetible; se asume que es el ticket de la báscula (se nombrará así) — **CONFIRMADA 2026-11-20 (respuesta PRODUCTIVIDAD.txt): el ORIGINAL/COPIA del papel es control de folios (encargado primero, chofer después); la app lo resuelve con una sola captura + procesamiento a pago posterior** | PRODUCTIVIDAD d1 |
 | A2 | Operador en el viaje | La app lleva operador en cada viaje (fijo o rotante — no cambia el modelo) | PRODUCTIVIDAD d6 |
 | A3 | Tanque propio de diésel | Si existe, se agrega luego en inventario/maquinaria; sin respuesta no se construye | PRODUCTIVIDAD d9 |
 | A4 | Estado de cuenta: frecuencia | Configurable, semanal por defecto | ESTADO DE CUENTA d1 |
@@ -285,7 +285,7 @@ de retiros de F3, según el hilo) + F3/Cl3 para el estado de cuenta.
 | A6 | Estado de cuenta: disputa de viaje | Corrección con permiso y auditoría (patrón del repo) | ESTADO DE CUENTA d5 |
 | A7 | Estado de cuenta: alcance | Se genera para todos los clientes de material | ESTADO DE CUENTA d6 |
 | A8 | Lista de precios: presentaciones | 7m / 14m³ / 30m³ / m³ se modelan como medidas de venta | LISTA DE PRECIOS d2 |
-| A9 | Lista de precios: cambios | Solo con permiso administrativo | LISTA DE PRECIOS d3 |
+| A9 | Lista de precios: cambios | Solo con permiso administrativo — **AJUSTADA 2026-11-20 (respuesta PRODUCTIVIDAD.txt): el cambio lo hacen los ENCARGADOS al negociar con el cliente** | LISTA DE PRECIOS d3 |
 | A10 | Cotizaciones: revisión interna | Sin revisión previa — el representante legal envía directo | COTIZACIONES d1 |
 | A11 | Cotizaciones: vigencia 8 días | Se marca "vencida" al pasar; no bloquea el flujo | COTIZACIONES d3 |
 | A12 | Cotizaciones: anticipar 1 semana | Nota precargada en la plantilla de condiciones | COTIZACIONES d5 |

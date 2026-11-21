@@ -114,7 +114,7 @@ La PWA vive DENTRO de `apps/web` como grupo de rutas `(pwa)` con pantallas en `/
 Reglas duras al construir vistas móviles (aplican igual que las de escritorio, con estos matices):
 
 1. **Diseño "acción primero"** (spec del cliente): tarjetas grandes con 2-3 datos y UNA acción principal por pantalla. PROHIBIDO apretar tablas del desktop en el teléfono — cada módulo móvil es una vista nueva, no un responsive.
-2. **REUSA el kit existente primero** (`src/components/ui/*`: Input, Modal/FormModal, Badge, Skeleton, Button, StatsCard, EmptyState, Pagination…). Solo crea componentes NUEVOS en `src/components/pwa/*` cuando no exista equivalente — y **documéntalos en `COMPONENTS.md`** (props, import/uso, cuándo usar / cuándo no) igual que los del kit. No negociable.
+2. **REUSA el kit existente primero** (`src/components/ui/*`: Input, Modal/FormModal, Badge, Skeleton, Button, StatsCard, EmptyState, Pagination…). Solo crea componentes NUEVOS en `src/components/pwa/*` cuando no exista equivalente — y **documéntalos en `COMPONENTS-PWA.md`** (props, import/uso, cuándo usar / cuándo no) igual que los del kit. No negociable.
 3. **Navegación inferior por rol** construida desde `user.vistas` (`lib/pwa/rol-nav.ts`) — PROHIBIDO hardcodear el menú por rol dentro de cada pantalla.
 4. **Objetivos táctiles ≥ 44px de alto** en botones/acciones (dedos con guantes) y respeto de safe-areas (`env(safe-area-inset-*)`) en header/nav inferior.
 5. Sin CSS inline (regla global), tokens `@theme` de `globals.css`, clases de componente en `*.styles.ts` — las mismas reglas de estilos del desktop aplican.
@@ -152,6 +152,7 @@ o elimina sin autorización explícita.
 - **ALL COMPONENTS MUST BE RESPONSIVE:** Every UI component (existing and future) MUST be responsive. Use Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`) for layouts, flex direction changes, grid adjustments, and text sizing. Tables must scroll horizontally on mobile. Modals must adapt to small screens. Forms stack on mobile. This is the #1 rule — no exceptions.
 - **NO DUPLICATE KEYS:** Before writing any `.map()` over arrays that render JSX, ALWAYS verify there are no duplicate `key` values. Duplicated keys cause React console errors and broken rendering. Use unique identifiers (IDs, unique names, or index + prefix if no unique data exists). Run `npx tsc --noEmit` after changes to catch issues.
 - **DOCUMENT EVERYTHING:** Every UI component created in `src/components/ui/` MUST be documented in `COMPONENTS.md` with: Props table, Import example, Usage example, "When to use" and "When NOT to use" sections. This is non-negotiable.
+- **DOCUMENT PWA COMPONENTS:** Every component created in `src/components/pwa/` MUST be documented in `COMPONENTS-PWA.md` with the same sections (Props table, Import, Usage, "When to use" / "When NOT to use") in the SAME change. This is non-negotiable.
 - **NUEVA VISTA = PLANTILLA `/inventario`:** Toda vista nueva se construye tomando la vista `/inventario` como base (PageHeader, StatsCards, SearchBar + filtros, DataTable con acciones por RBAC, Pagination, FormModal). Nunca se construye una vista CRUD desde cero.
 - **PLAN ANTES DE CÓDIGO (obligatorio):** Para cada cambio o cosa nueva, SIEMPRE presentar primero un plan de implementación (qué archivos se tocarán, qué harás, impacto) y esperar la autorización del usuario. **Nunca se crea ni se modifica código sin autorización previa.**
 - **TESTS REALES OBLIGATORIOS en vistas/edges de datos:** Toda vista nueva o modificación debe llevar: pruebas de unicidad (índices únicos / duplicados por carrera), pruebas de integración contra la BD real (PostgreSQL, `npm run test:integration`) que inserten registros reales, y tests específicos para la tabla `registro_auditoria` (SUCCESS/FAIL + error_code) también con inserciones reales. Los mocks unitarios no bastan para estos 3 tipos.
@@ -414,6 +415,14 @@ al dominio — nunca se construye una vista CRUD desde cero:
 
 Referencias vivas: `/inventario` (con API), `/criba` y `/proyectos`.
 
+### Notificaciones — catálogo obligatorio (`notificaciones/catalogo.ts`)
+
+- Toda emisión de notificación usa `construirAlerta(ALERTAS.X, contexto, referenciaId, creadoPor)` del catálogo — **PROHIBIDO escribir `titulo`/`cuerpo` inline** en los services. El texto vive en el catálogo, no en el punto de emisión.
+- Una alerta nueva nace en `catalogo.ts`: definición (`clave` única, tipo, textos como funciones del contexto, `referenciaTipo`) + su fila en la tabla del encabezado (que es el inventario de alertas existentes).
+- Audiencia con los helpers (`emitirATorre`, `emitirARol`, `emitirAUsuario`, `emitirATrabajador`); `TipoNotificacion` NO se extiende — la semántica de dominio vive en la `clave`.
+- El filtro del buzón (`filtroDeBuzon`) excluye al actor y las filas «para todos» exigen las **tres** audiencias vacías — NO relajarlo (fuga de torres corregida 2026-11-20).
+- Flujo completo, reglas del buzón y paso a paso: README «Sistema de notificaciones y alertas».
+
 ## Testing — Mandatory Rule
 
 **EVERY NEW FUNCTION OR MODULE IMPLEMENTED MUST INCLUDE UNIT TESTS.**
@@ -546,3 +555,342 @@ Estado real a 2026-11-18: el repo **sí tiene Actions** (no repetir lo contrario
 6. `npm run lint` **sí es gate** desde la Fase 4: 0 errores, 37 warnings preexistentes (no bloquean). Los 10 errores locales se arreglaron de verdad; `react-hooks/set-state-in-effect` sigue desactivado **solo** en las 11 páginas del dashboard que cargan datos al montar (`eslint.config.mjs`), pendiente de migrarlas a caché de datos. Los unitarios de la API corren completos (`npm run test -- --runInBand`); los tests de integración corren en PR y en el disparo manual (regla 5).
 7. Todo cambio de workflow requiere autorización explícita, se valida con `git diff --check` y se registra en `historial-cambios/` en el mismo commit. Push y PR siguen siendo solo cuando el usuario lo ordene.
 8. El ruleset `Protección main` (id `21267691`) exige los checks `web`, `api` e `integration` en modo estricto desde 2026-11-18. El `bypass_always` de `CHIMIgb` se conserva por decisión explícita del usuario: los push directos del owner siguen saltándose los gates. Verificar con `gh api repos/CHIMIgb/SVR-ERP/rulesets/21267691`.
+
+---
+
+# Guías de desarrollo (web, PWA, componentes y CI/CD)
+
+Esta sección es la **teoría y el criterio**: qué significa cada decisión y por qué. La
+aplicación operativa (qué mirar antes de escribir, qué comando correr, cuándo
+preguntar) vive en `.opencode/agent/svr-erp.md`. Las reglas duras de arriba siguen
+mandando; aquí se explica el modelo mental que las sostiene.
+
+**Nota de vigencia:** el contenido viejo de este archivo («No backend», «Jest
+coming soon», `cn()` en `Sidebar.tsx`, raíz `src/`) describe una fase anterior y no
+se ha reescrito. La realidad es la de estas guías: API NestJS en `apps/api`, web en
+`apps/web/src`, `cn()` en `@/lib/utils`, tests del web en CI.
+
+## 1. Arquitectura web (Next.js 16 App Router)
+
+**Modelo mental.** Un Server Component puede leer datos y renderizar sin enviar JS
+al navegador; un Client Component existe solo cuando hay estado, efectos, eventos
+o APIs del navegador. La frontera se decide por necesidad, no por costumbre: en
+este repo todas las páginas del dashboard son `"use client"` por deuda histórica y
+solo los layouts son Server Components. **No mover esa frontera sin autorización**
+—migrar una página implica decidir caché, hidratación y carga de datos, no cambiar
+una directiva.
+
+**Regla de serialización.** Todo lo que cruza de Server a Client debe ser
+serializable: objetos planos, strings, números, booleanos y arrays. Nunca una
+instancia de `Date`, un `Decimal` de Prisma, una función ni una entidad con
+métodos. La API ya entrega ISO strings y decimales como `number`; no los
+conviertas de vuelta en el servidor.
+
+**Las cuatro capas y su responsabilidad:**
+
+| Capa | Dueño de | No debe hacer |
+|---|---|---|
+| API NestJS (`apps/api/src/<dominio>`) | reglas de negocio, validación, auditoría, transacciones | decidir presentación |
+| `apps/web/src/lib/api.ts` | contrato HTTP, tokens, refresh, paginación, mapeo enum | reglas de negocio |
+| Vista `(dashboard)/<dominio>/page.tsx` | orquestar carga, filtros, paginación, errores y permisos | reimplementar validaciones ni formatear dinero |
+| `components/ui/*` | presentación y estados visuales | hacer fetch ni leer `useAuth` |
+
+**Estado.** El servidor es la fuente de verdad; el `useState` de la vista es
+efímero (modal abierto, página, búsqueda, fila seleccionada). No existe store
+global de entidades: duplicar un cliente en dos estados garantiza que se
+desincronicen. El access token vive en memoria del `apiClient` y desaparece al
+recargar; el refresh token en `localStorage` permite recuperarlo.
+
+**Carga y caché.** Hoy las vistas cargan en `useEffect` (de ahí la excepción
+`react-hooks/set-state-in-effect` en 11 páginas). `NEXT_PUBLIC_*` se hornea en
+build: cambiar la URL de la API o la zona horaria exige reconstruir, no solo
+redeploy. Si se introduce `fetch` en un Server Component, hay que declarar
+explícitamente la política de caché/revalidación; un `fetch` sin política en un
+ERP money-related muestra datos viejos sin avisar.
+
+**Errores por capas.** (1) Red caída → mensaje de conexión del `apiClient`.
+(2) Error del contrato → `mensajeErrorApi`, que une `details[]`. (3) Regla de
+negocio rechazada → la decide el service y se muestra tal cual. (4) Fallo de
+render → boundary de Next. Mezclarlas produce el clásico "Error de validación"
+sin decir qué campo falló.
+
+**Hidratación.** `Date.now()`, `Math.random()` o `new Date().toISOString()` en
+render producen HTML distinto en servidor y cliente. Para "hoy" usar
+`fechaLocalHoy()`; para comparar fechas puras, aritmética sobre `YYYY-MM-DD`.
+
+## 2. Arquitectura PWA
+
+**Topología.** Mismo `apps/web`, dos grupos de rutas hermanos y una capa
+compartida:
+
+- `(dashboard)` → `/<dominio>`: escritorio.
+- `(pwa)` → `/m/*`: móvil.
+- Compartido: `lib/api.ts`, `providers/AuthProvider.tsx`, `components/ui/*`,
+  `lib/utils.ts`, `lib/formatters.ts`, `packages/shared`.
+- Solo PWA: `lib/pwa/dispositivo.ts`, `lib/pwa/rol-nav.ts`,
+  `lib/pwa/offline.ts`, `lib/pwa/sincronizador.ts`, `components/pwa/*`.
+
+Esa división explica la regla de independencia: un cambio en `components/ui/*`
+atraviesa ambas apps y exige revisar una vista de cada una; un cambio en
+`app/(pwa)` no debe arrastrar al escritorio. Compartir sesión y API es la
+**única** excepción permitida, y justamente por eso son archivos propios con
+contrato stable.
+
+**Ciclo de vida de una captura (el corazón del offline-first):**
+
+1. El teléfono valida lo mínimo en local y genera una clave de idempotencia
+   (UUID propio) que no cambiará en reintentos.
+2. Escribe en IndexedDB con `lib/pwa/offline.ts` **antes** de cualquier `fetch`.
+   Si la escritura falla, la captura no se pierde: se informa y se reintenta.
+3. `lib/pwa/sincronizador.ts` envía la cola al volver señal, con la misma clave.
+4. La API responde y el sincronizador marca `enviado` (ACK) o `conflicto`.
+   Nunca sobrescribe un dato del servidor por un 409: el conflicto se muestra
+   para que el humano decida.
+5. La cola se limpia solo con ACK confirmado o al hacer logout. Un error de red
+   **nunca** borra un registro pendiente.
+
+Si el endpoint de destino no respeta `idempotencia_key`, el flujo no es
+offline-first de verdad: hay que pedir el cambio en backend, no simularlo con
+reintentos desde el front.
+
+**Navegación y guard.** `rol-nav.ts` deriva las pestañas de `user.vistas` con
+`puedeVer`; el guard del shell redirige a `/m` si se navega por URL directa a una
+vista no concedida. `/m/pin-cambio` es ruta auxiliar exenta; `/m/perfil` no es
+pestaña (se abre desde el header y está concedida a los 6 roles activos).
+
+**Sesión y dispositivo.** Login por número de empleado + PIN, con fase de backend
+propia: no se reutiliza email/password ni se duplica `AuthProvider`. El detector
+`lib/pwa/dispositivo.ts` decide el grupo de rutas con umbral `<768px` y recuerda
+el interruptor en `localStorage`; las pantallas no implementan su propia
+detección. Capacitor compila este mismo bundle a APK: nada de `window` fuera de
+efectos.
+
+**Conectividad.** Capturar (asistencia, reporte, inventario) funciona sin señal;
+decidir (cerrar corte, aceptar, aprobar) requiere red. El usuario siempre ve
+cuántos registros lleva pendientes y cuál fue enviado. Guardar sin feedback es
+peor que no guardar: el operario vuelve a capturar y se duplica el trabajo.
+
+## 3. Buenas prácticas — web
+
+**Semántica y accesibilidad.** `<button>` para acciones, `<a>` para navegación,
+`<label>` asociado a cada input, `<th scope>` en tablas, foco visible en todo
+elemento interactivo y orden de tab lógico. `aria-*` se agrega cuando el HTML
+nativo no alcanza, no como sustituto. Un `<div onClick>` sin rol ni teclado es
+un bug de accesibilidad, aunque se vea bien.
+
+**Seguridad.** Access token en memoria; refresh en `localStorage`; jamás secretos
+en `NEXT_PUBLIC_*` (se hornean y son públicos). La validación ocurre en el API con
+`ValidationPipe` y DTOs; ocultar un botón por RBAC es UX, **no** seguridad —el
+guard y el permiso en servidor son los que cortan. Nunca `dangerouslySetInnerHTML`
+con texto de usuario.
+
+**Rendimiento.** Listados paginados server-side; no traer un catálogo entero en
+cada render; `useMemo`/`React.memo` solo cuando se mide un problema. Antes de
+culpar al bundle, revisa si la vista hace N+1 llamadas o un `.map()` anidado.
+
+**Consistencia de datos.** `formatCurrency` de shared, `fechaLocalHoy()` en web,
+enums mapeados junto al DTO. `new Intl.NumberFormat` duplicado y
+`new Date().toISOString().split('T')[0]` son deuda conocida: el segundo además
+cambía de día a las 6 p.m.
+
+## 4. Buenas prácticas — PWA
+
+**Contexto real de uso.** Obra, guantes, sol, señal intermitente y una sola mano.
+Eso dicta el diseño: contraste alto, fuente grande en datos críticos, targets
+≥44px, una acción principal por pantalla y cero gestos ocultos (hover, long
+press, swipe) como única vía.
+
+**Offline-first de verdad.** Asumir que la conexión caerá a mitad de envío.
+Escribir local primero, reenviar con la misma clave de idempotencia, backoff en
+reintentos y conflicto resuelto por humano. Un "guardado" que puede perderse en
+un timeout enseña al usuario a desconfiar de la app.
+
+**Batería y datos.** GPS y cámara bajo demanda, nunca en un loop; sincronizar por
+eventos (`online`, `focus`, intervalo amplio), no en cada render. Fotos y
+coordenadas son datos personales: viven en la cola local solo hasta el ACK y se
+limpian al logout. PIN y tokens jamás en logs.
+
+**Feedback.** Pendiente / enviado / conflicto siempre visible. El error se explica
+con acción: «Sin señal. Quedó guardado y se enviará solo» antes que «Error 500».
+Tras marcar entrada, mostrar hora y obra confirmadas; tras facturar, folio o
+"pendiente".
+
+**Prueba mínima en dispositivo:** 320px, 3G, batería baja, rotación y teclado
+virtual abierto. Un smoke de escritorio no valida ninguna de esas cinco cosas.
+
+## 5. Código mantenible (web y PWA)
+
+**Una fuente de verdad.** Contratos en `lib/api.ts`, dinero y fechas en
+`lib/formatters.ts`/shared, estilos en el kit y tokens de `@theme`. Regla
+práctica: dos repeticiones se toleran; la tercera se extrae. Extraer es mover el
+código existente con su validación y su manejo de errores, no reescribirlo.
+
+**API de componentes estrecha.** `variant?: 'primary' | 'secondary'` antes que
+cinco booleanos; `children` para composición antes que un objeto `config` con
+doce opciones; `className` para extensiones. Un componente hace una cosa. Si
+crece, se parte —no se le agrega otro `modo`.
+
+**Lógica fuera del JSX.** Obtener datos, transformarlos y decidir estados vive en
+hooks; el JSX solo describe la pantalla. La vista dice *qué* se muestra; el hook
+sabe *cómo* se obtiene.
+
+**Nombres.** Español en UI, mensajes y comentarios; inglés en identificadores del
+stack. Verbo + dominio para acciones (`cargarVentas`, `registrarEntrada`),
+`puede...` para permisos, `es...` para bools de estado.
+
+**Deuda explícita.** Un atajo se marca `shortcut: <límite>, <cuándo actualizar>`
+y se escribe en el registro del commit. Los refactors "de paso" están prohibidos:
+cada cambio tiene un dueño y un motivo verificable.
+
+**Anti-copia antes de crear.** `grep` en `src/components` y `src/lib` antes de un
+helper nuevo; `grep` en `lib/api.ts` y `apps/api/src` antes de un endpoint nuevo;
+leer `COMPONENTS.md` antes de un componente nuevo. La duplicidad en este repo no
+es estética: dos formatos de dinero o dos clientes HTTP divergen en producción.
+
+## 6. Responsividad web
+
+Mobile-first con `sm:`/`md:`/`lg:`/`xl:`. La prueba no es "se ve bien en la
+laptop": es 320px, 768px y 1280px con datos reales (nombres largos, montos
+grandes, 12 columnas).
+
+- **Tablas:** scroll horizontal dentro del contenedor con `scrollbar-none` y
+  ancho mínimo de columnas. No convertir la tabla en tarjetas ad-hoc; si el kit
+  tiene variante móvil, se usa.
+- **Modales:** `max-h-[90dvh]`, cabecera y pie visibles, cuerpo con scroll,
+  formularios de una columna en móvil y dos desde `md:`.
+- **Texto:** `break-words` en nombres de persona/obra; nada de
+  `whitespace-nowrap` en celdas de dominio; iconos con `shrink-0`.
+- **Imágenes y media:** `max-w-full h-auto`, proporción fija para evitar saltos
+  de layout al cargar.
+- **Teclado virtual:** `dvh` antes que `vh`; el botón de enviar no debe quedar
+  debajo del teclado.
+
+La regla #1 del repo (todos los componentes responsive) no tiene excepción: un
+componente que se rompe en móvil rompe también el escritorio que lo reutiliza.
+
+## 7. Responsividad PWA
+
+Aquí el teléfono es el **target primario**, no un viewport reducido. "Responsive"
+es adaptar una vista de escritorio; una pantalla `/m/*` es una vista nueva con
+jerarquía propia. Aprietar la tabla del desktop en el teléfono está prohibido.
+
+- **Estructura:** una columna, tarjetas con 2–3 datos, acción principal al final
+  (fija si la pantalla es larga) y acciones secundarias en texto.
+- **Zona de pulgar:** acciones destructivas lejos del borde superior; ≥44px de
+  alto y separación entre targets; sin depender de hover.
+- **Safe areas:** `env(safe-area-inset-*)` en header y nav inferior, aplicado
+  desde utilidades/tokens, nunca con `style={{}}` (salvo cálculo en runtime
+  permitido por la regla de estilos).
+- **Rotación y teclado:** `dvh`, scroll vertical, inputs visibles al enfocar;
+  probar landscape con el teclado abierto.
+- **Señal:** la UI no asume que el envío fue inmediato; el espacio para
+  "pendiente" ya está reservado en el layout.
+
+## 8. UI/UX web
+
+**Jerarquía contractual del ERP:** `PageHeader` con título y acción principal →
+`StatsCard`s → búsqueda y filtros → `DataTable` con acciones por RBAC →
+`Pagination`. Inventar otro orden rompe el modelo mental del usuario de que
+"todas las pantallas funcionan igual".
+
+**Los cuatro estados siempre presentes:** cargando (skeleton del kit), vacío
+(`EmptyState` con una acción para crearlo), error (`mensajeErrorApi` + reintentar)
+y éxito (dato real). Un "0" durante la carga miente; un bloque en blanco parece
+crash; un banner rojo de skeleton simula una alerta inexistente.
+
+**Feedback y consecuencias:** toda mutación termina en toast; las destructivas
+piden confirmación; el botón se bloquea con `isSubmitting` mientras envía; el
+éxito muestra qué cambió (folio, nombre, monto), no solo "Guardado".
+
+**RBAC visible:** si `puedeCrear` es `false`, no se dibuja el botón; si
+`puedeVer` es `false`, la ruta redirige. La coherencia visual es parte de la
+seguridad percibida, aunque la autoridad real esté en el servidor.
+
+**Consistencia:** mismos componentes, mismos colores de estado y mismos textos
+es-MX. No inventar variantes de `Badge` ni spinners de otro color: si hace falta
+una variante nueva, se agrega al kit y se documenta.
+
+## 9. UI/UX PWA
+
+**Una pantalla, una decisión.** Título corto, dato crítico en grande, una acción
+principal. Las acciones secundarias existen, pero no compiten visualmente. En
+campo, la duda de "¿qué botón presiono?" cuesta un registro duplicado.
+
+**Sincronización como parte de la interfaz.** Contador de pendientes, estado por
+registro y una explicación cuando no hay señal. El usuario debe poder cerrar la
+app en cualquier momento y saber que su dato sigue ahí.
+
+**Errores accionables y en español.** «Sin señal. Quedó guardado y se enviará
+solo»; «La obra ya no está activa. Habla con el residente». Los códigos de error
+son para el log, no para la pantalla.
+
+**Accesibilidad bajo campo:** contraste alto (sol), ícono **y** texto para el
+estado (no solo color), fuente ≥16px en datos críticos y targets separados con
+guantes. `aria-live` para confirmaciones de envío.
+
+## 10. Librería de componentes reutilizables
+
+**Cuándo crear:** el patrón ya aparece en tres vistas, o el kit no tiene
+equivalente y el problema es de presentación genérica. **Cuándo NO:** es
+específico de un dominio (va junto al dominio, no en `ui/`), arregla un caso
+único, o ya existe una variante que cubre el 90% del caso.
+
+**Estructura obligatoria:** `Componente/Componente.tsx` (lógica y JSX),
+`Componente.styles.ts` (clases Tailwind en objetos, aplicadas con `cn()`) e
+`index.ts` (barrel). Sin `style={{}}` salvo posición/z-index/dimensiones
+calculadas en runtime. Tokens en `@theme`; `globals.css` solo para utilitarias
+globales y keyframes.
+
+**Contrato de props:** tipos literales para variantes, valores por defecto
+sensatos, `className` para extender, `children` para composición. Rechazar props
+que solo cambian un color —para eso existe `variant`. Si el componente necesita
+saber de RBAC o de la API, no es un componente de UI.
+
+**Documentación no negociable:** en `COMPONENTS.md` (kit `src/components/ui/*`,
+compartido escritorio+PWA) o en `COMPONENTS-PWA.md` (componentes de
+`src/components/pwa/*`), tabla de props, import, ejemplo de uso, «cuándo
+usar» y **«cuándo NO usar»**. Ese último apartado es el que evita que
+`Skeleton` se use para un spinner de KPI o que `ModalFooter` se invente a
+mano. Un componente sin documentación es deuda desde el día 1.
+
+**Compatibilidad:** cambiar una prop compartida rompe escritorio y PWA a la vez.
+Antes, `grep` de todos los callers; después, smoke en una vista de cada app y
+`npx tsc --noEmit`. Cuando exista infra de tests frontend, cada variante lleva
+un test de render.
+
+## 11. CI/CD, DevOps y pipelines
+
+**Principios.** Todo pasa por PR; los gates cortan antes de publicar; el artefacto
+es inmutable (tag por SHA y promoción por digest, **nunca recompilar para
+promover**); los secretos viven fuera del repo y nunca se imprimen; local, CI y
+Railway son entornos distintos; un despliegue malo se revierte con el digest
+anterior, no editando el servidor en caliente.
+
+**Forma del pipeline ideal:**
+`lint + typecheck + unit` → `build` → imagen con tag por SHA → smoke del
+contenedor → integración con BD efímera → promoción a `:latest` por digest →
+deploy manual → verificación de URL → registro de SHA y digest en
+`historial-cambios/`. El smoke posterior a publicar detecta contenedores que no
+arrancan, pero no impide la publicación: por eso el deploy es un paso consciente.
+
+**Realidad de este repo (no inventar otra):** `ci.yml` (web + API),
+`build-web.yml` (imagen y `latest`) e `integration.yml` (Postgres 18 efímero con
+dump sin PostGIS). `apps/api` está fuera de los workspaces: `npm ci` propio y
+`npx prisma generate` antes de compilar. `prisma validate` necesita un
+`DATABASE_URL` dummy. `NEXT_PUBLIC_*` se hornea en build. `concurrency`
+cancela runs obsoletos. El ruleset exige `web`, `api` e `integration`.
+
+**Diagnóstico.** Separar siempre dos causas: falló el código o falló el entorno.
+`TS2339` sobre `prisma.*` = falta generar el cliente; `Blocked cross-origin` =
+CORS/origen equivocado; `migrate` desde cero = el historial fue baselined, hay
+que restaurar el dump; diff de schema = usar `migrate diff --from-config-datasource`
+(Prisma 7 ya no tiene `--from-url`). Reproducir local con los mismos comandos
+antes de proponer un arreglo.
+
+**Seguridad.** GitGuardian puede marcar passwords dummy del contenedor de CI
+(como `POSTGRES_PASSWORD: postgres` en `integration.yml:31`, incidente
+35200378): investigar qué archivo cambió el PR y decidir con evidencia, sin
+"arreglar" secretos de prueba por reflejo. Nunca editar workflows, secretos ni
+variables de GitHub/Railway sin autorización explícita; validar con
+`git diff --check`; documentar todo cambio de CI/CD aquí, en el agente y en
+`historial-cambios/` **en el mismo commit**.

@@ -14,7 +14,7 @@ import {
 import type { POSSale, Product, CartItem, TaxBreakdown } from '@/lib/pos';
 import { fechaLocalHoy } from '@/lib/formatters';
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 interface FetchOptions extends RequestInit {
@@ -293,8 +293,12 @@ export const apiClient = {
       body: JSON.stringify(body),
     }),
 
-  delete: <T>(endpoint: string, options?: FetchOptions) =>
-    request<T>(endpoint, { ...options, method: 'DELETE' }),
+  delete: <T>(endpoint: string, body?: unknown, options?: FetchOptions) =>
+    request<T>(endpoint, {
+      ...options,
+      method: 'DELETE',
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    }),
 };
 
 // ── Ciclo PIN de la PWA (plan §8.2) ──
@@ -1012,6 +1016,7 @@ export interface ReporteCampoCreateInput {
   longitud?: number;
   usuario: string;
   descripcion: string;
+  idempotenciaKey?: string;
   prioridad?: PrioridadReporteApi;
 }
 
@@ -1072,10 +1077,10 @@ export const reportesCampoApi = {
   comentar: (id: string, texto: string) =>
     apiClient.post<ActividadDTO>(`/reportes-campo/${id}/actividades`, { texto }),
 
-  /** Adjunta una imagen (base64) al incidente. */
+  /** Adjunta una imagen (base64) al incidente — el server calcula el tamaño real del base64. */
   adjuntar: (
     id: string,
-    data: { nombre: string; mime: string; tamano: number; datos: string },
+    data: { nombre: string; mime: string; datos: string },
   ) => apiClient.post<AdjuntoDTO>(`/reportes-campo/${id}/adjuntos`, data),
 
   eliminar: (id: string) =>
@@ -1476,6 +1481,74 @@ export interface MarcarSalidaInput {
   horasTrabajadasOrdinarias?: number;
 }
 
+/** GET /asistencia/mia — lo que ve el propio trabajador en la PWA (sin sueldos). */
+export interface MiAsistenciaDTO {
+  trabajador: {
+    id: string;
+    nombre: string;
+    puesto: string;
+    estado: 'ACTIVO' | 'INACTIVO' | 'VACACIONES';
+    /** Hora de entrada programada "HH:mm". */
+    entradaProgramada?: string;
+  };
+  /** Obras de sus proyectos activos. `geocerca` null = la obra aún no tiene ubicación: no se puede checar ahí. */
+  obras: {
+    id: string;
+    nombre: string;
+    tieneUbicacion: boolean;
+    geocerca: { lat: number; lng: number; radioMetros: number } | null;
+  }[];
+  /** Registro de hoy o, si sigue abierto, el turno nocturno de ayer. */
+  registroHoy: RegistroAsistenciaDTO | null;
+  turnoNocturnoAbierto: boolean;
+  /** Semana en curso; null si el trabajador no está activo. */
+  semana: AsistenciaSemanalDTO | null;
+}
+
+/** Un trabajador del equipo (GET /asistencia/equipo): contacto y estado del día, sin sueldos. */
+export interface MiembroAsistenciaEquipoDTO {
+  trabajadorId: string;
+  nombre: string;
+  puesto: string;
+  telefono: string;
+  estadoTrabajador: 'ACTIVO' | 'INACTIVO' | 'VACACIONES';
+  /** null en domingo o si el trabajador no está activo. */
+  dia: DiaAsistenciaSemanaDTO | null;
+}
+
+export interface EquipoAsistenciaDTO {
+  fecha: string;
+  totales: {
+    miembros: number;
+    presentes: number;
+    retardos: number;
+    faltas: number;
+    omisiones: number;
+    pendientes: number;
+  };
+  miembros: MiembroAsistenciaEquipoDTO[];
+}
+
+/** POST /asistencia/mia/entrada — sin trabajadorId (la API lo rechaza con 400). */
+export interface MarcarEntradaPropiaInput {
+  obraId: string;
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  notas?: string;
+}
+
+/** POST /asistencia/mia/salida — sin trabajadorId ni override de horas. */
+export interface MarcarSalidaPropiaInput {
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  salidaAnticipada?: boolean;
+  motivoSalidaAnticipada?: string;
+}
+
 export interface MarcarCuadrillaInput {
   obraId: string;
   trabajadorIds: string[];
@@ -1543,6 +1616,19 @@ export const asistenciaApi = {
   marcarEntrada: (data: MarcarEntradaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/entrada', data),
 
   marcarSalida: (data: MarcarSalidaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/salida', data),
+
+  // ── PWA: asistencia propia. El trabajador sale del token; nunca se manda trabajadorId. ──
+  mia: () => apiClient.get<MiAsistenciaDTO>('/asistencia/mia'),
+
+  marcarEntradaPropia: (data: MarcarEntradaPropiaInput) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/mia/entrada', data),
+
+  marcarSalidaPropia: (data: MarcarSalidaPropiaInput) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/mia/salida', data),
+
+  /** Equipo del usuario (cuentas que lo tienen como jefe) con el estado del día. Pide rrhh.mi_equipo:ver. */
+  equipo: (fecha?: string) =>
+    apiClient.get<EquipoAsistenciaDTO>(`/asistencia/equipo${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`),
 
   marcarCuadrilla: (data: MarcarCuadrillaInput) =>
     apiClient.post<{ creados: RegistroAsistenciaDTO[]; omitidos: string[] }>('/asistencia/cuadrilla', data),
@@ -2652,6 +2738,24 @@ export const notificacionesApi = {
   /** Basura del centro: descarta todas (desaparecen y no vuelven; quedan en BD). */
   descartarTodas: () =>
     apiClient.patch<{ message: string; descartadas: number }>('/notificaciones/descartar-todas', {}),
+
+  /** Clave pública VAPID para suscribir el dispositivo (fase c del push). */
+  vapidPublica: () =>
+    apiClient.get<{ clavePublica: string | null }>('/notificaciones/push-vapid-publica'),
+
+  /** Registra la suscripción Web Push del dispositivo (fase a: upsert por endpoint). */
+  suscribirPush: (data: { endpoint: string; llaves: { p256dh: string; auth: string } }) =>
+    apiClient.post<{ message: string; suscripcion: { id: string; endpoint: string } }>(
+      '/notificaciones/push-suscripcion',
+      data,
+    ),
+
+  /** Baja de la suscripción Web Push (logout — menor 4 PR #23). */
+  cancelarPush: (data: { endpoint: string }) =>
+    apiClient.delete<{ message: string; canceladas: number }>(
+      '/notificaciones/push-suscripcion',
+      data,
+    ),
 };
 
 // ────────────────────────────────────────────────────────────

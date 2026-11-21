@@ -3,50 +3,126 @@
 /**
  * Sincronizador (plan §7c): envía la cola FIFO cuando hay señal.
  * Disparadores: al abrir la app · evento `online` · intervalo de 2 min.
- * Cada envío lleva `X-Idempotencia-Key` (el UUID del teléfono) — los
- * reenvíos NUNCA duplican filas en el servidor.
- * Los errores NO bloquean la cola: el elemento queda para reintentar.
+ * Cada envío lleva `idempotenciaKey` en el BODY (el UUID del teléfono): el
+ * ValidationPipe solo lee el body, no los headers. El endpoint debe respetar
+ * la key para que un reenvío no duplique filas (convención de la cola).
+ * Los errores NO bloquean la cola: el elemento queda para reintentar. Un
+ * CONFLICTO de negocio (409) NO se reintenta: espera decisión humana. Un
+ * RECHAZO (4xx ≠ 409) tampoco: estado terminal "rechazado" (bloqueante 5
+ * PR #23) — el server ya validó y negó la captura; martillarlo cada 2 min
+ * no la arregla. El envío devuelve los IDS enviados, no un conteo global.
  */
-import { pendientes, marcarEnviada, marcarError, contarPendientes, type ElementoCola } from "./offline";
+import {
+  pendientes,
+  marcarEnviada,
+  marcarError,
+  marcarConflicto,
+  marcarRechazada,
+  guardarAdjuntosPendientes,
+  contarPendientes,
+  type ElementoCola,
+} from "./offline";
 
 export type PuertoEnvio = (
   item: ElementoCola,
-) => Promise<{ ok: boolean }>;
+) => Promise<{ ok: boolean; conflicto?: boolean; rechazo?: boolean; data?: unknown }>;
 
-/** Envío real (import perezoso del apiClient con el token en memoria). */
+/** Códigos 4xx del contrato (AllExceptionsFilter) que son rechazo terminal. */
+const CODIGOS_RECHAZO_TERMINAL = new Set([
+  'BAD_REQUEST',
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'UNPROCESSABLE_ENTITY',
+  'LOCKED',
+  'TOO_MANY_REQUESTS',
+]);
+
+/** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */
 const puertoPorDefecto: PuertoEnvio = async (item) => {
-  const { getAccessToken } = await import("@/lib/api");
-  const token = getAccessToken();
-  const r = await fetch(`/api${item.endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Idempotencia-Key": item.id,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(item.payload),
+  const { apiClient } = await import("@/lib/api");
+  const res = await apiClient.post(item.endpoint, {
+    ...item.payload,
+    idempotenciaKey: item.id,
   });
-  return { ok: r.status >= 200 && r.status < 300 };
+  const codigo = res.success === false ? res.error.code : undefined;
+  return {
+    ok: res.success === true,
+    // 409 = CONFLICTO de negocio (duplicado): espera decisión humana
+    conflicto: codigo === 'CONFLICT',
+    // resto de 4xx = RECHAZO terminal (el server validó y negó la captura)
+    rechazo: codigo !== undefined && CODIGOS_RECHAZO_TERMINAL.has(codigo),
+    data: res.success === true ? res.data : undefined,
+  };
 };
 
 let corriendo = false;
 
 /**
  * Una pasada de sincronización: envía los pendientes en orden.
- * Devuelve cuántos se enviaron con éxito.
+ * Devuelve los IDS enviados con éxito (bloqueante 5 PR #23: el conteo de
+ * TODA la cola hacía felicitar un envío que no era el del operario).
  */
-export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): Promise<number> {
-  if (corriendo) return 0; // una sola pasada a la vez
+export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): Promise<string[]> {
+  const enviados: string[] = [];
+  if (corriendo) return enviados; // una sola pasada a la vez
   corriendo = true;
-  let enviados = 0;
   try {
-    const cola = await pendientes();
+    // Los conflictos NO se reenvían: esperan decisión humana (descartar/reencolar).
+    // Los RECHAZADOS tampoco: el server los validó y negó (4xx ≠ 409).
+    const cola = (await pendientes()).filter(
+      (i) => i.estado !== "conflicto" && i.estado !== "rechazado",
+    );
     for (const item of cola) {
       try {
-        const { ok } = await enviar(item);
+        const { ok, conflicto, rechazo, data } = await enviar(item);
         if (ok) {
-          await marcarEnviada(item.id);
-          enviados++;
+          // Fotos del alta: el reporte ya existe (ACK, y el reenvío con la
+          // misma idempotenciaKey devuelve el original sin duplicar folio).
+          // Cada adjunto se revisa por `res.success` (apiClient NO lanza ante
+          // 403/413/422): el item solo se elimina cuando TODAS subieron; si
+          // faltan, queda en la cola para reintentar SOLO las faltantes
+          // (PR #23, bloqueante 1: sin esto se borraban fotos sin avisar).
+          const nuevoId =
+            data && typeof data === 'object' && 'id' in data && typeof (data as { id: unknown }).id === 'string'
+              ? (data as { id: string }).id
+              : null;
+          let faltantes: number[] = [];
+          if (item.adjuntos?.length) {
+            faltantes = item.adjuntosPendientes ?? item.adjuntos.map((_, i) => i);
+            if (nuevoId) {
+              const { reportesCampoApi } = await import('@/lib/api');
+              for (const idx of faltantes.slice()) {
+                const adj = item.adjuntos[idx];
+                try {
+                  // SIN `tamano`: el server lo calcula del base64 (whitelist lo rechaza)
+                  const res = await reportesCampoApi.adjuntar(nuevoId, {
+                    nombre: adj.nombre,
+                    mime: adj.mime,
+                    datos: adj.datos,
+                  });
+                  if (res.success) faltantes = faltantes.filter((i) => i !== idx);
+                  else console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre);
+                } catch {
+                  // Error de RED (apiClient lanza): deja de intentar y conserva
+                  // los índices restantes — el item no se pierde (bloqueante 1)
+                  console.warn('Adjunto sin señal (reporte ya guardado):', adj.nombre);
+                  break;
+                }
+              }
+            }
+          }
+          if (faltantes.length > 0) {
+            await guardarAdjuntosPendientes(item.id, faltantes);
+          } else {
+            await marcarEnviada(item.id);
+          }
+          enviados.push(item.id);
+        } else if (conflicto) {
+          await marcarConflicto(item.id);
+        } else if (rechazo) {
+          // 4xx ≠ 409: estado TERMINAL — no martillar el server cada 2 min
+          await marcarRechazada(item.id);
         } else {
           await marcarError(item.id);
         }

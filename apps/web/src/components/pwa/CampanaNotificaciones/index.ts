@@ -1,0 +1,1 @@
+export { CampanaNotificaciones } from './CampanaNotificaciones';

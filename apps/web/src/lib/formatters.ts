@@ -99,6 +99,44 @@ export function formatearMiles(valor: string): string {
   return decimales.length > 0 ? `${conComas}.${decimales.join('').slice(0, 2)}` : conComas;
 }
 
+/**
+ * «hace 14 min / hace 2 h / ayer / hace 3 días» — tiempo relativo es-MX para
+ * tarjetas y listas. Recibe fecha pura (`YYYY-MM-DD`) + hora local
+ * (`HH:MM:SS`) tal como las guarda el API: el muro se interpreta en la
+ * zona oficial del .env (APP_TIMEZONE) aunque el dispositivo esté en otra.
+ */
+export function haceTiempo(
+  fecha: string | null | undefined,
+  hora?: string | null,
+): string {
+  const fechaStr = (fecha ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) return '';
+  const horaStr = /^\d{2}:\d{2}/.test(hora ?? '') ? (hora ?? '').slice(0, 8) : '00:00:00';
+  const naive = new Date(`${fechaStr}T${horaStr}`);
+  if (isNaN(naive.getTime())) return '';
+
+  let utc = naive.getTime();
+  if (APP_TIMEZONE) {
+    // Época real del muro en la zona oficial: se deshace la diferencia entre
+    // la zona del dispositivo y la oficial (dual parse de toLocaleString).
+    const enZona = new Date(naive.toLocaleString('en-US', { timeZone: APP_TIMEZONE }));
+    utc = naive.getTime() + (naive.getTime() - enZona.getTime());
+  }
+
+  const min = Math.floor((Date.now() - utc) / 60_000);
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const horas = Math.floor(min / 60);
+  if (horas === 1) return 'hace 1 h';
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.floor(horas / 24);
+  if (dias === 1) return 'ayer';
+  if (dias < 30) return `hace ${dias} días`;
+  const meses = Math.floor(dias / 30);
+  if (meses < 12) return meses === 1 ? 'hace 1 mes' : `hace ${meses} meses`;
+  return `hace ${Math.floor(dias / 365)} años`;
+}
+
 /** "30,000.50" → 30000.5 */
 export function parsearMiles(valor: string): number {
   return parseFloat(valor.replace(/,/g, ''));
