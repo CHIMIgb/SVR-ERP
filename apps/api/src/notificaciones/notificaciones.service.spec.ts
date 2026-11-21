@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditResult, TipoNotificacion } from '@prisma/client';
 import { NotificacionesService } from './notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -293,7 +293,7 @@ describe('NotificacionesService', () => {
       llaves: { p256dh: 'llave-p256dh', auth: 'llave-auth' },
     };
 
-    it('suscribe: upsert por endpoint con el usuario del JWT', async () => {
+    it('suscribe: upsert por endpoint con el usuario del JWT y audita SUCCESS', async () => {
       await service.suscribirPush(USER_ID, dtoBase);
       expect(prisma.push_suscripciones.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -307,20 +307,41 @@ describe('NotificacionesService', () => {
           update: expect.objectContaining({ user_id: USER_ID }),
         }),
       );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PWA_PUSH_SUSCRITO,
+          result: AuditResult.SUCCESS,
+          actorUserId: USER_ID,
+        }),
+      );
     });
 
-    it('cancela: deleteMany acotado al endpoint Y al usuario propio', async () => {
+    it('cancela: deleteMany acotado al endpoint Y al usuario propio, audita SUCCESS', async () => {
       const r = await service.cancelarSuscripcionPush(USER_ID, dtoBase.endpoint);
       expect(r.canceladas).toBe(1);
       expect(prisma.push_suscripciones.deleteMany).toHaveBeenCalledWith({
         where: { endpoint: dtoBase.endpoint, user_id: USER_ID },
       });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PWA_PUSH_BAJA,
+          result: AuditResult.SUCCESS,
+          actorUserId: USER_ID,
+        }),
+      );
     });
 
-    it('si el upsert falla, lanza NotFound (best-effort con log)', async () => {
+    it('si el upsert falla: FAIL auditado con error_code y lanza 500 (no 404)', async () => {
       prisma.push_suscripciones.upsert.mockRejectedValueOnce(new Error('BD caída'));
       await expect(service.suscribirPush(USER_ID, dtoBase)).rejects.toThrow(
-        NotFoundException,
+        InternalServerErrorException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PWA_PUSH_SUSCRITO,
+          result: AuditResult.FAIL,
+          errorCode: 'PUSH_SUSCRIPCION_FALLIDA',
+        }),
       );
     });
   });

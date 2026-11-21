@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -457,7 +458,8 @@ export class NotificacionesService {
    * SUSCRIBIR Web Push (fase a del plan de push): guarda/actualiza la
    * suscripción del dispositivo autenticado. Upsert por `endpoint` (único
    * por dispositivo/permiso): si el endpoint ya existía (de otro usuario o
-   * del mismo), se reasigna con las llaves nuevas.
+   * del mismo), se reasigna con las llaves nuevas. Audita SUCCESS/FAIL
+   * (menor 3 PR #23).
    */
   async suscribirPush(
     userId: string,
@@ -480,15 +482,33 @@ export class NotificacionesService {
         },
         select: { id: true, endpoint: true, creado_en: true },
       });
+
+      await this.auditService.log({
+        action: AuditAction.PWA_PUSH_SUSCRITO,
+        entityType: 'push_suscripciones',
+        entityId: suscripcion.id,
+        result: AuditResult.SUCCESS,
+        actorUserId: userId,
+        actorType: 'USER',
+        actorRole: 'autenticado',
+        newValue: { endpoint: dto.endpoint, usuario: userId },
+      });
+
       return {
         message: 'Suscripción de push registrada',
         suscripcion,
       };
     } catch (error) {
-      this.logger.warn(
-        `No se pudo registrar la suscripción push de ${userId}: ${error instanceof Error ? error.message : error}`,
+      // El 404 era mentira semántica (nada "no se encontró"): fallo interno
+      // → 500, con FAIL auditado ANTES de lanzar (estándar del repo).
+      return this.fallir(
+        AuditAction.PWA_PUSH_SUSCRITO,
+        null,
+        'PUSH_SUSCRIPCION_FALLIDA',
+        InternalServerErrorException,
+        'No se pudo registrar la suscripción de push',
+        userId,
       );
-      throw new NotFoundException('No se pudo registrar la suscripción de push');
     }
   }
 
@@ -497,6 +517,18 @@ export class NotificacionesService {
     const baja = await this.prisma.push_suscripciones.deleteMany({
       where: { endpoint, user_id: userId },
     });
+
+    await this.auditService.log({
+      action: AuditAction.PWA_PUSH_BAJA,
+      entityType: 'push_suscripciones',
+      entityId: ENTITY_PLACEHOLDER,
+      result: AuditResult.SUCCESS,
+      actorUserId: userId,
+      actorType: 'USER',
+      actorRole: 'autenticado',
+      newValue: { endpoint, canceladas: baja.count, usuario: userId },
+    });
+
     return { message: 'Suscripción de push cancelada', canceladas: baja.count };
   }
 

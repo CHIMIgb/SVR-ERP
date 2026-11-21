@@ -3,11 +3,13 @@
  * Real DB, no mocks: insertan suscripciones reales en `push_suscripciones`
  * (fases a/b del plan de push: docs-planes/docs-pwa/PLAN-NOTIFICACIONES-PUSH-PWA.md).
  * `web-push` está simulado (no se le pega a FCM desde tests); la BD es real.
- * No tocan `registro_auditoria` (la suscripción no audita).
+ * La suscripción SÍ audita (menor 3 PR #23): PWA_PUSH_SUSCRITO/PWA_PUSH_BAJA
+ * se verifican contra `registro_auditoria` real (inmutable, las filas quedan).
  * Run with: npm run test:integration -- --testPathPattern="notificaciones"
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
+import { AuditAction, AuditResult } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditContextService } from '../audit/audit-context.service';
@@ -66,6 +68,54 @@ describe('Notificaciones PUSH — suscripciones (BD real)', () => {
     expect(row).not.toBeNull();
     expect(row!.user_id).toBe(user.id);
     expect(row!.p256dh).toBe('p256dh-test');
+
+    // Menor 3 PR #23: el alta queda auditada en registro_auditoria real
+    const audit = await prisma.registro_auditoria.findFirst({
+      where: { action: AuditAction.PWA_PUSH_SUSCRITO, entity_id: r.suscripcion.id },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.result).toBe(AuditResult.SUCCESS);
+    expect(audit!.actor_user_id).toBe(user.id);
+  });
+
+  it('suscribirPush con user inexistente: FK lo rechaza y el endpoint responde error (registro_auditoria.actor_user_id tiene FK a users — la fila FAIL con actor fantasma no puede persistir, por diseño)', async () => {
+    // arrange: user_id que no existe — la FK de push_suscripciones lo rechaza
+    const userIdFantasma = randomUUID();
+
+    // act + assert: falla y se traga como error interno (el FAIL auditado con
+    // actor real queda cubierto por el spec unitario — con actor fantasma la
+    // fila de auditoría misma violaría su FK y AuditService la descarta)
+    await expect(
+      service.suscribirPush(userIdFantasma, {
+        endpoint: `${ENDPOINT_BASE}${randomUUID()}`,
+        llaves,
+      }),
+    ).rejects.toThrow();
+
+    const sinFila = await prisma.push_suscripciones.findFirst({
+      where: { user_id: userIdFantasma },
+    });
+    expect(sinFila).toBeNull();
+  });
+
+  it('cancelarSuscripcionPush audita PWA_PUSH_BAJA SUCCESS en registro_auditoria real', async () => {
+    const user = await buscarUsuario('trabajador@svr-constructora.com');
+    const endpoint = `${ENDPOINT_BASE}${randomUUID()}`;
+    await service.suscribirPush(user.id, { endpoint, llaves });
+
+    const r = await service.cancelarSuscripcionPush(user.id, endpoint);
+    expect(r.canceladas).toBe(1);
+
+    const audit = await prisma.registro_auditoria.findFirst({
+      where: {
+        action: AuditAction.PWA_PUSH_BAJA,
+        result: AuditResult.SUCCESS,
+        actor_user_id: user.id,
+      },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(audit).not.toBeNull();
   });
 
   it('re-suscribir el MISMO endpoint lo reasigna al nuevo usuario (1 fila, no duplicados)', async () => {
