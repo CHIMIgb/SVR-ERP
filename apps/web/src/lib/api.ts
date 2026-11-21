@@ -1476,6 +1476,50 @@ export interface MarcarSalidaInput {
   horasTrabajadasOrdinarias?: number;
 }
 
+/** GET /asistencia/mia — lo que ve el propio trabajador en la PWA (sin sueldos). */
+export interface MiAsistenciaDTO {
+  trabajador: {
+    id: string;
+    nombre: string;
+    puesto: string;
+    estado: 'ACTIVO' | 'INACTIVO' | 'VACACIONES';
+    /** Hora de entrada programada "HH:mm". */
+    entradaProgramada?: string;
+  };
+  /** Obras de sus proyectos activos. `geocerca` null = la obra aún no tiene ubicación: no se puede checar ahí. */
+  obras: {
+    id: string;
+    nombre: string;
+    tieneUbicacion: boolean;
+    geocerca: { lat: number; lng: number; radioMetros: number } | null;
+  }[];
+  /** Registro de hoy o, si sigue abierto, el turno nocturno de ayer. */
+  registroHoy: RegistroAsistenciaDTO | null;
+  turnoNocturnoAbierto: boolean;
+  /** Semana en curso; null si el trabajador no está activo. */
+  semana: AsistenciaSemanalDTO | null;
+}
+
+/** POST /asistencia/mia/entrada — sin trabajadorId (la API lo rechaza con 400). */
+export interface MarcarEntradaPropiaInput {
+  obraId: string;
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  notas?: string;
+}
+
+/** POST /asistencia/mia/salida — sin trabajadorId ni override de horas. */
+export interface MarcarSalidaPropiaInput {
+  lat: number;
+  lng: number;
+  precisionGpsMetros?: number;
+  dispositivo: string;
+  salidaAnticipada?: boolean;
+  motivoSalidaAnticipada?: string;
+}
+
 export interface MarcarCuadrillaInput {
   obraId: string;
   trabajadorIds: string[];
@@ -1543,6 +1587,15 @@ export const asistenciaApi = {
   marcarEntrada: (data: MarcarEntradaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/entrada', data),
 
   marcarSalida: (data: MarcarSalidaInput) => apiClient.post<RegistroAsistenciaDTO>('/asistencia/salida', data),
+
+  // ── PWA: asistencia propia. El trabajador sale del token; nunca se manda trabajadorId. ──
+  mia: () => apiClient.get<MiAsistenciaDTO>('/asistencia/mia'),
+
+  marcarEntradaPropia: (data: MarcarEntradaPropiaInput) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/mia/entrada', data),
+
+  marcarSalidaPropia: (data: MarcarSalidaPropiaInput) =>
+    apiClient.post<RegistroAsistenciaDTO>('/asistencia/mia/salida', data),
 
   marcarCuadrilla: (data: MarcarCuadrillaInput) =>
     apiClient.post<{ creados: RegistroAsistenciaDTO[]; omitidos: string[] }>('/asistencia/cuadrilla', data),
