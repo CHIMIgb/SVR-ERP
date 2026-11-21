@@ -529,10 +529,12 @@ export default function ReportesMovilPage() {
         )}
       </div>
 
-      {/* Paginación server-side (kit compartido) — fija fuera del scroll, siempre visible */}
+      {/* Paginación server-side (kit compartido) — fija fuera del scroll, siempre visible.
+          En la PWA va DESPEGADA del contenedor: borde propio y esquinas suaves (rounded-lg). */}
       {!cargandoInicial && (
         <div className="shrink-0">
           <Pagination
+            className="mt-3 border border-ui-100 rounded-lg"
             currentPage={pagina}
             totalPages={totalPaginas}
             totalRecords={totalRegistros}
