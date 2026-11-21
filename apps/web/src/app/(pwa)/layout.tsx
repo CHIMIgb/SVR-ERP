@@ -12,6 +12,7 @@ import { RoleNav } from "@/components/pwa/RoleNav";
 import ModalInstalar from "@/components/pwa/ModalInstalar";
 import { estaInstaladaEnDispositivo } from "@/lib/pwa/instalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
+import { precargarDatosOffline } from "@/lib/pwa/datos-offline";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -57,9 +58,10 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
   // Service worker (§7c + push fase c): producción registra el SW completo
   // (caché del shell + push). En DEV se registra el MISMO script con
-  // `?modo=dev` — el SW omite sus handlers de caché (Turbopack sirve chunks
-  // sin hash que se pudrirían en su cache-first) pero MANTIENE push y
-  // notificationclick: así el push es testeable en dev:https:ip.
+  // `?modo=dev` — el SW usa RED-PRIMERO en los estáticos (chunks sin hash de
+  // Turbopack: con señal siempre frescos, HMR intacto; sin señal sirve la
+  // última versión servida, offline testeable en dev:https:ip) y MANTIENE
+  // push y notificationclick.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") {
@@ -78,6 +80,15 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
       parar();
     };
   }, []);
+
+  // Precarga offline-datos (fase 2026-11-20): catálogos de formularios en
+  // SEGUNDO PLANO al entrar con sesión y señal — una vez por visita,
+  // fire-and-forget. La lista vive en lib/pwa/datos-offline.ts.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    void precargarDatosOffline(userId);
+  }, [userId]);
 
   // guard de sesión + guard de dispositivo (escritorio → dashboard)
   useEffect(() => {

@@ -298,15 +298,26 @@ export default function ReportesMovilPage() {
   };
 
   // Catálogo de trabajadores para el select (exento de paginación; misma llamada del escritorio).
+  // Offline-datos: sin señal el snapshot llena el select; el live actualiza el snapshot.
   useEffect(() => {
     if (!asignarAbierto) return;
     let vivo = true;
     void (async () => {
       try {
         const res = await trabajadoresApi.listar({ limit: 100 });
-        if (vivo && res.success) setTrabajadores(res.data.items);
+        if (vivo && res.success) {
+          setTrabajadores(res.data.items);
+          if (userId) guardarDatos(userId, 'trabajadores', res.data);
+        }
       } catch {
-        // Sin catálogo queda el nombre libre
+        // Sin señal queda el snapshot; sin snapshot, el nombre libre
+        if (vivo && userId) {
+          const snapshot = leerDatos<PaginatedResponse<{ id: string; nombre: string; puesto: string }>>(
+            userId,
+            'trabajadores',
+          );
+          if (snapshot) setTrabajadores(snapshot.datos.items);
+        }
       } finally {
         if (vivo) setCargandoTrabajadores(false);
       }
@@ -314,7 +325,7 @@ export default function ReportesMovilPage() {
     return () => {
       vivo = false;
     };
-  }, [asignarAbierto]);
+  }, [asignarAbierto, userId]);
 
   const handleAsignar = async (): Promise<void> => {
     if (!detalle) return;

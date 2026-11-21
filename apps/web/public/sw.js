@@ -4,19 +4,21 @@
    - La DATA de capturas vive en IndexedDB (lib/pwa/offline.ts), NO aquí.
    - Network-first: siempre prefiere señal; usa caché solo si la red falla.
    - MODO DEV (`/sw.js?modo=dev`, registrado por el shell en desarrollo):
-     omite TODOS los handlers de caché (los chunks de Turbopack no llevan
-     hash y se pudrirían) pero mantiene push + notificationclick — el push
-     es testeable en dev:https:ip. */
+     TAMBIÉN cachea pero con RED-PRIMERO en los estáticos (los chunks de
+     Turbopack no llevan hash: con señal siempre frescos/HMR intacto; sin
+     señal sirve la última versión servida — offline testeable en
+     dev:https:ip; tras editar código sin señal verás la versión anterior). */
 const MODO_DEV = new URL(self.location.href).searchParams.get("modo") === "dev";
 const CACHE = "svr-shell-v1";
 /* Navegaciones (HTML de cada ruta): caché separada para poder limpiarla al
    cerrar sesión — nadie del usuario anterior debe abrir la app y ver su
    última pantalla (bloqueante de la fase offline-lectura, 2026-11-20). */
 const CACHE_NAV = "svr-nav-v1";
+const ORIGEN = self.location.origin;
+const HOME_PWA = ORIGEN + "/m";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  if (MODO_DEV) return; // dev: sin caché (nada que precachear ni pudrir)
   event.waitUntil(caches.open(CACHE));
 });
 
@@ -24,63 +26,78 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE && k !== CACHE_NAV)
+            .map((k) => caches.delete(k)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
 
-if (!MODO_DEV) {
-  self.addEventListener("fetch", (event) => {
-    const req = event.request;
-    if (req.method !== "GET") return; // los POST van directo (la cola es IndexedDB)
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return; // los POST van directo (la cola es IndexedDB)
 
-    /* Navegación (el HTML de la ruta): network-first con fallback a la última
-       copia — SIN señal la app vuelve a abrir en la última página visitada
-       (fase offline-lectura). Los chunks son content-hashed: un HTML cacheado
-       de una versión atrás sigue funcionando con sus chunks del caché. */
-    if (req.mode === "navigate") {
-      event.respondWith(
-        fetch(req)
-          .then((res) => {
-            const copia = res.clone();
-            caches.open(CACHE_NAV).then((c) => c.put(req, copia));
-            return res;
-          })
-          .catch(() => caches.match(req)),
-      );
-      return;
-    }
-
-    // estáticos de Next: cache-first (inmutables, con hash)
-    if (req.url.includes("/_next/static/")) {
-      event.respondWith(
-        caches.match(req).then(
-          (cached) =>
-            cached ||
-            fetch(req).then((res) => {
-              const copia = res.clone();
-              caches.open(CACHE).then((c) => c.put(req, copia));
-              return res;
-            }),
-        ),
-      );
-      return;
-    }
-
-    // navegaciones y API: network-first con fallback a caché
+  /* Navegación (el HTML de la ruta): network-first con fallback a la última
+     copia — SIN señal la app vuelve a abrir en la última página visitada
+     (fase offline-lectura). Si la ruta nunca se cargó de golpe, cae al HTML
+     del home: la app abre en el menú del rol en vez de una página de error. */
+  if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          if (req.url.includes("/_next/")) {
-            const copia = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copia));
-          }
+          const copia = res.clone();
+          caches.open(CACHE_NAV).then((c) => c.put(req, copia));
           return res;
         })
-        .catch(() => caches.match(req).then((cached) => cached || Promise.reject("offline"))),
+        .catch(() => caches.match(req).then((c) => c || caches.match(HOME_PWA))),
     );
-  });
-}
+    return;
+  }
+
+  // estáticos de Next:
+  //  - producción: cache-first (inmutables, con hash)
+  //  - dev: network-first con fallback (chunks SIN hash de Turbopack —
+  //    con señal siempre frescos, HMR intacto; sin señal la última versión)
+  if (req.url.includes("/_next/static/")) {
+    event.respondWith(
+      MODO_DEV
+        ? fetch(req)
+            .then((res) => {
+              const copia = res.clone();
+              caches.open(CACHE).then((c) => c.put(req, copia));
+              return res;
+            })
+            .catch(() => caches.match(req))
+        : caches.match(req).then(
+            (cached) =>
+              cached ||
+              fetch(req).then((res) => {
+                const copia = res.clone();
+                caches.open(CACHE).then((c) => c.put(req, copia));
+                return res;
+              }),
+          ),
+    );
+    return;
+  }
+
+  // navegaciones y API: network-first con fallback a caché
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (req.url.includes("/_next/")) {
+          const copia = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copia));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((cached) => cached || Promise.reject("offline"))),
+  );
+});
 
 /* Mensajes desde la app: limpiar el caché de navegaciones al cerrar/iniciar
    sesión (los snapshots de DATOS se limpian en localStorage desde el

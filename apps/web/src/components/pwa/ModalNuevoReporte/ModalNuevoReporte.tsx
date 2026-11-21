@@ -23,6 +23,8 @@ import {
 } from '@/lib/api';
 import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
 import { useToast } from '@/components/layout/Toast';
+import { useAuth } from '@/hooks/useAuth';
+import { guardarDatos, leerDatos } from '@/lib/pwa/datos-cache';
 import {
   encolar,
   consultarEstado,
@@ -81,6 +83,9 @@ export function ModalNuevoReporte({
   onEncolado,
 }: ModalNuevoReporteProps) {
   const { showToast } = useToast();
+  const { user } = useAuth();
+  // userId plano: el React Compiler no preserva deps con `user?.id`
+  const userId = user?.id;
   const [subcategorias, setSubcategorias] = useState<{ id: string; nombre: string; categoria: string }[]>([]);
   const [proyectos, setProyectos] = useState<{ id: string; nombre: string }[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
@@ -125,10 +130,23 @@ export function ModalNuevoReporte({
           reportesCampoApi.subcategorias(),
           reportesCampoApi.proyectos(),
         ]);
-        if (vivo && resSub.success) setSubcategorias(resSub.data);
-        if (vivo && resProy.success) setProyectos(resProy.data);
+        if (vivo && resSub.success) {
+          setSubcategorias(resSub.data);
+          if (userId) guardarDatos(userId, 'subcategorias', resSub.data);
+        }
+        if (vivo && resProy.success) {
+          setProyectos(resProy.data);
+          if (userId) guardarDatos(userId, 'proyectos', resProy.data);
+        }
       } catch {
-        // Sin catálogos la captura sigue (área propia + GPS): NUNCA la bloquea la red
+        // Sin señal: los catálogos del ÚLTIMO snapshot (offline-datos) — los
+        // selects quedan usables; sin snapshot, captura simple (área + GPS)
+        if (vivo && userId) {
+          const subSnap = leerDatos<{ id: string; nombre: string; categoria: string }[]>(userId, 'subcategorias');
+          const proySnap = leerDatos<{ id: string; nombre: string }[]>(userId, 'proyectos');
+          if (subSnap) setSubcategorias(subSnap.datos);
+          if (proySnap) setProyectos(proySnap.datos);
+        }
       } finally {
         if (vivo) setCargandoCatalogo(false);
       }
@@ -136,7 +154,7 @@ export function ModalNuevoReporte({
     return () => {
       vivo = false;
     };
-  }, [abierto]);
+  }, [abierto, userId]);
 
   /** Torre destino ("misma área") + filtro de subcategoría — igual que el escritorio. */
   const torreDelUsuario = CATEGORIAS.find((cat) => cat.value === torreUsuario)?.label ?? 'Administrativo';
