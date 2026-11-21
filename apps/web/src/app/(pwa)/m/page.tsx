@@ -9,9 +9,8 @@ import { formatHora12 } from "@/lib/formatters";
 import { guardarDatos, leerDatos } from "@/lib/pwa/datos-cache";
 import { navDelRol } from "@/lib/pwa/rol-nav";
 import {
-  GRUPOS_FALTAN,
-  GRUPOS_LLEGARON,
   clasificarMiembro,
+  contarEquipo,
   fechaLarga,
   mensajeDeApi,
   puedeVerEquipo,
@@ -288,10 +287,8 @@ function EquipoHoy({ esResidente }: { esResidente: boolean }) {
   // El administrador sin gente a su cargo no ve el bloque; al residente se le explica por qué está vacío.
   if (carga.tipo === "ok" && miembros.length === 0 && !esResidente) return null;
 
-  const grupos = miembros.map((m) => clasificarMiembro(m.dia, m.estadoTrabajador).grupo);
-  const llegaron = grupos.filter((g) => GRUPOS_LLEGARON.includes(g)).length;
-  const tarde = grupos.filter((g) => g === "tarde").length;
-  const faltan = grupos.filter((g) => GRUPOS_FALTAN.includes(g)).length;
+  // Mismo conteo que /m/asistencia ("Mi equipo"): una sola copia en contarEquipo (revisión de chimi, PR #24).
+  const conteo = contarEquipo(miembros.map((m) => clasificarMiembro(m.dia, m.estadoTrabajador).grupo));
 
   return (
     <div className="flex flex-col gap-2">
@@ -333,9 +330,9 @@ function EquipoHoy({ esResidente }: { esResidente: boolean }) {
 
       {carga.tipo === "ok" && miembros.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
-          <StatsCard label="Presentes" value={llegaron} hint={`de ${miembros.length}`} />
-          <StatsCard label="Retardos" value={tarde} hint="llegaron tarde" />
-          <StatsCard label="Faltan" value={faltan} hint="no han llegado" />
+          <StatsCard label="Presentes" value={conteo.llegaron} hint={`de ${conteo.total}`} />
+          <StatsCard label="Retardos" value={conteo.tarde} hint="llegaron tarde" />
+          <StatsCard label="Faltan" value={conteo.faltan} hint="no han llegado" />
         </div>
       )}
     </div>
