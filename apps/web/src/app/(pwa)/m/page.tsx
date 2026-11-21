@@ -2,12 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Clock, Camera, LogOut, ClipboardCheck, TriangleAlert, Phone, RefreshCw, UserX } from "lucide-react";
+import { Clock, Camera, LogOut, ClipboardCheck, TriangleAlert, Phone, RefreshCw, UserX, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { asistenciaApi, type MiAsistenciaDTO } from "@/lib/api";
+import { asistenciaApi, type EquipoAsistenciaDTO, type MiAsistenciaDTO } from "@/lib/api";
 import { formatHora12 } from "@/lib/formatters";
 import { navDelRol } from "@/lib/pwa/rol-nav";
-import { fechaLarga, mensajeDeApi, varianteEstado } from "@/lib/pwa/asistencia-propia";
+import {
+  GRUPOS_FALTAN,
+  GRUPOS_LLEGARON,
+  clasificarMiembro,
+  fechaLarga,
+  mensajeDeApi,
+  puedeVerEquipo,
+  varianteEstado,
+} from "@/lib/pwa/asistencia-propia";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -115,7 +123,93 @@ export default function InicioMovilPage() {
           {jefe && <AccesoEncargado nombre={jefe.nombre} telefono={jefe.telefono ?? null} />}
         </div>
       )}
+
+      {puedeVerEquipo(user?.permisos) && (
+        <EquipoHoy esResidente={user?.roles?.some((r) => r.nombre === "Residente") ?? false} />
+      )}
     </section>
+  );
+}
+
+type CargaEquipo =
+  | { tipo: "cargando" }
+  | { tipo: "ok"; datos: EquipoAsistenciaDTO }
+  | { tipo: "error"; mensaje: string };
+
+/** "Mi equipo hoy" (Residente; también Administrador si tiene gente a su cargo). */
+function EquipoHoy({ esResidente }: { esResidente: boolean }) {
+  const [carga, setCarga] = useState<CargaEquipo>({ tipo: "cargando" });
+  const solicitudRef = useRef(0);
+
+  const cargar = useCallback(async () => {
+    const solicitud = ++solicitudRef.current;
+    const res = await asistenciaApi.equipo();
+    if (solicitud !== solicitudRef.current) return;
+    if (res.success) setCarga({ tipo: "ok", datos: res.data });
+    else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu equipo.") });
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await cargar();
+    })();
+  }, [cargar]);
+
+  const miembros = carga.tipo === "ok" ? carga.datos.miembros : [];
+  // El administrador sin gente a su cargo no ve el bloque; al residente se le explica por qué está vacío.
+  if (carga.tipo === "ok" && miembros.length === 0 && !esResidente) return null;
+
+  const grupos = miembros.map((m) => clasificarMiembro(m.dia, m.estadoTrabajador).grupo);
+  const llegaron = grupos.filter((g) => GRUPOS_LLEGARON.includes(g)).length;
+  const tarde = grupos.filter((g) => g === "tarde").length;
+  const faltan = grupos.filter((g) => GRUPOS_FALTAN.includes(g)).length;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-black text-ui-900">Mi equipo hoy</h2>
+        {miembros.length > 0 && (
+          <Link href="/m/asistencia?vista=equipo" className="text-sm font-bold text-primary flex items-center gap-0.5">
+            Ver lista
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        )}
+      </div>
+
+      {carga.tipo === "cargando" && <Skeleton variant="card" />}
+
+      {carga.tipo === "error" && (
+        <div className="bg-surface border border-ui-200 rounded-2xl p-4 flex flex-col gap-3">
+          <p className="text-sm text-error">{carga.mensaje}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw className="w-4 h-4" />}
+            className="self-start"
+            onClick={() => {
+              setCarga({ tipo: "cargando" });
+              void cargar();
+            }}
+          >
+            Reintentar
+          </Button>
+        </div>
+      )}
+
+      {carga.tipo === "ok" && miembros.length === 0 && (
+        <p className="bg-surface border border-ui-200 rounded-2xl p-4 text-sm text-ui-500">
+          Aún no tienes trabajadores a tu cargo. La oficina los asigna en Equipos.
+        </p>
+      )}
+
+      {carga.tipo === "ok" && miembros.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          <StatsCard label="Presentes" value={llegaron} hint={`de ${miembros.length}`} />
+          <StatsCard label="Retardos" value={tarde} hint="llegaron tarde" />
+          <StatsCard label="Faltan" value={faltan} hint="no han llegado" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -219,7 +313,7 @@ function TarjetaHoy({
       </div>
       {puedeIrAAsistencia && (
         <Link
-          href="/m/asistencia"
+          href="/m/asistencia?vista=mia"
           className="mt-1 h-12 rounded-xl bg-primary hover:bg-primary-dark active:bg-primary-dark text-white font-bold text-base flex items-center justify-center gap-2 transition-colors"
         >
           {accion.icono}

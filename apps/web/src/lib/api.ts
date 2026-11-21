@@ -1500,6 +1500,30 @@ export interface MiAsistenciaDTO {
   semana: AsistenciaSemanalDTO | null;
 }
 
+/** Un trabajador del equipo (GET /asistencia/equipo): contacto y estado del día, sin sueldos. */
+export interface MiembroAsistenciaEquipoDTO {
+  trabajadorId: string;
+  nombre: string;
+  puesto: string;
+  telefono: string;
+  estadoTrabajador: 'ACTIVO' | 'INACTIVO' | 'VACACIONES';
+  /** null en domingo o si el trabajador no está activo. */
+  dia: DiaAsistenciaSemanaDTO | null;
+}
+
+export interface EquipoAsistenciaDTO {
+  fecha: string;
+  totales: {
+    miembros: number;
+    presentes: number;
+    retardos: number;
+    faltas: number;
+    omisiones: number;
+    pendientes: number;
+  };
+  miembros: MiembroAsistenciaEquipoDTO[];
+}
+
 /** POST /asistencia/mia/entrada — sin trabajadorId (la API lo rechaza con 400). */
 export interface MarcarEntradaPropiaInput {
   obraId: string;
@@ -1596,6 +1620,10 @@ export const asistenciaApi = {
 
   marcarSalidaPropia: (data: MarcarSalidaPropiaInput) =>
     apiClient.post<RegistroAsistenciaDTO>('/asistencia/mia/salida', data),
+
+  /** Equipo del usuario (cuentas que lo tienen como jefe) con el estado del día. Pide rrhh.mi_equipo:ver. */
+  equipo: (fecha?: string) =>
+    apiClient.get<EquipoAsistenciaDTO>(`/asistencia/equipo${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`),
 
   marcarCuadrilla: (data: MarcarCuadrillaInput) =>
     apiClient.post<{ creados: RegistroAsistenciaDTO[]; omitidos: string[] }>('/asistencia/cuadrilla', data),

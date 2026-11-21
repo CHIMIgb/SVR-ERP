@@ -4,7 +4,8 @@
  * Todo lo de aquí es AVISO para el trabajador: quien decide si la entrada fue puntual, si estaba en sitio o
  * si queda en omisión es la API al registrar (asistencia.service.ts). Si cambia una regla allá, se cambia aquí.
  */
-import type { RegistroAsistenciaDTO } from '@/lib/api';
+import type { DiaAsistenciaSemanaDTO, RegistroAsistenciaDTO } from '@/lib/api';
+import { formatHora12 } from '@/lib/formatters';
 
 /** Igual que TOLERANCIA_RETARDO_MINUTOS de la API: pasada esta tolerancia la entrada queda en omisión. */
 export const TOLERANCIA_RETARDO_MINUTOS = 15;
@@ -121,3 +122,68 @@ export function mensajeDeApi(error: { code?: string; message?: string } | undefi
   if (error.code === 'API_DOWN') return 'Sin conexión con el servidor. Revisa tu señal e intenta de nuevo.';
   return error.message || porDefecto;
 }
+
+/** ¿El usuario ve la asistencia de su equipo? (permiso rrhh.mi_equipo:ver: Residente y Administrador). */
+export function puedeVerEquipo(permisos: { modulo: string; recurso: string; accion: string }[] | undefined): boolean {
+  return (permisos ?? []).some((p) => p.modulo === 'rrhh' && p.recurso === 'mi_equipo' && p.accion === 'ver');
+}
+
+/** Iniciales para el avatar: primera letra de las dos primeras palabras. */
+export function iniciales(nombre: string): string {
+  return nombre
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+/**
+ * Cómo va cada trabajador del equipo en el día. "presente" y "tarde" ya llegaron; "falta", "sin-checar" y
+ * "pendiente" no han llegado; "descanso" y "sin-jornada" no cuentan.
+ */
+export type GrupoMiembro = 'presente' | 'tarde' | 'falta' | 'sin-checar' | 'pendiente' | 'descanso' | 'sin-jornada';
+
+export function clasificarMiembro(
+  dia: DiaAsistenciaSemanaDTO | null,
+  estadoTrabajador: 'ACTIVO' | 'INACTIVO' | 'VACACIONES',
+): { grupo: GrupoMiembro; etiqueta: string; variante: VarianteEstado } {
+  const hora = dia?.horaEntrada ? ` ${formatHora12(dia.horaEntrada)}` : '';
+  if (!dia) {
+    return {
+      grupo: 'sin-jornada',
+      etiqueta: estadoTrabajador === 'VACACIONES' ? 'De vacaciones' : estadoTrabajador === 'INACTIVO' ? 'De baja' : 'Sin jornada',
+      variante: 'neutral',
+    };
+  }
+  switch (dia.estado) {
+    case 'Puntual':
+      return { grupo: 'presente', etiqueta: `Presente${hora}`, variante: 'success' };
+    case 'Justificado':
+      return { grupo: 'presente', etiqueta: 'Justificado', variante: 'info' };
+    case 'Salida Anticipada':
+      return { grupo: 'presente', etiqueta: 'Salió antes', variante: 'warning' };
+    case 'Retardo':
+      return { grupo: 'tarde', etiqueta: `Retardo${hora}`, variante: 'warning' };
+    case 'Omisión':
+      // Con entrada: llegó tarde y espera la revisión de la oficina. Sin entrada: aún no checa (puede justificarse hoy).
+      return dia.horaEntrada
+        ? { grupo: 'tarde', etiqueta: `Tarde${hora}`, variante: 'warning' }
+        : { grupo: 'sin-checar', etiqueta: 'Sin checar', variante: 'warning' };
+    case 'Pendiente':
+      return { grupo: 'pendiente', etiqueta: 'En tolerancia', variante: 'neutral' };
+    case 'Falta':
+      // Pasadas las 17:00 la API marca como falta la omisión sin resolver aunque SÍ haya checado (llegó tarde
+      // y nadie la justificó): está en la obra, pero para nómina cuenta como falta hasta que la oficina resuelva.
+      return dia.horaEntrada
+        ? { grupo: 'tarde', etiqueta: `Tarde${hora} · sin justificar`, variante: 'error' }
+        : { grupo: 'falta', etiqueta: 'No asistió', variante: 'error' };
+    case 'Descanso':
+      return { grupo: 'descanso', etiqueta: 'Descanso', variante: 'neutral' };
+    default:
+      return { grupo: 'sin-jornada', etiqueta: dia.estado, variante: 'neutral' };
+  }
+}
+
+export const GRUPOS_LLEGARON: GrupoMiembro[] = ['presente', 'tarde'];
+export const GRUPOS_FALTAN: GrupoMiembro[] = ['falta', 'sin-checar', 'pendiente'];
