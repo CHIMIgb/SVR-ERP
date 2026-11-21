@@ -772,8 +772,8 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
             nivel: 100,
             torre: 'MECANICO',
             role_permissions: [
-              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear' } },
-              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'editar' } },
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear', activo: true } },
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'editar', activo: true } },
             ],
           },
         },
@@ -788,7 +788,7 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
             nivel: 20,
             torre: null,
             role_permissions: [
-              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear' } },
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear', activo: true } },
             ],
           },
         },
@@ -802,6 +802,61 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
 
     beforeEach(() => {
       prisma.users.findUnique.mockResolvedValue(usuarioConPermisos);
+    });
+
+    it('consulta los roles con activo: true (mismo criterio del PermissionsGuard — bloqueante 3 PR #23)', async () => {
+      // act: esUsuarioAdmin y permisosReportesDe leen la misma consulta (el
+      // primer findUnique es el de ámbito — se busca en TODAS las llamadas)
+      await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+
+      // assert: la relación de roles SIEMPRE se pide filtrada por activo
+      const todas = prisma.users.findUnique.mock.calls.map((c: unknown[]) => c[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(todas.some((c: any) =>
+        c?.select?.users_roles_users_roles_user_idTousers?.where?.activo === true,
+      )).toBe(true);
+    });
+
+    it('permisosReportesDe consulta permisos CON el flag activo (filtra en JS, igual que el guard)', async () => {
+      // arrange: actor sin nivel 100 para que la ruta llegue a los role_permissions
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: usuarioSoloCrear.users_roles_users_roles_user_idTousers,
+      });
+
+      // act
+      await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+
+      // assert: la consulta pide `activo` (relación 1-1: el filtro es en JS)
+      const todas = prisma.users.findUnique.mock.calls.map((c: unknown[]) => c[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const roles = todas.find((c: any) =>
+        c?.select?.users_roles_users_roles_user_idTousers?.where?.activo === true &&
+        'role_permissions' in c.select.users_roles_users_roles_user_idTousers.select.roles.select,
+      );
+      expect(roles).toBeTruthy();
+      const permisos =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (roles as any).select.users_roles_users_roles_user_idTousers.select.roles.select
+          .role_permissions.select.permissions;
+      expect(permisos.select.activo).toBe(true);
+    });
+
+    it('actor sin roles activos (todos desactivados) → ADJUNTO_SOLO_AUTOR_NUEVO (FAIL auditado)', async () => {
+      // arrange: el filtro de activo dejó la relación vacía — el mock lo simula
+      prisma.users.findUnique.mockResolvedValue({ users_roles_users_roles_user_idTousers: [] });
+
+      // act + assert
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'ADJUNTO_SOLO_AUTOR_NUEVO',
+        }),
+      );
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
     });
 
     it('adjunta imagen y audita REPORTE_ADJUNTO SUCCESS', async () => {

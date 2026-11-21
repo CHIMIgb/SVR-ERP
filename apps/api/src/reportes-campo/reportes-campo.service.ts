@@ -246,11 +246,17 @@ export class ReportesCampoService {
     );
   }
 
-  /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados. */
+  /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados.
+   *  Solo roles ACTIVOS (mismo criterio del PermissionsGuard): un rol desactivado no concede. */
   private async esUsuarioAdmin(userId: string): Promise<boolean> {
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { users_roles_users_roles_user_idTousers: { select: { roles: { select: { nivel: true } } } } },
+      select: {
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          select: { roles: { select: { nivel: true } } },
+        },
+      },
     });
     const anos = user?.users_roles_users_roles_user_idTousers ?? [];
     return Math.max(0, ...anos.map((ur: { roles: { nivel: number } }) => ur.roles.nivel)) >= 100;
@@ -268,11 +274,18 @@ export class ReportesCampoService {
       where: { id: userId },
       select: {
         users_roles_users_roles_user_idTousers: {
+          where: { activo: true }, // solo roles activos (mismo criterio del PermissionsGuard)
           select: {
             roles: {
               select: {
                 role_permissions: {
-                  select: { permissions: { select: { modulo: true, recurso: true, accion: true } } },
+                  select: {
+                    permissions: {
+                      // relación 1-1: Prisma no admite where aquí — igual que el
+                      // guard, se trae `activo` y se filtra en JS (bloqueante 3)
+                      select: { modulo: true, recurso: true, accion: true, activo: true },
+                    },
+                  },
                 },
               },
             },
@@ -289,6 +302,7 @@ export class ReportesCampoService {
         (ur.roles.role_permissions ?? []).some(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (rp: any) =>
+            rp.permissions.activo &&
             rp.permissions.modulo === 'operaciones' &&
             rp.permissions.recurso === 'reportes_campo' &&
             rp.permissions.accion === accion,

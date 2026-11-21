@@ -1037,4 +1037,99 @@ describe('ReportesCampo Audit (Real DB)', () => {
       ).rejects.toThrow();
     });
   });
+
+  describe('ROL DESACTIVADO — los permisos de adjuntos respetan users_roles.activo (bloqueante 3 PR #23, BD real)', () => {
+    const idsLocales: { usersRoles: string[]; adjuntos: string[] } = {
+      usersRoles: [],
+      adjuntos: [],
+    };
+
+    afterAll(async () => {
+      // FK-safe: adjuntos → users_roles. El user/persona NO se borra: las
+      // filas de registro_auditoria (inmutable) lo referencian y el trigger
+      // bloquea el DELETE — la convención del repo es dejarlos (emails únicos
+      // por TEST_ID los aíslan). Los reportes los limpia el afterAll general.
+      if (idsLocales.adjuntos.length > 0) {
+        await prisma.reportes_adjuntos.deleteMany({ where: { id: { in: idsLocales.adjuntos } } });
+      }
+      if (idsLocales.usersRoles.length > 0) {
+        await prisma.users_roles.deleteMany({ where: { id: { in: idsLocales.usersRoles } } });
+      }
+    });
+
+    it('un rol con editar/crear pero ACTIVO: false NO concede adjuntar; al activarlo sí', async () => {
+      // arrange: persona + user de prueba con torre DIESEL (ámbito del reporte)
+      const personaId = randomUUID();
+      const userId = randomUUID();
+      await prisma.personas.create({
+        data: {
+          id: personaId,
+          nombre: 'RolActivo',
+          apellido_paterno: TEST_ID,
+          actualizado_en: new Date(),
+        },
+      });
+      await prisma.users.create({
+        data: {
+          id: userId,
+          persona_id: personaId,
+          email: `rolactivo-${TEST_ID}@svr-erp.local`,
+          password_hash: 'no-usada',
+          torre: CategoriaReporte.DIESEL,
+          actualizado_en: new Date(),
+        },
+      });
+
+      // users_roles hacia el rol Administrador (tiene editar/crear sobre
+      // reportes_campo en el seed) pero DESACTIVADO
+      const rol = await prisma.roles.findFirst({
+        where: { nombre: 'Administrador' },
+        select: { id: true },
+      });
+      if (!rol) throw new Error('Rol Administrador del seed no encontrado');
+      const urId = randomUUID();
+      idsLocales.usersRoles.push(urId);
+      await prisma.users_roles.create({
+        data: { id: urId, user_id: userId, rol_id: rol.id, activo: false },
+      });
+
+      const reporte = await service.create(createDto(), ACTOR_USER_ID);
+      createdIds.push(reporte.id);
+
+      // act + assert 1: el rol desactivado NO concede — 403 FAIL auditado
+      await auditContext.run(
+        { jwtUserId: userId, endpoint: '/api/reportes-campo', method: 'POST' },
+        async () => {
+          await expect(
+            service.adjuntar(
+              reporte.id,
+              { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+              userId,
+            ),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+      const fallos = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(fallos[0].result).toBe('FAIL');
+      expect(fallos[0].error_code).toBe('ADJUNTO_SOLO_AUTOR_NUEVO');
+
+      // act + assert 2 (control positivo): SOLO cambiar activo → true concede
+      await prisma.users_roles.update({
+        where: { id: urId },
+        data: { activo: true },
+      });
+      const adjunto = await auditContext.run(
+        { jwtUserId: userId, endpoint: '/api/reportes-campo', method: 'POST' },
+        () =>
+          service.adjuntar(
+            reporte.id,
+            { nombre: 'activada.png', mime: 'image/png', datos: PNG_1X1_BASE64 },
+            userId,
+          ),
+      );
+      idsLocales.adjuntos.push(adjunto.id);
+      const auditsDespues = await findAudits(AuditAction.REPORTE_ADJUNTO, reporte.id);
+      expect(auditsDespues[0].result).toBe('SUCCESS');
+    });
+  });
 });
