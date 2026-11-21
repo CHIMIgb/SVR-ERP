@@ -126,6 +126,10 @@ export default function ReportesMovilPage() {
   const userId = user?.id;
   const recargar = useCallback(
     async (paginaPedida: number): Promise<void> => {
+      // Snapshot por CONTEXTO de consulta (menor 3 revisión PR #23): un
+      // snapshot guardado con otro filtro/búsqueda/página no debe aparecer
+      // como si fuera el actual ("Todos" mostrando lo del filtro Cerrados).
+      const claveSnapshot = `reportes:${filtro || 'todos'}:${busqueda.trim()}:${paginaPedida}`;
       const corrida = ++corridaRef.current;
       try {
         const res = await reportesCampoApi.listar({
@@ -146,15 +150,17 @@ export default function ReportesMovilPage() {
         setTotalPaginas(data.pagination.totalPages);
         setErrorCarga(null);
         setMostrandoSnapshot(false);
-        // Snapshot offline-lectura: el último load exitoso queda en el teléfono
+        // Snapshot offline-lectura por contexto: el último load exitoso de
+        // ESTA consulta queda en el teléfono
         if (userId) {
-          const fecha = guardarDatos(userId, 'reportes', data);
+          const fecha = guardarDatos(userId, claveSnapshot, data);
           if (fecha) setFechaSnapshot(fecha);
         }
       } catch (e) {
         if (corrida !== corridaRef.current) return;
-        // Sin señal: servir el ÚLTIMO snapshot guardado en vez del error/blanco
-        const snapshot = userId ? leerDatos<DatosReportes>(userId, 'reportes') : null;
+        // Sin señal: servir el ÚLTIMO snapshot de ESTA consulta en vez del
+        // error/blanco
+        const snapshot = userId ? leerDatos<DatosReportes>(userId, claveSnapshot) : null;
         if (snapshot) {
           setReportes(snapshot.datos.items);
           setPagina(snapshot.datos.pagination.page);
