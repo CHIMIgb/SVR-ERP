@@ -27,18 +27,27 @@ export type PuertoEnvio = (
   item: ElementoCola,
 ) => Promise<{ ok: boolean; conflicto?: boolean; rechazo?: boolean; data?: unknown }>;
 
-/**
- * Códigos 4xx del contrato (AllExceptionsFilter) que son rechazo terminal:
+/** Códigos 4xx del contrato (AllExceptionsFilter) que son rechazo terminal:
  * solo los de DATOS (400/403/404/422) — el server validó y negó la captura.
  * 401 (sesión), 423 (bloqueo IP) y 429 (throttler) NO van aquí: son
  * temporales y el reporte es válido → quedan en `error` reintentable
- * (I-1, revisión PR #23).
- */
+ * (I-1, revisión PR #23). */
 const CODIGOS_RECHAZO_TERMINAL = new Set([
   'BAD_REQUEST',
   'FORBIDDEN',
   'NOT_FOUND',
   'UNPROCESSABLE_ENTITY',
+]);
+
+/**
+ * Códigos 4xx del ADJUNTO que son rechazo terminal (menor 1 revisión PR
+ * #23): esa foto NO subirá reintentando igual (demasiado grande, tipo
+ * inválido, sin permiso). El reporte ya existe (ACK del alta); la decisión
+ * de Descartar/Reintentar es humana en EstadoCola.
+ */
+const CODIGOS_ADJUNTO_TERMINAL = new Set([
+  ...CODIGOS_RECHAZO_TERMINAL,
+  'PAYLOAD_TOO_LARGE', // 413: la foto excede el límite del server
 ]);
 
 /** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */
@@ -91,6 +100,7 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
               ? (data as { id: string }).id
               : null;
           let faltantes: number[] = [];
+          let algunaRechazada = false;
           if (item.adjuntos?.length) {
             faltantes = item.adjuntosPendientes ?? item.adjuntos.map((_, i) => i);
             if (nuevoId) {
@@ -105,7 +115,11 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
                     datos: adj.datos,
                   });
                   if (res.success) faltantes = faltantes.filter((i) => i !== idx);
-                  else console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre);
+                  else {
+                    const codigo = res.error?.code;
+                    if (codigo && CODIGOS_ADJUNTO_TERMINAL.has(codigo)) algunaRechazada = true;
+                    console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre);
+                  }
                 } catch {
                   // Error de RED (apiClient lanza): deja de intentar y conserva
                   // los índices restantes — el item no se pierde (bloqueante 1)
@@ -116,11 +130,13 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
             }
           }
           if (faltantes.length > 0) {
-            await guardarAdjuntosPendientes(item.id, faltantes);
+            await guardarAdjuntosPendientes(item.id, faltantes, algunaRechazada);
+            // Menor 1: el item NO entra a `enviados` — el modal no felicita
+            // con fotos sin subir; el estado real lo pinta EstadoCola.
           } else {
             await marcarEnviada(item.id);
+            enviados.push(item.id);
           }
-          enviados.push(item.id);
         } else if (conflicto) {
           await marcarConflicto(item.id);
         } else if (rechazo) {

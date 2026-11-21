@@ -61,7 +61,7 @@ beforeEach(() => {
 });
 
 describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
-  it('un adjunto que falla (success:false) NO elimina el item: queda con las fotos faltantes', async () => {
+  it('un adjunto que el server RECHAZA (413) es terminal: item en "rechazado" y NO felicita', async () => {
     // arrange
     const item = itemConFotos();
     mockedPendientes.mockResolvedValue([item]);
@@ -70,11 +70,12 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
       .mockResolvedValueOnce({ success: false, error: { code: 'PAYLOAD_TOO_LARGE' } }); // b.webp NO
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert
     expect(marcarEnviada).not.toHaveBeenCalled();
-    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1]);
+    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1], true);
+    expect(ids).toEqual([]); // el modal no felicita con fotos sin subir
   });
 
   it('error de red en un adjunto (throw) NO elimina el item y conserva lo ya subido', async () => {
@@ -86,23 +87,25 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
       .mockRejectedValueOnce(new Error('Error de conexión con el servidor')); // red cae
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert
     expect(marcarEnviada).not.toHaveBeenCalled();
-    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1]);
+    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1], false);
+    expect(ids).toEqual([]); // tampoco felicita: falta una foto
   });
 
-  it('cuando TODAS las fotos suben, el item se elimina (marcarEnviada)', async () => {
+  it('cuando TODAS las fotos suben, el item se elimina y el modal felicita', async () => {
     // arrange
     mockedPendientes.mockResolvedValue([itemConFotos()]);
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert
     expect(guardarAdjuntosPendientes).not.toHaveBeenCalled();
     expect(marcarEnviada).toHaveBeenCalledWith('item-1');
+    expect(ids).toEqual(['item-1']);
   });
 
   it('el reenvío solo intenta las fotos FALTANTES (no duplica las ya subidas)', async () => {
@@ -111,12 +114,13 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
     mockedPendientes.mockResolvedValue([item]);
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert: una sola llamada, con los datos de b.webp (índice 1)
     expect(mockedAdjuntar).toHaveBeenCalledTimes(1);
     expect(mockedAdjuntar.mock.calls[0][1]).toMatchObject({ nombre: 'b.webp', datos: 'BBB' });
     expect(marcarEnviada).toHaveBeenCalledWith('item-1');
+    expect(ids).toEqual(['item-1']);
   });
 });
 

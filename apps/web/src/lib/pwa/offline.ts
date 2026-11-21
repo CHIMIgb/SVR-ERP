@@ -120,11 +120,23 @@ export async function marcarEnviada(id: string): Promise<void> {
  * NO se elimina — queda con los índices pendientes en estado `error` para
  * que el sincronizador reintente SOLO esas fotos en la próxima pasada.
  */
-export async function guardarAdjuntosPendientes(id: string, indices: number[]): Promise<void> {
+/**
+ * Fotos del alta que NO subieron: el reporte ya existe (ACK) — el item NO
+ * se elimina, queda con los índices pendientes para que el sincronizador
+ * reenvíe SOLO esas fotos en la próxima pasada (PR #23, bloqueante 1).
+ * `rechazado` = al menos una foto fue RECHAZADA por el server (4xx de
+ * datos, p.ej. 413/422): no se reintentan solas; espera decisión humana
+ * (Descartar/Reintentar en EstadoCola — menor 1 revisión PR #23).
+ */
+export async function guardarAdjuntosPendientes(
+  id: string,
+  indices: number[],
+  rechazado = false,
+): Promise<void> {
   const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
   if (!item) return;
   item.adjuntosPendientes = indices;
-  item.estado = "error";
+  item.estado = rechazado ? "rechazado" : "error";
   await conStore<void>("readwrite", (store) => store.put(item));
 }
 
