@@ -184,7 +184,14 @@ describe('Asistencia propia y del equipo (Real DB)', () => {
     const r = await service.findMia(ids.cuentaTrabajador);
     expect(r.trabajador.id).toBe(ids.trabajador);
     expect(r.trabajador.entradaProgramada).toBe('07:00');
-    expect(r.obras).toEqual([{ id: ids.obraAsignada, nombre: `Obra IT Asignada ${TEST_ID}`, tieneUbicacion: true }]);
+    expect(r.obras).toEqual([
+      {
+        id: ids.obraAsignada,
+        nombre: `Obra IT Asignada ${TEST_ID}`,
+        tieneUbicacion: true,
+        geocerca: { lat: obraLat, lng: obraLng, radioMetros: 2000 },
+      },
+    ]);
     expect(r.registroHoy).toBeNull();
     expect(r.semana?.trabajadorId).toBe(ids.trabajador);
     expect(JSON.stringify(r)).not.toMatch(/sueldo/i);
