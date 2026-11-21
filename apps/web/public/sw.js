@@ -9,6 +9,10 @@
      es testeable en dev:https:ip. */
 const MODO_DEV = new URL(self.location.href).searchParams.get("modo") === "dev";
 const CACHE = "svr-shell-v1";
+/* Navegaciones (HTML de cada ruta): caché separada para poder limpiarla al
+   cerrar sesión — nadie del usuario anterior debe abrir la app y ver su
+   última pantalla (bloqueante de la fase offline-lectura, 2026-11-20). */
+const CACHE_NAV = "svr-nav-v1";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -29,6 +33,23 @@ if (!MODO_DEV) {
   self.addEventListener("fetch", (event) => {
     const req = event.request;
     if (req.method !== "GET") return; // los POST van directo (la cola es IndexedDB)
+
+    /* Navegación (el HTML de la ruta): network-first con fallback a la última
+       copia — SIN señal la app vuelve a abrir en la última página visitada
+       (fase offline-lectura). Los chunks son content-hashed: un HTML cacheado
+       de una versión atrás sigue funcionando con sus chunks del caché. */
+    if (req.mode === "navigate") {
+      event.respondWith(
+        fetch(req)
+          .then((res) => {
+            const copia = res.clone();
+            caches.open(CACHE_NAV).then((c) => c.put(req, copia));
+            return res;
+          })
+          .catch(() => caches.match(req)),
+      );
+      return;
+    }
 
     // estáticos de Next: cache-first (inmutables, con hash)
     if (req.url.includes("/_next/static/")) {
@@ -60,6 +81,15 @@ if (!MODO_DEV) {
     );
   });
 }
+
+/* Mensajes desde la app: limpiar el caché de navegaciones al cerrar/iniciar
+   sesión (los snapshots de DATOS se limpian en localStorage desde el
+   AuthProvider — la caché del SW es por origen, no por usuario). */
+self.addEventListener("message", (event) => {
+  if (event.data?.tipo === "limpiar-cache") {
+    event.waitUntil(caches.delete(CACHE_NAV));
+  }
+});
 
 /* WEB PUSH (fase c del plan de push): la notificación llega con la app
    CERRADA, como la de cualquier app del teléfono. El payload lo envía el

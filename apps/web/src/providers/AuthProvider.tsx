@@ -18,6 +18,7 @@ import {
 } from "@svr-erp/shared";
 import { authApi, clearTokens, setTokens, initializeAuth, getAccessToken, type PinEstadoDTO } from "@/lib/api";
 import { limpiarCola } from "@/lib/pwa/offline";
+import { limpiarDatosCache, limpiarCacheNavegacion } from "@/lib/pwa/datos-cache";
 import { desactivarPush } from "@/lib/pwa/push";
 
 interface AuthState {
@@ -81,6 +82,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const { accessToken, refreshToken, user: authUser } = response.data;
       setTokens(accessToken, refreshToken);
+      // Offline-lectura: NADA de datos/snapshots del usuario anterior para el
+      // nuevo (borde de seguridad: sesión que crasheó sin logout)
+      limpiarDatosCache();
+      limpiarCacheNavegacion();
       storeUser(authUser);
       setUser(authUser);
       setError(null);
@@ -230,6 +235,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Cola offline (PR #18, mediano): lo pendiente del trabajador NO viaja
       // con el token del siguiente en un teléfono compartido. Nunca rompe el logout.
       limpiarCola().catch(() => {});
+      // Offline-lectura: snapshots de datos y caché de navegaciones del usuario anterior
+      limpiarDatosCache();
+      limpiarCacheNavegacion();
     }
   }, []);
 

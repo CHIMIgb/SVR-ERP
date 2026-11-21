@@ -18,12 +18,15 @@ import {
   reportesCampoApi,
   trabajadoresApi,
   type EstadoIncidenteApi,
+  type PaginatedResponse,
   type ReporteCampoDTO,
   type ReportesIncidenteDetalle,
 } from '@/lib/api';
 import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
+import { guardarDatos, leerDatos } from '@/lib/pwa/datos-cache';
 import { EstadoCola } from '@/components/pwa/EstadoCola';
 import { ModalNuevoReporte } from '@/components/pwa/ModalNuevoReporte';
+import { AvisoSinConexion } from '@/components/pwa/AvisoSinConexion';
 import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -61,6 +64,9 @@ interface StatsMini {
 }
 
 const STATS_CARGANDO: StatsMini = { nuevos: null, enCurso: null, cerrados: null, criticos: null };
+
+/** Forma del listado paginado (lo que guarda/lee el snapshot offline-lectura). */
+type DatosReportes = PaginatedResponse<ReporteCampoDTO>;
 
 export default function ReportesMovilPage() {
   const { user } = useAuth();
@@ -111,6 +117,11 @@ export default function ReportesMovilPage() {
   /** Guardia de secuencia (menor 6 PR #23): una respuesta vieja (cambio de
    *  filtro/búsqueda/página mientras corren dos) NO pisa a la más nueva. */
   const corridaRef = useRef(0);
+  /** Fecha del último snapshot guardado (el banner AvisoSinConexion la nombra). */
+  const [fechaSnapshot, setFechaSnapshot] = useState<string | null>(null);
+  // userId plano: el React Compiler no preserva la memoización con `user?.id`
+  // (expresión opcional) en el array de deps
+  const userId = user?.id;
   const recargar = useCallback(
     async (paginaPedida: number): Promise<void> => {
       const corrida = ++corridaRef.current;
@@ -132,8 +143,24 @@ export default function ReportesMovilPage() {
         setTotalRegistros(data.pagination.total);
         setTotalPaginas(data.pagination.totalPages);
         setErrorCarga(null);
+        // Snapshot offline-lectura: el último load exitoso queda en el teléfono
+        if (userId) {
+          const fecha = guardarDatos(userId, 'reportes', data);
+          if (fecha) setFechaSnapshot(fecha);
+        }
       } catch (e) {
         if (corrida !== corridaRef.current) return;
+        // Sin señal: servir el ÚLTIMO snapshot guardado en vez del error/blanco
+        const snapshot = userId ? leerDatos<DatosReportes>(userId, 'reportes') : null;
+        if (snapshot) {
+          setReportes(snapshot.datos.items);
+          setPagina(snapshot.datos.pagination.page);
+          setTotalRegistros(snapshot.datos.pagination.total);
+          setTotalPaginas(snapshot.datos.pagination.totalPages);
+          setErrorCarga(null);
+          setFechaSnapshot(snapshot.fechaGuardada);
+          return;
+        }
         setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar los reportes.');
       } finally {
         // Solo la corrida VIGENTE baja la bandera: una vieja que termina tarde
@@ -141,25 +168,28 @@ export default function ReportesMovilPage() {
         if (corrida === corridaRef.current) setRefrescando(false);
       }
     },
-    [filtro, busqueda],
+    [filtro, busqueda, userId],
   );
 
   const cargarStats = useCallback(async (): Promise<void> => {
     try {
       const res = await reportesCampoApi.stats();
       if (res.success) {
-        setStats({
+        const statsRes: StatsMini = {
           nuevos: res.data.nuevos,
           enCurso: res.data.enCurso,
           cerrados: res.data.cerrados,
           criticos: res.data.criticosActivos,
-        });
+        };
+        setStats(statsRes);
+        if (userId) guardarDatos(userId, 'stats', statsRes);
       }
     } catch {
-      // Stats informativas: si fallan, quedan en 0 (ya no se ve como "cargando")
-      setStats({ nuevos: 0, enCurso: 0, cerrados: 0, criticos: 0 });
+      // Sin señal: los stats del último snapshot; sin snapshot quedan en 0
+      const snapshot = userId ? leerDatos<StatsMini>(userId, 'stats') : null;
+      setStats(snapshot?.datos ?? { nuevos: 0, enCurso: 0, cerrados: 0, criticos: 0 });
     }
-  }, []);
+  }, [userId]);
 
   // Primera carga (lista + stats) + recarga con debounce al cambiar filtro/búsqueda.
   useEffect(() => {
@@ -434,6 +464,9 @@ export default function ReportesMovilPage() {
 
       {/* Estado de la cola offline (incluye conflicto con decisión humana) */}
       <EstadoCola refreshKey={colaKey} />
+
+      {/* Aviso de datos offline: solo existe cuando YA hay pantalla detrás (regla de loaders) */}
+      {!cargandoInicial && <AvisoSinConexion fechaDatos={fechaSnapshot} />}
 
       {errorCarga && (
         <div

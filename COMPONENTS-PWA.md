@@ -198,6 +198,33 @@ import { EstadoCola } from '@/components/pwa/EstadoCola';
 **Cuando USAR:** en toda pantalla `/m/*` que capture (encola). **Cuando
 NO:** en pantallas solo de consulta o en el escritorio.
 
+## 6b. AvisoSinConexion
+
+Banner de honestidad para la fase offline-lectura: cuando NO hay señal y la
+pantalla está sirviendo datos del snapshot guardado (`lib/pwa/datos-cache.ts`),
+lo muestra con la fecha/hora del último dato — nadie debe confundir datos
+viejos con actuales. Se oculta solo al volver la señal (escucha
+`online`/`offline`).
+
+**Archivos:**
+- `src/components/pwa/AvisoSinConexion/AvisoSinConexion.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { AvisoSinConexion } from '@/components/pwa/AvisoSinConexion';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `fechaDatos` | `string \| null` | `undefined` | ISO del último snapshot guardado (se muestra formateada es-MX); omitir = sin fecha conocida |
+
+**Cuando USAR:** en toda pantalla `/m/*` que sirva datos de snapshot sin
+señal, gated con `!cargandoInicial` (los banners no existen durante la
+carga). **Cuando NO:** en pantallas sin datos del server (perfil, PIN), ni
+para errores con conexión (eso es el banner rojo de error de la vista).
+
 ## 7. ModalNuevoReporte
 
 Captura de un reporte de campo, **paridad 1:1 con el escritorio `/reportes`**:
