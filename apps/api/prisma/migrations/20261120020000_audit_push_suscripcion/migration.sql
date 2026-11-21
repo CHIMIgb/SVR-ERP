@@ -3,7 +3,7 @@
 -- PG 12+: ADD VALUE es válido en transacción mientras no se USE el valor en ella.
 
 -- AlterEnum
-ALTER TYPE "AuditAction" ADD VALUE 'PWA_PUSH_SUSCRITO';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'PWA_PUSH_SUSCRITO';
 
 -- AlterEnum
-ALTER TYPE "AuditAction" ADD VALUE 'PWA_PUSH_BAJA';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'PWA_PUSH_BAJA';
