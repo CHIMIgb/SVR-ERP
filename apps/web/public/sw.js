@@ -37,6 +37,13 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/* Respuestas cacheables: ok y sin redirect — una página de error (502 del
+   proxy, un 404) NO debe pisar la última copia buena (I-4 revisión PR #23).
+   La escritura va en event.waitUntil para que sobreviva al respondWith. */
+function esCacheable(res) {
+  return res.ok && !res.redirected;
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return; // los POST van directo (la cola es IndexedDB)
@@ -49,8 +56,9 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copia = res.clone();
-          caches.open(CACHE_NAV).then((c) => c.put(req, copia));
+          if (esCacheable(res)) {
+            event.waitUntil(caches.open(CACHE_NAV).then((c) => c.put(req, res.clone())));
+          }
           return res;
         })
         .catch(() => caches.match(req).then((c) => c || caches.match(HOME_PWA))),
@@ -67,8 +75,9 @@ self.addEventListener("fetch", (event) => {
       MODO_DEV
         ? fetch(req)
             .then((res) => {
-              const copia = res.clone();
-              caches.open(CACHE).then((c) => c.put(req, copia));
+              if (esCacheable(res)) {
+                event.waitUntil(caches.open(CACHE).then((c) => c.put(req, res.clone())));
+              }
               return res;
             })
             .catch(() => caches.match(req))
@@ -76,8 +85,9 @@ self.addEventListener("fetch", (event) => {
             (cached) =>
               cached ||
               fetch(req).then((res) => {
-                const copia = res.clone();
-                caches.open(CACHE).then((c) => c.put(req, copia));
+                if (esCacheable(res)) {
+                  event.waitUntil(caches.open(CACHE).then((c) => c.put(req, res.clone())));
+                }
                 return res;
               }),
           ),
@@ -89,9 +99,8 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        if (req.url.includes("/_next/")) {
-          const copia = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copia));
+        if (req.url.includes("/_next/") && esCacheable(res)) {
+          event.waitUntil(caches.open(CACHE).then((c) => c.put(req, res.clone())));
         }
         return res;
       })
