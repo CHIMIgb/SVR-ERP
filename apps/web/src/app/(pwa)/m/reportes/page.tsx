@@ -119,6 +119,8 @@ export default function ReportesMovilPage() {
   const corridaRef = useRef(0);
   /** Fecha del último snapshot guardado (el banner AvisoSinConexion la nombra). */
   const [fechaSnapshot, setFechaSnapshot] = useState<string | null>(null);
+  /** La pantalla está sirviendo snapshot (sin señal O server caído) — alimenta el banner (I-3). */
+  const [mostrandoSnapshot, setMostrandoSnapshot] = useState(false);
   // userId plano: el React Compiler no preserva la memoización con `user?.id`
   // (expresión opcional) en el array de deps
   const userId = user?.id;
@@ -143,6 +145,7 @@ export default function ReportesMovilPage() {
         setTotalRegistros(data.pagination.total);
         setTotalPaginas(data.pagination.totalPages);
         setErrorCarga(null);
+        setMostrandoSnapshot(false);
         // Snapshot offline-lectura: el último load exitoso queda en el teléfono
         if (userId) {
           const fecha = guardarDatos(userId, 'reportes', data);
@@ -159,8 +162,10 @@ export default function ReportesMovilPage() {
           setTotalPaginas(snapshot.datos.pagination.totalPages);
           setErrorCarga(null);
           setFechaSnapshot(snapshot.fechaGuardada);
+          setMostrandoSnapshot(true);
           return;
         }
+        setMostrandoSnapshot(false);
         setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar los reportes.');
       } finally {
         // Solo la corrida VIGENTE baja la bandera: una vieja que termina tarde
@@ -488,7 +493,9 @@ export default function ReportesMovilPage() {
       <EstadoCola refreshKey={colaKey} />
 
       {/* Aviso de datos offline: solo existe cuando YA hay pantalla detrás (regla de loaders) */}
-      {!cargandoInicial && <AvisoSinConexion fechaDatos={fechaSnapshot} />}
+      {!cargandoInicial && (
+        <AvisoSinConexion fechaDatos={fechaSnapshot} sirviendoSnapshot={mostrandoSnapshot} />
+      )}
 
       {errorCarga && (
         <div

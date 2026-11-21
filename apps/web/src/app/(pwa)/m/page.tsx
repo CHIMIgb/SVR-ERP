@@ -215,7 +215,7 @@ function ReportesResidente() {
 
   return (
     <div className="flex flex-col gap-2">
-      {carga.tipo === "offline" && <AvisoSinConexion fechaDatos={carga.fecha} />}
+      {carga.tipo === "offline" && <AvisoSinConexion fechaDatos={carga.fecha} sirviendoSnapshot />}
       <div className="grid grid-cols-2 gap-2">
         <Link
           href="/m/reportes"

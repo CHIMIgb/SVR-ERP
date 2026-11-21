@@ -200,11 +200,12 @@ NO:** en pantallas solo de consulta o en el escritorio.
 
 ## 6b. AvisoSinConexion
 
-Banner de honestidad para la fase offline-lectura: cuando NO hay señal y la
-pantalla está sirviendo datos del snapshot guardado (`lib/pwa/datos-cache.ts`),
-lo muestra con la fecha/hora del último dato — nadie debe confundir datos
-viejos con actuales. Se oculta solo al volver la señal (escucha
-`online`/`offline`).
+Banner de honestidad para la fase offline-lectura: cuando la pantalla está
+sirviendo datos del snapshot guardado (`lib/pwa/datos-cache.ts`) —sin señal
+O con señal pero server caído— lo muestra con la fecha/hora del último
+dato; nadie debe confundir datos viejos con actuales. Depende de
+`sirviendoSnapshot` (lo controla el padre, I-3 revisión PR #23), NO de
+`navigator.onLine`: con Wi-Fi vivo y server muerto sigue apareciendo.
 
 **Archivos:**
 - `src/components/pwa/AvisoSinConexion/AvisoSinConexion.tsx` (+ `.styles.ts`, `index.ts`)
@@ -219,11 +220,12 @@ import { AvisoSinConexion } from '@/components/pwa/AvisoSinConexion';
 | Prop | Tipo | Default | Descripcion |
 |------|------|---------|-------------|
 | `fechaDatos` | `string \| null` | `undefined` | ISO del último snapshot guardado (se muestra formateada es-MX); omitir = sin fecha conocida |
+| `sirviendoSnapshot` | `boolean` | — (obligatoria) | la pantalla está mostrando snapshot, no datos vivos; `false` renderiza `null` |
 
-**Cuando USAR:** en toda pantalla `/m/*` que sirva datos de snapshot sin
-señal, gated con `!cargandoInicial` (los banners no existen durante la
-carga). **Cuando NO:** en pantallas sin datos del server (perfil, PIN), ni
-para errores con conexión (eso es el banner rojo de error de la vista).
+**Cuando USAR:** en toda pantalla `/m/*` que sirva datos de snapshot
+(gated con `!cargandoInicial`; el padre apaga la bandera cuando trae datos
+frescos). **Cuando NO:** en pantallas sin datos del server (perfil, PIN),
+ni para errores con conexión (eso es el banner rojo de error de la vista).
 
 ## 7. ModalNuevoReporte
 
