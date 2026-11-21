@@ -7,19 +7,22 @@ const allowedDevOrigins = process.env.ALLOWED_DEV_ORIGINS
 /**
  * Proxy de la API en dev (mixed content): con la API en RUTA RELATIVA
  * (`NEXT_PUBLIC_API_URL=/api`), el navegador solo habla HTTPS con este
- * origin y Next proxy-ea al API local (server-side, sin reglas de mixed
- * content). En producción la URL es absoluta → el rewrite NO existe.
+ * origin y Next proxy-ea server-side a `API_PROXY_DESTINATION` (.env local).
+ * La ruta NO va hardcodeada: sale del .env. En producción la URL es absoluta
+ * (y no hay destino configurado) → el rewrite NO existe.
  */
-const esApiPorRuta = (process.env.NEXT_PUBLIC_API_URL ?? "").startsWith("/api");
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+const destinoProxy = process.env.API_PROXY_DESTINATION ?? "";
+const proxyActivo = apiUrl.startsWith("/api") && destinoProxy.length > 0;
 
 const nextConfig: NextConfig = {
   allowedDevOrigins,
-  ...(esApiPorRuta && {
+  ...(proxyActivo && {
     async rewrites() {
       return [
         {
-          source: "/api/:path*",
-          destination: "http://localhost:3001/api/:path*",
+          source: `${apiUrl}/:path*`,
+          destination: `${destinoProxy}/:path*`,
         },
       ];
     },

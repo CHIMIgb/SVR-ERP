@@ -59,5 +59,6 @@ de Next, no el navegador.
   excepción; la recomendación es copiar el `/api`.
 - El proxy solo existe en dev: en producción sigue siendo API directa por URL
   absoluta (correcto — Railway ya sirve la API bajo el dominio HTTPS de la web).
-- Si algún día la API escucha en otro puerto/host local, ajustar el `destination`
-  del rewrite (está hardcodeado a `localhost:3001` — igual que el `.env` viejo).
+- Si algún día la API escucha en otro puerto/host local, ajustar
+  `API_PROXY_DESTINATION` en el `.env` local (ver registro `-2`: la ruta ya no
+  está hardcodeada en `next.config.ts`).
