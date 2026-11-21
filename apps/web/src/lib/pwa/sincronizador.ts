@@ -27,15 +27,18 @@ export type PuertoEnvio = (
   item: ElementoCola,
 ) => Promise<{ ok: boolean; conflicto?: boolean; rechazo?: boolean; data?: unknown }>;
 
-/** Códigos 4xx del contrato (AllExceptionsFilter) que son rechazo terminal. */
+/**
+ * Códigos 4xx del contrato (AllExceptionsFilter) que son rechazo terminal:
+ * solo los de DATOS (400/403/404/422) — el server validó y negó la captura.
+ * 401 (sesión), 423 (bloqueo IP) y 429 (throttler) NO van aquí: son
+ * temporales y el reporte es válido → quedan en `error` reintentable
+ * (I-1, revisión PR #23).
+ */
 const CODIGOS_RECHAZO_TERMINAL = new Set([
   'BAD_REQUEST',
-  'UNAUTHORIZED',
   'FORBIDDEN',
   'NOT_FOUND',
   'UNPROCESSABLE_ENTITY',
-  'LOCKED',
-  'TOO_MANY_REQUESTS',
 ]);
 
 /** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */

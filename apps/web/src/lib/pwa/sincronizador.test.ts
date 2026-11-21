@@ -14,7 +14,7 @@ import {
   guardarAdjuntosPendientes,
   type ElementoCola,
 } from './offline';
-import { reportesCampoApi } from '@/lib/api';
+import { apiClient, reportesCampoApi } from '@/lib/api';
 
 jest.mock('./offline', () => ({
   pendientes: jest.fn(),
@@ -26,7 +26,10 @@ jest.mock('./offline', () => ({
   contarPendientes: jest.fn(),
 }));
 
+const mockedPost = apiClient.post as jest.Mock;
+
 jest.mock('@/lib/api', () => ({
+  apiClient: { post: jest.fn() },
   reportesCampoApi: { adjuntar: jest.fn() },
 }));
 
@@ -114,6 +117,51 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
     expect(mockedAdjuntar).toHaveBeenCalledTimes(1);
     expect(mockedAdjuntar.mock.calls[0][1]).toMatchObject({ nombre: 'b.webp', datos: 'BBB' });
     expect(marcarEnviada).toHaveBeenCalledWith('item-1');
+  });
+});
+
+describe('sincronizarAhora — clasificación de códigos (I-1 revisión PR #23)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('401 UNAUTHORIZED NO es rechazo terminal: queda en `error` reintentable', async () => {
+    // arrange: la sesión venció — el reporte es válido y debe reenviarse
+    mockedPost.mockResolvedValue({ success: false, error: { code: 'UNAUTHORIZED' } });
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora();
+
+    // assert
+    expect(marcarError).toHaveBeenCalledWith('item-1');
+    expect(marcarRechazada).not.toHaveBeenCalled();
+  });
+
+  it('429 TOO_MANY_REQUESTS NO es rechazo terminal (el throttler es temporal)', async () => {
+    // arrange
+    mockedPost.mockResolvedValue({ success: false, error: { code: 'TOO_MANY_REQUESTS' } });
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora();
+
+    // assert
+    expect(marcarError).toHaveBeenCalledWith('item-1');
+    expect(marcarRechazada).not.toHaveBeenCalled();
+  });
+
+  it('422 UNPROCESSABLE_ENTITY sí es rechazo terminal (datos inválidos)', async () => {
+    // arrange
+    mockedPost.mockResolvedValue({ success: false, error: { code: 'UNPROCESSABLE_ENTITY' } });
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora();
+
+    // assert
+    expect(marcarRechazada).toHaveBeenCalledWith('item-1');
+    expect(marcarError).not.toHaveBeenCalled();
   });
 });
 

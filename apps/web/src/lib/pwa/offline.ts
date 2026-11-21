@@ -22,8 +22,8 @@ export interface ElementoCola {
   creado_en: string;
   intentos: number;
   /**
-   * `rechazado` = estado TERMINAL: el server respondió 4xx (≠409) — la
-   * captura es inválida tal cual y NO se reenvía sola; espera decisión
+   * `rechazado` = estado TERMINAL: el server validó y negó la captura
+   * (4xx de datos: 400/403/404/422) — NO se reenvía sola; espera decisión
    * humana (Descartar/Reintentar en EstadoCola). `conflicto` = 409 de
    * negocio (duplicado); `error` = fallo de red/5xx (se reintentan solos).
    */
