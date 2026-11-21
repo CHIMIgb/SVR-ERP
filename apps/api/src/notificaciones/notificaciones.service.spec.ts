@@ -129,6 +129,8 @@ describe('NotificacionesService', () => {
     it('fase b: tras el insert resuelve el alcance y dispara el push (fire-and-forget)', async () => {
       process.env.VAPID_PUBLIC_KEY = 'clave-publica-test';
       process.env.VAPID_PRIVATE_KEY = 'clave-privada-test';
+      // destinatario personal ACTIVO (menor 2 PR #23: el service lo verifica)
+      prisma.users.findUnique.mockResolvedValue({ id: 'user-destino', activo: true });
       const flush = async () => {
         for (let i = 0; i < 5; i++) await Promise.resolve();
       };
@@ -448,13 +450,50 @@ describe('NotificacionesService', () => {
       expect(usuarios).toEqual(['user-b']);
     });
 
-    it('usuariosDelAlcance: rol → users_roles activos de ese rol', async () => {
+    it('usuariosDelAlcance: rol → users_roles activos de usuarios ACTIVOS (menor 2 PR #23)', async () => {
       prisma.users_roles.findMany.mockResolvedValue([{ user_id: 'user-a' }, { user_id: 'user-b' }]);
       const usuarios = await service.usuariosDelAlcance({ audienciaRolId: 'rol-a' }, undefined);
       expect(prisma.users_roles.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { rol_id: 'rol-a', activo: true } }),
+        expect.objectContaining({
+          where: {
+            rol_id: 'rol-a',
+            activo: true,
+            users_users_roles_user_idTousers: { activo: true }, // cuenta dada de baja → no push
+          },
+        }),
       );
       expect(usuarios).toEqual(['user-a', 'user-b']);
+    });
+
+    it('usuariosDelAlcance: destinatario personal dado de BAJA no recibe push (menor 2 PR #23)', async () => {
+      // arrange: la BD ya no lo tiene activo
+      prisma.users.findUnique.mockResolvedValue(null);
+
+      // act
+      const usuarios = await service.usuariosDelAlcance(
+        { destinatarioUserId: 'user-baja' },
+        undefined,
+      );
+
+      // assert
+      expect(prisma.users.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'user-baja' } }),
+      );
+      expect(usuarios).toEqual([]);
+    });
+
+    it('usuariosDelAlcance: destinatario personal ACTIVO sí recibe push', async () => {
+      // arrange
+      prisma.users.findUnique.mockResolvedValue({ id: 'user-activo', activo: true });
+
+      // act
+      const usuarios = await service.usuariosDelAlcance(
+        { destinatarioUserId: 'user-activo' },
+        'user-a',
+      );
+
+      // assert: incluido; y el actor no se avisa a sí mismo (invariante vigente)
+      expect(usuarios).toEqual(['user-activo']);
     });
 
     it('usuariosDelAlcance: "para todos" → todos los users activos', async () => {

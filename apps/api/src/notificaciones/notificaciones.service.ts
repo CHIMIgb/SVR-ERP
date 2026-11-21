@@ -62,15 +62,26 @@ export class NotificacionesService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let usuarios: any[] = [];
     if (input.destinatarioUserId) {
-      usuarios = [{ id: input.destinatarioUserId }];
+      // Menor 2 PR #23: una cuenta dada de baja deja de recibir push — el
+      // destinatario personal se verifica ACTIVO antes de incluirlo.
+      const user = await this.prisma.users.findUnique({
+        where: { id: input.destinatarioUserId },
+        select: { id: true, activo: true },
+      });
+      if (user?.activo) usuarios = [{ id: user.id }];
     } else if (input.audienciaTorre) {
       usuarios = await this.prisma.users.findMany({
         where: { torre: input.audienciaTorre, activo: true },
         select: { id: true },
       });
     } else if (input.audienciaRolId) {
+      // users_roles ACTIVOS cuyo usuario TAMBIÉN está activo (menor 2 PR #23)
       const roles = await this.prisma.users_roles.findMany({
-        where: { rol_id: input.audienciaRolId, activo: true },
+        where: {
+          rol_id: input.audienciaRolId,
+          activo: true,
+          users_users_roles_user_idTousers: { activo: true },
+        },
         select: { user_id: true },
       });
       usuarios = roles.map((r: { user_id: string }) => ({ id: r.user_id }));
