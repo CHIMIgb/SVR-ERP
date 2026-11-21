@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Clock, Camera, LogOut, ClipboardCheck, TriangleAlert, Phone, RefreshCw, UserX, ChevronRight } from "lucide-react";
+import { Clock, Camera, LogOut, ClipboardCheck, ClipboardList, TriangleAlert, Phone, RefreshCw, UserX, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { asistenciaApi, type EquipoAsistenciaDTO, type MiAsistenciaDTO } from "@/lib/api";
+import { asistenciaApi, reportesCampoApi, type EquipoAsistenciaDTO, type MiAsistenciaDTO } from "@/lib/api";
 import { formatHora12 } from "@/lib/formatters";
+import { guardarDatos, leerDatos } from "@/lib/pwa/datos-cache";
 import { navDelRol } from "@/lib/pwa/rol-nav";
 import {
   GRUPOS_FALTAN,
@@ -20,6 +21,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatsCard } from "@/components/ui/StatsCard";
+import { AvisoSinConexion } from "@/components/pwa/AvisoSinConexion";
 import { PanelEmpresa, puedeVerPanelEmpresa } from "./PanelEmpresa";
 
 /**
@@ -82,6 +84,7 @@ export default function InicioMovilPage() {
     : [user?.roles?.[0]?.nombre, conAsistencia ? null : fechaLarga(hoy)].filter(Boolean).join(" · ");
   const jefe = user?.jefe ?? null;
   const semana = datos?.semana ?? null;
+  const esResidente = user?.roles?.some((r) => r.nombre === "Residente") ?? false;
 
   return (
     <section className="max-w-md mx-auto w-full flex flex-col gap-4 pb-2">
@@ -130,6 +133,8 @@ export default function InicioMovilPage() {
       {puedeVerEquipo(user?.permisos) && (
         <EquipoHoy esResidente={user?.roles?.some((r) => r.nombre === "Residente") ?? false} />
       )}
+
+      {esResidente && rutas.has("/m/reportes") && <ReportesResidente />}
     </section>
   );
 }
@@ -138,6 +143,117 @@ type CargaEquipo =
   | { tipo: "cargando" }
   | { tipo: "ok"; datos: EquipoAsistenciaDTO }
   | { tipo: "error"; mensaje: string };
+
+/** Stats de reportes_campo en la forma que comparte el snapshot de /m/reportes. */
+interface StatsReportes {
+  nuevos: number;
+  enCurso: number;
+  cerrados: number;
+  criticos: number;
+}
+
+type CargaReportes =
+  | { tipo: "cargando" }
+  | { tipo: "ok"; datos: StatsReportes }
+  | { tipo: "offline"; datos: StatsReportes; fecha: string }
+  | { tipo: "error" };
+
+/** "Reportes abiertos" + "Requieren tu atención" (Inicio del RESIDENTE).
+ *  El ámbito lo resuelve el server (sus reportes + los de sus trabajadores
+ *  vía jefe_user_id): aquí solo se muestran los números y el acceso. Sin
+ *  señal sirve el snapshot que /m/reportes guarda con la MISMA clave. */
+function ReportesResidente() {
+  const { user } = useAuth();
+  const userId = user?.id; // plano: el React Compiler no preserva deps con `user?.id`
+  const [carga, setCarga] = useState<CargaReportes>({ tipo: "cargando" });
+
+  const cargar = useCallback(async () => {
+    try {
+      const res = await reportesCampoApi.stats();
+      if (res.success) {
+        const stats: StatsReportes = {
+          nuevos: res.data.nuevos,
+          enCurso: res.data.enCurso,
+          cerrados: res.data.cerrados,
+          criticos: res.data.criticosActivos,
+        };
+        setCarga({ tipo: "ok", datos: stats });
+        if (userId) guardarDatos(userId, "stats", stats);
+      } else {
+        setCarga({ tipo: "error" });
+      }
+    } catch {
+      // Sin señal: el snapshot que /m/reportes guarda (misma clave y forma);
+      // sin snapshot el bloque no existe (el reporte de error vive en su pantalla)
+      const snapshot = userId ? leerDatos<StatsReportes>(userId, "stats") : null;
+      setCarga(
+        snapshot
+          ? { tipo: "offline", datos: snapshot.datos, fecha: snapshot.fechaGuardada }
+          : { tipo: "error" },
+      );
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    (async () => {
+      await cargar();
+    })();
+  }, [cargar]);
+
+  if (carga.tipo === "error") return null; // sin datos: el bloque no existe
+
+  if (carga.tipo === "cargando") return <Skeleton variant="card" />;
+
+  const d = carga.datos;
+  const abiertos = d.nuevos + d.enCurso;
+  const conCriticos = d.criticos > 0;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {carga.tipo === "offline" && <AvisoSinConexion fechaDatos={carga.fecha} />}
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          href="/m/reportes"
+          className="bg-surface border border-ui-200 rounded-2xl p-4 flex flex-col gap-1.5 hover:bg-ui-50 active:bg-ui-100 transition-colors"
+        >
+          <span className="flex items-center gap-1.5 text-xs font-black text-ui-500 uppercase tracking-wide">
+            <ClipboardList className="w-4 h-4 text-ui-400" aria-hidden />
+            Reportes abiertos
+          </span>
+          <span className="text-3xl font-display font-black text-ui-900 leading-none">{abiertos}</span>
+          <span className="text-xs text-ui-500">Nuevos + en curso de tu obra</span>
+        </Link>
+        <Link
+          href="/m/reportes"
+          className={`rounded-2xl p-4 flex flex-col gap-1.5 border transition-colors ${
+            conCriticos
+              ? "bg-red-50 border-red-200 hover:bg-red-100/70 active:bg-red-100"
+              : "bg-surface border-ui-200 hover:bg-ui-50 active:bg-ui-100"
+          }`}
+        >
+          <span
+            className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${
+              conCriticos ? "text-red-700" : "text-ui-500"
+            }`}
+          >
+            <TriangleAlert className={`w-4 h-4 ${conCriticos ? "text-red-600" : "text-ui-400"}`} aria-hidden />
+            Requieren tu atención
+          </span>
+          <span
+            className={`text-3xl font-display font-black leading-none ${
+              conCriticos ? "text-red-700" : "text-ui-400"
+            }`}
+          >
+            {d.criticos}
+          </span>
+          <span className={`text-xs ${conCriticos ? "text-red-600" : "text-ui-500"}`}>
+            {conCriticos ? "Críticos sin cerrar" : "Sin críticos abiertos"}
+          </span>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 /** "Mi equipo hoy" (Residente; también Administrador si tiene gente a su cargo). */
 function EquipoHoy({ esResidente }: { esResidente: boolean }) {
