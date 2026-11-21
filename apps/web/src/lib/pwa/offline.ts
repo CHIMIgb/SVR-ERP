@@ -27,6 +27,13 @@ export interface ElementoCola {
    * POST). Tras el ACK del reporte el sincronizador las adjunta en secuencia.
    */
   adjuntos?: AdjuntoPendiente[];
+  /**
+   * Índices (sobre `adjuntos`) que aún NO subieron al server. `undefined` =
+   * todas pendientes (primera pasada); vacío = subieron todas. El item solo
+   * se elimina de la cola cuando esta lista queda vacía (PR #23, bloqueante 1:
+   * sin esto un 403/413/422 de adjunto borraba el item con las fotos dentro).
+   */
+  adjuntosPendientes?: number[];
 }
 
 const DB_NOMBRE = "svr-pwa";
@@ -95,6 +102,19 @@ export async function contarPendientes(): Promise<number> {
 /** Marca un elemento como ENVIADO y lo elimina de la cola. */
 export async function marcarEnviada(id: string): Promise<void> {
   await conStore<void>("readwrite", (store) => store.delete(id));
+}
+
+/**
+ * El reporte ya quedó registrado (ACK) pero faltan fotos por subir: el item
+ * NO se elimina — queda con los índices pendientes en estado `error` para
+ * que el sincronizador reintente SOLO esas fotos en la próxima pasada.
+ */
+export async function guardarAdjuntosPendientes(id: string, indices: number[]): Promise<void> {
+  const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
+  if (!item) return;
+  item.adjuntosPendientes = indices;
+  item.estado = "error";
+  await conStore<void>("readwrite", (store) => store.put(item));
 }
 
 /** Marca un elemento con error (queda en la cola para reintentar). */

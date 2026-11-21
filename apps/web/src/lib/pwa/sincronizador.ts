@@ -14,6 +14,7 @@ import {
   marcarEnviada,
   marcarError,
   marcarConflicto,
+  guardarAdjuntosPendientes,
   contarPendientes,
   type ElementoCola,
 } from "./offline";
@@ -53,28 +54,46 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
       try {
         const { ok, conflicto, data } = await enviar(item);
         if (ok) {
-          // Fotos del alta: el reporte ya existe (ACK) — adjuntar en secuencia,
-          // igual que el escritorio. Si una falla, el reporte queda guardado.
+          // Fotos del alta: el reporte ya existe (ACK, y el reenvío con la
+          // misma idempotenciaKey devuelve el original sin duplicar folio).
+          // Cada adjunto se revisa por `res.success` (apiClient NO lanza ante
+          // 403/413/422): el item solo se elimina cuando TODAS subieron; si
+          // faltan, queda en la cola para reintentar SOLO las faltantes
+          // (PR #23, bloqueante 1: sin esto se borraban fotos sin avisar).
           const nuevoId =
             data && typeof data === 'object' && 'id' in data && typeof (data as { id: unknown }).id === 'string'
               ? (data as { id: string }).id
               : null;
-          if (item.adjuntos?.length && nuevoId) {
-            const { reportesCampoApi } = await import('@/lib/api');
-            for (const adj of item.adjuntos) {
-              try {
-                // SIN `tamano`: el server lo calcula del base64 (whitelist lo rechaza)
-                await reportesCampoApi.adjuntar(nuevoId, {
-                  nombre: adj.nombre,
-                  mime: adj.mime,
-                  datos: adj.datos,
-                });
-              } catch (e) {
-                console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre, e);
+          let faltantes: number[] = [];
+          if (item.adjuntos?.length) {
+            faltantes = item.adjuntosPendientes ?? item.adjuntos.map((_, i) => i);
+            if (nuevoId) {
+              const { reportesCampoApi } = await import('@/lib/api');
+              for (const idx of faltantes.slice()) {
+                const adj = item.adjuntos[idx];
+                try {
+                  // SIN `tamano`: el server lo calcula del base64 (whitelist lo rechaza)
+                  const res = await reportesCampoApi.adjuntar(nuevoId, {
+                    nombre: adj.nombre,
+                    mime: adj.mime,
+                    datos: adj.datos,
+                  });
+                  if (res.success) faltantes = faltantes.filter((i) => i !== idx);
+                  else console.warn('Adjunto fallido (reporte ya guardado):', adj.nombre);
+                } catch {
+                  // Error de RED (apiClient lanza): deja de intentar y conserva
+                  // los índices restantes — el item no se pierde (bloqueante 1)
+                  console.warn('Adjunto sin señal (reporte ya guardado):', adj.nombre);
+                  break;
+                }
               }
             }
           }
-          await marcarEnviada(item.id);
+          if (faltantes.length > 0) {
+            await guardarAdjuntosPendientes(item.id, faltantes);
+          } else {
+            await marcarEnviada(item.id);
+          }
           enviados++;
         } else if (conflicto) {
           await marcarConflicto(item.id);

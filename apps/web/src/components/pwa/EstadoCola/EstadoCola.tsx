@@ -81,7 +81,12 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
       </header>
       <div className={c.lista}>
         {items.map((item) => {
-          const etiqueta = ETIQUETAS[item.estado];
+          // Conflicto manda; si el reporte ya se registró y solo faltan fotos
+          // por subir, la etiqueta lo dice (no es un "Error de red" genérico).
+          const faltanFotos = item.estado !== 'conflicto' && (item.adjuntosPendientes?.length ?? 0) > 0;
+          const etiqueta = faltanFotos
+            ? { texto: `Falta(n) ${item.adjuntosPendientes!.length} foto(s)`, variante: 'warning' as const }
+            : ETIQUETAS[item.estado];
           return (
             <div key={item.id} className={c.fila}>
               <div className={c.filaTexto}>
