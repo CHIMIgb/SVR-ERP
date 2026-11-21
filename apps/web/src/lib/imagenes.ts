@@ -11,6 +11,12 @@ export const MAX_TAMANO_IMAGEN = 10 * 1024 * 1024; // 10 MB (fotos de teléfono)
 export interface ImagenConvertida {
   dataUrl: string;
   tamano: number;
+  /**
+   * MIME REAL del blob producido (menor 5 PR #23): navegadores sin encoder
+   * WebP (algunos Safari) devuelven el PNG/JPEG del fallback — etiquetarlos
+   * image/webp hacía que la firma del server rechazara el adjunto.
+   */
+  mime: string;
 }
 
 /**
@@ -43,17 +49,26 @@ export async function convertirAWebp(file: File): Promise<ImagenConvertida | nul
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) =>
+    let blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, 'image/webp', 0.85),
     );
     if (!blob) return null;
+    // Safari sin encoder WebP: toBlob cae al PNG (grande para fotos) —
+    // re-codificar a JPEG (universal) y reportar el MIME REAL (menor 5 PR #23)
+    if (blob.type !== 'image/webp') {
+      const jpeg = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.85),
+      );
+      if (!jpeg) return null;
+      blob = jpeg;
+    }
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => reject(new Error());
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(blob!);
     });
-    return { dataUrl, tamano: blob.size };
+    return { dataUrl, tamano: blob.size, mime: blob.type };
   } catch {
     return null;
   }

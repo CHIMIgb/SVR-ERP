@@ -170,8 +170,8 @@ export function ModalNuevoReporte({
       {
         // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
         key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
-        mime: 'image/webp',
+        nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
+        mime: webp.mime,
         tamano: webp.tamano,
         datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
       },

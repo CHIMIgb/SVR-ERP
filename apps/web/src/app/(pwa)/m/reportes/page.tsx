@@ -9,7 +9,7 @@
  * van por el apiClient, nunca a la cola. Botones gated por RBAC: crear y
  * editar leen la vista de escritorio `/reportes` (permiso ya existente).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, FolderOpen, ImageOff, ImagePlus, Loader2, Plus, Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/layout/Toast';
@@ -108,8 +108,12 @@ export default function ReportesMovilPage() {
   const [cargandoTrabajadores, setCargandoTrabajadores] = useState(true);
 
   /** Listado paginado server-side (una página a la vez, como el escritorio). */
+  /** Guardia de secuencia (menor 6 PR #23): una respuesta vieja (cambio de
+   *  filtro/búsqueda/página mientras corren dos) NO pisa a la más nueva. */
+  const corridaRef = useRef(0);
   const recargar = useCallback(
     async (paginaPedida: number): Promise<void> => {
+      const corrida = ++corridaRef.current;
       try {
         const res = await reportesCampoApi.listar({
           page: paginaPedida,
@@ -117,6 +121,7 @@ export default function ReportesMovilPage() {
           estado: (filtro || undefined) as EstadoIncidenteApi | undefined,
           search: busqueda.trim() || undefined,
         });
+        if (corrida !== corridaRef.current) return; // llegó una más nueva: descartar
         if (!res.success) {
           setErrorCarga(mensajeErrorApi(res.error, 'No se pudieron cargar los reportes.'));
           return;
@@ -128,9 +133,12 @@ export default function ReportesMovilPage() {
         setTotalPaginas(data.pagination.totalPages);
         setErrorCarga(null);
       } catch (e) {
+        if (corrida !== corridaRef.current) return;
         setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar los reportes.');
       } finally {
-        setRefrescando(false);
+        // Solo la corrida VIGENTE baja la bandera: una vieja que termina tarde
+        // no apaga el spinner de la nueva
+        if (corrida === corridaRef.current) setRefrescando(false);
       }
     },
     [filtro, busqueda],
@@ -351,8 +359,8 @@ export default function ReportesMovilPage() {
         return;
       }
       const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
-        nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
-        mime: 'image/webp',
+        nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
+        mime: webp.mime,
         datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
       });
       if (res.success) {
