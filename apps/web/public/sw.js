@@ -104,6 +104,17 @@ self.addEventListener("push", (event) => {
 
 /* Al tocar la notificación: enfoca la app abierta o la abre en la sección
    correspondiente (deep-link fino por referencia queda como mejora). */
+const esPestanaPWA = (url) => {
+  // pathname exacto: includes("/m") también es verdadero en /maquinaria,
+  // /mantenimiento y /mi-... (pestañas del ESCRITORIO) — bloqueante 4 PR #23
+  try {
+    const ruta = new URL(url).pathname;
+    return ruta === "/m" || ruta.startsWith("/m/");
+  } catch {
+    return false;
+  }
+};
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const destino =
@@ -111,9 +122,10 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((lista) => {
       for (const cliente of lista) {
-        if (cliente.url.includes("/m")) {
+        if (esPestanaPWA(cliente.url)) {
           cliente.focus();
-          return cliente.navigate(destino);
+          // Si navigate() falla (cliente no controlado), abre ventana nueva
+          return cliente.navigate(destino).catch(() => self.clients.openWindow(destino));
         }
       }
       return self.clients.openWindow(destino);
