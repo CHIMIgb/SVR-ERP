@@ -293,8 +293,12 @@ export const apiClient = {
       body: JSON.stringify(body),
     }),
 
-  delete: <T>(endpoint: string, options?: FetchOptions) =>
-    request<T>(endpoint, { ...options, method: 'DELETE' }),
+  delete: <T>(endpoint: string, body?: unknown, options?: FetchOptions) =>
+    request<T>(endpoint, {
+      ...options,
+      method: 'DELETE',
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    }),
 };
 
 // ── Ciclo PIN de la PWA (plan §8.2) ──
@@ -2661,6 +2665,13 @@ export const notificacionesApi = {
   /** Registra la suscripción Web Push del dispositivo (fase a: upsert por endpoint). */
   suscribirPush: (data: { endpoint: string; llaves: { p256dh: string; auth: string } }) =>
     apiClient.post<{ message: string; suscripcion: { id: string; endpoint: string } }>(
+      '/notificaciones/push-suscripcion',
+      data,
+    ),
+
+  /** Baja de la suscripción Web Push (logout — menor 4 PR #23). */
+  cancelarPush: (data: { endpoint: string }) =>
+    apiClient.delete<{ message: string; canceladas: number }>(
       '/notificaciones/push-suscripcion',
       data,
     ),

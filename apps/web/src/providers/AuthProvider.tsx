@@ -18,6 +18,7 @@ import {
 } from "@svr-erp/shared";
 import { authApi, clearTokens, setTokens, initializeAuth, getAccessToken, type PinEstadoDTO } from "@/lib/api";
 import { limpiarCola } from "@/lib/pwa/offline";
+import { desactivarPush } from "@/lib/pwa/push";
 
 interface AuthState {
   user: UserAuth | null;
@@ -215,6 +216,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
+      // Push (menor 4 PR #23): desuscribir CON el token aún vivo — authApi.logout
+      // revoca el token y la baja en el server lo necesita. Nunca rompe el logout.
+      await desactivarPush().catch(() => {});
       await authApi.logout();
     } catch {
       // Ignorar errores de red en logout — limpiamos sesión de todos modos

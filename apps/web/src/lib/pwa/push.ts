@@ -86,6 +86,10 @@ export async function activarPush(): Promise<{ ok: boolean; mensaje: string }> {
       llaves: { p256dh: json.keys.p256dh, auth: json.keys.auth },
     });
     if (!alta.success) {
+      // Menor 4 PR #23: si el server NO registró el alta, el navegador queda
+      // sin suscripción — `estadoPush()` dejará de decir "activadas" con un
+      // backend que nunca la registró (desync de estados).
+      await suscripcion.unsubscribe().catch(() => undefined);
       return { ok: false, mensaje: mensajeErrorApi(alta.error, 'No se pudo registrar la suscripción.') };
     }
     return { ok: true, mensaje: 'Notificaciones del teléfono activadas.' };
@@ -95,4 +99,23 @@ export async function activarPush(): Promise<{ ok: boolean; mensaje: string }> {
       mensaje: e instanceof Error ? e.message : 'No se pudo activar el push en este dispositivo.',
     };
   }
+}
+
+/**
+ * DESACTIVAR el push (menor 4 PR #23): baja en el server + unsubscribe local
+ * del navegador. En un teléfono COMPARTIDO, la suscripción de la cuenta
+ * anterior no debe seguir recibiendo avisos. Se llama al CERRAR SESIÓN con
+ * el token aún vivo (el logout lo revoca); nunca rompe el logout.
+ */
+export async function desactivarPush(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return;
+  const registro = await navigator.serviceWorker.getRegistration();
+  if (!registro) return;
+  const suscripcion = await registro.pushManager.getSubscription();
+  if (!suscripcion) return;
+  // baja en el server PRIMERO (necesita el token vigente), luego local
+  await notificacionesApi
+    .cancelarPush({ endpoint: suscripcion.endpoint })
+    .catch(() => undefined);
+  await suscripcion.unsubscribe().catch(() => undefined);
 }
