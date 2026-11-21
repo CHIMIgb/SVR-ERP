@@ -2,10 +2,11 @@
 
 /**
  * Resumen de la cola offline dentro de la pantalla de captura. Los estados
- * `pendiente` y `error` se reintentan solos; el CONFLICTO (409) espera la
- * decisión humana con Descartar/Reintentar — nunca se reenvía solo. Se
- * oculta con la cola vacía. Cambios de la cola: evento online, cada 30 s y
- * el prop `refreshKey` que el padre incrementa tras encolar.
+ * `pendiente` y `error` se reintentan solos; CONFLICTO (409) y RECHAZADO
+ * (4xx ≠ 409, bloqueante 5 PR #23) esperan la decisión humana con
+ * Descartar/Reintentar — nunca se reenvían solos. Se oculta con la cola
+ * vacía. Cambios de la cola: evento online, cada 30 s y el prop
+ * `refreshKey` que el padre incrementa tras encolar.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -19,10 +20,14 @@ import {
 } from '@/lib/pwa/offline';
 import { estadoColaClasses } from './EstadoCola.styles';
 
-const ETIQUETAS: Record<ElementoCola['estado'], { texto: string; variante: 'warning' | 'info' | 'error' }> = {
+const ETIQUETAS: Record<
+  ElementoCola['estado'],
+  { texto: string; variante: 'warning' | 'info' | 'error' }
+> = {
   pendiente: { texto: 'Pendiente', variante: 'warning' },
   error: { texto: 'Error de red', variante: 'info' },
   conflicto: { texto: 'Conflicto', variante: 'error' },
+  rechazado: { texto: 'Rechazado', variante: 'error' },
 };
 
 export interface EstadoColaProps {
@@ -71,7 +76,11 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
   if (items.length === 0) return null;
 
   const c = estadoColaClasses;
-  const enviandoAhora = items.some((i) => i.estado !== 'conflicto');
+  // conflicto y rechazado esperan decisión humana: no están "enviando ahora"
+  const enviandoAhora = items.some((i) => i.estado !== 'conflicto' && i.estado !== 'rechazado');
+  /** Conflicto (409) y Rechazado (4xx ≠ 409): Descartar/Reintentar manuales. */
+  const esperaDecision = (item: ElementoCola) =>
+    item.estado === 'conflicto' || item.estado === 'rechazado';
 
   return (
     <section className={c.root} aria-live="polite">
@@ -83,7 +92,10 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
         {items.map((item) => {
           // Conflicto manda; si el reporte ya se registró y solo faltan fotos
           // por subir, la etiqueta lo dice (no es un "Error de red" genérico).
-          const faltanFotos = item.estado !== 'conflicto' && (item.adjuntosPendientes?.length ?? 0) > 0;
+          const faltanFotos =
+            item.estado !== 'conflicto' &&
+            item.estado !== 'rechazado' &&
+            (item.adjuntosPendientes?.length ?? 0) > 0;
           const etiqueta = faltanFotos
             ? { texto: `Falta(n) ${item.adjuntosPendientes!.length} foto(s)`, variante: 'warning' as const }
             : ETIQUETAS[item.estado];
@@ -98,7 +110,7 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
                   {item.intentos > 0 && <span>· {item.intentos} intento(s)</span>}
                 </p>
               </div>
-              {item.estado === 'conflicto' && (
+              {esperaDecision(item) && (
                 <div className={c.filaAcciones}>
                   <Button
                     variant="secondary"

@@ -25,6 +25,7 @@ import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes'
 import { useToast } from '@/components/layout/Toast';
 import {
   encolar,
+  consultarEstado,
   type AdjuntoPendiente,
 } from '@/lib/pwa/offline';
 import { sincronizarAhora } from '@/lib/pwa/sincronizador';
@@ -221,7 +222,7 @@ export function ModalNuevoReporte({
 
     try {
       const mismaArea = area === MISMA_AREA;
-      await encolar(
+      const item = await encolar(
         '/reportes-campo',
         {
           mismaArea,
@@ -239,11 +240,16 @@ export function ModalNuevoReporte({
           datos: img.datos,
         })),
       );
+      // Solo el ACK de ESTE item felicita: la pasada puede enviar otros
+      // items viejos de la cola (bloqueante 5 PR #23)
       const enviados = await sincronizarAhora();
       onEncolado?.();
-      if (enviados > 0) {
+      if (enviados.includes(item.id)) {
         showToast('Incidente registrado exitosamente.', 'success'); // paridad del escritorio
         cerrar(); // ACK: fotos ya adjuntadas por el sincronizador
+      } else if ((await consultarEstado(item.id)) === 'rechazado') {
+        showToast('El servidor rechazó este reporte (revisa los datos). Descártalo o corrigelo y reintenta en la lista de pendientes.', 'error');
+        setPendiente(true); // EstadoCola muestra el rechazo con Descartar/Reintentar
       } else {
         showToast('Tu reporte quedó guardado en este teléfono y se enviará solo.', 'info');
         setPendiente(true); // sin señal o conflicto: el estado lo muestra EstadoCola

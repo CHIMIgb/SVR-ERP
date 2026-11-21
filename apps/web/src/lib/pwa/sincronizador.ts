@@ -7,13 +7,17 @@
  * ValidationPipe solo lee el body, no los headers. El endpoint debe respetar
  * la key para que un reenvío no duplique filas (convención de la cola).
  * Los errores NO bloquean la cola: el elemento queda para reintentar. Un
- * CONFLICTO de negocio (409) NO se reintenta: espera decisión humana.
+ * CONFLICTO de negocio (409) NO se reintenta: espera decisión humana. Un
+ * RECHAZO (4xx ≠ 409) tampoco: estado terminal "rechazado" (bloqueante 5
+ * PR #23) — el server ya validó y negó la captura; martillarlo cada 2 min
+ * no la arregla. El envío devuelve los IDS enviados, no un conteo global.
  */
 import {
   pendientes,
   marcarEnviada,
   marcarError,
   marcarConflicto,
+  marcarRechazada,
   guardarAdjuntosPendientes,
   contarPendientes,
   type ElementoCola,
@@ -21,7 +25,18 @@ import {
 
 export type PuertoEnvio = (
   item: ElementoCola,
-) => Promise<{ ok: boolean; conflicto?: boolean; data?: unknown }>;
+) => Promise<{ ok: boolean; conflicto?: boolean; rechazo?: boolean; data?: unknown }>;
+
+/** Códigos 4xx del contrato (AllExceptionsFilter) que son rechazo terminal. */
+const CODIGOS_RECHAZO_TERMINAL = new Set([
+  'BAD_REQUEST',
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'UNPROCESSABLE_ENTITY',
+  'LOCKED',
+  'TOO_MANY_REQUESTS',
+]);
 
 /** Envío real (import perezoso del apiClient: token en memoria + refresh único en 401). */
 const puertoPorDefecto: PuertoEnvio = async (item) => {
@@ -30,9 +45,13 @@ const puertoPorDefecto: PuertoEnvio = async (item) => {
     ...item.payload,
     idempotenciaKey: item.id,
   });
+  const codigo = res.success === false ? res.error.code : undefined;
   return {
     ok: res.success === true,
-    conflicto: res.success === false && res.error.code === 'CONFLICT',
+    // 409 = CONFLICTO de negocio (duplicado): espera decisión humana
+    conflicto: codigo === 'CONFLICT',
+    // resto de 4xx = RECHAZO terminal (el server validó y negó la captura)
+    rechazo: codigo !== undefined && CODIGOS_RECHAZO_TERMINAL.has(codigo),
     data: res.success === true ? res.data : undefined,
   };
 };
@@ -41,18 +60,22 @@ let corriendo = false;
 
 /**
  * Una pasada de sincronización: envía los pendientes en orden.
- * Devuelve cuántos se enviaron con éxito.
+ * Devuelve los IDS enviados con éxito (bloqueante 5 PR #23: el conteo de
+ * TODA la cola hacía felicitar un envío que no era el del operario).
  */
-export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): Promise<number> {
-  if (corriendo) return 0; // una sola pasada a la vez
+export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): Promise<string[]> {
+  const enviados: string[] = [];
+  if (corriendo) return enviados; // una sola pasada a la vez
   corriendo = true;
-  let enviados = 0;
   try {
     // Los conflictos NO se reenvían: esperan decisión humana (descartar/reencolar).
-    const cola = (await pendientes()).filter((i) => i.estado !== "conflicto");
+    // Los RECHAZADOS tampoco: el server los validó y negó (4xx ≠ 409).
+    const cola = (await pendientes()).filter(
+      (i) => i.estado !== "conflicto" && i.estado !== "rechazado",
+    );
     for (const item of cola) {
       try {
-        const { ok, conflicto, data } = await enviar(item);
+        const { ok, conflicto, rechazo, data } = await enviar(item);
         if (ok) {
           // Fotos del alta: el reporte ya existe (ACK, y el reenvío con la
           // misma idempotenciaKey devuelve el original sin duplicar folio).
@@ -94,9 +117,12 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
           } else {
             await marcarEnviada(item.id);
           }
-          enviados++;
+          enviados.push(item.id);
         } else if (conflicto) {
           await marcarConflicto(item.id);
+        } else if (rechazo) {
+          // 4xx ≠ 409: estado TERMINAL — no martillar el server cada 2 min
+          await marcarRechazada(item.id);
         } else {
           await marcarError(item.id);
         }

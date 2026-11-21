@@ -21,7 +21,13 @@ export interface ElementoCola {
   payload: Record<string, unknown>;
   creado_en: string;
   intentos: number;
-  estado: "pendiente" | "error" | "conflicto";
+  /**
+   * `rechazado` = estado TERMINAL: el server respondió 4xx (≠409) — la
+   * captura es inválida tal cual y NO se reenvía sola; espera decisión
+   * humana (Descartar/Reintentar en EstadoCola). `conflicto` = 409 de
+   * negocio (duplicado); `error` = fallo de red/5xx (se reintentan solos).
+   */
+  estado: "pendiente" | "error" | "conflicto" | "rechazado";
   /**
    * Fotos del alta — NO van en el payload (el ValidationPipe rechazaría el
    * POST). Tras el ACK del reporte el sincronizador las adjunta en secuencia.
@@ -132,6 +138,24 @@ export async function marcarConflicto(id: string): Promise<void> {
   if (!item) return;
   item.estado = "conflicto";
   await conStore<void>("readwrite", (store) => store.put(item));
+}
+
+/**
+ * Estado TERMINAL de rechazo (4xx ≠ 409 — bloqueante 5 PR #23): el server
+ * VALIDÓ la captura y la rechazó; reintentarla cada 2 min para siempre solo
+ * martilla el endpoint con el mismo error. Espera decisión humana.
+ */
+export async function marcarRechazada(id: string): Promise<void> {
+  const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
+  if (!item) return;
+  item.estado = "rechazado";
+  await conStore<void>("readwrite", (store) => store.put(item));
+}
+
+/** Estado ACTUAL de un item de la cola (null si ya no existe). */
+export async function consultarEstado(id: string): Promise<ElementoCola["estado"] | null> {
+  const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
+  return item?.estado ?? null;
 }
 
 /** Decisión humana sobre un conflicto: descartarlo (sale de la cola). */

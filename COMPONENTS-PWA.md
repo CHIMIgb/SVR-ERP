@@ -174,9 +174,12 @@ el escritorio (usa la DataTable de `/reportes`) ni para otras entidades.
 ## 6. EstadoCola
 
 Resumen de la cola offline dentro de la pantalla de captura. Muestra cada
-item con su estado (`Pendiente` / `Error de red` / `Conflicto`); los
-conflictos (409) esperan la decisión humana con botones Descartar
-(`descartar`) y Reintentar (`reencolar`). Se oculta con la cola vacía.
+item con su estado (`Pendiente` / `Error de red` / `Conflicto` /
+`Rechazado` / `Falta(n) N foto(s)` cuando el reporte ya se registró y
+suben fotos pendientes); los conflictos (409) y los rechazados (4xx ≠ 409,
+estado terminal — bloqueante 5 PR #23) esperan la decisión humana con
+botones Descartar (`descartar`) y Reintentar (`reencolar`). Se oculta con
+la cola vacía.
 
 **Archivos:**
 - `src/components/pwa/EstadoCola/EstadoCola.tsx` (+ `.styles.ts`, `index.ts`)
@@ -204,8 +207,11 @@ captura al guardar, requiere HTTPS), Prioridad, Descripción e Imágenes de la
 avería (WebP local vía `convertirAWebp`, máx 4 × 2 MB). Offline-first:
 SIEMPRE encola (`encolar` con la key de idempotencia del teléfono) y dispara
 `sincronizarAhora()`; las fotos viajan con el item (`adjuntos`) y el
-sincronizador las adjunta tras el ACK. Con señal hace ACK y se cierra solo;
-sin señal muestra «quedó guardado» y el estado lo pinta `EstadoCola`.
+sincronizador las adjunta tras el ACK. Solo el ACK de SU item (ids que
+devuelve la pasada) felicita y cierra — no un conteo global de la cola
+(bloqueante 5 PR #23); si el server rechazó la captura (4xx ≠ 409) avisa
+con el estado «Rechazado» de `EstadoCola`; sin señal muestra «quedó
+guardado» y el estado lo pinta `EstadoCola`.
 Payload idéntico al escritorio (`mismaArea` o `categoria`, `subcategoriaId`
 solo si no es misma área). Reinicia sus campos al CERRAR (no al abrir).
 

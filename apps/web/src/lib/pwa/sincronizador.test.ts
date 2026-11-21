@@ -8,6 +8,9 @@ import { sincronizarAhora, type PuertoEnvio } from './sincronizador';
 import {
   pendientes,
   marcarEnviada,
+  marcarError,
+  marcarConflicto,
+  marcarRechazada,
   guardarAdjuntosPendientes,
   type ElementoCola,
 } from './offline';
@@ -18,6 +21,7 @@ jest.mock('./offline', () => ({
   marcarEnviada: jest.fn(),
   marcarError: jest.fn(),
   marcarConflicto: jest.fn(),
+  marcarRechazada: jest.fn(),
   guardarAdjuntosPendientes: jest.fn(),
   contarPendientes: jest.fn(),
 }));
@@ -110,6 +114,79 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
     expect(mockedAdjuntar).toHaveBeenCalledTimes(1);
     expect(mockedAdjuntar.mock.calls[0][1]).toMatchObject({ nombre: 'b.webp', datos: 'BBB' });
     expect(marcarEnviada).toHaveBeenCalledWith('item-1');
+  });
+});
+
+describe('sincronizarAhora — ids devueltos y rechazo terminal (bloqueante 5 PR #23)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('devuelve los IDS enviados, no un conteo global de la cola', async () => {
+    // arrange: dos items — el primero envía, el segundo queda pendiente (red)
+    mockedPendientes.mockResolvedValue([
+      itemConFotos({ id: 'item-ok' }),
+      itemConFotos({ id: 'item-sin-senal', adjuntos: undefined }),
+    ]);
+
+    // act
+    const ids = await sincronizarAhora((item) =>
+      item.id === 'item-ok'
+        ? Promise.resolve({ ok: true, data: { id: 'reporte-1' } })
+        : Promise.reject(new Error('Error de conexión con el servidor')),
+    );
+
+    // assert
+    expect(ids).toEqual(['item-ok']);
+  });
+
+  it('un 4xx de validación (≠409) marca RECHAZADO (terminal) y NO se reenvía en la siguiente pasada', async () => {
+    // arrange: primera pasada con respuesta de validación
+    const item = itemConFotos({ adjuntos: undefined });
+    mockedPendientes.mockResolvedValue([item]);
+
+    // act: el server responde 422 UNPROCESSABLE_ENTITY
+    await sincronizarAhora(() =>
+      Promise.resolve({ ok: false, rechazo: true, conflicto: false }),
+    );
+
+    // assert: estado terminal, sin reintento
+    expect(marcarRechazada).toHaveBeenCalledWith('item-1');
+    expect(marcarError).not.toHaveBeenCalled();
+    expect(marcarEnviada).not.toHaveBeenCalled();
+
+    // y en la siguiente pasada NO se vuelve a intentar
+    mockedPendientes.mockResolvedValue([
+      itemConFotos({ adjuntos: undefined, estado: 'rechazado' }),
+    ]);
+    const puertoQueNoDebeLlamarse = jest.fn();
+    await sincronizarAhora(puertoQueNoDebeLlamarse);
+    expect(puertoQueNoDebeLlamarse).not.toHaveBeenCalled();
+  });
+
+  it('un 5xx sigue siendo RETRABLE (marcarError, no rechazado)', async () => {
+    // arrange
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act: error interno del server
+    await sincronizarAhora(() => Promise.resolve({ ok: false, rechazo: false, conflicto: false }));
+
+    // assert
+    expect(marcarError).toHaveBeenCalledWith('item-1');
+    expect(marcarRechazada).not.toHaveBeenCalled();
+  });
+
+  it('un 409 sigue yendo a CONFLICTO (no lo toca el rechazo terminal)', async () => {
+    // arrange
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora(() => Promise.resolve({ ok: false, conflicto: true }));
+
+    // assert
+    expect(marcarConflicto).toHaveBeenCalledWith('item-1');
+    expect(marcarRechazada).not.toHaveBeenCalled();
+    expect(marcarError).not.toHaveBeenCalled();
   });
 });
 
