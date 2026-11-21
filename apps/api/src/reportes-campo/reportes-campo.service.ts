@@ -90,7 +90,6 @@ const TRANSICIONES: Record<EstadoIncidente, EstadoIncidente[]> = {
  * Adjuntos (imágenes): límites conservadores sin almacenamiento externo.
  */
 const MAX_ADJUNTOS = 4;
-const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
 const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 /**

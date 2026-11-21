@@ -161,21 +161,26 @@ export function ModalNuevoReporte({
       showToast('La imagen excede el máximo de 10 MB.', 'error');
       return;
     }
-    if (imagenes.length >= MAX_IMAGENES) {
-      showToast(`Máximo ${MAX_IMAGENES} imágenes por incidente.`, 'error');
-      return;
-    }
-    setImagenes((prev) => [
-      ...prev,
-      {
-        // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
-        key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
-        mime: webp.mime,
-        tamano: webp.tamano,
-        datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
-      },
-    ]);
+    // Tope DENTRO del updater (menor 7 PR #23): dos fotos seguidas leen el
+    // mismo estado viejo y ambas pasaban el check del render — igual que el
+    // escritorio, el updater es la única fuente de verdad del array.
+    setImagenes((prev) => {
+      if (prev.length >= MAX_IMAGENES) {
+        showToast(`Máximo ${MAX_IMAGENES} imágenes por incidente.`, 'error');
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
+          key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
+          mime: webp.mime,
+          tamano: webp.tamano,
+          datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
+        },
+      ];
+    });
   };
 
   const enviar = async () => {
