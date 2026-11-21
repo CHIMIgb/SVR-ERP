@@ -219,6 +219,14 @@ export default function ReportesMovilPage() {
     void cargarStats();
   };
 
+  /** El reporte recién capturado debe verse en la lista al reconectar: un
+   *  filtro de estado o búsqueda activo lo ocultaría y parecería borrado. */
+  const trasCaptura = () => {
+    setFiltro('');
+    setBusqueda('');
+    alEncolar();
+  };
+
   const cerrarNuevo = () => {
     setNuevoAbierto(false);
     alEncolar();
@@ -834,7 +842,7 @@ export default function ReportesMovilPage() {
         onCerrar={cerrarNuevo}
         nombreUsuario={nombreUsuario}
         torreUsuario={user?.torre ?? null}
-        onEncolado={alEncolar}
+        onEncolado={trasCaptura}
       />
 
       {/* Preview de imagen — sin salir del reporte */}

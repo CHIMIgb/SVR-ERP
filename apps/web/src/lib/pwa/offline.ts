@@ -64,8 +64,13 @@ async function conStore<T>(modo: IDBTransactionMode, fn: (store: IDBObjectStore)
   return new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, modo);
     const req = fn(tx.objectStore(STORE));
-    req.onsuccess = () => resolve(req.result as T);
-    req.onerror = () => reject(req.error);
+    // `onsuccess` de la request llega ANTES del commit: resolver ahí deja una
+    // ventana donde un reload (HMR) pierde la captura recién encolada.
+    let resultado: T;
+    req.onsuccess = () => { resultado = req.result as T; };
+    tx.oncomplete = () => resolve(resultado);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? req.error);
   });
 }
 
