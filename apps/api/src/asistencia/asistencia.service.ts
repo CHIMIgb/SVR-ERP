@@ -112,8 +112,17 @@ export interface MiAsistenciaResponse {
     /** Hora de entrada programada "HH:mm" (referencia del retardo). */
     entradaProgramada?: string;
   };
-  /** Obras donde puede checar: las de sus proyectos activos. `tieneUbicacion` false = aún no se puede checar ahí. */
-  obras: { id: string; nombre: string; tieneUbicacion: boolean }[];
+  /**
+   * Obras donde puede checar: las de sus proyectos activos. `tieneUbicacion` false = aún no se puede checar ahí.
+   * `geocerca` (centro y radio guardados) sirve a la PWA para avisar "dentro/fuera de la zona" antes de checar;
+   * quien decide `enSitio` sigue siendo el servidor al registrar.
+   */
+  obras: {
+    id: string;
+    nombre: string;
+    tieneUbicacion: boolean;
+    geocerca: { lat: number; lng: number; radioMetros: number } | null;
+  }[];
   /** Registro de hoy o, si sigue abierto, el turno nocturno de ayer (la salida de hoy lo cierra). */
   registroHoy: RegistroAsistenciaResponse | null;
   turnoNocturnoAbierto: boolean;
@@ -1558,7 +1567,10 @@ export class AsistenciaService {
         estado: trabajador.estado,
         entradaProgramada: this.horaUtcAString(trabajador.entrada),
       },
-      obras: obras.map((o) => ({ id: o.id, nombre: o.nombre, tieneUbicacion: this.geocercaDeObra(o) !== null })),
+      obras: obras.map((o) => {
+        const geocerca = this.geocercaDeObra(o);
+        return { id: o.id, nombre: o.nombre, tieneUbicacion: geocerca !== null, geocerca };
+      }),
       registroHoy: registro ? this.toResponse(registro) : null,
       turnoNocturnoAbierto: nocturno !== null,
       semana: semanal[0] ?? null,
