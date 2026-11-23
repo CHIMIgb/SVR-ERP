@@ -71,6 +71,34 @@ describe('activarPush — errores de red (menor 2 revisión PR #23)', () => {
     expect(suscripcionFake.unsubscribe).not.toHaveBeenCalled(); // aún no existía
   });
 
+  it('sin señal, el error crudo de red se traduce a un mensaje es-MX', async () => {
+    // arrange: el pushManager del navegador lanza "Failed to fetch" crudo
+    registroFake.pushManager.subscribe.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+
+    // act
+    const r = await activarPush();
+
+    // assert
+    expect(r.ok).toBe(false);
+    expect(r.mensaje).toBe('Sin conexión — activa las notificaciones cuando tengas señal.');
+  });
+
+  it('el error de red del apiClient (menciona localhost) también se traduce', async () => {
+    // arrange
+    mockedVapid.mockRejectedValueOnce(
+      new Error('No se pudo conectar con el servidor. Verifica que la API esté corriendo en http://localhost:3001/api'),
+    );
+
+    // act
+    const r = await activarPush();
+
+    // assert
+    expect(r.ok).toBe(false);
+    expect(r.mensaje).toBe('Sin conexión — activa las notificaciones cuando tengas señal.');
+  });
+
   it('si el server rechaza el alta (success:false), también desuscribe (regresión)', async () => {
     // arrange
     mockedAlta.mockResolvedValue({ success: false, error: { code: 'FORBIDDEN' } });
