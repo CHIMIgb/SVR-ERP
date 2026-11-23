@@ -19,7 +19,8 @@ Registro de decisiones arquitectónicas y técnicas clave del proyecto.
 **Implementación:**
 ```typescript
 // apps/api/src/prisma/prisma.service.ts
-const pool = new Pool({ connectionString });
+// La sesión va SIEMPRE en UTC: sin `options` las fechas quedan 6 h adelantadas (ver sección 23).
+const pool = new Pool({ connectionString, options: '-c timezone=UTC' });
 const adapter = new PrismaPg(pool);
 super({ adapter });
 ```
@@ -561,6 +562,64 @@ pendiente de definir.
 
 ---
 
+## 23. Zona Horaria de la Conexión a Postgres: Siempre UTC
+
+**Fecha:** Noviembre 2026
+**Estado:** Activo
+
+**Decisión:** Toda conexión de Prisma a Postgres abre la sesión en UTC con
+`new Pool({ connectionString, options: '-c timezone=UTC' })`. Aplica a la API
+(`apps/api/src/prisma/prisma.service.ts`) y a cualquier script o seed que cree su propio
+`Pool`. Las fechas se siguen mostrando en hora de México en el front; esto solo cambia
+cómo viajan entre la API y la BD.
+
+**Por qué:**
+- `@prisma/adapter-pg` (7.9.1, y la 7.10.1 igual) manda cada `Date` como la hora UTC
+  **sin zona** (`"2026-11-23 06:04:01"`). Postgres la interpreta con el `TimeZone` de la
+  sesión. Con el servidor en hora de México (-06), todo lo que escribía Prisma quedaba
+  **6 h en el futuro**.
+- Al leer, el adapter cambia la zona por `+00:00` y lo compensa, por eso dentro de la app
+  no se notaba. Lo que sí salía mal:
+  - lo que pone Postgres por su cuenta: `CURRENT_TIMESTAMP` de los 56 triggers de
+    `actualizado_en`, `now()`, `DEFAULT`. Prisma lo leía 6 h en el pasado. Había 408 filas
+    con `actualizado_en` horas antes que `creado_en`;
+  - cualquier SQL directo (psql, reportes, `now() - interval`);
+  - cambiar de servidor o de `TimeZone`. El Postgres de CI está en UTC y nunca lo veía.
+- Con la sesión en UTC cuadra en cualquier servidor, sin importar su `TimeZone`.
+
+**Corrección de los datos viejos:** la migración `20261123010000_corregir_zona_horaria_utc`
+(solo datos). Corre `(valor AT TIME ZONE <zona del servidor>) AT TIME ZONE 'UTC'` en todas las
+columnas `timestamptz`:
+- deja en paz el `actualizado_en` que puso el trigger;
+- apaga los triggers de UPDATE solo dentro de su transacción;
+- no corre dos veces. Deja la marca `svr.zona_horaria_corregida` en el comentario de la tabla
+  `_prisma_migrations`, que viaja con los respaldos;
+- falla si la zona viene forzada desde la conexión;
+- en un servidor que ya está en UTC no cambia nada.
+
+Cómo aplicarla y verificarla, en su encabezado: **código y migración van juntos, con la API
+detenida**.
+
+**Revisión al arrancar** (`PrismaService.onModuleInit`):
+- Si la sesión no quedó en UTC, la API no arranca. Pasa si `DATABASE_URL` trae su propio
+  `options=` (gana sobre el del código) o si un pooler ignora los parámetros de arranque.
+- Si la BD no tiene la marca de la corrección, avisa en el log.
+
+**Reglas para quien toque esto (personas o IA):**
+- No quitar `options: '-c timezone=UTC'`. Si se quita, `prisma.service.spec.ts` truena en CI.
+- Todo `new Pool(...)` nuevo lleva la misma opción.
+- No poner `options=` en `DATABASE_URL`.
+- No "arreglar" una hora sumando o restando 6 h en el código: el desfase era de la conexión, no
+  de los datos de negocio.
+- Las fechas sin hora (`@db.Date`) y las horas (`@db.Time`) no dependen de esto.
+
+**Trade-off:** Las filas que insertó SQL con `NOW()` (seeds dentro de migraciones: roles,
+permisos, vistas) ya estaban bien y la corrección las deja 6 h antes. Solo es su fecha de
+creación. El volcado `svr_erp_export/` sigue con las fechas viejas hasta que se regenere
+desde una BD ya corregida; a CI no le afecta porque sus pruebas crean sus propios datos.
+
+---
+
 ## Referencia Rápida
 
 | Decisión | Estado | Archivo Clave |
@@ -587,3 +646,4 @@ pendiente de definir.
 | Engram | Rechazado | N/A |
 | Módulos backend sin `modules/` | Activo (migración pendiente) | `apps/api/src/<dominio>/` |
 | Reglas de dinero de la nómina | Activo | `apps/api/src/nomina/nomina.service.ts` |
+| Conexión a Postgres en UTC | Activo | `apps/api/src/prisma/prisma.service.ts` |
