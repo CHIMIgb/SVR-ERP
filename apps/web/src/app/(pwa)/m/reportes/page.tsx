@@ -119,11 +119,17 @@ export default function ReportesMovilPage() {
   const corridaRef = useRef(0);
   /** Fecha del último snapshot guardado (el banner AvisoSinConexion la nombra). */
   const [fechaSnapshot, setFechaSnapshot] = useState<string | null>(null);
+  /** La pantalla está sirviendo snapshot (sin señal O server caído) — alimenta el banner (I-3). */
+  const [mostrandoSnapshot, setMostrandoSnapshot] = useState(false);
   // userId plano: el React Compiler no preserva la memoización con `user?.id`
   // (expresión opcional) en el array de deps
   const userId = user?.id;
   const recargar = useCallback(
     async (paginaPedida: number): Promise<void> => {
+      // Snapshot por CONTEXTO de consulta (menor 3 revisión PR #23): un
+      // snapshot guardado con otro filtro/búsqueda/página no debe aparecer
+      // como si fuera el actual ("Todos" mostrando lo del filtro Cerrados).
+      const claveSnapshot = `reportes:${filtro || 'todos'}:${busqueda.trim()}:${paginaPedida}`;
       const corrida = ++corridaRef.current;
       try {
         const res = await reportesCampoApi.listar({
@@ -143,15 +149,18 @@ export default function ReportesMovilPage() {
         setTotalRegistros(data.pagination.total);
         setTotalPaginas(data.pagination.totalPages);
         setErrorCarga(null);
-        // Snapshot offline-lectura: el último load exitoso queda en el teléfono
+        setMostrandoSnapshot(false);
+        // Snapshot offline-lectura por contexto: el último load exitoso de
+        // ESTA consulta queda en el teléfono
         if (userId) {
-          const fecha = guardarDatos(userId, 'reportes', data);
+          const fecha = guardarDatos(userId, claveSnapshot, data);
           if (fecha) setFechaSnapshot(fecha);
         }
       } catch (e) {
         if (corrida !== corridaRef.current) return;
-        // Sin señal: servir el ÚLTIMO snapshot guardado en vez del error/blanco
-        const snapshot = userId ? leerDatos<DatosReportes>(userId, 'reportes') : null;
+        // Sin señal: servir el ÚLTIMO snapshot de ESTA consulta en vez del
+        // error/blanco
+        const snapshot = userId ? leerDatos<DatosReportes>(userId, claveSnapshot) : null;
         if (snapshot) {
           setReportes(snapshot.datos.items);
           setPagina(snapshot.datos.pagination.page);
@@ -159,8 +168,10 @@ export default function ReportesMovilPage() {
           setTotalPaginas(snapshot.datos.pagination.totalPages);
           setErrorCarga(null);
           setFechaSnapshot(snapshot.fechaGuardada);
+          setMostrandoSnapshot(true);
           return;
         }
+        setMostrandoSnapshot(false);
         setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar los reportes.');
       } finally {
         // Solo la corrida VIGENTE baja la bandera: una vieja que termina tarde
@@ -314,8 +325,11 @@ export default function ReportesMovilPage() {
       try {
         const res = await trabajadoresApi.listar({ limit: 100 });
         if (vivo && res.success) {
-          setTrabajadores(res.data.items);
-          if (userId) guardarDatos(userId, 'trabajadores', res.data);
+          // I-2 revisión PR #23: al snapshot no va el DTO completo (sueldos y
+          // contactos) — misma proyección que datos-offline.ts
+          const items = res.data.items.map(({ id, nombre, puesto }) => ({ id, nombre, puesto }));
+          setTrabajadores(items);
+          if (userId) guardarDatos(userId, 'trabajadores', { ...res.data, items });
         }
       } catch {
         // Sin señal queda el snapshot; sin snapshot, el nombre libre
@@ -485,7 +499,9 @@ export default function ReportesMovilPage() {
       <EstadoCola refreshKey={colaKey} />
 
       {/* Aviso de datos offline: solo existe cuando YA hay pantalla detrás (regla de loaders) */}
-      {!cargandoInicial && <AvisoSinConexion fechaDatos={fechaSnapshot} />}
+      {!cargandoInicial && (
+        <AvisoSinConexion fechaDatos={fechaSnapshot} sirviendoSnapshot={mostrandoSnapshot} />
+      )}
 
       {errorCarga && (
         <div

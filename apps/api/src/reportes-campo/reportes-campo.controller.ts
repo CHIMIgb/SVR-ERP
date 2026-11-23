@@ -157,7 +157,8 @@ export class ReportesCampoController {
 
   /**
    * POST /api/reportes-campo/:id/adjuntos
-   * Adjunta una imagen al incidente (base64, máx 2 MB).
+   * Adjunta una imagen al incidente (base64, máx 10 MB decodificados —
+   * `MAX_BYTES_DECODIFICADOS_ADJUNTO` en `dto/adjunto.dto.ts`).
    * SIN PermissionsGuard: la regla del autor (crear-solo → su reporte en Nuevo)
    * exige OR(editar, crear condicionado) y vive en el service, que audita los
    * fallos (ADJUNTO_SOLO_AUTOR_NUEVO). Ref: opción 2, 2026-11-20.

@@ -127,8 +127,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const markAsRead = useCallback((id: string) => {
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, leido: true } : n)));
     setUnreadCount(c => Math.max(0, c - 1));
+    // Menor 8 revisión PR #23: el .catch atrapa la red muerta — el estado
+    // optimista local ya se aplicó y sin servidor no hay nada que avisar.
     notificacionesApi.marcarLeida(id).then((res) => {
       if (!res.success) showToast(mensajeErrorApi(res.error, 'No se pudo marcar la notificación.'), 'error');
+    }).catch(() => {
+      // Detalle 3a revisión: sin red la marca optimista puede no haber
+      // llegado al server — avisarlo en vez de callar el fallo.
+      showToast('Sin conexión — al recargar la notificación volverá a pendiente.', 'info');
     });
   }, [showToast]);
 
@@ -137,6 +143,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setUnreadCount(0);
     notificacionesApi.marcarTodas().then((res) => {
       if (!res.success) showToast(mensajeErrorApi(res.error, 'No se pudieron marcar las notificaciones.'), 'error');
+    }).catch(() => {
+      showToast('Sin conexión — al recargar volverán a pendientes.', 'info');
     });
   }, [showToast]);
 
@@ -147,6 +155,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setUnreadCount(0);
     notificacionesApi.descartarTodas().then((res) => {
       if (!res.success) showToast(mensajeErrorApi(res.error, 'No se pudieron descartar las notificaciones.'), 'error');
+    }).catch(() => {
+      showToast('Sin conexión — al recargar las notificaciones volverán a aparecer.', 'info');
     });
   }, [showToast]);
 

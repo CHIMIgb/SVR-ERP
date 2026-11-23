@@ -1015,6 +1015,35 @@ describe('ReportesCampo Audit (Real DB)', () => {
       expect(successes).toHaveLength(1);
     });
 
+    it('la key de OTRO usuario no filtra el original: IDEMPOTENCIA_AJENA con FAIL auditado', async () => {
+      // arrange
+      const key = randomUUID();
+      const original = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);
+      createdIds.push(original.id);
+      const trabajador = await buscarUsuarioDemo('trabajador@svr-constructora.com');
+
+      // act / assert: otro usuario reenvía la misma key (la cola solo envía
+      // la propia, pero el endpoint se defiende)
+      await expect(
+        auditContext.run(
+          { jwtUserId: trabajador.id, endpoint: '/api/reportes-campo', method: 'POST' },
+          () => service.create(createDto({ idempotenciaKey: key }), trabajador.id),
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      // una sola fila, del dueño original
+      const filas = await prisma.reportes_campo.findMany({ where: { idempotencia_key: key } });
+      expect(filas).toHaveLength(1);
+      expect(filas[0].usuario_id).toBe(ACTOR_USER_ID);
+
+      // FAIL real en registro_auditoria (no mock) con error_code
+      const fail = (await findAudits(AuditAction.REPORTE_CREADO, original.id)).find(
+        (a) => a.result === AuditResult.FAIL,
+      );
+      expect(fail).not.toBeNull();
+      expect(fail!.error_code).toBe('IDEMPOTENCIA_AJENA');
+    });
+
     it('el índice único rechaza un duplicado insertado directamente', async () => {
       const key = randomUUID();
       const original = await service.create(createDto({ idempotenciaKey: key }), ACTOR_USER_ID);

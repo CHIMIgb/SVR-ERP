@@ -40,10 +40,15 @@ export function NotificacionesModal({ abierto, onCerrar }: NotificacionesModalPr
 
   const activar = async () => {
     setActivando(true);
-    const r = await activarPush();
-    setActivando(false);
-    showToast(r.mensaje, r.ok ? 'success' : 'error');
-    if (r.ok) void estadoPush().then((e) => setPushEstado(e));
+    try {
+      const r = await activarPush();
+      showToast(r.mensaje, r.ok ? 'success' : 'error');
+      if (r.ok) void estadoPush().then((e) => setPushEstado(e));
+    } finally {
+      // Menor 2 revisión PR #23: si activarPush lanza (red), el botón no
+      // puede quedarse en "activando" para siempre.
+      setActivando(false);
+    }
   };
 
   return (
