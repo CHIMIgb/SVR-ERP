@@ -11,7 +11,7 @@ import { StatsCard } from '@/components/ui/StatsCard';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchBar, FilterPanel, ActiveFilters, type FilterField, type ActiveFilter } from '@/components/ui/SearchBar';
-import { FormModal, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
+import { FormModal, Modal, ModalBody, ModalFooter, ModalHeader, ModalField, modalInputClass, modalSelectClass, modalTextareaClass } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -34,6 +34,7 @@ import {
 import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
 import { mensajeErrorApi } from '@/lib/api';
 import { ApiError } from '@svr-erp/shared';
+import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
 
 // ── Constantes ──
 const PAGE_SIZE = 10;
@@ -70,49 +71,6 @@ function descripcionBreve(texto: string, max = 40): string {
   return texto.length > max ? `${texto.slice(0, max)}…` : texto;
 }
 
-/**
- * Convierte cualquier imagen (image/*) a WebP con canvas (calidad 0.85) para
- * que pesen menos. Devuelve el data URI WebP + su tamaño, o null si el navegador
- * no pudo decodificar/convertir (formato ajeno al canvas, p.ej. HEIC viejo).
- */
-async function convertirAWebp(
-  file: File,
-): Promise<{ dataUrl: string; tamano: number } | null> {
-  try {
-    const dataUrlSrc = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error());
-      reader.readAsDataURL(file);
-    });
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error());
-      image.src = dataUrlSrc;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', 0.85),
-    );
-    if (!blob) return null;
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error());
-      reader.readAsDataURL(blob);
-    });
-    return { dataUrl, tamano: blob.size };
-  } catch {
-    return null;
-  }
-}
-
 const STATS_CERO: ReportesCampoStats = {
   nuevos: 0,
   enCurso: 0,
@@ -131,8 +89,6 @@ const emptyForm = {
 };
 
 /** Límites de imagen idénticos al detalle (backend los revalida). */
-const MAX_IMAGENES = 4;
-const MAX_TAMANO_IMAGEN = 2 * 1024 * 1024; // 2 MB
 
 /** Imagen en espera durante el alta (base64; el server aún no conoce el folio). */
 interface AdjuntoImagenAlta {
@@ -204,6 +160,8 @@ export default function ReportesOperacionesPage() {
   const [adjuntando, setAdjuntando] = useState(false);
   /** Imágenes en espera del alta (mismos límites del detalle: máx 4, 2MB). */
   const [imagenesAlta, setImagenesAlta] = useState<AdjuntoImagenAlta[]>([]);
+  /** Preview de imagen en modal (en lugar de pestaña nueva con data-URI). */
+  const [preview, setPreview] = useState<{ mime: string; datos: string; nombre: string } | null>(null);
   /** Adjuntos existentes en el modal Editar (null = cargando). */
   const [editAdjuntos, setEditAdjuntos] = useState<AdjuntoDTO[] | null>(null);
 
@@ -378,7 +336,7 @@ export default function ReportesOperacionesPage() {
         return;
       }
       if (webp.tamano > MAX_TAMANO_IMAGEN) {
-        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        showToast('La imagen excede el máximo de 10 MB.', 'error');
         return;
       }
       setImagenesAlta((prev) => {
@@ -389,8 +347,8 @@ export default function ReportesOperacionesPage() {
         return [...prev, {
           // crypto.randomUUID no existe fuera de HTTPS — key local sin dependencia
           key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
-          mime: 'image/webp',
+          nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
+          mime: webp.mime,
           tamano: webp.tamano,
           datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
         }];
@@ -573,7 +531,6 @@ export default function ReportesOperacionesPage() {
         const resAdj = await reportesCampoApi.adjuntar(nuevo.id, {
           nombre: img.nombre,
           mime: img.mime,
-          tamano: img.tamano,
           datos: img.datos,
         });
         if (!resAdj.success) fallidas.push(img.nombre);
@@ -782,14 +739,13 @@ export default function ReportesOperacionesPage() {
         return null;
       }
       if (webp.tamano > MAX_TAMANO_IMAGEN) {
-        showToast('La imagen excede el máximo de 2 MB.', 'error');
+        showToast('La imagen excede el máximo de 10 MB.', 'error');
         return null;
       }
       try {
         const res = await reportesCampoApi.adjuntar(reporteId, {
-          nombre: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
-          mime: 'image/webp',
-          tamano: webp.tamano,
+          nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
+          mime: webp.mime,
           datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
         });
         if (!res.success) {
@@ -1269,7 +1225,7 @@ export default function ReportesOperacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Imágenes de la avería" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una.`} className="sm:col-span-2">
+          <ModalField label="Imágenes de la avería" hint={`Opcional - máx ${MAX_IMAGENES}, 10 MB cada una.`} className="sm:col-span-2">
             <label className="inline-flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark mb-2">
               <input
                 type="file"
@@ -1465,12 +1421,12 @@ export default function ReportesOperacionesPage() {
               {detalle.adjuntos.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {detalle.adjuntos.map((a: AdjuntoDTO) => (
-                    <a
+                    <button
                       key={a.id}
-                      href={`data:${a.mime};base64,${a.datos}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative rounded-xl overflow-hidden border border-ui-200"
+                      type="button"
+                      onClick={() => setPreview({ mime: a.mime, datos: a.datos, nombre: a.nombre })}
+                      aria-label={`Ampliar ${a.nombre}`}
+                      className="group relative rounded-xl overflow-hidden border border-ui-200 cursor-pointer"
                       title={a.nombre}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1479,7 +1435,7 @@ export default function ReportesOperacionesPage() {
                         alt={a.nombre}
                         className="h-24 w-full object-cover group-hover:scale-105 transition-transform"
                       />
-                    </a>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1568,6 +1524,41 @@ export default function ReportesOperacionesPage() {
           </div>
         )}
       </FormModal>
+
+      {/* Preview de imagen — igual que la PWA: sin pestaña nueva */}
+      <Modal open={preview !== null} onClose={() => setPreview(null)} size="xl">
+        {preview && (
+          <>
+            <ModalHeader
+              title={preview.nombre}
+              subtitle="Vista previa"
+              onClose={() => setPreview(null)}
+            />
+            <ModalBody>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${preview.mime};base64,${preview.datos}`}
+                alt={preview.nombre}
+                className="w-full max-h-[70dvh] object-contain rounded-xl bg-ui-50"
+              />
+            </ModalBody>
+            <ModalFooter>
+              <div className="flex gap-2 w-full">
+                <a
+                  href={`data:${preview.mime};base64,${preview.datos}`}
+                  download={preview.nombre}
+                  className="min-h-[44px] px-4 rounded-xl bg-primary text-white font-bold text-sm flex items-center justify-center"
+                >
+                  Descargar
+                </a>
+                <Button variant="secondary" className="min-h-[44px] flex-1" onClick={() => setPreview(null)}>
+                  Cerrar
+                </Button>
+              </div>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
 
       {/* Modal de ASIGNACIÓN — quién lo debe resolver */}
       <FormModal
@@ -1747,7 +1738,7 @@ export default function ReportesOperacionesPage() {
             />
           </ModalField>
 
-          <ModalField label="Imágenes del incidente" hint={`Opcional — máx ${MAX_IMAGENES}, 2 MB cada una. Se suben al guardar la imagen.`} className="sm:col-span-2">
+          <ModalField label="Imágenes del incidente" hint={`Opcional - máx ${MAX_IMAGENES}, 10 MB cada una. Se suben al guardar la imagen.`} className="sm:col-span-2">
             {editAdjuntos === null ? (
               <p className="text-xs font-medium text-ui-400">Cargando imágenes…</p>
             ) : (

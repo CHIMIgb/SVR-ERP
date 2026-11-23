@@ -28,6 +28,8 @@ export interface ModalProps {
   persistent?: boolean;
   /** Espacio a omitir en el lado izquierdo (ej. ancho del sidebar) */
   offsetLeft?: number;
+  /** Difuminado del fondo (la burbuja de notificaciones lo apaga) */
+  blur?: boolean;
 }
 
 export function Modal({
@@ -38,6 +40,7 @@ export function Modal({
   contentClassName,
   persistent = false,
   offsetLeft = 0,
+  blur = true,
 }: ModalProps) {
   // Cerrar con Escape
   const handleKeyDown = useCallback(
@@ -79,7 +82,7 @@ export function Modal({
     <Portal>
       <Overlay
         onClick={persistent ? undefined : onClose}
-        blur
+        blur={blur}
         offsetLeft={offsetLeft}
         className="z-[9998] p-2 sm:p-4"
       >

@@ -10,10 +10,10 @@ import {
   AuditAction,
   AuditResult,
   MetodoPago,
-  TipoNotificacion,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ALERTAS, construirAlerta } from '../notificaciones/catalogo';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { CreateVentaDto, toMetodoPago } from './dto/create-venta.dto';
 import {
@@ -923,14 +923,20 @@ export class VentasService {
     });
 
     // B5.3: aviso a Administrador de cierre pendiente de aprobación.
-    await this.notificacionesService.emitirARol('Administrador', {
-      tipo: TipoNotificacion.ALERTA,
-      titulo: 'Cierre de caja pendiente de aprobación',
-      cuerpo: `${cajero} registró el cierre de ${serialized.fecha} — total ${Number(serialized.totalVentas ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} (diferencia ${Number(serialized.diferencia ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}).`,
-      referenciaTipo: 'cierres_caja',
-      referenciaId: cierre.id,
-      creadoPor: userId,
-    });
+      await this.notificacionesService.emitirARol(
+        'Administrador',
+        construirAlerta(
+          ALERTAS.CIERRE_PENDIENTE,
+          {
+            cajero,
+            fecha: serialized.fecha,
+            totalVentas: Number(serialized.totalVentas ?? 0),
+            diferencia: Number(serialized.diferencia ?? 0),
+          },
+          cierre.id,
+          userId,
+        ),
+      );
 
     return serialized;
   }

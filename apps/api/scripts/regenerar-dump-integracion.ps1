@@ -9,7 +9,7 @@ if (-not $env:PGPASSWORD) { throw 'Define PGPASSWORD con la contraseña de postg
 $tablas = @(
   'registro_auditoria', 'sessions', 'refresh_tokens', 'token_blacklist',
   'intentos_login', 'usuarios_bloqueados', 'notificaciones',
-  'notificaciones_lecturas', 'reportes_adjuntos'
+  'notificaciones_lecturas', 'reportes_adjuntos', 'push_suscripciones'
 )
 $exclusiones = $tablas | ForEach-Object { "--exclude-table-data=public.$_" }
 

@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { authApi, type PinEstadoDTO } from "@/lib/api";
 import { vistaEfectiva } from "@/lib/pwa/dispositivo";
+import { ToastProvider } from "@/components/layout/Toast";
+import { NotificationProvider } from "@/components/layout/NotificationContext";
+import { CampanaNotificaciones } from "@/components/pwa/CampanaNotificaciones";
 import { RoleNav } from "@/components/pwa/RoleNav";
 import ModalInstalar from "@/components/pwa/ModalInstalar";
 import { estaInstaladaEnDispositivo } from "@/lib/pwa/instalar";
 import { iniciarSincronizador } from "@/lib/pwa/sincronizador";
+import { precargarDatosOffline } from "@/lib/pwa/datos-offline";
 import { useCola } from "@/lib/pwa/useCola";
 import { navDelRol } from "@/lib/pwa/rol-nav";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -53,26 +56,39 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Instalable + sincronización (§7c): SW en /sw.js + disparadores de la cola.
-  // En DEV no se registra y además se desregistran SWs existentes + se
-  // borran sus cachés: el SW persiste aunque quitemos el registro y su
-  // cache-first sobre los chunks de Turbopack sirve JS viejo → errores de
-  // hidratación (HTML nuevo vs JS viejo) y hot-reload roto.
+  // Service worker (§7c + push fase c): producción registra el SW completo
+  // (caché del shell + push). En DEV se registra el MISMO script con
+  // `?modo=dev` — el SW usa RED-PRIMERO en los estáticos (chunks sin hash de
+  // Turbopack: con señal siempre frescos, HMR intacto; sin señal sirve la
+  // última versión servida, offline testeable en dev:https:ip) y MANTIENE
+  // push y notificationclick.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        registrations.forEach((registration) => registration.unregister());
-      });
-      caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      navigator.serviceWorker.register("/sw.js?modo=dev").catch(() => undefined);
       return;
     }
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  }, []);
+
+  // Sincronizador de la cola (§7c): corre en TODOS los entornos (también DEV,
+  // para poder probar el ciclo captura→reconexión→ACK en local). No depende
+  // del SW: usa navigator.onLine + evento online + intervalo de 2 min.
+  useEffect(() => {
     const parar = iniciarSincronizador();
     return () => {
       parar();
     };
   }, []);
+
+  // Precarga offline-datos (fase 2026-11-20): catálogos de formularios en
+  // SEGUNDO PLANO al entrar con sesión y señal — una vez por visita,
+  // fire-and-forget. La lista vive en lib/pwa/datos-offline.ts.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    void precargarDatosOffline(userId);
+  }, [userId]);
 
   // guard de sesión + guard de dispositivo (escritorio → dashboard)
   useEffect(() => {
@@ -135,7 +151,9 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
     .join("");
 
   return (
-    <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
+    <ToastProvider posicionPorDefecto="top-center">
+      <NotificationProvider>
+      <div className="min-h-screen bg-canvas text-ui-900 flex flex-col">
       {/* Header del shell — mismo look que el Topbar del escritorio.
           El bloque avatar+nombre+rol abre el perfil (todos los roles). */}
       <header className="bg-surface border-b border-ui-200 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-3 sticky top-0 z-30">
@@ -157,18 +175,12 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          aria-label="Notificaciones"
-          className="w-9 h-9 rounded-xl bg-ui-100 border border-ui-200 flex items-center justify-center text-ui-600 hover:bg-ui-200/60 transition-colors shrink-0 relative"
-        >
-          <Bell className="w-5 h-5" />
-        </button>
+        <CampanaNotificaciones />
       </header>
 
       {/* Contenido con safe-areas — flex column para que las vistas puedan
           anclar elementos al fondo (ej. cerrar sesión en /m/perfil) */}
-      <main className="flex-1 px-4 py-5 overflow-y-auto scrollbar-none flex flex-col">{children}</main>
+      <main className="min-h-0 flex-1 px-4 py-5 overflow-y-auto scrollbar-none flex flex-col">{children}</main>
 
       {/* Nav inferior por rol (plan §7b) */}
       <RoleNav pendientes={pendientes} />
@@ -189,6 +201,8 @@ export default function PwaLayout({ children }: { children: React.ReactNode }) {
 
       {/* Instalación: modal propio en cada acceso si no está instalada */}
       {!instalada && <ModalInstalar onCerrar={() => setInstalada(true)} />}
-    </div>
+      </div>
+      </NotificationProvider>
+    </ToastProvider>
   );
 }

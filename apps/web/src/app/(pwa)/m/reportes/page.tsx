@@ -1,15 +1,941 @@
-"use client";
+'use client';
 
-import PantallaPlaceholder from "@/components/pwa/PantallaPlaceholder";
-import { AlertTriangle } from "lucide-react";
+/**
+ * Reportes de campo en el teléfono — PRIMERA vista real de la PWA (§8.1).
+ * El BACKEND ya aplica el ámbito por JWT (`aplicarAmbito`): la lista trae lo
+ * que toca a cada rol (propios / equipo / torre / todo) sin filtrar en la
+ * vista. Captura offline-first con cola + idempotencia (ModalNuevoReporte);
+ * las acciones interactivas (aceptar / en curso / cerrar) piden conexión y
+ * van por el apiClient, nunca a la cola. Botones gated por RBAC: crear y
+ * editar leen la vista de escritorio `/reportes` (permiso ya existente).
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, FolderOpen, ImageOff, ImagePlus, Loader2, Plus, Search } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/components/layout/Toast';
+import {
+  mensajeErrorApi,
+  reportesCampoApi,
+  trabajadoresApi,
+  type EstadoIncidenteApi,
+  type PaginatedResponse,
+  type ReporteCampoDTO,
+  type ReportesIncidenteDetalle,
+} from '@/lib/api';
+import { convertirAWebp, MAX_IMAGENES, MAX_TAMANO_IMAGEN } from '@/lib/imagenes';
+import { guardarDatos, leerDatos } from '@/lib/pwa/datos-cache';
+import { EstadoCola } from '@/components/pwa/EstadoCola';
+import { ModalNuevoReporte } from '@/components/pwa/ModalNuevoReporte';
+import { AvisoSinConexion } from '@/components/pwa/AvisoSinConexion';
+import { TarjetaReporte } from '@/components/pwa/TarjetaReporte';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Input } from '@/components/ui/Input';
+import { Pagination } from '@/components/ui/Pagination';
+import { FormField } from '@/components/ui/FormField';
+import { FormModal, Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/Modal';
+import { RefreshOverlay } from '@/components/ui/RefreshOverlay';
+import { Select } from '@/components/ui/Select';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { StatsCard } from '@/components/ui/StatsCard';
+import { Textarea } from '@/components/ui/Textarea';
+import { cn } from '@/lib/utils';
 
-/** Placeholder de la base (plan §8.5) — el módulo real llega con su fase. */
+const FILTROS: { valor: '' | EstadoIncidenteApi; etiqueta: string }[] = [
+  { valor: '', etiqueta: 'Todos' },
+  { valor: 'NUEVO', etiqueta: 'Nuevos' },
+  { valor: 'EN_CURSO', etiqueta: 'En curso' },
+  { valor: 'CERRADO', etiqueta: 'Cerrados' },
+];
+
+/** Subtítulo según el rol — el server ya decidió QUÉ ve; esto solo lo nombra. */
+function subtituloDelRol(nombreRol: string | undefined): string {
+  if (nombreRol === 'Trabajador') return 'Tus reportes de campo';
+  if (nombreRol === 'Residente') return 'Reportes de tu equipo';
+  if (nombreRol === 'Técnico') return 'Disponibles en tu área';
+  return 'Reportes de campo';
+}
+
+interface StatsMini {
+  nuevos: number | null;
+  enCurso: number | null;
+  cerrados: number | null;
+  criticos: number | null;
+}
+
+const STATS_CARGANDO: StatsMini = { nuevos: null, enCurso: null, cerrados: null, criticos: null };
+
+/** Forma del listado paginado (lo que guarda/lee el snapshot offline-lectura). */
+type DatosReportes = PaginatedResponse<ReporteCampoDTO>;
+
 export default function ReportesMovilPage() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const puedeCrear =
+    user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeCrear ?? false;
+  const puedeEditar =
+    user?.vistas?.find((v) => v.ruta === '/reportes')?.puedeEditar ?? false;
+  /** Solo un Administrador edita reportes ajenos / cierra / asigna (igual que el escritorio). */
+  const esAdminReportes = (user?.roles ?? []).some((r) => r.nivel >= 100);
+  /** Los Residentes solo dan seguimiento: no aceptan incidentes (server: RESIDENTE_SOLO_SEGUIMIENTO). */
+  const esResidente = (user?.roles ?? []).some((r) => r.nombre === 'Residente');
+  const nombreUsuario =
+    [user?.persona?.nombre, user?.persona?.apellidoPaterno, user?.persona?.apellidoMaterno]
+      .filter(Boolean)
+      .join(' ')
+      .trim() || user?.email?.split('@')[0] || 'Usuario';
+
+  const [reportes, setReportes] = useState<ReporteCampoDTO[]>([]);
+  const [pagina, setPagina] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [cargandoInicial, setCargandoInicial] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<'' | EstadoIncidenteApi>('');
+  const [busqueda, setBusqueda] = useState('');
+  const [stats, setStats] = useState<StatsMini>(STATS_CARGANDO);
+  const [nuevoAbierto, setNuevoAbierto] = useState(false);
+  const [colaKey, setColaKey] = useState(0);
+  const [detalle, setDetalle] = useState<ReportesIncidenteDetalle | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [aceptandoId, setAceptandoId] = useState<string | null>(null);
+  const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  /** Preview de imagen en modal (en lugar de abrir pestaña nueva). */
+  const [preview, setPreview] = useState<{ mime: string; datos: string; nombre: string } | null>(null);
+  const [ubicacionModal, setUbicacionModal] = useState<{ nombre: string; direccion: string | null } | null>(null);
+  const [comentarioTexto, setComentarioTexto] = useState('');
+  const [comentando, setComentando] = useState(false);
+  const [adjuntando, setAdjuntando] = useState(false);
+  const [asignarAbierto, setAsignarAbierto] = useState(false);
+  const [asignando, setAsignando] = useState(false);
+  const [asignarForm, setAsignarForm] = useState({ asignadoA: '', asignadoNombre: '' });
+  const [trabajadores, setTrabajadores] = useState<{ id: string; nombre: string; puesto: string }[]>([]);
+  const [cargandoTrabajadores, setCargandoTrabajadores] = useState(true);
+
+  /** Listado paginado server-side (una página a la vez, como el escritorio). */
+  /** Guardia de secuencia (menor 6 PR #23): una respuesta vieja (cambio de
+   *  filtro/búsqueda/página mientras corren dos) NO pisa a la más nueva. */
+  const corridaRef = useRef(0);
+  /** Fecha del último snapshot guardado (el banner AvisoSinConexion la nombra). */
+  const [fechaSnapshot, setFechaSnapshot] = useState<string | null>(null);
+  // userId plano: el React Compiler no preserva la memoización con `user?.id`
+  // (expresión opcional) en el array de deps
+  const userId = user?.id;
+  const recargar = useCallback(
+    async (paginaPedida: number): Promise<void> => {
+      const corrida = ++corridaRef.current;
+      try {
+        const res = await reportesCampoApi.listar({
+          page: paginaPedida,
+          limit: 10,
+          estado: (filtro || undefined) as EstadoIncidenteApi | undefined,
+          search: busqueda.trim() || undefined,
+        });
+        if (corrida !== corridaRef.current) return; // llegó una más nueva: descartar
+        if (!res.success) {
+          setErrorCarga(mensajeErrorApi(res.error, 'No se pudieron cargar los reportes.'));
+          return;
+        }
+        const data = res.data;
+        setReportes(data.items);
+        setPagina(data.pagination.page);
+        setTotalRegistros(data.pagination.total);
+        setTotalPaginas(data.pagination.totalPages);
+        setErrorCarga(null);
+        // Snapshot offline-lectura: el último load exitoso queda en el teléfono
+        if (userId) {
+          const fecha = guardarDatos(userId, 'reportes', data);
+          if (fecha) setFechaSnapshot(fecha);
+        }
+      } catch (e) {
+        if (corrida !== corridaRef.current) return;
+        // Sin señal: servir el ÚLTIMO snapshot guardado en vez del error/blanco
+        const snapshot = userId ? leerDatos<DatosReportes>(userId, 'reportes') : null;
+        if (snapshot) {
+          setReportes(snapshot.datos.items);
+          setPagina(snapshot.datos.pagination.page);
+          setTotalRegistros(snapshot.datos.pagination.total);
+          setTotalPaginas(snapshot.datos.pagination.totalPages);
+          setErrorCarga(null);
+          setFechaSnapshot(snapshot.fechaGuardada);
+          return;
+        }
+        setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar los reportes.');
+      } finally {
+        // Solo la corrida VIGENTE baja la bandera: una vieja que termina tarde
+        // no apaga el spinner de la nueva
+        if (corrida === corridaRef.current) setRefrescando(false);
+      }
+    },
+    [filtro, busqueda, userId],
+  );
+
+  const cargarStats = useCallback(async (): Promise<void> => {
+    try {
+      const res = await reportesCampoApi.stats();
+      if (res.success) {
+        const statsRes: StatsMini = {
+          nuevos: res.data.nuevos,
+          enCurso: res.data.enCurso,
+          cerrados: res.data.cerrados,
+          criticos: res.data.criticosActivos,
+        };
+        setStats(statsRes);
+        if (userId) guardarDatos(userId, 'stats', statsRes);
+      }
+    } catch {
+      // Sin señal: los stats del último snapshot; sin snapshot quedan en 0
+      const snapshot = userId ? leerDatos<StatsMini>(userId, 'stats') : null;
+      setStats(snapshot?.datos ?? { nuevos: 0, enCurso: 0, cerrados: 0, criticos: 0 });
+    }
+  }, [userId]);
+
+  // Primera carga (lista + stats) + recarga con debounce al cambiar filtro/búsqueda.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void recargar(1).then(() => setCargandoInicial(false));
+      void cargarStats();
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [recargar, cargarStats]);
+
+  // Al volver la señal: la cola pudo entregar capturas → refrescar todo.
+  useEffect(() => {
+    const alVolver = () => {
+      setRefrescando(true);
+      void recargar(1);
+      void cargarStats();
+    };
+    window.addEventListener('online', alVolver);
+    return () => window.removeEventListener('online', alVolver);
+  }, [recargar, cargarStats]);
+
+  /** Tras encolar (con o sin ACK): refresca cola + lista + stats. */
+  const alEncolar = () => {
+    setColaKey((k) => k + 1);
+    setRefrescando(true);
+    void recargar(1);
+    void cargarStats();
+  };
+
+  const cerrarNuevo = () => {
+    setNuevoAbierto(false);
+    alEncolar();
+  };
+
+  const aceptar = async (item: ReporteCampoDTO): Promise<void> => {
+    setAceptandoId(item.id);
+    try {
+      const res = await reportesCampoApi.aceptar(item.id);
+      if (res.success) {
+        showToast(
+          `Aceptado${res.data.codigo ? ` ${res.data.codigo}` : ''} — quedaste como responsable.`,
+          'success',
+        );
+        setRefrescando(true);
+        await recargar(1);
+        await cargarStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo aceptar el reporte.'), 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo aceptar el reporte.', 'error');
+    } finally {
+      setAceptandoId(null);
+    }
+  };
+
+  const verDetalle = async (id: string): Promise<void> => {
+    setCargandoDetalle(true);
+    setDetalle(null);
+    try {
+      const res = await reportesCampoApi.detalle(id);
+      if (res.success) setDetalle(res.data);
+      else showToast(mensajeErrorApi(res.error, 'No se pudo cargar el detalle.'), 'error');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo cargar el detalle.', 'error');
+    } finally {
+      setCargandoDetalle(false);
+    }
+  };
+
+  const cerrarDetalle = () => setDetalle(null);
+
+  /** Ubicación desde la tarjeta: obra → domicilio (modal); GPS → Google Maps. */
+  const abrirUbicacion = (r: ReporteCampoDTO) => {
+    if (r.proyectoId && r.proyecto) {
+      setUbicacionModal({ nombre: r.proyecto, direccion: r.proyectoDireccion });
+    } else if (r.latitud != null && r.longitud != null) {
+      window.open(`https://maps.google.com/?q=${r.latitud},${r.longitud}`, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  /** Refetch del detalle tras comentar/adjuntar (igual que el escritorio). */
+  const refetchDetalle = useCallback(async (id: string): Promise<void> => {
+    try {
+      const res = await reportesCampoApi.detalle(id);
+      if (res.success) setDetalle(res.data);
+    } catch {
+      // El detalle en pantalla sigue válido; el error ya se mostró en la acción
+    }
+  }, []);
+
+  // ── ASIGNAR "quién le cae" (solo Admin, paridad del escritorio) ──
+  const abrirAsignar = () => {
+    const r = reporteDetalle;
+    setAsignarForm({
+      asignadoA: r?.asignadoAId ?? '',
+      asignadoNombre: r?.asignadoAId ? '' : r?.asignadoANombre ?? '',
+    });
+    setAsignarAbierto(true);
+  };
+
+  const cerrarAsignar = () => {
+    setAsignarAbierto(false);
+    setAsignarForm({ asignadoA: '', asignadoNombre: '' });
+    setCargandoTrabajadores(true);
+  };
+
+  // Catálogo de trabajadores para el select (exento de paginación; misma llamada del escritorio).
+  // Offline-datos: sin señal el snapshot llena el select; el live actualiza el snapshot.
+  useEffect(() => {
+    if (!asignarAbierto) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const res = await trabajadoresApi.listar({ limit: 100 });
+        if (vivo && res.success) {
+          setTrabajadores(res.data.items);
+          if (userId) guardarDatos(userId, 'trabajadores', res.data);
+        }
+      } catch {
+        // Sin señal queda el snapshot; sin snapshot, el nombre libre
+        if (vivo && userId) {
+          const snapshot = leerDatos<PaginatedResponse<{ id: string; nombre: string; puesto: string }>>(
+            userId,
+            'trabajadores',
+          );
+          if (snapshot) setTrabajadores(snapshot.datos.items);
+        }
+      } finally {
+        if (vivo) setCargandoTrabajadores(false);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [asignarAbierto, userId]);
+
+  const handleAsignar = async (): Promise<void> => {
+    if (!detalle) return;
+    if (!asignarForm.asignadoA && !asignarForm.asignadoNombre.trim()) {
+      showToast('Asigna un trabajador o un nombre.', 'error');
+      return;
+    }
+    setAsignando(true);
+    try {
+      const res = await reportesCampoApi.asignar(detalle.reporte.id, {
+        asignadoA: asignarForm.asignadoA || null,
+        asignadoNombre: asignarForm.asignadoA ? null : asignarForm.asignadoNombre.trim(),
+      });
+      if (res.success) {
+        showToast('Responsable asignado exitosamente.', 'success');
+        cerrarAsignar();
+        await refetchDetalle(detalle.reporte.id);
+        setRefrescando(true);
+        await recargar(1);
+        await cargarStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo asignar el responsable.'), 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setAsignando(false);
+    }
+  };
+
+  const handleComentar = async (): Promise<void> => {
+    if (!detalle || !comentarioTexto.trim()) {
+      showToast('Escribe el comentario antes de publicar.', 'error');
+      return;
+    }
+    setComentando(true);
+    try {
+      const res = await reportesCampoApi.comentar(detalle.reporte.id, comentarioTexto.trim());
+      if (res.success) {
+        setComentarioTexto('');
+        await refetchDetalle(detalle.reporte.id);
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo publicar el comentario.'), 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setComentando(false);
+    }
+  };
+
+  /** Adjuntar desde el detalle: WebP local + límites, igual que el escritorio. */
+  const handleAdjuntar = async (file: File): Promise<void> => {
+    if (!detalle) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('El archivo debe ser una imagen.', 'error');
+      return;
+    }
+    setAdjuntando(true);
+    try {
+      const webp = await convertirAWebp(file);
+      if (!webp) {
+        showToast('No se pudo procesar la imagen (formato no soportado por el navegador).', 'error');
+        return;
+      }
+      if (webp.tamano > MAX_TAMANO_IMAGEN) {
+        showToast('La imagen excede el máximo de 10 MB.', 'error');
+        return;
+      }
+      if (detalle.adjuntos.length >= MAX_IMAGENES) {
+        showToast(`Máximo ${MAX_IMAGENES} imágenes por incidente.`, 'error');
+        return;
+      }
+      const res = await reportesCampoApi.adjuntar(detalle.reporte.id, {
+        nombre: `${file.name.replace(/\.[^.]+$/, '')}${webp.mime === 'image/webp' ? '.webp' : '.jpg'}`,
+        mime: webp.mime,
+        datos: webp.dataUrl.substring(webp.dataUrl.indexOf(',') + 1),
+      });
+      if (res.success) {
+        showToast('Imagen adjuntada exitosamente.', 'success');
+        await refetchDetalle(detalle.reporte.id);
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo adjuntar la imagen.'), 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.', 'error');
+    } finally {
+      setAdjuntando(false);
+    }
+  };
+
+  const cambiarEstado = async (estado: 'EN_CURSO' | 'CERRADO'): Promise<void> => {
+    if (!detalle) return;
+    setCambiandoEstado(true);
+    try {
+      const res = await reportesCampoApi.cambiarEstado(detalle.reporte.id, estado);
+      if (res.success) {
+        setDetalle({ ...detalle, reporte: res.data });
+        showToast(`Reporte ${res.data.estado}.`, 'success');
+        setRefrescando(true);
+        await recargar(1);
+        await cargarStats();
+      } else {
+        showToast(mensajeErrorApi(res.error, 'No se pudo cambiar el estado.'), 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo cambiar el estado.', 'error');
+    } finally {
+      setCambiandoEstado(false);
+    }
+  };
+
+  const reporteDetalle = detalle?.reporte;
+
   return (
-    <PantallaPlaceholder
-      titulo="Reportes"
-      subtitulo="Tus reportes de campo llegan con la fase de reportes móvil"
-      icono={<AlertTriangle className="w-10 h-10" />}
-    />
+    /* La página mide EXACTAMENTE el alto del main (menos su py-5 = 2.5rem):
+       todo lo de arriba queda FUERA del contenedor que scrollea (fijo de
+       verdad) y SOLO la lista tiene overflow-y-auto. */
+    <div className="flex h-[calc(100%-2.5rem)] flex-col">
+      {/* Bloque superior FIJO (encabezado + stats + cola + búsqueda + chips) */}
+      <div className="shrink-0 -mx-4 px-4 pb-3 space-y-4">
+      {/* Encabezado + acción principal */}
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-black tracking-tight text-ui-900">Reportes</h1>
+          <p className="text-sm text-ui-500">{subtituloDelRol(user?.roles?.[0]?.nombre)}</p>
+        </div>
+        {puedeCrear && (
+          <Button
+            variant="primary"
+            size="md"
+            icon={<Plus className="w-5 h-5" />}
+            onClick={() => setNuevoAbierto(true)}
+            className="min-h-[44px] shrink-0"
+          >
+            Reportar
+          </Button>
+        )}
+      </header>
+
+      {/* Stats mini (spinner SOLO en el espacio del valor mientras cargan) */}
+      <div className="grid grid-cols-3 gap-2">
+        <StatsCard label="Nuevos" value={stats.nuevos ?? 0} loading={stats.nuevos === null} />
+        <StatsCard label="En curso" value={stats.enCurso ?? 0} loading={stats.enCurso === null} />
+        <StatsCard label="Críticos" value={stats.criticos ?? 0} loading={stats.criticos === null} />
+      </div>
+
+      {/* Estado de la cola offline (incluye conflicto con decisión humana) */}
+      <EstadoCola refreshKey={colaKey} />
+
+      {/* Aviso de datos offline: solo existe cuando YA hay pantalla detrás (regla de loaders) */}
+      {!cargandoInicial && <AvisoSinConexion fechaDatos={fechaSnapshot} />}
+
+      {errorCarga && (
+        <div
+          className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300 rounded-xl p-3 text-sm flex items-start gap-2"
+          role="alert"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+          <span>{errorCarga}</span>
+        </div>
+      )}
+
+      {/* Búsqueda + chips de estado */}
+      <Input
+        type="search"
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar por folio, persona o texto..."
+        aria-label="Buscar reportes"
+        icon={<Search className="w-4 h-4" aria-hidden />}
+      />
+      <div
+        className="flex items-center gap-2 overflow-x-auto scrollbar-none"
+        role="group"
+        aria-label="Filtrar por estado"
+      >
+        {FILTROS.map((f) => {
+          const conteo =
+            f.valor === 'NUEVO' ? stats.nuevos : f.valor === 'EN_CURSO' ? stats.enCurso : f.valor === 'CERRADO' ? stats.cerrados : null;
+          return (
+            <button
+              key={f.valor || 'todos'}
+              type="button"
+              onClick={() => setFiltro(f.valor)}
+              aria-pressed={filtro === f.valor}
+              className={cn(
+                'shrink-0 min-h-[44px] px-4 rounded-full text-sm font-bold border transition-colors',
+                filtro === f.valor
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-surface text-ui-600 border-ui-200',
+              )}
+            >
+              {f.etiqueta}
+              {f.valor && conteo != null && <span className="ml-1.5 opacity-80">{conteo}</span>}
+            </button>
+          );
+        })}
+      </div>
+      </div>
+
+      {/* Lista (server-side paginada) — el ÚNICO contenedor que desliza */}
+      <div className="relative flex-1 min-h-0 overflow-y-auto scrollbar-none">
+        <RefreshOverlay show={refrescando && !cargandoInicial} />
+        {cargandoInicial ? (
+          <div className="space-y-3" aria-busy="true">
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+          </div>
+        ) : reportes.length === 0 ? (
+          <EmptyState
+            icon={<AlertTriangle className="w-10 h-10" />}
+            title="Sin reportes"
+            subtitle={
+              puedeCrear
+                ? 'No hay reportes en tu alcance todavía. Reporta el primero.'
+                : 'No hay reportes en tu alcance.'
+            }
+          />
+        ) : (
+          <div className="space-y-3">
+            {reportes.map((r) => (
+              <TarjetaReporte
+                key={r.id}
+                reporte={r}
+                onVer={() => void verDetalle(r.id)}
+                onUbicacion={
+                  (r.proyectoId && r.proyecto) || (r.latitud != null && r.longitud != null)
+                    ? () => abrirUbicacion(r)
+                    : undefined
+                }
+                accion={
+                  puedeEditar && !esResidente && r.estado === 'Nuevo' && !r.asignadoANombre
+                    ? {
+                        etiqueta: 'Aceptar',
+                        onClick: () => void aceptar(r),
+                        ocupado: aceptandoId === r.id,
+                      }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Paginación server-side (kit compartido) — fija fuera del scroll, siempre visible.
+          En la PWA va DESPEGADA del contenedor: borde propio y esquinas suaves (rounded-lg). */}
+      {!cargandoInicial && (
+        <div className="shrink-0">
+          <Pagination
+            className="mt-3 border border-ui-100 rounded-lg"
+            currentPage={pagina}
+            totalPages={totalPaginas}
+            totalRecords={totalRegistros}
+            pageSize={10}
+            onPageChange={(p) => {
+              setRefrescando(true);
+              void recargar(p);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Detalle del reporte (conexión requerida para las acciones) */}
+      <Modal open={cargandoDetalle || detalle !== null} onClose={cerrarDetalle} size="md">
+        {cargandoDetalle || !detalle ? (
+          <ModalBody>
+            <div className="flex justify-center py-10" aria-busy="true">
+              <Loader2 className="w-6 h-6 text-primary animate-spin" />
+            </div>
+          </ModalBody>
+        ) : (
+          <>
+            <ModalHeader
+              title={detalle.reporte.codigo ?? 'Reporte'}
+              subtitle={`${detalle.reporte.estado}${
+                detalle.reporte.prioridad ? ` · ${detalle.reporte.prioridad}` : ''
+              }`}
+              onClose={cerrarDetalle}
+            />
+            <ModalBody>
+              <div className="space-y-3 text-sm">
+                {/* Info del incidente — los mismos campos y orden del escritorio */}
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-[13px]">
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Fecha</dt>
+                    <dd className="font-bold text-ui-900 break-words">
+                      {detalle.reporte.hora} · {detalle.reporte.fecha}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Ubicación</dt>
+                    {detalle.reporte.proyectoId && detalle.reporte.proyecto ? (
+                      <dd className="font-bold text-ui-900 break-words">
+                        {detalle.reporte.proyecto}
+                        {detalle.reporte.proyectoDireccion && (
+                          <span className="block text-[11px] font-medium text-ui-500">
+                            {detalle.reporte.proyectoDireccion}
+                          </span>
+                        )}
+                      </dd>
+                    ) : detalle.reporte.latitud != null ? (
+                      <dd className="font-bold text-ui-900 break-words">
+                        GPS {detalle.reporte.latitud.toFixed(4)}, {detalle.reporte.longitud?.toFixed(4)}
+                        <a
+                          href={`https://maps.google.com/?q=${detalle.reporte.latitud},${detalle.reporte.longitud}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-[11px] font-bold text-primary underline"
+                        >
+                          Ver en Google Maps
+                        </a>
+                      </dd>
+                    ) : (
+                      <dd className="font-bold text-ui-400">Sin ubicación</dd>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Área</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.categoria ?? 'Sin área'}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Prioridad</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.prioridad ?? '—'}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Estado</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.estado}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Responsable</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.asignadoANombre ?? 'Sin asignar'}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Levantó</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reporte.usuario}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Teléfono</dt>
+                    <dd className="font-bold text-ui-900 break-words">
+                      {detalle.reportadoPor?.telefono ? (
+                        <a href={`tel:${detalle.reportadoPor.telefono}`} className="text-primary underline">{detalle.reportadoPor.telefono}</a>
+                      ) : '—'}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-black uppercase tracking-widest text-ui-500">Puesto / Rol</dt>
+                    <dd className="font-bold text-ui-900 break-words">{detalle.reportadoPor?.rol ?? '—'}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3 pt-3 border-t border-ui-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">Descripción</p>
+                  <p className="text-sm text-ui-900 break-words whitespace-pre-wrap mt-1">{detalle.reporte.descripcion}</p>
+                </div>
+                {/* Imágenes adjuntas — visibles a todos; adjuntar como el escritorio */}
+                <div className="border-t border-ui-100 pt-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
+                    Imágenes ({detalle.adjuntos.length}/{MAX_IMAGENES})
+                  </p>
+                  {puedeEditar && !esResidente && detalle.reporte.estado !== 'Cerrado' && (
+                    <div className="flex gap-4 flex-wrap mt-2">
+                      <label className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) void handleAdjuntar(file);
+                          }}
+                        />
+                        {adjuntando ? 'Subiendo...' : <><ImagePlus className="w-3.5 h-3.5" aria-hidden /> Tomar foto</>}
+                      </label>
+                      <label className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-primary cursor-pointer hover:text-primary-dark">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) void handleAdjuntar(file);
+                          }}
+                        />
+                        <FolderOpen className="w-3.5 h-3.5" aria-hidden /> Galería
+                      </label>
+                    </div>
+                  )}
+                  {detalle.adjuntos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      {detalle.adjuntos.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setPreview({ mime: a.mime, datos: a.datos, nombre: a.nombre })}
+                          aria-label={`Ampliar ${a.nombre}`}
+                          className="relative rounded-xl overflow-hidden border border-ui-200 cursor-pointer"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`data:${a.mime};base64,${a.datos}`}
+                            alt={a.nombre}
+                            className="h-24 w-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-ui-400 border border-dashed border-ui-200 rounded-xl p-3 mt-2">
+                      <ImageOff className="w-4 h-4" aria-hidden />
+                      Sin imágenes todavía
+                    </div>
+                  )}
+                </div>
+
+                {/* Actividades — caja de comentario PRIMERO, cards debajo con scroll (paridad escritorio) */}
+                <div className="border-t border-ui-100 pt-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-ui-500">
+                    Actividades ({detalle.actividades.length})
+                  </p>
+                  {puedeEditar && detalle.reporte.estado !== 'Cerrado' && (
+                    <div className="flex gap-2 mt-2">
+                      <div className="flex-1 min-w-0">
+                        <Textarea
+                          rows={2}
+                          value={comentarioTexto}
+                          onChange={(e) => setComentarioTexto(e.target.value)}
+                          placeholder="Describe lo que se trabajó o revisó..."
+                          aria-label="Nuevo comentario"
+                          maxLength={2000}
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        className="min-h-[44px] shrink-0 self-start"
+                        disabled={!comentarioTexto.trim() || comentando}
+                        loading={comentando}
+                        onClick={() => void handleComentar()}
+                      >
+                        Publicar
+                      </Button>
+                    </div>
+                  )}
+                  {detalle.actividades.length > 0 && (
+                    <div className="mt-2 max-h-64 overflow-y-auto scrollbar-none space-y-2">
+                      {detalle.actividades.map((a) => (
+                        <div key={a.id} className="bg-surface border border-ui-100 rounded-xl p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black text-ui-800 truncate">{a.autorNombre}</span>
+                            <span className="text-[10px] font-bold text-ui-400 shrink-0">
+                              {new Date(a.creadoEn).toLocaleString('es-MX', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-[13px] text-ui-700 break-words mt-0.5">{a.texto}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ModalBody>
+            <ModalFooter>
+              <div className="flex flex-wrap gap-2 w-full">
+                {puedeEditar && esAdminReportes && (
+                  <Button variant="secondary" onClick={abrirAsignar}>
+                    {reporteDetalle?.asignadoANombre ? 'Reasignar' : 'Asignar'}
+                  </Button>
+                )}
+                {puedeEditar && detalle.reporte.estado === 'Nuevo' && detalle.reporte.asignadoANombre && (
+                  <Button
+                    variant="primary"
+                    onClick={() => void cambiarEstado('EN_CURSO')}
+                    loading={cambiandoEstado}
+                  >
+                    Iniciar
+                  </Button>
+                )}
+                {puedeEditar && esAdminReportes && detalle.reporte.estado !== 'Cerrado' && (
+                  <Button
+                    variant="success"
+                    onClick={() => void cambiarEstado('CERRADO')}
+                    loading={cambiandoEstado}
+                  >
+                    Cerrar incidente
+                  </Button>
+                )}
+                <Button variant="secondary" onClick={cerrarDetalle}>
+                  Cerrar
+                </Button>
+              </div>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
+
+      {/* Captura offline-first: cola + idempotencia */}
+      <ModalNuevoReporte
+        abierto={nuevoAbierto}
+        onCerrar={cerrarNuevo}
+        nombreUsuario={nombreUsuario}
+        torreUsuario={user?.torre ?? null}
+        onEncolado={alEncolar}
+      />
+
+      {/* Preview de imagen — sin salir del reporte */}
+      <Modal open={preview !== null} onClose={() => setPreview(null)} size="xl">
+        {preview && (
+          <>
+            <ModalHeader
+              title={preview.nombre}
+              subtitle="Vista previa"
+              onClose={() => setPreview(null)}
+            />
+            <ModalBody>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${preview.mime};base64,${preview.datos}`}
+                alt={preview.nombre}
+                className="w-full max-h-[70dvh] object-contain rounded-xl bg-ui-50"
+              />
+            </ModalBody>
+            <ModalFooter>
+              <div className="flex gap-2 w-full">
+                <a
+                  href={`data:${preview.mime};base64,${preview.datos}`}
+                  download={preview.nombre}
+                  className="min-h-[44px] px-4 rounded-xl bg-primary text-white font-bold text-sm flex items-center justify-center"
+                >
+                  Descargar
+                </a>
+                <Button variant="secondary" className="min-h-[44px] flex-1" onClick={() => setPreview(null)}>
+                  Cerrar
+                </Button>
+              </div>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
+
+      {/* Domicilio de la obra — desde la tarjeta (sin salir de la app) */}
+      <Modal open={ubicacionModal !== null} onClose={() => setUbicacionModal(null)} size="md">
+        {ubicacionModal && (
+          <>
+            <ModalHeader
+              title={ubicacionModal.nombre}
+              subtitle="Domicilio de la obra"
+              onClose={() => setUbicacionModal(null)}
+            />
+            <ModalBody>
+              {ubicacionModal.direccion ? (
+                <p className="text-sm text-ui-900 break-words">{ubicacionModal.direccion}</p>
+              ) : (
+                <p className="text-sm text-ui-400">Sin domicilio registrado</p>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="secondary" className="min-h-[44px] w-full" onClick={() => setUbicacionModal(null)}>
+                Cerrar
+              </Button>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
+
+      {/* Asignar Responsable (solo Admin — paridad del escritorio) */}
+      <FormModal
+        open={asignarAbierto}
+        onClose={cerrarAsignar}
+        title="Asignar Responsable"
+        subtitle="Quién debe resolver este incidente. Trabajador del sistema o nombre libre."
+        submitLabel="Asignar"
+        onSubmit={() => void handleAsignar()}
+        isSubmitting={asignando}
+        size="md"
+      >
+        <FormField label="Trabajador del sistema" htmlFor="asignar-trabajador" hint="Al elegir uno, el nombre libre se ignora.">
+          <Select
+            id="asignar-trabajador"
+            options={trabajadores.map((t) => ({ value: t.id, label: `${t.nombre} — ${t.puesto}` }))}
+            value={asignarForm.asignadoA}
+            onChange={(e) => setAsignarForm((f) => ({ ...f, asignadoA: e.target.value }))}
+            placeholder={cargandoTrabajadores ? 'Cargando trabajadores...' : 'Sin trabajador del sistema...'}
+            disabled={cargandoTrabajadores && trabajadores.length === 0}
+          />
+        </FormField>
+
+        <FormField label="O nombre libre" htmlFor="asignar-nombre-libre" hint="Para externos o empleados aún no catalogados.">
+          <Input
+            id="asignar-nombre-libre"
+            placeholder="Ej: Panchito el externo"
+            value={asignarForm.asignadoNombre}
+            onChange={(e) => setAsignarForm((f) => ({ ...f, asignadoNombre: e.target.value }))}
+            disabled={!!asignarForm.asignadoA}
+            maxLength={120}
+          />
+        </FormField>
+
+        {detalle && (
+          <p className="text-xs text-ui-500 text-center">
+            Responsable actual: <strong>{detalle.reporte.asignadoANombre ?? 'sin asignar'}</strong>
+          </p>
+        )}
+      </FormModal>
+    </div>
   );
 }
