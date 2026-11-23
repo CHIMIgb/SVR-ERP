@@ -91,6 +91,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return () => clearInterval(intervalo);
   }, [user, cargar]);
 
+  // TIEMPO REAL (fase c del push): el `/sw.js` recibe el push y hace
+  // postMessage a las ventanas abiertas — el buzón se recarga al instante
+  // (el polling de 60s queda como respaldo). Solo si hay service worker.
+  useEffect(() => {
+    if (!user || !('serviceWorker' in navigator)) return;
+    const onMensaje = (event: MessageEvent) => {
+      if ((event.data as { tipo?: string })?.tipo === 'notificacion-nueva') cargar();
+    };
+    navigator.serviceWorker.addEventListener('message', onMensaje);
+    return () => navigator.serviceWorker.removeEventListener('message', onMensaje);
+  }, [user, cargar]);
+
   /**
    * Overlay local para avisos generados EN el navegador (vistas que todavía
    * lo usan). No persiste: las notificaciones reales las emite el backend.

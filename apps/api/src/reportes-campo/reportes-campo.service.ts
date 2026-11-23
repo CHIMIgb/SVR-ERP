@@ -12,12 +12,12 @@ import {
   Prioridad,
   TipoReporteCampo,
   CategoriaReporte,
-  TipoNotificacion,
   AuditAction,
   AuditResult,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ALERTAS, construirAlerta } from '../notificaciones/catalogo';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { CreateReporteCampoDto } from './dto/create-reporte-campo.dto';
 import { UpdateReporteCampoDto } from './dto/update-reporte-campo.dto';
@@ -90,7 +90,6 @@ const TRANSICIONES: Record<EstadoIncidente, EstadoIncidente[]> = {
  * Adjuntos (imágenes): límites conservadores sin almacenamiento externo.
  */
 const MAX_ADJUNTOS = 4;
-const MAX_TAMANO_ADJUNTO = 2 * 1024 * 1024; // 2 MB por imagen
 const MIMES_ADJUNTO = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 /**
@@ -246,14 +245,69 @@ export class ReportesCampoService {
     );
   }
 
-  /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados. */
+  /** ¿El usuario tiene rol de nivel 100 (Administrador)? Para editar ajenos y ver archivados.
+   *  Solo roles ACTIVOS (mismo criterio del PermissionsGuard): un rol desactivado no concede. */
   private async esUsuarioAdmin(userId: string): Promise<boolean> {
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { users_roles_users_roles_user_idTousers: { select: { roles: { select: { nivel: true } } } } },
+      select: {
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          select: { roles: { select: { nivel: true } } },
+        },
+      },
     });
     const anos = user?.users_roles_users_roles_user_idTousers ?? [];
     return Math.max(0, ...anos.map((ur: { roles: { nivel: number } }) => ur.roles.nivel)) >= 100;
+  }
+
+  /**
+   * Permisos reales del actor sobre reportes_campo (rol → role_permissions).
+   * La ruta de adjuntos NO usa PermissionsGuard: la regla del autor requiere
+   * OR(editar, crear-con-condiciones) y la decisión vive aquí, con FAIL
+   * auditado cuando se deniega.
+   */
+  private async permisosReportesDe(userId: string): Promise<{ crear: boolean; editar: boolean }> {
+    if (await this.esUsuarioAdmin(userId)) return { crear: true, editar: true };
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true }, // solo roles activos (mismo criterio del PermissionsGuard)
+          select: {
+            roles: {
+              select: {
+                role_permissions: {
+                  select: {
+                    permissions: {
+                      // relación 1-1: Prisma no admite where aquí — igual que el
+                      // guard, se trae `activo` y se filtra en JS (bloqueante 3)
+                      select: { modulo: true, recurso: true, accion: true, activo: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const roles = user?.users_roles_users_roles_user_idTousers ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tiene = (accion: string) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      roles.some((ur: any) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ur.roles.role_permissions ?? []).some(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (rp: any) =>
+            rp.permissions.activo &&
+            rp.permissions.modulo === 'operaciones' &&
+            rp.permissions.recurso === 'reportes_campo' &&
+            rp.permissions.accion === accion,
+        ),
+      );
+    return { crear: tiene('crear'), editar: tiene('editar') };
   }
 
   /**
@@ -458,14 +512,19 @@ export class ReportesCampoService {
     // B5.10: aviso al CREADOR de que su reporte fue aceptado (y por quién).
     if (existente.usuario_id && existente.usuario_id !== userId) {
       const nombreAceptor = (await this.nombreDeUsuario(userId)) ?? nombre;
-      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `${nombreAceptor} aceptó tu reporte ${serialized.codigo ?? ''}`,
-        cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirAUsuario(
+        existente.usuario_id,
+        construirAlerta(
+          ALERTAS.REPORTE_ACEPTADO_AUTOR,
+          {
+            nombreAceptor,
+            codigo: serialized.codigo ?? null,
+            descripcion: serialized.descripcion ?? null,
+          },
+          id,
+          userId,
+        ),
+      );
     }
 
     return serialized;
@@ -499,6 +558,16 @@ export class ReportesCampoService {
   //  CREAR
   // ────────────────────────────────────────────
   async create(dto: CreateReporteCampoDto, userId: string) {
+    // Reenvío de la cola PWA: la key del teléfono identifica la captura.
+    // Devolver el original evita consumir folio y auditar dos veces.
+    if (dto.idempotenciaKey) {
+      const existente = await this.prisma.reportes_campo.findUnique({
+        where: { idempotencia_key: dto.idempotenciaKey },
+        include: REPORTE_INCLUDE,
+      });
+      if (existente) return this.serialize(existente);
+    }
+
     // Torre destino del incidente: explícita (otra torre) o resuelta con el
     // puesto del que reporta ("misma área").
     let torre = dto.categoria ?? null;
@@ -560,6 +629,7 @@ export class ReportesCampoService {
             descripcion: dto.descripcion.trim(),
             estado: EstadoIncidente.NUEVO,
             prioridad: dto.prioridad ?? null,
+            idempotencia_key: dto.idempotenciaKey ?? null,
             creado_por: userId,
             actualizado_por: userId,
             actualizado_en: new Date(),
@@ -568,6 +638,15 @@ export class ReportesCampoService {
         });
         break;
       } catch (e) {
+        // Carrera real: dos reenvíos con la misma key pasan el findUnique de
+        // arriba y chocan en el índice único. El que pierde devuelve al ganador.
+        if (dto.idempotenciaKey) {
+          const ganador = await this.prisma.reportes_campo.findUnique({
+            where: { idempotencia_key: dto.idempotenciaKey },
+            include: REPORTE_INCLUDE,
+          });
+          if (ganador) return this.serialize(ganador);
+        }
         // Patrón cobranza/proveedores (idioma-neutral): único unique
         // colisionable en este create es `codigo` (ver facturas.service).
         if (
@@ -599,14 +678,19 @@ export class ReportesCampoService {
     });
 
     // B5.10: aviso a TODA el área del reporte (torre destino).
-    await this.notificacionesService.emitirATorre(torre, {
-      tipo: TipoNotificacion.ALERTA,
-      titulo: `Nuevo reporte ${serialized.codigo ?? ''}`,
-      cuerpo: `${(dto.prioridad ? PRIORIDAD_LABELS[dto.prioridad] : undefined) ?? 'Reporte'} — ${dto.descripcion.slice(0, 140)}`,
-      referenciaTipo: 'reportes_campo',
-      referenciaId: reporte.id,
-      creadoPor: userId,
-    });
+    await this.notificacionesService.emitirATorre(
+      torre,
+      construirAlerta(
+        ALERTAS.REPORTE_NUEVO_TORRE,
+        {
+          codigo: serialized.codigo ?? null,
+          prioridadLabel: (dto.prioridad ? PRIORIDAD_LABELS[dto.prioridad] : undefined) ?? 'Reporte',
+          descripcion: dto.descripcion,
+        },
+        reporte.id,
+        userId,
+      ),
+    );
 
     return serialized;
   }
@@ -851,35 +935,42 @@ export class ReportesCampoService {
     // B5.10/B5.13: al (re)asignar se avisa al NUEVO asignado (si cambió y tiene
     // cuenta) y al ANTERIOR, a quien le quitaron el reporte.
     if (asignadoA && asignadoA !== existente.asignado_a_id) {
-      await this.notificacionesService.emitirATrabajador(asignadoA, {
-        tipo: TipoNotificacion.ALERTA,
-        titulo: `Te asignaron el reporte ${serialized.codigo ?? ''}`,
-        cuerpo: `${PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte'} — ${existente.descripcion.slice(0, 140)}`,
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirATrabajador(
+        asignadoA,
+        construirAlerta(
+          ALERTAS.REPORTE_ASIGNADO_TRABAJADOR,
+          {
+            codigo: serialized.codigo ?? null,
+            prioridadLabel: PRIORIDAD_LABELS[(existente.prioridad as never)] ?? 'Reporte',
+            descripcion: existente.descripcion,
+          },
+          id,
+          userId,
+        ),
+      );
     }
     if (existente.asignado_a_id && existente.asignado_a_id !== asignadoA) {
-      await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `El reporte ${serialized.codigo ?? ''} fue reasignado a otra persona`,
-        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirATrabajador(
+        existente.asignado_a_id,
+        construirAlerta(
+          ALERTAS.REPORTE_REASIGNADO_EX_ANTERIOR,
+          { codigo: serialized.codigo ?? null, descripcion: existente.descripcion ?? null },
+          id,
+          userId,
+        ),
+      );
     } else if (!existente.asignado_a_id && existente.asignado_user_id && existente.asignado_user_id !== userId) {
       // Antes lo tenía asignado un USUARIO (lo aceptó por texto): se le avisa
       // que el reporte fue reasignado (a quien corresponda).
-      await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `El reporte ${serialized.codigo ?? ''} que aceptaste fue reasignado a otra persona`,
-        cuerpo: existente.descripcion?.slice(0, 140) ?? '',
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirAUsuario(
+        existente.asignado_user_id,
+        construirAlerta(
+          ALERTAS.REPORTE_REASIGNADO_ACEPTADOR,
+          { codigo: serialized.codigo ?? null, descripcion: existente.descripcion ?? null },
+          id,
+          userId,
+        ),
+      );
     }
 
     return serialized;
@@ -996,23 +1087,25 @@ export class ReportesCampoService {
     // defecto, el USUARIO responsable (quien aceptó); si no hay ninguno, nada.
     if (dto.estado === EstadoIncidente.CERRADO) {
       if (existente.asignado_a_id) {
-        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Cerraron el reporte ${serialized.codigo ?? ''} que tenías asignado`,
-          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirATrabajador(
+          existente.asignado_a_id,
+          construirAlerta(
+            ALERTAS.REPORTE_CERRADO_ASIGNADO,
+            { codigo: serialized.codigo ?? null, descripcion: serialized.descripcion ?? null },
+            id,
+            userId,
+          ),
+        );
       } else if (existente.asignado_user_id) {
-        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Cerraron tu reporte ${serialized.codigo ?? ''}`,
-          cuerpo: serialized.descripcion?.slice(0, 140) ?? '',
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirAUsuario(
+          existente.asignado_user_id,
+          construirAlerta(
+            ALERTAS.REPORTE_CERRADO_AUTOR,
+            { codigo: serialized.codigo ?? null, descripcion: serialized.descripcion ?? null },
+            id,
+            userId,
+          ),
+        );
       }
     }
 
@@ -1090,33 +1183,36 @@ export class ReportesCampoService {
     // publicó el asignado (u otro) → el creador.
     if (userId === existente.usuario_id && (existente.asignado_a_id || existente.asignado_user_id)) {
       if (existente.asignado_a_id) {
-        await this.notificacionesService.emitirATrabajador(existente.asignado_a_id, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
-          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirATrabajador(
+          existente.asignado_a_id,
+          construirAlerta(
+            ALERTAS.REPORTE_ACTIVIDAD,
+            { codigo: existente.codigo ?? null, nombreAutor, texto: dto.texto },
+            id,
+            userId,
+          ),
+        );
       } else {
-        await this.notificacionesService.emitirAUsuario(existente.asignado_user_id!, {
-          tipo: TipoNotificacion.INFO,
-          titulo: `Nueva actividad en el reporte ${existente.codigo ?? ''}`,
-          cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-          referenciaTipo: 'reportes_campo',
-          referenciaId: id,
-          creadoPor: userId,
-        });
+        await this.notificacionesService.emitirAUsuario(
+          existente.asignado_user_id!,
+          construirAlerta(
+            ALERTAS.REPORTE_ACTIVIDAD,
+            { codigo: existente.codigo ?? null, nombreAutor, texto: dto.texto },
+            id,
+            userId,
+          ),
+        );
       }
     } else if (userId !== existente.usuario_id && existente.usuario_id) {
-      await this.notificacionesService.emitirAUsuario(existente.usuario_id, {
-        tipo: TipoNotificacion.INFO,
-        titulo: `Nueva actividad en tu reporte ${existente.codigo ?? ''}`,
-        cuerpo: `${nombreAutor}: "${dto.texto.trim().slice(0, 120)}"`,
-        referenciaTipo: 'reportes_campo',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirAUsuario(
+        existente.usuario_id,
+        construirAlerta(
+          ALERTAS.REPORTE_ACTIVIDAD,
+          { codigo: existente.codigo ?? null, nombreAutor, texto: dto.texto },
+          id,
+          userId,
+        ),
+      );
     }
 
     return {
@@ -1178,6 +1274,24 @@ export class ReportesCampoService {
       );
     }
 
+    // Regla de fotos (opción 2, 2026-11-20): quien tiene `editar` (la torre que
+    // atiende) sube imágenes a cualquier reporte de su ámbito; quien SOLO tiene
+    // `crear` (Trabajador/Cobrador) completa con fotos SU reporte mientras
+    // siga Nuevo — el operario fotografió su hallazgo al levantarlo.
+    const permisos = await this.permisosReportesDe(userId);
+    if (!permisos.editar) {
+      const esAutorPropio = existente.usuario_id === userId;
+      if (!permisos.crear || !esAutorPropio || (existente.estado as EstadoIncidente) !== EstadoIncidente.NUEVO) {
+        return this.fallir(
+          AuditAction.REPORTE_ADJUNTO,
+          id,
+          'ADJUNTO_SOLO_AUTOR_NUEVO',
+          ForbiddenException,
+          'Las imágenes las agrega la torre que atiende; el autor solo puede completar su reporte mientras siga Nuevo',
+        );
+      }
+    }
+
     if (!MIMES_ADJUNTO.includes(dto.mime)) {
       return this.fallir(
         AuditAction.REPORTE_ADJUNTO,
@@ -1197,7 +1311,7 @@ export class ReportesCampoService {
         id,
         'ADJUNTO_MUY_GRANDE',
         BadRequestException,
-        'La imagen excede el máximo de 2 MB',
+        'La imagen excede el máximo de 10 MB',
       );
     }
 

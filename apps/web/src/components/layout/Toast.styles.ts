@@ -55,7 +55,11 @@ export const transitionClasses: Record<ToastTransition, string> = {
 /* ── Clases del toast individual ── */
 
 export const toastClasses = {
-  base: 'flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg text-sm font-semibold max-w-sm w-full pointer-events-auto backdrop-blur-sm',
-  message: 'flex-1 leading-snug text-ui-800',
+  /* w-max + tope min(24rem, 100vw-2rem): el toast mide su LÍNEA COMPLETA (un
+     span flex-1 con basis 0 colapsaba el contenedor al min-content y partía
+     el mensaje en 3 líneas); solo rompe cuando la pantalla no alcanza.
+     En escritorio el tope sigue siendo 24rem (max-w-sm de siempre). */
+  base: 'flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg text-sm font-semibold w-max max-w-[min(24rem,calc(100vw-2rem))] pointer-events-auto backdrop-blur-sm',
+  message: 'flex-1 leading-snug text-ui-800 break-words',
   closeButton: 'shrink-0 w-6 h-6 flex items-center justify-center rounded-lg text-ui-400 hover:text-ui-600 hover:bg-ui-200/50 transition-colors cursor-pointer',
 };
