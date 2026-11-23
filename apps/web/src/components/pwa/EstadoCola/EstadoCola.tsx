@@ -102,9 +102,15 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
             item.estado !== 'conflicto' &&
             item.estado !== 'rechazado' &&
             (item.adjuntosPendientes?.length ?? 0) > 0;
+          // Detalle 3a revisión: con foto RECHAZADA el reporte YA existe —
+          // la etiqueta genérica "Rechazado" hacía creer que no se guardó.
+          const conFotosRechazadas =
+            item.estado === 'rechazado' && (item.adjuntosPendientes?.length ?? 0) > 0;
           const etiqueta = faltanFotos
             ? { texto: `Falta(n) ${item.adjuntosPendientes!.length} foto(s)`, variante: 'warning' as const }
-            : ETIQUETAS[item.estado];
+            : conFotosRechazadas
+              ? { texto: 'Foto(s) rechazada(s)', variante: 'error' as const }
+              : ETIQUETAS[item.estado];
           return (
             <div key={item.id} className={c.fila}>
               <div className={c.filaTexto}>
@@ -114,6 +120,7 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
                     {etiqueta.texto}
                   </Badge>
                   {item.intentos > 0 && <span>· {item.intentos} intento(s)</span>}
+                  {conFotosRechazadas && <span>· el reporte ya se guardó</span>}
                 </p>
               </div>
               {esperaDecision(item) && (
