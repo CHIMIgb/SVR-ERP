@@ -7,6 +7,7 @@ import {
   TipoReporteCampo,
   AuditAction,
   AuditResult,
+  Prisma,
 } from '@prisma/client';
 import { ReportesCampoService } from './reportes-campo.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -433,6 +434,38 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
         }),
       );
     });
+
+    it('reenvío con la misma idempotenciaKey devuelve el original y NO crea otro folio', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440099';
+      prisma.reportes_campo.findUnique.mockResolvedValueOnce(null); // primer envío: aún no existe
+      const original = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
+      const reenvio = await service.create({ ...createDto, idempotenciaKey: key }, 'user-2');
+      expect(reenvio).toEqual(original);
+      expect(prisma.reportes_campo.create).toHaveBeenCalledTimes(1);
+      expect(prisma.reportes_campo.count).toHaveBeenCalledTimes(1);
+    });
+
+    it('persiste la idempotenciaKey del dispositivo', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440098';
+      prisma.reportes_campo.findUnique.mockResolvedValueOnce(null);
+      await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
+      expect(prisma.reportes_campo.create.mock.calls.at(-1)[0].data.idempotencia_key).toBe(key);
+    });
+
+    it('carrera: P2002 por key devuelve al ganador en vez de lanzar', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440097';
+      prisma.reportes_campo.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ ...mockReporte, id: 'reporte-ganador' });
+      prisma.reportes_campo.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('duplicate key', {
+          code: 'P2002',
+          clientVersion: '7.0.0',
+        }),
+      );
+      const resultado = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
+      expect(resultado.id).toBe('reporte-ganador');
+    });
   });
 
   describe('update', () => {
@@ -730,12 +763,168 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
   describe('adjuntar (imágenes)', () => {
     const adjuntoBase = { nombre: 'evidencia.png', mime: 'image/png', datos: PNG_1X1 };
 
+    /** Actor con ambos permisos (enAmbito/esUsuarioAdmin/permisos leen el mismo mock). */
+    const usuarioConPermisos = {
+      users_roles_users_roles_user_idTousers: [
+        {
+          roles: {
+            nombre: 'Administrador',
+            nivel: 100,
+            torre: 'MECANICO',
+            role_permissions: [
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear', activo: true } },
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'editar', activo: true } },
+            ],
+          },
+        },
+      ],
+    };
+    /** Solo `crear` (Trabajador/Cobrador): la regla del autor. */
+    const usuarioSoloCrear = {
+      users_roles_users_roles_user_idTousers: [
+        {
+          roles: {
+            nombre: 'Trabajador',
+            nivel: 20,
+            torre: null,
+            role_permissions: [
+              { permissions: { modulo: 'operaciones', recurso: 'reportes_campo', accion: 'crear', activo: true } },
+            ],
+          },
+        },
+      ],
+    };
+    const usuarioSinPermisos = {
+      users_roles_users_roles_user_idTousers: [
+        { roles: { nombre: 'Otro', nivel: 20, torre: null, role_permissions: [] } },
+      ],
+    };
+
+    beforeEach(() => {
+      prisma.users.findUnique.mockResolvedValue(usuarioConPermisos);
+    });
+
+    it('consulta los roles con activo: true (mismo criterio del PermissionsGuard — bloqueante 3 PR #23)', async () => {
+      // act: esUsuarioAdmin y permisosReportesDe leen la misma consulta (el
+      // primer findUnique es el de ámbito — se busca en TODAS las llamadas)
+      await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+
+      // assert: la relación de roles SIEMPRE se pide filtrada por activo
+      const todas = prisma.users.findUnique.mock.calls.map((c: unknown[]) => c[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(todas.some((c: any) =>
+        c?.select?.users_roles_users_roles_user_idTousers?.where?.activo === true,
+      )).toBe(true);
+    });
+
+    it('permisosReportesDe consulta permisos CON el flag activo (filtra en JS, igual que el guard)', async () => {
+      // arrange: actor sin nivel 100 para que la ruta llegue a los role_permissions
+      prisma.users.findUnique.mockResolvedValue({
+        users_roles_users_roles_user_idTousers: usuarioSoloCrear.users_roles_users_roles_user_idTousers,
+      });
+
+      // act
+      await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+
+      // assert: la consulta pide `activo` (relación 1-1: el filtro es en JS)
+      const todas = prisma.users.findUnique.mock.calls.map((c: unknown[]) => c[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const roles = todas.find((c: any) =>
+        c?.select?.users_roles_users_roles_user_idTousers?.where?.activo === true &&
+        'role_permissions' in c.select.users_roles_users_roles_user_idTousers.select.roles.select,
+      );
+      expect(roles).toBeTruthy();
+      const permisos =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (roles as any).select.users_roles_users_roles_user_idTousers.select.roles.select
+          .role_permissions.select.permissions;
+      expect(permisos.select.activo).toBe(true);
+    });
+
+    it('actor sin roles activos (todos desactivados) → ADJUNTO_SOLO_AUTOR_NUEVO (FAIL auditado)', async () => {
+      // arrange: el filtro de activo dejó la relación vacía — el mock lo simula
+      prisma.users.findUnique.mockResolvedValue({ users_roles_users_roles_user_idTousers: [] });
+
+      // act + assert
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'ADJUNTO_SOLO_AUTOR_NUEVO',
+        }),
+      );
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
+    });
+
     it('adjunta imagen y audita REPORTE_ADJUNTO SUCCESS', async () => {
       const result = await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
       expect(result.mime).toBe('image/png');
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.REPORTE_ADJUNTO, result: AuditResult.SUCCESS }),
       );
+    });
+
+    it('el AUTOR con solo `crear` adjunta a SU reporte Nuevo (regla del autor)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSoloCrear);
+      const result = await service.adjuntar(mockReporte.id, adjuntoBase, 'user-1');
+      expect(result.mime).toBe('image/png');
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.REPORTE_ADJUNTO, result: AuditResult.SUCCESS }),
+      );
+    });
+
+    it('el autor con solo `crear` NO adjunta a reporte ajeno (el ámbito lo corta: REPORTE_ACCESO_DENEGADO, FAIL)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSoloCrear);
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        usuario_id: 'otro-user',
+      });
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'REPORTE_ACCESO_DENEGADO',
+        }),
+      );
+    });
+
+    it('el autor con solo `crear` NO adjunta cuando ya no está Nuevo (ADJUNTO_SOLO_AUTOR_NUEVO)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSoloCrear);
+      prisma.reportes_campo.findFirst.mockResolvedValue({
+        ...mockReporte,
+        estado: EstadoIncidente.EN_CURSO,
+      });
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'ADJUNTO_SOLO_AUTOR_NUEVO',
+        }),
+      );
+    });
+
+    it('sin `crear` ni `editar` → ADJUNTO_SOLO_AUTOR_NUEVO (FAIL auditado)', async () => {
+      prisma.users.findUnique.mockResolvedValue(usuarioSinPermisos);
+      await expect(service.adjuntar(mockReporte.id, adjuntoBase, 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_ADJUNTO,
+          result: AuditResult.FAIL,
+          errorCode: 'ADJUNTO_SOLO_AUTOR_NUEVO',
+        }),
+      );
+      expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
     });
 
     it('rechaza mime ajeno (MIME_NO_PERMITIDO) sin insertar', async () => {
@@ -749,9 +938,9 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       expect(prisma.reportes_adjuntos.create).not.toHaveBeenCalled();
     });
 
-    it('rechaza tamaño inflado (base64 real > 2 MB → ADJUNTO_MUY_GRANDE)', async () => {
-      // 3MB de base64 real aunque tamano declare 67
-      const datos = 'A'.repeat(4 * 1024 * 1024);
+    it('rechaza tamaño inflado (base64 real > 10 MB → ADJUNTO_MUY_GRANDE)', async () => {
+      // ~10.5 MB decodificados (14M chars de base64) para superar el tope nuevo
+      const datos = 'A'.repeat(14 * 1024 * 1024);
       await expect(
         service.adjuntar(mockReporte.id, { ...adjuntoBase, datos }, 'user-1'),
       ).rejects.toThrow(BadRequestException);

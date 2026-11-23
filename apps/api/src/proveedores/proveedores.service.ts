@@ -10,11 +10,11 @@ import {
   AuditAction,
   AuditResult,
   EstadoOrdenCompra,
-  TipoNotificacion,
 } from '@prisma/client';
 import type { proveedores as Proveedor } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ALERTAS, construirAlerta } from '../notificaciones/catalogo';
 import { CreateProveedorDto } from './dto/create-proveedor.dto';
 import { UpdateProveedorDto } from './dto/update-proveedor.dto';
 import { QueryProveedoresDto } from './dto/query-proveedores.dto';
@@ -978,14 +978,15 @@ export class ProveedoresService {
 
     // B5.3: notificación a Administrativo cuando se APRUEBA una orden.
     if (dto.estado === EstadoOrdenCompra.APROBADA) {
-      await this.notificacionesService.emitirARol('Administrativo', {
-        tipo: TipoNotificacion.ALERTA,
-        titulo: `Orden ${existente.folio} aprobada`,
-        cuerpo: `${existente.proveedores?.nombre ?? 'Proveedor'} — ${Number(existente.monto).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} comprometidos en la orden de compra.`,
-        referenciaTipo: 'ordenes_compra',
-        referenciaId: id,
-        creadoPor: userId,
-      });
+      await this.notificacionesService.emitirARol(
+        'Administrativo',
+        construirAlerta(
+          ALERTAS.OC_APROBADA,
+          { folio: existente.folio ?? null, proveedor: existente.proveedores?.nombre ?? null, monto: Number(existente.monto) },
+          id,
+          userId,
+        ),
+      );
     }
 
     return serialized;
@@ -1434,14 +1435,15 @@ export class ProveedoresService {
     });
 
     // B5.3: notificación a Administrativo de cada abono registrado.
-    await this.notificacionesService.emitirARol('Administrativo', {
-      tipo: TipoNotificacion.INFO,
-      titulo: `Abono a orden ${orden.folio}`,
-      cuerpo: `${proveedor.nombre} — ${dto.monto.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })} abonados (pago ${pago.codigo}).`,
-      referenciaTipo: 'pagos_proveedor',
-      referenciaId: idPago,
-      creadoPor: userId,
-    });
+    await this.notificacionesService.emitirARol(
+      'Administrativo',
+      construirAlerta(
+        ALERTAS.ABONO_ORDEN,
+        { folio: orden.folio ?? null, proveedor: proveedor.nombre, monto: dto.monto, codigoPago: pago.codigo },
+        idPago,
+        userId,
+      ),
+    );
 
     return {
       abono: {
