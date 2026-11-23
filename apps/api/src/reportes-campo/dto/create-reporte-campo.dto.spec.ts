@@ -76,6 +76,19 @@ describe('CreateReporteCampoDto (flujo v2)', () => {
     expect('clienteId' in new CreateReporteCampoDto()).toBe(false);
     expect('montoServicio' in new CreateReporteCampoDto()).toBe(false);
   });
+
+  it('acepta idempotenciaKey UUID de la cola PWA', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, {
+      ...base,
+      idempotenciaKey: '550e8400-e29b-41d4-a716-446655440099',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza idempotenciaKey que no es UUID', async () => {
+    const dto = plainToInstance(CreateReporteCampoDto, { ...base, idempotenciaKey: 'no-es-uuid' });
+    expect((await validate(dto)).length).toBeGreaterThan(0);
+  });
 });
 
 describe('CambiarEstadoDto (flujo v2)', () => {
@@ -153,9 +166,9 @@ describe('AdjuntoDto (sin tamano del cliente — review PR #17)', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('rechaza datos por arriba del tope de 2 MB de base64', async () => {
-    // > 2,800,004 chars de base64 = más de 2 MB decodificados
-    const dto = plainToInstance(AdjuntoDto, { ...base, datos: 'A'.repeat(2_800_050) });
+  it('rechaza datos por arriba del tope de 10 MB de base64', async () => {
+    // > 13,981,018 chars de base64 = más de 10 MB decodificados
+    const dto = plainToInstance(AdjuntoDto, { ...base, datos: 'A'.repeat(14_000_000) });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });

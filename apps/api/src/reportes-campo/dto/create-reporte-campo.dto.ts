@@ -63,6 +63,11 @@ export class CreateReporteCampoDto {
   @MaxLength(2000)
   descripcion!: string;
 
+  /** UUID estable del dispositivo (offline-first): un reenvío no duplica el reporte. */
+  @IsOptional()
+  @IsUUID()
+  idempotenciaKey?: string;
+
   @IsOptional()
   @IsEnum(Prioridad)
   prioridad?: Prioridad;
