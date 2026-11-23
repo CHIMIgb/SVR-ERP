@@ -6,6 +6,7 @@
  * SIN dependencias nuevas. La identidad de cada registro es un UUID
  * generado EN EL TELÉFONO → los reenvíos son idempotentes en el servidor.
  */
+import { STORAGE_KEYS } from "@svr-erp/shared";
 
 /** Foto del alta: base64 puro (WebP convertido localmente, sin red). */
 export interface AdjuntoPendiente {
@@ -29,6 +30,14 @@ export interface ElementoCola {
    */
   estado: "pendiente" | "error" | "conflicto" | "rechazado";
   /**
+   * Dueño de la captura (id del usuario que encoló, tercera revisión 2026-
+   * 11-22): el envío usa el token de la SESIÓN activa, así que una captura
+   * solo sale con el token de quien la capturó — B nunca envía lo
+   * pendiente de A. `undefined` = item VIEJO (anterior a este campo): no
+   * se envía solo ni se cuenta — muere en el logout.
+   */
+  usuarioId?: string;
+  /**
    * Fotos del alta — NO van en el payload (el ValidationPipe rechazaría el
    * POST). Tras el ACK del reporte el sincronizador las adjunta en secuencia.
    */
@@ -44,6 +53,21 @@ export interface ElementoCola {
 
 const DB_NOMBRE = "svr-pwa";
 const STORE = "outbox";
+
+/**
+ * Usuario de la SESIÓN ACTIVA (del perfil persistido en `localStorage`).
+ * El envío de la cola usa su token — la cola es de UN usuario por vez.
+ */
+export function usuarioSesionId(): string | null {
+  try {
+    const crudo = localStorage.getItem(STORAGE_KEYS.USER);
+    if (!crudo) return null;
+    const user = JSON.parse(crudo) as { id?: string };
+    return typeof user.id === "string" && user.id ? user.id : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Abre la BD (una sola vez por pestaña). */
 function abrir(): Promise<IDBDatabase> {
@@ -92,6 +116,7 @@ export async function encolar(
     creado_en: new Date().toISOString(),
     intentos: 0,
     estado: "pendiente",
+    usuarioId: usuarioSesionId() ?? undefined,
     ...(adjuntos && adjuntos.length > 0 ? { adjuntos } : {}),
   };
   await conStore<void>("readwrite", (store) => store.add(item));
@@ -104,10 +129,11 @@ export async function pendientes(): Promise<ElementoCola[]> {
   return todos.sort((a, b) => a.creado_en.localeCompare(b.creado_en));
 }
 
-/** Cuántos esperan envío (alimenta el badge de la nav). */
+/** Cuántos esperan envío DEL USUARIO DE LA SESIÓN (alimenta el badge). */
 export async function contarPendientes(): Promise<number> {
+  const usuario = usuarioSesionId();
   const todos = await pendientes();
-  return todos.length;
+  return todos.filter((i) => i.usuarioId === usuario).length;
 }
 
 /** Marca un elemento como ENVIADO y lo elimina de la cola. */

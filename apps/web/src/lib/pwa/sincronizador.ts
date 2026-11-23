@@ -20,6 +20,7 @@ import {
   marcarRechazada,
   guardarAdjuntosPendientes,
   contarPendientes,
+  usuarioSesionId,
   type ElementoCola,
 } from "./offline";
 
@@ -82,8 +83,16 @@ export async function sincronizarAhora(enviar: PuertoEnvio = puertoPorDefecto): 
   try {
     // Los conflictos NO se reenvían: esperan decisión humana (descartar/reencolar).
     // Los RECHAZADOS tampoco: el server los validó y negó (4xx ≠ 409).
+    // Y la cola es DEL USUARIO (tercera revisión): una captura solo sale con
+    // el token de quien la capturó — B no envía lo pendiente de A. Sin
+    // sesión, o item viejo sin usuarioId: no se envía solo.
+    const usuario = usuarioSesionId();
     const cola = (await pendientes()).filter(
-      (i) => i.estado !== "conflicto" && i.estado !== "rechazado",
+      (i) =>
+        i.estado !== "conflicto" &&
+        i.estado !== "rechazado" &&
+        !!usuario &&
+        i.usuarioId === usuario,
     );
     for (const item of cola) {
       try {

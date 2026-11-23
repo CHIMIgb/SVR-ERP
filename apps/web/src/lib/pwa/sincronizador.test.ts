@@ -12,6 +12,7 @@ import {
   marcarConflicto,
   marcarRechazada,
   guardarAdjuntosPendientes,
+  usuarioSesionId,
   type ElementoCola,
 } from './offline';
 import { apiClient, reportesCampoApi } from '@/lib/api';
@@ -24,7 +25,10 @@ jest.mock('./offline', () => ({
   marcarRechazada: jest.fn(),
   guardarAdjuntosPendientes: jest.fn(),
   contarPendientes: jest.fn(),
+  usuarioSesionId: jest.fn(),
 }));
+
+const mockedUsuarioSesion = usuarioSesionId as jest.Mock;
 
 const mockedPost = apiClient.post as jest.Mock;
 
@@ -44,6 +48,7 @@ function itemConFotos(overrides: Partial<ElementoCola> = {}): ElementoCola {
     creado_en: '2026-11-20T10:00:00.000Z',
     intentos: 0,
     estado: 'pendiente',
+    usuarioId: 'user-1',
     adjuntos: [
       { nombre: 'a.webp', mime: 'image/webp', tamano: 10, datos: 'AAA' },
       { nombre: 'b.webp', mime: 'image/webp', tamano: 10, datos: 'BBB' },
@@ -58,6 +63,7 @@ const puertoOk: PuertoEnvio = async () => ({ ok: true, data: { id: 'reporte-1' }
 beforeEach(() => {
   jest.clearAllMocks();
   mockedAdjuntar.mockResolvedValue({ success: true });
+  mockedUsuarioSesion.mockReturnValue('user-1');
 });
 
 describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
@@ -239,6 +245,53 @@ describe('sincronizarAhora — ids devueltos y rechazo terminal (bloqueante 5 PR
     expect(marcarConflicto).toHaveBeenCalledWith('item-1');
     expect(marcarRechazada).not.toHaveBeenCalled();
     expect(marcarError).not.toHaveBeenCalled();
+  });
+});
+
+describe('sincronizarAhora — la cola es del usuario (3a revisión)', () => {
+  it('un item de OTRO usuario no se envía: espera a que vuelva su dueño', async () => {
+    // arrange
+    mockedPendientes.mockResolvedValue([
+      itemConFotos({ usuarioId: 'user-2', adjuntos: undefined }),
+    ]);
+    const puerto = jest.fn();
+
+    // act
+    const ids = await sincronizarAhora(puerto);
+
+    // assert
+    expect(ids).toEqual([]);
+    expect(puerto).not.toHaveBeenCalled();
+    expect(marcarError).not.toHaveBeenCalled();
+    expect(marcarEnviada).not.toHaveBeenCalled();
+  });
+
+  it('un item VIEJO sin usuarioId no se envía solo (podría ser del usuario anterior)', async () => {
+    // arrange
+    const sinDueno = itemConFotos({ adjuntos: undefined, usuarioId: undefined });
+    mockedPendientes.mockResolvedValue([sinDueno]);
+    const puerto = jest.fn();
+
+    // act
+    const ids = await sincronizarAhora(puerto);
+
+    // assert
+    expect(ids).toEqual([]);
+    expect(puerto).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión (null) no envía nada', async () => {
+    // arrange
+    mockedUsuarioSesion.mockReturnValue(null);
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+    const puerto = jest.fn();
+
+    // act
+    const ids = await sincronizarAhora(puerto);
+
+    // assert
+    expect(ids).toEqual([]);
+    expect(puerto).not.toHaveBeenCalled();
   });
 });
 

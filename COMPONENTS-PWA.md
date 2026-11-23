@@ -179,7 +179,9 @@ item con su estado (`Pendiente` / `Error de red` / `Conflicto` /
 suben fotos pendientes); los conflictos (409) y los rechazados (4xx ≠ 409,
 estado terminal — bloqueante 5 PR #23) esperan la decisión humana con
 botones Descartar (`descartar`) y Reintentar (`reencolar`). Se oculta con
-la cola vacía.
+la cola vacía. Solo muestra (y solo se envían) los items del usuario de
+la sesión — la cola de otro usuario queda dormida (tercera revisión
+2026-11-22).
 
 **Archivos:**
 - `src/components/pwa/EstadoCola/EstadoCola.tsx` (+ `.styles.ts`, `index.ts`)

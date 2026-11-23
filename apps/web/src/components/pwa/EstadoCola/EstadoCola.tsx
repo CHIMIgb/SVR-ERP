@@ -16,6 +16,7 @@ import {
   descartar,
   pendientes,
   reencolar,
+  usuarioSesionId,
   type ElementoCola,
 } from '@/lib/pwa/offline';
 import { estadoColaClasses } from './EstadoCola.styles';
@@ -40,7 +41,12 @@ export function EstadoCola({ refreshKey = 0 }: EstadoColaProps) {
   const [procesando, setProcesando] = useState<string | null>(null);
 
   const refrescar = useCallback(() => {
-    pendientes().then(setItems).catch(() => undefined);
+    // Solo lo del usuario de la sesión (tercera revisión): la cola de otro
+    // usuario queda dormida — no se muestra ni se envía con su token.
+    const usuario = usuarioSesionId();
+    pendientes()
+      .then((todos) => setItems(todos.filter((i) => i.usuarioId === usuario)))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
