@@ -1,10 +1,10 @@
 import { IsIn, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
-/** Bytes decodificados máximos por imagen (2 MB — mismo tope del service). */
-export const MAX_BYTES_DECODIFICADOS_ADJUNTO = 2 * 1024 * 1024;
+/** Bytes decodificados máximos por imagen (10 MB - fotos de teléfono actuales). */
+export const MAX_BYTES_DECODIFICADOS_ADJUNTO = 10 * 1024 * 1024;
 
 /**
- * Imagen adjunta al incidente (base64; límites 2 MB y mimes de imagen).
+ * Imagen adjunta al incidente (base64; límites 10 MB y mimes de imagen).
  *
  * Review PR #17: el tamaño ya NO lo declara el cliente — el server lo
  * deriva de la longitud del base64. Al eliminar `tamano`:
@@ -22,13 +22,13 @@ export class AdjuntoDto {
   mime!: string;
 
   /**
-   * 2 MB decodificados = 2,792,597 chars de base64 máx; cap conservador con
+   * 10 MB decodificados = 13,981,014 chars de base64 máx; cap conservador con
    * margen de padding. La magia del fichero (firma) la valida el service.
    */
   @IsString()
   @MinLength(1)
   @MaxLength(Math.ceil((MAX_BYTES_DECODIFICADOS_ADJUNTO / 3) * 4) + 4, {
-    message: 'La imagen excede el máximo de 2 MB',
+    message: 'La imagen excede el máximo de 10 MB',
   })
   @Matches(/^[A-Za-z0-9+/]+={0,2}$/, {
     message: 'datos debe contener la imagen en base64',

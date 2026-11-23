@@ -162,43 +162,11 @@ ALLOWED_DEV_ORIGINS=localhost,192.168.0.105
 
 ### Credenciales de Acceso (API)
 
-#### Administrador (acceso total a los 6 módulos)
-
-| Campo | Valor |
-|-------|-------|
-| **Email** | `admin@svr-constructora.com` |
-| **Contraseña** | `admin123` |
-| **Rol** | Administrador (nivel 100) |
-
-#### Administrativo de RRHH (módulo Recursos Humanos)
-
-| Campo | Valor |
-|-------|-------|
-| **Email** | `rrhh@svr-constructora.com` |
-| **Contraseña** | `rrhh123` |
-| **Rol** | Administrativo (nivel 80) — con los permisos de RRHH absorbidos |
-| **Acceso** | Trabajadores (CRUD), Asistencia (ver/crear/editar/exportar), Nómina (ver/crear/editar/procesar/exportar) |
-| **No tiene acceso** | Maquinaria, Comercial, Sistema, Configuración |
-
-#### Roles de plantilla (5 — /reportes y dashboard)
-
-> **Estas cuentas ya no se crean con `migrate`** (review PR #17: ninguna
-> migración debe dejar usuarios con contraseña conocida en producción).
-> Se siembran a mano con `prisma/demo-seed.sql`, cuyo hash llega por variable
-> de psql — **la contraseña la define quien ejecuta el seed**, las de la
-> tabla son las sugeridas para dev. Ver las instrucciones en la cabecera de
-> ese archivo.
-
-| Email | Contraseña sugerida (seed dev) | Rol (nivel) | Área (torre) | En /reportes puede |
-|-------|------------|-------------|--------------|--------------------|
-| `administrativo@svr-constructora.com` | `administrativo123` | Administrativo (80) | Administrativo | ver, crear, editar, eliminar |
-| `residente@svr-constructora.com` | `residente123` | Residente (90) | Residente | ver (*los reportes de sus trabajadores* + los suyos), editar (seguimiento) |
-| `tecnico@svr-constructora.com` | `tecnico123` | Técnico (70) | Mecanico | ver, crear, editar |
-| `soldador@svr-constructora.com` | `tecnico123` | Técnico (70) | Soldador | ver, crear, editar |
-| `diesel@svr-constructora.com` | `tecnico123` | Técnico (70) | Diesel | ver, crear, editar |
-| `mantenimiento@svr-constructora.com` | `tecnico123` | Técnico (70) | Mantenimiento | ver, crear, editar |
-| `cobrador@svr-constructora.com` | `cobrador123` | Cobrador (60) | Administrativo | ver, crear (también /criba, /ventas y /ventas/corte) |
-| `trabajador@svr-constructora.com` | `trabajador123` | Trabajador (20) | *(sin torre)* | ver, crear |
+> Las cuentas y contraseñas de desarrollo viven en **`credenciales-dev.md`**
+> (raíz del repo), un archivo local **no versionado**: está en `.gitignore`
+> y nunca se sube — el repo es público. El archivo separa las cuentas por
+> uso (escritorio y PWA, una por rol); si no lo tienes, pídeselo a quien
+> armó tu ambiente o siémbralas tú mismo con `prisma/demo-seed.sql`.
 
 > Cada usuario hereda su **área (torre)** → el alta "Misma área" de /reportes
 > envía el incidente a esa torre automáticamente (y sus subcategorías). La
@@ -382,6 +350,24 @@ npm run test:integration  # Ejecutar tests de integración (requiere PostgreSQL)
 | 6 | Refresh token rotation | `token_blacklist` (REFRESH rotado), `refresh_tokens` (nuevo activo), `sessions` (JTI actualizado) |
 
 **Regla:** Todo service, controller o guard nuevo **debe** incluir su archivo `*.spec.ts` junto al fuente. Los tests de integración usan el sufijo `*.integration.spec.ts` y se ejecutan por separado. Ver `AGENTS.md` para las reglas completas de testing.
+
+### Sistema de notificaciones y alertas
+
+Flujo end-to-end:
+
+1. **Emisión (backend, best-effort):** cualquier service llama a `NotificacionesService` con la entrada construida por **`construirAlerta(ALERTAS.X, contexto, referenciaId, creadoPor)`** — `apps/api/src/notificaciones/catalogo.ts` es la **única fuente de textos** (prohibido escribirlos inline). Después se elige la audiencia con un helper: `emitirATorre` (área), `emitirARol` (rol por nombre), `emitirAUsuario` (personal) o `emitirATrabajador` (resuelve `trabajadores.usuario_id`). Si la emisión falla, solo se loggea — **jamás revierte la acción de negocio**.
+2. **Persistencia:** una fila por aviso en la tabla `notificaciones` con la audiencia en UNA de tres formas: `destinatario_user_id` (personal), `audiencia_torre` (área), `audiencia_rol_id` (rol), o las tres vacías = «para todos». `creado_por` guarda al actor (no recibe su propio aviso). El estado leído/descartado **por usuario** vive en `notificaciones_lecturas` — el buzón es un MERGE; la fila nunca se muta.
+3. **Buzón (API):** `GET /notificaciones` (permiso `sistema/notificaciones/ver`) responde `{items, noLeidas}` con `filtroDeBuzon`: le llega a alguien si (a) no la descartó, (b) no la disparó él, y (c) va dirigida a él: personal, **SU torre** (`users.torre`, la del puesto), sus roles activos, o filas «para todos» (las tres audiencias vacías — ver fuga corregida 2026-11-20).
+4. **Consumo (escritorio):** `NotificationProvider` hace **polling cada 60 s** (no hay websockets) con `GET /notificaciones?limit=50`; la campana del `Topbar` muestra el contador no leídas y la lista; marcar leída / descartar escribe en `notificaciones_lecturas`.
+5. **PWA:** pendiente — la campana del header aún no está conectada (no monta `NotificationProvider`), aunque el backend ya emite (reportes, nómina, proveedores, ventas).
+
+**Cómo crear una alerta nueva (paso a paso):**
+
+1. Agrega la definición a `ALERTAS` en `catalogo.ts`: `clave` única (la semántica de dominio vive aquí — el enum `TipoNotificacion` se queda con ALERTA/INFO/CORREO), textos como funciones del contexto (cada definición trunca su cuerpo), `referenciaTipo` — y su fila en la tabla del encabezado.
+2. Emite desde el service: `construirAlerta(ALERTAS.TU_CLAVE, contexto, id, userId)` + el helper de audiencia que corresponda.
+3. Test que aserte la llamada a `emitir*` (mock de `NotificacionesService`).
+
+El aviso aparece en el escritorio en ≤60 s. AGENTS.md trae la regla operativa (catálogo obligatorio).
 
 ### Base de Datos — Prisma
 

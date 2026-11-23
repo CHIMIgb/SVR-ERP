@@ -127,7 +127,14 @@ function ToastItemComponent({
 
 /* ── Provider ── */
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({
+  children,
+  posicionPorDefecto = DEFAULT_POSITION,
+}: {
+  children: React.ReactNode;
+  /** Posición de los toasts que no la declaran (la PWA usa 'top-center'). */
+  posicionPorDefecto?: ToastPosition;
+}) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const counterRef = useRef(0);
 
@@ -146,7 +153,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         id,
         message,
         type,
-        position: options.position ?? DEFAULT_POSITION,
+        position: options.position ?? posicionPorDefecto,
         transition: options.transition ?? DEFAULT_TRANSITION,
         duration: options.duration ?? DEFAULT_DURATION,
         progress: options.progress ?? true,

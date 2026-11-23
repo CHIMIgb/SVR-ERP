@@ -84,11 +84,38 @@ plantilla de cotización) → **B3** (FK cliente en POS — prepara el crédito 
 - **F3 motor de retiros**: espera la regla del precio (CLAVE 1) y el amarrado
   del retiro al proyecto (CLAVE 2) — y toca `/ventas`+`/operaciones` (dentro de alcance, pero
   bloqueado).
+  **✅ RESPONDIDAS 2026-11-20** (`docs-svr/respuestas_dudas/PRODUCTIVIDAD.txt`
+  + `LISTA DE PRECIOS.txt`): el precio **VARÍA por cliente** (público
+  general + precio especial atado a obras activas, lo cambia el
+  **ENCARGADO** al negociar) y el retiro va amarrado a **UNA obra por
+  viaje** (el camión hace múltiples viajes al día). El ORIGINAL/COPIA del
+  papel se resuelve con una sola captura + procesamiento a pago posterior.
+  **DESBLOQUEADO** — detalle en `ANALISIS-FLUJOS-DATOS-RESPUESTAS-2026-11-20.md` §1.
 - **Crédito en POS — validación de límite**: espera CLAVE 6 (la parte no
   bloqueante es B3).
+  **⚠️ PARCIALMENTE RESPONDIDA 2026-11-20** (`ESTADO DE CUENTA.txt`): hay
+  clientes con crédito que **van abonando** (confirma el modelo de
+  abonos) — falta la asignación del límite/rebase
+  (`REGISTRO DE VENTAS.txt` sin respuesta).
 - **Conciliación semanal de proveedores**: espera CLAVE 8 y 9.
+  **✅ RESPONDIDA 2026-11-20** (`PROVEEDORES EXTERNOS 01.txt`): el proveedor
+  **envía su conciliación de los VIAJES realizados** → el encargado
+  **confirma las obras** → **cierre de saldo** → abono o liquidación
+  **cada semana** (o al cierre de obra, según cliente). Corrección solo
+  **al momento**; la cerrada queda como **estado de cuenta del proveedor**
+  con abonos y pagos posteriores. **DESBLOQUEADO — flujo NUEVO** (los
+  externos son transporte contratado, no cabe en OCs). **El cliente PIDE
+  UNA VISITA** al proceso antes de diseñarlo. Detalle en
+  `ANALISIS-FLUJOS-DATOS-RESPUESTAS-2026-11-20.md` §4.
 - **Formatos de estado de cuenta (flete)**: espera CLAVE 4.
+  **✅ RESPONDIDA 2026-11-20** (`ESTADO DE CUENTA.txt`): **EL CLIENTE
+  decide** si necesita solo material o material y flete → bandera
+  **por CLIENTE** (no por obra). **DESBLOQUEADO** — detalle §3.
 - **Desgloses de costo por proyecto**: espera el costeo F1 (CLAVE 3).
+  **✅ RESPONDIDA 2026-11-20** (`PRODUCTIVIDAD.txt`): los gastos de camión
+  **NO se cargan a la obra — se llevan a PARTE (por camión)** para los
+  rendimientos internos. **SE AJUSTA**: el desglose por proyecto solo
+  incluye costos directos + **rendimiento por camión aparte**. Detalle §5.
 
 ---
 
@@ -109,8 +136,8 @@ Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuest
 ### 2.1 /finanzas
 | # | Punto (sección del doc) | Estado | Implicación |
 |---|---|---|---|
-| F1 | ¿El diésel y el mantenimiento se cargan al costo de obra? ¿Por máquina, obra o centro de costos? (§8 Costos) | ⚠️ SIN RESPUESTA | Define el modelo de costeo completo (transacciones + `proyectos.finanzas`) |
-| F2 | ¿Cómo se reparte una carga de combustible usada en varias obras? (§8) | ⚠️ Sin respuesta | Prorrateo de egresos entre obras |
+| F1 | ¿El diésel y el mantenimiento se cargan al costo de obra? ¿Por máquina, obra o centro de costos? (§8 Costos) | ✅ RESPONDIDA (2026-11-20, `PRODUCTIVIDAD.txt` P6): **NO se carga a la obra — se lleva a PARTE (por camión)** para los rendimientos internos | El costeo es **por camión/máquina** (combustible ya lo modela); el desglose por proyecto solo con costos directos |
+| F2 | ¿Cómo se reparte una carga de combustible usada en varias obras? (§8) | ✅ RESPONDIDA (Ídem): NO hay reparto — el gasto va por camión | Sin prorrateo de egresos entre obras; rendimiento por camión aparte |
 | F3 | Egresos reales de combustible/mantenimiento (hoy demo — §10 error 4) | ✅ | Ingesta de egresos reales |
 | F4 | Renta mensual del GPS: **$350/equipo sin contrato** (proveedor) | ✅ | Egreso recurrente por equipo con GPS — transacción de `/finanzas` |
 
@@ -120,12 +147,12 @@ Leyenda de estado: ✅ confirmado por el cliente · ⚠️ pregunta sin respuest
 | P1 | ¿Cómo se concilia cada carga de diésel con la factura del proveedor? (§8) | ✅ RESPONDIDA POR docs-svr | **`PROVEEDORES EXTERNOS 01.xlsx` ES el proceso**: conciliación **semanal** (`CONCILIACION #1–#7`) con `TOTAL CONCILIACION · ABONO A CUENTA · FECHA ABONO · SALDO A FAVOR` — abonos parciales a cuenta, acumulado $261,025 / abonado $172,000 / saldo $89,025 |
 | P2 | Refacciones de mantenimiento (§7) | ✅ | Compradas por **orden de compra** → OC + recepción + CxP |
 | P3 | Talleres externos: interno/externo + proveedor + garantía (§7) | ✅ | Facturas de taller externo → CxP |
-| P4 | ¿Se bloquea la edición/eliminación de una carga de diésel después de conciliarla? (§8) | ⚠️ Sin respuesta | Regla de inmutabilidad post-conciliación en CxP |
+| P4 | ¿Se bloquea la edición/eliminación de una carga de diésel después de conciliarla? (§8) | ⚠️ PARCIALMENTE RESPONDIDA (2026-11-20, `PROVEEDORES EXTERNOS 01.txt`) | EX3 responde para la conciliación de VIAJES: corrección solo al momento, la cerrada queda como estado de cuenta con abonos/pagos — por analogía aplica la inmutabilidad post-conciliación en CxP (confirmar en la visita que pide el cliente) |
 
 ### 2.3 /facturas
 | # | Punto | Estado | Implicación |
 |---|---|---|---|
-| Fa1 | ¿Para facturar, qué dato manda: proyecto, cliente u obra? (§5 Despachos) | ⚠️ parcialmente respondida (§6) | La lectura de renta se asocia a **combinación cliente+proyecto** ("un cliente puede tener distintos proyectos") — la trazabilidad despacho→factura sigue abierta |
+| Fa1 | ¿Para facturar, qué dato manda: proyecto, cliente u obra? (§5 Despachos) | ✅ RESPONDIDA (2026-11-20, `ESTADO DE CUENTA.txt`): **se envía el ESTADO DE CUENTA DEL CLIENTE** y ellos mandan la **razón social** a la que se factura | La facturación va por CLIENTE (ya ligada a cliente_id); falta el campo/campo flujo de «razón social de facturación» que el cliente envía. La trazabilidad despacho→factura sigue abierta (parcial) |
 | Fa2 | **"SI CADA NOTA DEBE ESTAR FIRMADA PARA RESPALDO DEL CLIENTE"** (§6) | ✅ | Regla dura: no se factura una bitácora de renta sin firma del residente |
 | Fa3 | **Traslados de máquinas de terceros = otro servicio que brindamos** (§4) | ✅ | Servicio facturable NUEVO (concepto en factura; cotización si aplica). docs-svr lo ejemplifica: COTIZACION 47 cobra traslado de vibrocompactador como renglón propio |
 

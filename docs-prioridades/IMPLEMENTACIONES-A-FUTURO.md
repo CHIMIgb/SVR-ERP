@@ -37,6 +37,19 @@
 >    **C3** (venta a crédito → CxC) junto con el motor de retiros ·
 >    **§9/§10** (proveedores) junto con la conciliación semanal de docs-svr.
 >    El detalle del enlace vive en §8 del plan comercial.
+>
+> **✅ ACTUALIZACIÓN 2026-11-20 — LAS DUDAS BLOQUEANTES FUERON RESPONDIDAS
+> por el cliente** (`docs-svr/respuestas_dudas/`, revisión cruzada y análisis
+> de flujos en `ANALISIS-FLUJOS-DATOS-RESPUESTAS-2026-11-20.md`):
+> - **P7 desbloqueado** — claves 1/2: el precio VARÍA por cliente (público
+>   general + especial atado a obras activas, lo cambia el ENCARGADO).
+> - **P1–P4 parcialmente desbloqueado** — claves 8/9: la conciliación es
+>   confirmación de VIAJES del proveedor externo (cerrar saldo, abonos sobre
+>   la cerrada, corrección solo al momento); P4 (bloqueo de cargas de diésel
+>   post-conciliación) sigue PARCIAL. **El cliente pide una VISITA** al
+>   proceso de externos antes de diseñarlo.
+> - **C3 parcial** — clave 6: hay clientes con crédito que abonan; el
+>   límite/rebase sigue sin respuesta (REGISTRO DE VENTAS).
 
 ---
 
