@@ -9,9 +9,8 @@ import { formatHora12 } from "@/lib/formatters";
 import { guardarDatos, leerDatos } from "@/lib/pwa/datos-cache";
 import { navDelRol } from "@/lib/pwa/rol-nav";
 import {
-  GRUPOS_FALTAN,
-  GRUPOS_LLEGARON,
   clasificarMiembro,
+  contarEquipo,
   fechaLarga,
   mensajeDeApi,
   puedeVerEquipo,
@@ -48,12 +47,17 @@ export default function InicioMovilPage() {
 
   // Sin setState antes del await: el estado inicial ya es "cargando" (regla react-hooks/set-state-in-effect).
   const cargar = useCallback(async () => {
-    const solicitud = ++solicitudRef.current;
-    const res = await asistenciaApi.mia();
-    if (solicitud !== solicitudRef.current) return;
-    if (res.success) setCarga({ tipo: "ok", datos: res.data });
-    else if (res.error.code === "NOT_FOUND") setCarga({ tipo: "sin-enlace" });
-    else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu asistencia.") });
+    try {
+      const solicitud = ++solicitudRef.current;
+      const res = await asistenciaApi.mia();
+      if (solicitud !== solicitudRef.current) return;
+      if (res.success) setCarga({ tipo: "ok", datos: res.data });
+      else if (res.error.code === "NOT_FOUND") setCarga({ tipo: "sin-enlace" });
+      else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu asistencia.") });
+    } catch {
+      // API caída: estado de error con Reintentar (no unhandledRejection)
+      setCarga({ tipo: "error", mensaje: "Sin conexión con el servidor. Revisa tu señal e intenta de nuevo." });
+    }
   }, []);
 
   useEffect(() => {
@@ -210,7 +214,7 @@ function ReportesResidente() {
 
   return (
     <div className="flex flex-col gap-2">
-      {carga.tipo === "offline" && <AvisoSinConexion fechaDatos={carga.fecha} />}
+      {carga.tipo === "offline" && <AvisoSinConexion fechaDatos={carga.fecha} sirviendoSnapshot />}
       <div className="grid grid-cols-2 gap-2">
         <Link
           href="/m/reportes"
@@ -227,26 +231,26 @@ function ReportesResidente() {
           href="/m/reportes"
           className={`rounded-2xl p-4 flex flex-col gap-1.5 border transition-colors ${
             conCriticos
-              ? "bg-red-50 border-red-200 hover:bg-red-100/70 active:bg-red-100"
+              ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 hover:bg-red-100/70 active:bg-red-100 dark:hover:bg-red-500/20 dark:active:bg-red-500/20"
               : "bg-surface border-ui-200 hover:bg-ui-50 active:bg-ui-100"
           }`}
         >
           <span
             className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${
-              conCriticos ? "text-red-700" : "text-ui-500"
+              conCriticos ? "text-red-700 dark:text-red-300" : "text-ui-500"
             }`}
           >
-            <TriangleAlert className={`w-4 h-4 ${conCriticos ? "text-red-600" : "text-ui-400"}`} aria-hidden />
+            <TriangleAlert className={`w-4 h-4 ${conCriticos ? "text-red-600 dark:text-red-400" : "text-ui-400"}`} aria-hidden />
             Requieren tu atención
           </span>
           <span
             className={`text-3xl font-display font-black leading-none ${
-              conCriticos ? "text-red-700" : "text-ui-400"
+              conCriticos ? "text-red-700 dark:text-red-300" : "text-ui-400"
             }`}
           >
             {d.criticos}
           </span>
-          <span className={`text-xs ${conCriticos ? "text-red-600" : "text-ui-500"}`}>
+          <span className={`text-xs ${conCriticos ? "text-red-600 dark:text-red-400" : "text-ui-500"}`}>
             {conCriticos ? "Críticos sin cerrar" : "Sin críticos abiertos"}
           </span>
         </Link>
@@ -261,11 +265,16 @@ function EquipoHoy({ esResidente }: { esResidente: boolean }) {
   const solicitudRef = useRef(0);
 
   const cargar = useCallback(async () => {
-    const solicitud = ++solicitudRef.current;
-    const res = await asistenciaApi.equipo();
-    if (solicitud !== solicitudRef.current) return;
-    if (res.success) setCarga({ tipo: "ok", datos: res.data });
-    else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu equipo.") });
+    try {
+      const solicitud = ++solicitudRef.current;
+      const res = await asistenciaApi.equipo();
+      if (solicitud !== solicitudRef.current) return;
+      if (res.success) setCarga({ tipo: "ok", datos: res.data });
+      else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu equipo.") });
+    } catch {
+      // API caída: estado de error con Reintentar (no unhandledRejection)
+      setCarga({ tipo: "error", mensaje: "Sin conexión con el servidor. Revisa tu señal e intenta de nuevo." });
+    }
   }, []);
 
   useEffect(() => {
@@ -278,10 +287,8 @@ function EquipoHoy({ esResidente }: { esResidente: boolean }) {
   // El administrador sin gente a su cargo no ve el bloque; al residente se le explica por qué está vacío.
   if (carga.tipo === "ok" && miembros.length === 0 && !esResidente) return null;
 
-  const grupos = miembros.map((m) => clasificarMiembro(m.dia, m.estadoTrabajador).grupo);
-  const llegaron = grupos.filter((g) => GRUPOS_LLEGARON.includes(g)).length;
-  const tarde = grupos.filter((g) => g === "tarde").length;
-  const faltan = grupos.filter((g) => GRUPOS_FALTAN.includes(g)).length;
+  // Mismo conteo que /m/asistencia ("Mi equipo"): una sola copia en contarEquipo (revisión de chimi, PR #24).
+  const conteo = contarEquipo(miembros.map((m) => clasificarMiembro(m.dia, m.estadoTrabajador).grupo));
 
   return (
     <div className="flex flex-col gap-2">
@@ -323,9 +330,9 @@ function EquipoHoy({ esResidente }: { esResidente: boolean }) {
 
       {carga.tipo === "ok" && miembros.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
-          <StatsCard label="Presentes" value={llegaron} hint={`de ${miembros.length}`} />
-          <StatsCard label="Retardos" value={tarde} hint="llegaron tarde" />
-          <StatsCard label="Faltan" value={faltan} hint="no han llegado" />
+          <StatsCard label="Presentes" value={conteo.llegaron} hint={`de ${conteo.total}`} />
+          <StatsCard label="Retardos" value={conteo.tarde} hint="llegaron tarde" />
+          <StatsCard label="Faltan" value={conteo.faltan} hint="no han llegado" />
         </div>
       )}
     </div>
