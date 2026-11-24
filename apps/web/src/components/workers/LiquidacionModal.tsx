@@ -279,7 +279,9 @@ export default function LiquidacionModal({ onClose, trabajador: trabajadorInicia
       showToast(`${worker.nombre} quedó dado de baja. Total del finiquito: ${formatCurrency(res.data.granTotalNeto)}.`, 'success');
       addNotification({
         titulo: `Baja de ${worker.nombre}`,
-        mensaje: `${MOTIVOS.find((m) => m.value === tipo)?.label}: ${formatCurrency(res.data.granTotalNeto)}. Su máquina quedó libre.`,
+        mensaje: `${MOTIVOS.find((m) => m.value === tipo)?.label}: ${formatCurrency(res.data.granTotalNeto)}. Su máquina quedó libre${
+          worker.numeroEmpleado ? ' y su acceso a la app se desactivó' : ''
+        }.`,
         tipo: 'alerta',
       });
       setConfirmarOpen(false);
@@ -451,7 +453,7 @@ export default function LiquidacionModal({ onClose, trabajador: trabajadorInicia
 
         <ModalFooter>
           <p className="text-xs text-ui-500 sm:mr-auto min-w-0 text-center sm:text-left">
-            Al dar de baja, el trabajador queda inactivo y se libera su máquina.
+            Al dar de baja, el trabajador queda inactivo, se libera su máquina y pierde el acceso a la app.
           </p>
           <Button variant="outline" onClick={cerrar} disabled={enviando} className="shrink-0">Cancelar</Button>
           <Button variant="danger" onClick={() => setConfirmarOpen(true)} disabled={!puedeConfirmar || enviando} className="shrink-0">
@@ -471,6 +473,13 @@ export default function LiquidacionModal({ onClose, trabajador: trabajadorInicia
               <span className="font-semibold text-ui-900">{formatCurrency(d.granTotalNeto)}</span>. Quedará inactivo y su
               máquina libre. No se puede deshacer desde aquí.
             </p>
+            {/* La API también desactiva su cuenta y cierra sus sesiones: se avisa antes de confirmar. */}
+            {worker.numeroEmpleado && (
+              <p className="mt-2 text-sm text-ui-700">
+                Su acceso a la app (<span className="font-semibold text-ui-900">{worker.numeroEmpleado}</span>) se
+                desactiva y se cierran sus sesiones abiertas.
+              </p>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button variant="outline" onClick={() => setConfirmarOpen(false)} disabled={enviando}>Cancelar</Button>

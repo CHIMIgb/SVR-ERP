@@ -1316,14 +1316,17 @@ export class TrabajadoresService {
         `Trabajador con id "${id}" no encontrado`,
       );
     }
+    await this.validarBajaDeCuenta(existente.usuario_id, id, userId, AuditAction.TRABAJADOR_ELIMINADO);
 
-    await this.prisma.$transaction(async (tx) => {
+    const cuentaDesactivada = await this.prisma.$transaction(async (tx) => {
       await tx.maquinas.updateMany({ where: { operador_id: id }, data: { operador_id: null } });
       await tx.trabajadores.update({
         where: { id },
         data: { eliminado_en: new Date(), activo: false, actualizado_por: userId, actualizado_en: new Date() },
       });
+      return this.desactivarCuentaPorBaja(tx, existente.usuario_id, userId);
     });
+    await this.auditarCuentaDesactivada(cuentaDesactivada, existente.usuario_id, id, userId);
 
     await this.auditService.log({
       action: AuditAction.TRABAJADOR_ELIMINADO,
@@ -1376,6 +1379,7 @@ export class TrabajadoresService {
         `Registra la fecha de ingreso de ${trabajador.nombre} antes de calcular su finiquito`,
       );
     }
+    await this.validarBajaDeCuenta(trabajador.usuario_id, id, userId, AuditAction.TRABAJADOR_LIQUIDADO);
 
     // Sueldo diario = semanal entre 7 (el domingo de descanso se paga; regla del cliente). Antes se dividía
     // entre 6 y cada día del finiquito salía más alto de lo que corresponde.
@@ -1411,8 +1415,9 @@ export class TrabajadoresService {
     const subtotalIndemnizaciones = montoIndemnizacion90Dias + montoIndemnizacion20DiasPorAno + montoPrimaAntiguedad;
     const granTotalNeto = Math.max(0, Number((subtotalFiniquito + subtotalIndemnizaciones - prestamos).toFixed(2)));
 
+    let cuentaDesactivada = false;
     try {
-      await this.prisma.$transaction(async (tx) => {
+      cuentaDesactivada = await this.prisma.$transaction(async (tx) => {
         // Baja condicional: dos peticiones a la vez (doble clic, reintento de red) pasan la revisión de arriba;
         // solo la que todavía encuentra al trabajador sin baja la registra. La otra termina en 409.
         const baja = await tx.trabajadores.updateMany({
@@ -1429,6 +1434,7 @@ export class TrabajadoresService {
           throw new ConflictException(`${trabajador.nombre} ya fue dado de baja`);
         }
         await tx.maquinas.updateMany({ where: { operador_id: id }, data: { operador_id: null } });
+        return this.desactivarCuentaPorBaja(tx, trabajador.usuario_id, userId);
       });
     } catch (e) {
       if (e instanceof ConflictException) {
@@ -1442,6 +1448,7 @@ export class TrabajadoresService {
       }
       throw e;
     }
+    await this.auditarCuentaDesactivada(cuentaDesactivada, trabajador.usuario_id, id, userId);
 
     const desglose = {
       tipoTerminacion: dto.tipoTerminacion,
@@ -1472,6 +1479,118 @@ export class TrabajadoresService {
     });
 
     return desglose;
+  }
+
+  // ── Cuenta de la app en la baja ──
+  // Antes la baja (finiquito o eliminar) solo marcaba al trabajador: su cuenta seguía activa y el login con PIN
+  // solo revisa la cuenta, así que un ex-trabajador seguía entrando a la PWA (reportes, notificaciones). Se
+  // aplica la misma regla que al desactivar una cuenta en Sistema (UsuariosService.cambiarEstado). No quitar.
+
+  /**
+   * Antes de dar de baja: nadie registra su propia baja (se quedaría sin cuenta a media sesión), el sistema no
+   * se queda sin su único Administrador (misma regla que UsuariosService.validarNoUltimoAdmin, roles es_sistema)
+   * y la cuenta de un Administrador solo la da de baja otro Administrador.
+   * Riesgo aceptado, igual que en Sistema: el conteo de admins va fuera de la transacción; dos bajas
+   * simultáneas de los dos últimos Administradores podrían pasar las dos.
+   */
+  private async validarBajaDeCuenta(
+    usuarioId: string | null,
+    trabajadorId: string,
+    actorId: string,
+    action: AuditAction,
+  ): Promise<void> {
+    if (!usuarioId) return;
+    if (usuarioId === actorId) {
+      return this.fallir(
+        action,
+        trabajadorId,
+        'NO_PUEDE_DARSE_DE_BAJA_A_SI_MISMO',
+        BadRequestException,
+        'No puedes registrar tu propia baja: pide a otra persona de RRHH que lo haga',
+      );
+    }
+    const cuenta = await this.prisma.users.findFirst({
+      where: { id: usuarioId, eliminado_en: null, activo: true },
+      select: {
+        users_roles_users_roles_user_idTousers: {
+          where: { activo: true },
+          select: { roles: { select: { es_sistema: true } } },
+        },
+      },
+    });
+    const esAdministrador = cuenta?.users_roles_users_roles_user_idTousers.some((ur) => ur.roles.es_sistema);
+    if (!esAdministrador) return;
+    const admins = await this.prisma.users.count({
+      where: {
+        eliminado_en: null,
+        activo: true,
+        users_roles_users_roles_user_idTousers: { some: { activo: true, roles: { es_sistema: true } } },
+      },
+    });
+    if (admins <= 1) {
+      return this.fallir(
+        action,
+        trabajadorId,
+        'ULTIMO_ADMINISTRADOR',
+        BadRequestException,
+        'Su cuenta es la única de Administrador: asigna otro Administrador antes de darlo de baja',
+      );
+    }
+    // Jerarquía (la misma del reinicio de PIN, PR #18 #5): con el permiso de baja, RRHH podría desactivar la
+    // cuenta de un Administrador; solo otro Administrador puede hacerlo (hallazgo de la revisión de seguridad).
+    const actorEsAdministrador = await this.prisma.users_roles.findFirst({
+      where: { user_id: actorId, activo: true, roles: { es_sistema: true, activo: true } },
+      select: { id: true },
+    });
+    if (!actorEsAdministrador) {
+      return this.fallir(
+        action,
+        trabajadorId,
+        'JERARQUIA_INSUFICIENTE',
+        ForbiddenException,
+        'Solo otro Administrador puede dar de baja a quien tiene cuenta de Administrador',
+      );
+    }
+  }
+
+  /**
+   * Dentro de la transacción de la baja: la cuenta deja de entrar y se cierran sus sesiones. El JWT revisa
+   * users.activo en cada petición, así que el corte es inmediato. Devuelve si la cuenta estaba activa.
+   */
+  private async desactivarCuentaPorBaja(
+    tx: Prisma.TransactionClient,
+    usuarioId: string | null,
+    actorId: string,
+  ): Promise<boolean> {
+    if (!usuarioId) return false;
+    const ahora = new Date();
+    const cuenta = await tx.users.updateMany({
+      where: { id: usuarioId, activo: true },
+      data: { activo: false, actualizado_por: actorId, actualizado_en: ahora },
+    });
+    await tx.sessions.updateMany({
+      where: { user_id: usuarioId, activa: true },
+      data: { activa: false, cerrada_en: ahora, motivo_cierre: 'trabajador_dado_de_baja' },
+    });
+    return cuenta.count > 0;
+  }
+
+  /** Deja en el historial de la cuenta (entidad users) por qué se desactivó, como lo audita Sistema. */
+  private async auditarCuentaDesactivada(
+    desactivada: boolean,
+    usuarioId: string | null,
+    trabajadorId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (!desactivada || !usuarioId) return;
+    await this.auditService.log({
+      action: AuditAction.USUARIO_ACTUALIZADO,
+      entityType: 'users',
+      entityId: usuarioId,
+      result: AuditResult.SUCCESS,
+      actorUserId: actorId,
+      metadata: { campo: 'activo', valor: false, anterior: true, motivo: 'trabajador_dado_de_baja', trabajadorId },
+    });
   }
 
   /**
