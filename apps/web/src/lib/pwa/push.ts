@@ -67,13 +67,14 @@ export async function activarPush(): Promise<{ ok: boolean; mensaje: string }> {
     return { ok: false, mensaje: 'El service worker no está activo — disponible solo con la app instalada/producción.' };
   }
 
-  const res = await notificacionesApi.vapidPublica();
-  if (!res.success || !res.data?.clavePublica) {
-    return { ok: false, mensaje: 'El server no tiene el push configurado (falta VAPID).' };
-  }
-
+  let suscripcion: PushSubscription | null = null;
   try {
-    const suscripcion = await registro.pushManager.subscribe({
+    const res = await notificacionesApi.vapidPublica();
+    if (!res.success || !res.data?.clavePublica) {
+      return { ok: false, mensaje: 'El server no tiene el push configurado (falta VAPID).' };
+    }
+
+    suscripcion = await registro.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(res.data.clavePublica),
     });
@@ -94,9 +95,21 @@ export async function activarPush(): Promise<{ ok: boolean; mensaje: string }> {
     }
     return { ok: true, mensaje: 'Notificaciones del teléfono activadas.' };
   } catch (e) {
+    // Menor 2 revisión PR #23: si el alta en el server LANZÓ por red, la
+    // suscripción local queda huérfana (el backend no la registró) →
+    // desuscribir para que `estadoPush()` no diga "activadas" con un
+    // server que no la tiene. Si falló antes de suscribir, es null.
+    await suscripcion?.unsubscribe().catch(() => undefined);
+    const mensaje = e instanceof Error ? e.message : 'No se pudo activar el push en este dispositivo.';
+    // Detalle 3a revisión: el subscribe del navegador lanza "Failed to
+    // fetch" crudo y el apiClient menciona localhost:3001 — en el teléfono
+    // ambos confunden; señal muerta → mensaje es-MX.
+    const esRed = /failed to fetch|networkerror|no se pudo conectar/i.test(mensaje);
     return {
       ok: false,
-      mensaje: e instanceof Error ? e.message : 'No se pudo activar el push en este dispositivo.',
+      mensaje: esRed
+        ? 'Sin conexión — activa las notificaciones cuando tengas señal.'
+        : mensaje,
     };
   }
 }

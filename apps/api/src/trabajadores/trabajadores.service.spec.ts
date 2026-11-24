@@ -92,7 +92,9 @@ describe('TrabajadoresService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      sessions: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       $transaction: jest.fn().mockImplementation((fn) => fn(prisma)),
     };
 
@@ -617,6 +619,44 @@ describe('TrabajadoresService', () => {
       expect(prisma.maquinas.updateMany).toHaveBeenCalledWith({ where: { operador_id: 'trab-uuid-1' }, data: { operador_id: null } });
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'TRABAJADOR_ELIMINADO', result: 'SUCCESS' }));
     });
+
+    it('desactiva la cuenta de la app del trabajador y cierra sus sesiones', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-1' });
+      await service.remove('trab-uuid-1', 'user-1');
+      expect(prisma.users.updateMany).toHaveBeenCalledWith({
+        where: { id: 'cuenta-1', activo: true },
+        data: expect.objectContaining({ activo: false, actualizado_por: 'user-1' }),
+      });
+      expect(prisma.sessions.updateMany).toHaveBeenCalledWith({
+        where: { user_id: 'cuenta-1', activa: true },
+        data: expect.objectContaining({ activa: false, motivo_cierre: 'trabajador_dado_de_baja' }),
+      });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'USUARIO_ACTUALIZADO',
+          entityType: 'users',
+          entityId: 'cuenta-1',
+          result: 'SUCCESS',
+          metadata: expect.objectContaining({ campo: 'activo', valor: false, motivo: 'trabajador_dado_de_baja' }),
+        }),
+      );
+    });
+
+    it('sin cuenta enlazada no toca cuentas ni sesiones', async () => {
+      await service.remove('trab-uuid-1', 'user-1');
+      expect(prisma.users.updateMany).not.toHaveBeenCalled();
+      expect(prisma.sessions.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('400 y auditoría si quien elimina es el mismo trabajador (se quedaría sin cuenta a media sesión)', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'user-1' });
+      await expect(service.remove('trab-uuid-1', 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.trabajadores.update).not.toHaveBeenCalled();
+      expect(prisma.users.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'TRABAJADOR_ELIMINADO', result: 'FAIL', errorCode: 'NO_PUEDE_DARSE_DE_BAJA_A_SI_MISMO' }),
+      );
+    });
   });
 
   describe('liquidar', () => {
@@ -673,6 +713,8 @@ describe('TrabajadoresService', () => {
     });
 
     it('should 409 when another request gave the baja first (conditional update matched nothing)', async () => {
+      // Con cuenta enlazada, para que la aserción de abajo pruebe algo (sin cuenta nunca se toca users).
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-1' });
       prisma.trabajadores.updateMany.mockResolvedValue({ count: 0 });
       await expect(
         service.liquidar('trab-uuid-1', { tipoTerminacion: 'Renuncia', diasTrabajadosPeriodo: 6, diasVacacionesPendientes: 8 }, 'user-1'),
@@ -681,6 +723,79 @@ describe('TrabajadoresService', () => {
       expect(prisma.maquinas.updateMany).not.toHaveBeenCalled();
       expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ result: 'FAIL', errorCode: 'TRABAJADOR_YA_INACTIVO' }));
       expect(mockAudit.log).not.toHaveBeenCalledWith(expect.objectContaining({ result: 'SUCCESS' }));
+      // Si otra petición ganó la baja, esta no toca la cuenta (la otra ya la desactivó).
+      expect(prisma.users.updateMany).not.toHaveBeenCalled();
+    });
+
+    const dtoRenuncia = { tipoTerminacion: 'Renuncia' as const, diasTrabajadosPeriodo: 6, diasVacacionesPendientes: 8 };
+
+    it('desactiva la cuenta de la app del trabajador y cierra sus sesiones (antes seguía entrando con su PIN)', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-1' });
+      await service.liquidar('trab-uuid-1', dtoRenuncia, 'user-1');
+      expect(prisma.users.updateMany).toHaveBeenCalledWith({
+        where: { id: 'cuenta-1', activo: true },
+        data: expect.objectContaining({ activo: false, actualizado_por: 'user-1' }),
+      });
+      expect(prisma.sessions.updateMany).toHaveBeenCalledWith({
+        where: { user_id: 'cuenta-1', activa: true },
+        data: expect.objectContaining({ activa: false, motivo_cierre: 'trabajador_dado_de_baja' }),
+      });
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'USUARIO_ACTUALIZADO', entityId: 'cuenta-1', result: 'SUCCESS' }),
+      );
+    });
+
+    it('cuenta ya desactivada: cierra sesiones pero no vuelve a auditar la desactivación', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-1' });
+      prisma.users.updateMany.mockResolvedValue({ count: 0 });
+      await service.liquidar('trab-uuid-1', dtoRenuncia, 'user-1');
+      expect(prisma.sessions.updateMany).toHaveBeenCalled();
+      expect(mockAudit.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'USUARIO_ACTUALIZADO' }));
+    });
+
+    it('400 y auditoría si quien registra la baja es el mismo trabajador', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'user-1' });
+      await expect(service.liquidar('trab-uuid-1', dtoRenuncia, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.trabajadores.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'TRABAJADOR_LIQUIDADO', result: 'FAIL', errorCode: 'NO_PUEDE_DARSE_DE_BAJA_A_SI_MISMO' }),
+      );
+    });
+
+    it('400 y auditoría si su cuenta es la única de Administrador (el sistema se quedaría sin admin)', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-admin' });
+      prisma.users.findFirst.mockResolvedValue({ users_roles_users_roles_user_idTousers: [{ roles: { es_sistema: true } }] });
+      prisma.users.count.mockResolvedValue(1);
+      await expect(service.liquidar('trab-uuid-1', dtoRenuncia, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.trabajadores.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'TRABAJADOR_LIQUIDADO', result: 'FAIL', errorCode: 'ULTIMO_ADMINISTRADOR' }),
+      );
+    });
+
+    it('cuenta de Administrador con otro admin activo, y la baja la da un Administrador: sí se da de baja', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-admin' });
+      prisma.users.findFirst.mockResolvedValue({ users_roles_users_roles_user_idTousers: [{ roles: { es_sistema: true } }] });
+      prisma.users.count.mockResolvedValue(2);
+      prisma.users_roles.findFirst.mockResolvedValue({ id: 'rol-del-actor' });
+      await service.liquidar('trab-uuid-1', dtoRenuncia, 'user-1');
+      expect(prisma.users_roles.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ user_id: 'user-1' }) }),
+      );
+      expect(prisma.users.updateMany).toHaveBeenCalled();
+    });
+
+    it('403 y auditoría si quien no es Administrador da de baja a un Administrador (jerarquía del reinicio de PIN)', async () => {
+      prisma.trabajadores.findFirst.mockResolvedValue({ ...mockTrabajador, usuario_id: 'cuenta-admin' });
+      prisma.users.findFirst.mockResolvedValue({ users_roles_users_roles_user_idTousers: [{ roles: { es_sistema: true } }] });
+      prisma.users.count.mockResolvedValue(2);
+      prisma.users_roles.findFirst.mockResolvedValue(null);
+      await expect(service.liquidar('trab-uuid-1', dtoRenuncia, 'user-rrhh')).rejects.toThrow(ForbiddenException);
+      expect(prisma.trabajadores.updateMany).not.toHaveBeenCalled();
+      expect(prisma.users.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'TRABAJADOR_LIQUIDADO', result: 'FAIL', errorCode: 'JERARQUIA_INSUFICIENTE' }),
+      );
     });
   });
 

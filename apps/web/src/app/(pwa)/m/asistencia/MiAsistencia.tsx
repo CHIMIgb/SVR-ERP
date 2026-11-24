@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import {
   DISPOSITIVO_PWA,
+  MENSAJE_SIN_CONEXION,
   TOLERANCIA_RETARDO_MINUTOS,
   distanciaMetros,
   fechaLarga,
@@ -62,23 +63,29 @@ export function MiAsistencia() {
   const solicitudGpsRef = useRef(0);
 
   // Sin setState antes del await: el estado inicial ya es "cargando" y al recargar tras checar no se
-  // vuelve a mostrar el esqueleto (la pantalla se actualiza en su lugar).
-  const cargar = useCallback(async () => {
+  // vuelve a mostrar el esqueleto (la pantalla se actualiza en su lugar). Devuelve los datos nuevos (o null).
+  // `conservar`: recarga después de checar. Si falla, se deja la pantalla como está (formulario, obra y aviso)
+  // en vez de cambiarla por "No se pudo cargar" (revisión: un rechazo normal acababa en pantalla de error).
+  const cargar = useCallback(async (conservar = false): Promise<MiAsistenciaDTO | null> => {
     const solicitud = ++solicitudCargaRef.current;
-    const res = await asistenciaApi.mia();
-    if (solicitud !== solicitudCargaRef.current) return;
-    if (res.success) {
+    // API caída / sin señal: el apiClient LANZA en vez de devolver success:false. Sin este catch la pantalla se
+    // quedaba cargando para siempre (lo corrigió chimi en el Inicio, aae4842). Solo se atrapa la llamada.
+    const res = await asistenciaApi.mia().catch(() => null);
+    if (solicitud !== solicitudCargaRef.current) return null;
+    if (res?.success) {
       const datos = res.data;
       setCarga({ tipo: "ok", datos });
       // Preselecciona la primera obra donde sí se puede checar.
       setObraId((actual) =>
         datos.obras.some((o) => o.id === actual && o.geocerca) ? actual : (datos.obras.find((o) => o.geocerca)?.id ?? ""),
       );
-    } else if (res.error.code === "NOT_FOUND") {
-      setCarga({ tipo: "sin-enlace" });
-    } else {
-      setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu asistencia.") });
+      return datos;
     }
+    if (conservar) return null;
+    if (!res) setCarga({ tipo: "error", mensaje: MENSAJE_SIN_CONEXION });
+    else if (res.error.code === "NOT_FOUND") setCarga({ tipo: "sin-enlace" });
+    else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar tu asistencia.") });
+    return null;
   }, []);
 
   const pedirUbicacion = useCallback(async () => {
@@ -137,9 +144,9 @@ export function MiAsistencia() {
     setEnviando(true);
     setResultado(null);
     const { lat, lng, precisionGpsMetros } = gps.ubicacion;
-    const res =
+    const solicitud =
       fase === "entrada"
-        ? await asistenciaApi.marcarEntradaPropia({
+        ? asistenciaApi.marcarEntradaPropia({
             obraId,
             lat,
             lng,
@@ -147,7 +154,7 @@ export function MiAsistencia() {
             dispositivo: DISPOSITIVO_PWA,
             notas: comentario.trim() || undefined,
           })
-        : await asistenciaApi.marcarSalidaPropia({
+        : asistenciaApi.marcarSalidaPropia({
             lat,
             lng,
             precisionGpsMetros,
@@ -155,16 +162,39 @@ export function MiAsistencia() {
             salidaAnticipada: salidaAnticipada || undefined,
             motivoSalidaAnticipada: salidaAnticipada ? motivoSalida.trim() : undefined,
           });
-    setEnviando(false);
-    if (res.success) {
-      setAhora(new Date());
-      setResultado({ tipo: "ok", texto: mensajeExito(fase, res.data) });
-      setComentario("");
-      setSalidaAnticipada(false);
-      setMotivoSalida("");
-      await cargar();
-    } else {
-      setResultado({ tipo: "error", texto: mensajeDeApi(res.error, "No se pudo registrar. Intenta de nuevo.") });
+    // Si se va la señal al checar, el apiClient LANZA: el `.catch` lo vuelve aviso y el `finally` libera el botón
+    // pase lo que pase. Antes se quedaba trabado en "enviando" (mismo bug que chimi corrigió en el Inicio,
+    // aae4842). No quitar ninguno de los dos.
+    try {
+      const res = await solicitud.catch(() => null);
+      if (res?.success) {
+        const registrado = res.data;
+        setAhora(new Date());
+        setResultado({ tipo: "ok", texto: mensajeExito(fase, registrado) });
+        setComentario("");
+        setSalidaAnticipada(false);
+        setMotivoSalida("");
+        // La pantalla pasa de fase con lo que respondió la API, sin esperar la recarga (si la recarga falla, no
+        // vuelve a ofrecer checar lo que ya quedó).
+        setCarga((previa) => (previa.tipo === "ok" ? { tipo: "ok", datos: { ...previa.datos, registroHoy: registrado } } : previa));
+        await cargar(true);
+        return;
+      }
+      // Falló (sin señal o rechazo de la API). Si la petición sí llegó y se perdió la respuesta con la señal, el
+      // registro ya existe: se recarga sin perder la pantalla y, si ya quedó, se dice eso en vez de pedir otro
+      // intento (revisión: antes el trabajador veía "intenta de nuevo" con la entrada ya guardada).
+      const actual = await cargar(true);
+      const yaQuedo = fase === "entrada" ? actual?.registroHoy?.horaEntrada : actual?.registroHoy?.horaSalida;
+      if (yaQuedo && actual?.registroHoy) {
+        setResultado({ tipo: "ok", texto: mensajeExito(fase, actual.registroHoy) });
+      } else if (!res) {
+        // Una escritura sin respuesta no se sabe si quedó: no se dice "revisa tu señal" como si nada hubiera pasado.
+        setResultado({ tipo: "error", texto: `No se pudo confirmar tu registro. ${MENSAJE_SIN_CONEXION}` });
+      } else {
+        setResultado({ tipo: "error", texto: mensajeDeApi(res.error, "No se pudo registrar. Intenta de nuevo.") });
+      }
+    } finally {
+      setEnviando(false);
     }
   };
 

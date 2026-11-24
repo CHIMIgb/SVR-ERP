@@ -30,7 +30,7 @@ import {
   consultarEstado,
   type AdjuntoPendiente,
 } from '@/lib/pwa/offline';
-import { sincronizarAhora } from '@/lib/pwa/sincronizador';
+import { haySenal, sincronizarAhora } from '@/lib/pwa/sincronizador';
 import { modalNuevoReporteClasses as c } from './ModalNuevoReporte.styles';
 
 /** Categoría responsable — el área a la que se ENVÍA el incidente (copia del escritorio). */
@@ -263,9 +263,10 @@ export function ModalNuevoReporte({
           datos: img.datos,
         })),
       );
-      // Solo el ACK de ESTE item felicita: la pasada puede enviar otros
-      // items viejos de la cola (bloqueante 5 PR #23)
-      const enviados = await sincronizarAhora();
+      // Sin señal NO se intenta el envío: marcaría el item como `error` y el
+      // sincronizador global ya reintentará en `online`. Solo el ACK de ESTE
+      // item felicita: la pasada puede enviar otros viejos (bloqueante 5 PR #23)
+      const enviados = haySenal() ? await sincronizarAhora() : [];
       onEncolado?.();
       if (enviados.includes(item.id)) {
         showToast('Incidente registrado exitosamente.', 'success'); // paridad del escritorio
