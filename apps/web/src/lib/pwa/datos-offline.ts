@@ -24,7 +24,23 @@ interface DatoOffline {
 export const DATOS_OFFLINE: DatoOffline[] = [
   { clave: "subcategorias", traer: () => reportesCampoApi.subcategorias() },
   { clave: "proyectos", traer: () => reportesCampoApi.proyectos() },
-  { clave: "trabajadores", traer: () => trabajadoresApi.listar({ limit: 100 }) },
+  {
+    // I-2 revisión PR #23: solo lo que usa el select de asignar (/m/reportes)
+    // va al snapshot — el DTO completo trae sueldos y contactos de emergencia
+    // (nómina en el teléfono). La misma proyección vive en el live de la vista.
+    clave: "trabajadores",
+    traer: async () => {
+      const res = await trabajadoresApi.listar({ limit: 100 });
+      if (!res.success) return res;
+      return {
+        ...res,
+        data: {
+          ...res.data,
+          items: res.data.items.map(({ id, nombre, puesto }) => ({ id, nombre, puesto })),
+        },
+      };
+    },
+  },
 ];
 
 /**

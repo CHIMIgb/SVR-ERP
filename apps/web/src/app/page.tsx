@@ -16,6 +16,13 @@ import { CLAVE_TEMA } from "@/lib/tema";
  * Tras autenticar enruta a la cara correspondiente y revisa el estado del PIN
  * (temporal/vencido → cambio obligatorio, spec §6.6).
  */
+
+/**
+ * Largo máximo del número de empleado: prefijo (4) + hasta 6 dígitos, igual que LoginPinDto de la API
+ * (`^(ADM|RES|TEC|COB|TRA)-\d{1,6}$`). Antes era 8: desde el consecutivo 10000 (TRA-10000) nadie podía entrar.
+ */
+const NUMERO_EMPLEADO_MAX = 10;
+
 export default function LoginPage() {
   const router = useRouter();
   const { login, loginPin, isAuthenticated, isInitialized, isLoading, error, clearError } = useAuth();
@@ -63,8 +70,8 @@ export default function LoginPage() {
   const validate = (): { email?: string; password?: string; numero?: string; pin?: string } => {
     if (modo === "pin") {
       const errors: { numero?: string; pin?: string } = {};
-      if (numeroEmpleado.trim().length > 8) {
-        errors.numero = "Máximo 8 caracteres (ej. TRA-0142)";
+      if (numeroEmpleado.trim().length > NUMERO_EMPLEADO_MAX) {
+        errors.numero = `Máximo ${NUMERO_EMPLEADO_MAX} caracteres (ej. TRA-0142)`;
       } else if (!/^(ADM|RES|TEC|COB|TRA)-\d{1,6}$/i.test(numeroEmpleado.trim())) {
         errors.numero = "Formato: PREF-NNN (ej. TRA-0142)";
       }
@@ -240,7 +247,7 @@ export default function LoginPage() {
                       type="text"
                       autoComplete="username"
                       inputMode="text"
-                      maxLength={8}
+                      maxLength={NUMERO_EMPLEADO_MAX}
                       placeholder="TRA-0142"
                       value={numeroEmpleado}
                       onChange={(e) => {

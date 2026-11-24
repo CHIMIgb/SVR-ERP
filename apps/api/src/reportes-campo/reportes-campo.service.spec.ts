@@ -435,14 +435,30 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       );
     });
 
-    it('reenvío con la misma idempotenciaKey devuelve el original y NO crea otro folio', async () => {
+    it('reenvío con la misma idempotenciaKey del MISMO usuario devuelve el original y NO crea otro folio', async () => {
       const key = '550e8400-e29b-41d4-a716-446655440099';
       prisma.reportes_campo.findUnique.mockResolvedValueOnce(null); // primer envío: aún no existe
       const original = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
-      const reenvio = await service.create({ ...createDto, idempotenciaKey: key }, 'user-2');
+      const reenvio = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
       expect(reenvio).toEqual(original);
       expect(prisma.reportes_campo.create).toHaveBeenCalledTimes(1);
       expect(prisma.reportes_campo.count).toHaveBeenCalledTimes(1);
+    });
+
+    it('idempotenciaKey de OTRO usuario → IDEMPOTENCIA_AJENA (audita FAIL, no filtra el reporte ajeno)', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440099';
+      // la key existe y pertenece a user-1 (mockReporte); user-2 la reenvía
+      await expect(
+        service.create({ ...createDto, idempotenciaKey: key }, 'user-2'),
+      ).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'IDEMPOTENCIA_AJENA',
+        }),
+      );
+      expect(prisma.reportes_campo.create).not.toHaveBeenCalled();
     });
 
     it('persiste la idempotenciaKey del dispositivo', async () => {
@@ -465,6 +481,29 @@ describe('ReportesCampoService (flujo incidentes v2)', () => {
       );
       const resultado = await service.create({ ...createDto, idempotenciaKey: key }, 'user-1');
       expect(resultado.id).toBe('reporte-ganador');
+    });
+
+    it('carrera: P2002 con ganador de OTRO usuario → IDEMPOTENCIA_AJENA (audita FAIL)', async () => {
+      const key = '550e8400-e29b-41d4-a716-446655440096';
+      prisma.reportes_campo.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ ...mockReporte, id: 'reporte-ajeno', usuario_id: 'otro-1' });
+      prisma.reportes_campo.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('duplicate key', {
+          code: 'P2002',
+          clientVersion: '7.0.0',
+        }),
+      );
+      await expect(
+        service.create({ ...createDto, idempotenciaKey: key }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REPORTE_CREADO,
+          result: AuditResult.FAIL,
+          errorCode: 'IDEMPOTENCIA_AJENA',
+        }),
+      );
     });
   });
 
