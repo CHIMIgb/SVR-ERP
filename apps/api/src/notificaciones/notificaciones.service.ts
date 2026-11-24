@@ -20,6 +20,19 @@ import { esEndpointPushPermitido } from './push-hosts';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
 /**
+ * Host del endpoint para LOGS (menor 5 revisión PR #23): el endpoint
+ * completo lleva el token de la suscripción (`fcm/send/<token>`) — ese
+ * dato JAMÁS va al log; el host basta para diagnosticar.
+ */
+function hostDelEndpoint(endpoint: string): string {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return 'endpoint-invalido';
+  }
+}
+
+/**
  * Destinatarios explícitos (B5.8): la notificación declara PARA QUIÉN es al
  * emitir — a un usuario, a un área/torre, a un rol o a todos. NO depende de
  * menús ni de vistas.
@@ -134,7 +147,7 @@ export class NotificacionesService {
         // valida el host, pero endpoints guardados con la regla antigua se
         // filtran aquí — un host ajeno NUNCA recibe POST del server.
         if (!esEndpointPushPermitido(s.endpoint)) {
-          this.logger.warn(`Push descartado: endpoint fuera de la lista blanca (${s.endpoint})`);
+          this.logger.warn(`Push descartado: endpoint fuera de la lista blanca (host ${hostDelEndpoint(s.endpoint)})`);
           return;
         }
         try {
@@ -151,7 +164,7 @@ export class NotificacionesService {
             limpiadas++;
           } else {
             this.logger.warn(
-              `Push falló para ${s.endpoint}: ${error instanceof Error ? error.message : error}`,
+              `Push falló para ${hostDelEndpoint(s.endpoint)}: ${error instanceof Error ? error.message : error}`,
             );
           }
         }
@@ -499,6 +512,11 @@ export class NotificacionesService {
         suscripcion,
       };
     } catch (error) {
+      // Menor 5 revisión PR #23: loguear la causa REAL antes del FAIL
+      // auditado — sin esto, el 500 no dice qué falló en el upsert.
+      this.logger.error(
+        `Suscripción de push falló: ${error instanceof Error ? error.message : error}`,
+      );
       // El 404 era mentira semántica (nada "no se encontró"): fallo interno
       // → 500, con FAIL auditado ANTES de lanzar (estándar del repo).
       return this.fallir(

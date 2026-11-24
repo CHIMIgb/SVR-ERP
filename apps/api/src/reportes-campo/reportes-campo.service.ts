@@ -565,7 +565,20 @@ export class ReportesCampoService {
         where: { idempotencia_key: dto.idempotenciaKey },
         include: REPORTE_INCLUDE,
       });
-      if (existente) return this.serialize(existente);
+      if (existente) {
+        // Menor 6 revisión PR #23: la idempotencia solo aplica al DUEÑO de la
+        // key — devolver el original a otro usuario filtraría su reporte.
+        if (existente.usuario_id !== userId) {
+          return this.fallir(
+            AuditAction.REPORTE_CREADO,
+            existente.id,
+            'IDEMPOTENCIA_AJENA',
+            ConflictException,
+            'La clave de idempotencia ya pertenece a un reporte de otro usuario',
+          );
+        }
+        return this.serialize(existente);
+      }
     }
 
     // Torre destino del incidente: explícita (otra torre) o resuelta con el
@@ -639,13 +652,25 @@ export class ReportesCampoService {
         break;
       } catch (e) {
         // Carrera real: dos reenvíos con la misma key pasan el findUnique de
-        // arriba y chocan en el índice único. El que pierde devuelve al ganador.
+        // arriba y chocan en el índice único. El que pierde devuelve al ganador
+        // SOLO si es del mismo dueño (menor 6 revisión PR #23).
         if (dto.idempotenciaKey) {
           const ganador = await this.prisma.reportes_campo.findUnique({
             where: { idempotencia_key: dto.idempotenciaKey },
             include: REPORTE_INCLUDE,
           });
-          if (ganador) return this.serialize(ganador);
+          if (ganador) {
+            if (ganador.usuario_id !== userId) {
+              return this.fallir(
+                AuditAction.REPORTE_CREADO,
+                ganador.id,
+                'IDEMPOTENCIA_AJENA',
+                ConflictException,
+                'La clave de idempotencia ya pertenece a un reporte de otro usuario',
+              );
+            }
+            return this.serialize(ganador);
+          }
         }
         // Patrón cobranza/proveedores (idioma-neutral): único unique
         // colisionable en este create es `codigo` (ver facturas.service).
