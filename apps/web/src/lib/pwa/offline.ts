@@ -6,6 +6,7 @@
  * SIN dependencias nuevas. La identidad de cada registro es un UUID
  * generado EN EL TELÉFONO → los reenvíos son idempotentes en el servidor.
  */
+import { STORAGE_KEYS } from "@svr-erp/shared";
 
 /** Foto del alta: base64 puro (WebP convertido localmente, sin red). */
 export interface AdjuntoPendiente {
@@ -22,12 +23,20 @@ export interface ElementoCola {
   creado_en: string;
   intentos: number;
   /**
-   * `rechazado` = estado TERMINAL: el server respondió 4xx (≠409) — la
-   * captura es inválida tal cual y NO se reenvía sola; espera decisión
+   * `rechazado` = estado TERMINAL: el server validó y negó la captura
+   * (4xx de datos: 400/403/404/422) — NO se reenvía sola; espera decisión
    * humana (Descartar/Reintentar en EstadoCola). `conflicto` = 409 de
    * negocio (duplicado); `error` = fallo de red/5xx (se reintentan solos).
    */
   estado: "pendiente" | "error" | "conflicto" | "rechazado";
+  /**
+   * Dueño de la captura (id del usuario que encoló, tercera revisión 2026-
+   * 11-22): el envío usa el token de la SESIÓN activa, así que una captura
+   * solo sale con el token de quien la capturó — B nunca envía lo
+   * pendiente de A. `undefined` = item VIEJO (anterior a este campo): no
+   * se envía solo ni se cuenta — muere en el logout.
+   */
+  usuarioId?: string;
   /**
    * Fotos del alta — NO van en el payload (el ValidationPipe rechazaría el
    * POST). Tras el ACK del reporte el sincronizador las adjunta en secuencia.
@@ -44,6 +53,21 @@ export interface ElementoCola {
 
 const DB_NOMBRE = "svr-pwa";
 const STORE = "outbox";
+
+/**
+ * Usuario de la SESIÓN ACTIVA (del perfil persistido en `localStorage`).
+ * El envío de la cola usa su token — la cola es de UN usuario por vez.
+ */
+export function usuarioSesionId(): string | null {
+  try {
+    const crudo = localStorage.getItem(STORAGE_KEYS.USER);
+    if (!crudo) return null;
+    const user = JSON.parse(crudo) as { id?: string };
+    return typeof user.id === "string" && user.id ? user.id : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Abre la BD (una sola vez por pestaña). */
 function abrir(): Promise<IDBDatabase> {
@@ -64,8 +88,13 @@ async function conStore<T>(modo: IDBTransactionMode, fn: (store: IDBObjectStore)
   return new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, modo);
     const req = fn(tx.objectStore(STORE));
-    req.onsuccess = () => resolve(req.result as T);
-    req.onerror = () => reject(req.error);
+    // `onsuccess` de la request llega ANTES del commit: resolver ahí deja una
+    // ventana donde un reload (HMR) pierde la captura recién encolada.
+    let resultado: T;
+    req.onsuccess = () => { resultado = req.result as T; };
+    tx.oncomplete = () => resolve(resultado);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? req.error);
   });
 }
 
@@ -87,6 +116,7 @@ export async function encolar(
     creado_en: new Date().toISOString(),
     intentos: 0,
     estado: "pendiente",
+    usuarioId: usuarioSesionId() ?? undefined,
     ...(adjuntos && adjuntos.length > 0 ? { adjuntos } : {}),
   };
   await conStore<void>("readwrite", (store) => store.add(item));
@@ -99,10 +129,11 @@ export async function pendientes(): Promise<ElementoCola[]> {
   return todos.sort((a, b) => a.creado_en.localeCompare(b.creado_en));
 }
 
-/** Cuántos esperan envío (alimenta el badge de la nav). */
+/** Cuántos esperan envío DEL USUARIO DE LA SESIÓN (alimenta el badge). */
 export async function contarPendientes(): Promise<number> {
+  const usuario = usuarioSesionId();
   const todos = await pendientes();
-  return todos.length;
+  return todos.filter((i) => i.usuarioId === usuario).length;
 }
 
 /** Marca un elemento como ENVIADO y lo elimina de la cola. */
@@ -115,11 +146,23 @@ export async function marcarEnviada(id: string): Promise<void> {
  * NO se elimina — queda con los índices pendientes en estado `error` para
  * que el sincronizador reintente SOLO esas fotos en la próxima pasada.
  */
-export async function guardarAdjuntosPendientes(id: string, indices: number[]): Promise<void> {
+/**
+ * Fotos del alta que NO subieron: el reporte ya existe (ACK) — el item NO
+ * se elimina, queda con los índices pendientes para que el sincronizador
+ * reenvíe SOLO esas fotos en la próxima pasada (PR #23, bloqueante 1).
+ * `rechazado` = al menos una foto fue RECHAZADA por el server (4xx de
+ * datos, p.ej. 413/422): no se reintentan solas; espera decisión humana
+ * (Descartar/Reintentar en EstadoCola — menor 1 revisión PR #23).
+ */
+export async function guardarAdjuntosPendientes(
+  id: string,
+  indices: number[],
+  rechazado = false,
+): Promise<void> {
   const item = await conStore<ElementoCola | undefined>("readonly", (store) => store.get(id));
   if (!item) return;
   item.adjuntosPendientes = indices;
-  item.estado = "error";
+  item.estado = rechazado ? "rechazado" : "error";
   await conStore<void>("readwrite", (store) => store.put(item));
 }
 
