@@ -13,7 +13,9 @@ import { Tabs } from "@/components/ui/Tabs";
 import {
   GRUPOS_FALTAN,
   GRUPOS_LLEGARON,
+  MENSAJE_SIN_CONEXION,
   clasificarMiembro,
+  contarEquipo,
   fechaLarga,
   iniciales,
   mensajeDeApi,
@@ -54,9 +56,12 @@ export function EquipoAsistencia() {
   // Sin setState antes del await: el estado inicial ya es "cargando" (regla react-hooks/set-state-in-effect).
   const cargar = useCallback(async () => {
     const solicitud = ++solicitudRef.current;
-    const res = await asistenciaApi.equipo();
+    // API caída / sin señal: el apiClient LANZA en vez de devolver success:false. Sin este catch la pantalla se
+    // quedaba cargando para siempre (lo corrigió chimi en el Inicio, aae4842). Solo se atrapa la llamada.
+    const res = await asistenciaApi.equipo().catch(() => null);
     if (solicitud !== solicitudRef.current) return;
-    if (res.success) setCarga({ tipo: "ok", datos: res.data });
+    if (!res) setCarga({ tipo: "error", mensaje: MENSAJE_SIN_CONEXION });
+    else if (res.success) setCarga({ tipo: "ok", datos: res.data });
     else setCarga({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar la asistencia de tu equipo.") });
   }, []);
 
@@ -114,9 +119,10 @@ export function EquipoAsistencia() {
     );
   }
 
+  // El conteo es el mismo del Inicio (contarEquipo); aquí solo se filtran las listas de cada pestaña.
+  const conteo = contarEquipo(miembros.map((m) => m.estado.grupo));
   const llegaron = miembros.filter((m) => GRUPOS_LLEGARON.includes(m.estado.grupo));
   const faltan = miembros.filter((m) => GRUPOS_FALTAN.includes(m.estado.grupo));
-  const tarde = miembros.filter((m) => m.estado.grupo === "tarde").length;
   const visibles = filtro === "presentes" ? llegaron : filtro === "faltan" ? faltan : miembros;
 
   return (
@@ -129,9 +135,9 @@ export function EquipoAsistencia() {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        <StatsCard label="Presentes" value={llegaron.length} hint={`de ${miembros.length}`} />
-        <StatsCard label="Retardos" value={tarde} hint="llegaron tarde" />
-        <StatsCard label="Faltan" value={faltan.length} hint="no han llegado" />
+        <StatsCard label="Presentes" value={conteo.llegaron} hint={`de ${conteo.total}`} />
+        <StatsCard label="Retardos" value={conteo.tarde} hint="llegaron tarde" />
+        <StatsCard label="Faltan" value={conteo.faltan} hint="no han llegado" />
       </div>
 
       <Tabs
@@ -139,9 +145,9 @@ export function EquipoAsistencia() {
         value={filtro}
         onChange={(k) => setFiltro(k as Filtro)}
         tabs={[
-          { key: "todos", label: "Todos", count: miembros.length },
-          { key: "presentes", label: "Presentes", count: llegaron.length },
-          { key: "faltan", label: "Faltan", count: faltan.length },
+          { key: "todos", label: "Todos", count: conteo.total },
+          { key: "presentes", label: "Presentes", count: conteo.llegaron },
+          { key: "faltan", label: "Faltan", count: conteo.faltan },
         ]}
       >
         {visibles.length === 0 ? (

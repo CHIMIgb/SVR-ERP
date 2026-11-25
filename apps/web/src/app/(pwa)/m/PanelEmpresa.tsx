@@ -13,7 +13,7 @@ import {
   type CobranzaStats,
   type ReportesCampoStats,
 } from "@/lib/api";
-import { fechaLocalHoy } from "@/lib/formatters";
+import { MENSAJE_SIN_CONEXION, fechaHoyEnZona, mensajeDeApi } from "@/lib/pwa/asistencia-propia";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -40,6 +40,12 @@ export function puedeVerPanelEmpresa(user: UserAuth | null): boolean {
 
 function vistaDe(user: UserAuth | null) {
   return (ruta: string) => (user?.vistas ?? []).some((v) => v.ruta === ruta && v.puedeVer);
+}
+
+/** "reportes, asistencia y cobranza". A mano y no con Intl.ListFormat: en un WebView viejo sin él, crearlo al
+ *  cargar el módulo tumbaría todo el Inicio. */
+function unirLista(partes: string[]): string {
+  return partes.length < 2 ? (partes[0] ?? "") : `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
 }
 
 /** "$340K", "$1.2M" como en el diseño (Intl en es-MX da "340.0 k$"). */
@@ -69,10 +75,13 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
     async <T,>(fuente: Fuente, pedir: () => Promise<ApiResponse<T>>, guardar: (e: Estado<T>) => void) => {
       const n = (secuencia.current[fuente] ?? 0) + 1;
       secuencia.current[fuente] = n;
-      const res = await pedir();
+      // API caída / sin señal: el apiClient LANZA en vez de devolver success:false. Sin este catch la tarjeta se
+      // quedaba cargando para siempre (lo corrigió chimi en el Inicio, aae4842). Solo se atrapa la llamada.
+      const res = await pedir().catch(() => null);
       if (secuencia.current[fuente] !== n) return;
-      if (res.success) guardar({ tipo: "ok", datos: res.data });
-      else guardar({ tipo: "error", mensaje: res.error.message || "No se pudo cargar." });
+      if (!res) guardar({ tipo: "error", mensaje: MENSAJE_SIN_CONEXION });
+      else if (res.success) guardar({ tipo: "ok", datos: res.data });
+      else guardar({ tipo: "error", mensaje: mensajeDeApi(res.error, "No se pudo cargar.") });
     },
     [],
   );
@@ -110,7 +119,8 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
   };
 
   // ── Derivados ──
-  const hoy = fechaLocalHoy();
+  // "Hoy" en la zona del negocio (APP_TIMEZONE), no la del teléfono: así coincide con las fechas de la API.
+  const hoy = fechaHoyEnZona();
   const diasHoy =
     semanal.tipo === "ok" ? semanal.datos.map((s) => s.dias.find((d) => d.fecha === hoy) ?? null) : [];
   const personalActivo = semanal.tipo === "ok" ? semanal.datos.length : 0;
@@ -166,22 +176,32 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
       tono: "bg-error/10 text-error",
     });
   }
-  const alertasCargando = [verReportes && reportes, verAsistencia && semanal, verCobranza && cobranza].some(
-    (e) => e && e.tipo === "cargando",
-  );
+  const fuentesAlertas: { fuente: Fuente; nombre: string; estado: Estado<unknown>; poner: (e: { tipo: "cargando" }) => void }[] = [];
+  if (verReportes) fuentesAlertas.push({ fuente: "reportes", nombre: "reportes", estado: reportes, poner: setReportes });
+  if (verAsistencia) fuentesAlertas.push({ fuente: "semanal", nombre: "asistencia", estado: semanal, poner: setSemanal });
+  if (verCobranza) fuentesAlertas.push({ fuente: "cobranza", nombre: "cobranza", estado: cobranza, poner: setCobranza });
+  const alertasCargando = fuentesAlertas.some((f) => f.estado.tipo === "cargando");
+  // Una fuente que falló no se puede dar por "sin alertas": antes el bloque decía "Sin alertas por ahora"
+  // aunque no se hubiera podido revisar nada (falso tranquilizador).
+  const alertasConError = fuentesAlertas.filter((f) => f.estado.tipo === "error");
+  // La causa va visible (sin repetir): reportes no tiene tarjeta propia y un 403 no es lo mismo que no tener señal.
+  const causasAlertas = [
+    ...new Set(alertasConError.map((f) => (f.estado.tipo === "error" ? f.estado.mensaje : ""))),
+  ].filter(Boolean);
+  const reintentarAlertas = () => alertasConError.forEach((f) => reintentar(f.fuente, f.poner));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-2">
         {verAsistencia && (
-          <Kpi estado={semanal} onReintentar={() => reintentar("semanal", setSemanal)}>
+          <Kpi titulo="Personal activo" estado={semanal} onReintentar={() => reintentar("semanal", setSemanal)}>
             {() => (
               <StatsCard label="Personal activo" value={personalActivo} hint={`${conEntradaHoy} con asistencia hoy`} />
             )}
           </Kpi>
         )}
         {verMaquinas && (
-          <Kpi estado={maquinas} onReintentar={() => reintentar("maquinas", setMaquinas)}>
+          <Kpi titulo="Flota operando" estado={maquinas} onReintentar={() => reintentar("maquinas", setMaquinas)}>
             {() => (
               <StatsCard
                 label="Flota operando"
@@ -192,7 +212,7 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
           </Kpi>
         )}
         {verCobranza && (
-          <Kpi estado={cobranza} onReintentar={() => reintentar("cobranza", setCobranza)}>
+          <Kpi titulo="Por cobrar" estado={cobranza} onReintentar={() => reintentar("cobranza", setCobranza)}>
             {(d: CobranzaStats) => (
               <StatsCard
                 label="Por cobrar"
@@ -203,7 +223,7 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
           </Kpi>
         )}
         {verCobranza && (
-          <Kpi estado={cobranza} onReintentar={() => reintentar("cobranza", setCobranza)}>
+          <Kpi titulo="Cobrado del mes" estado={cobranza} onReintentar={() => reintentar("cobranza", setCobranza)}>
             {(d: CobranzaStats) => (
               <StatsCard label="Cobrado del mes" value={monedaCompacta(d.cobradoMes)} hint="cobranza" />
             )}
@@ -213,14 +233,35 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-black text-ui-900">Alertas</h2>
-        {alertasCargando && alertas.length === 0 ? (
-          <Skeleton variant="row" />
-        ) : alertas.length === 0 ? (
+        {alertas.length === 0 && alertasConError.length === 0 && alertasCargando && <Skeleton variant="row" />}
+        {alertas.length === 0 && alertasConError.length === 0 && !alertasCargando && (
           <p className="bg-surface border border-ui-200 rounded-2xl p-4 text-sm text-ui-500 flex items-center gap-2">
             <CircleCheck className="w-5 h-5 text-success shrink-0" />
             Sin alertas por ahora.
           </p>
-        ) : (
+        )}
+        {alertasConError.length > 0 && (
+          <div className="bg-surface border border-ui-200 rounded-2xl p-4 flex flex-col gap-2">
+            <p className="text-sm font-semibold text-error">
+              No se pudieron revisar las alertas de {unirLista(alertasConError.map((f) => f.nombre))}.
+            </p>
+            {causasAlertas.map((causa) => (
+              <p key={causa} className="text-xs text-ui-500">
+                {causa}
+              </p>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<RefreshCw className="w-4 h-4" />}
+              className="self-start"
+              onClick={reintentarAlertas}
+            >
+              Reintentar
+            </Button>
+          </div>
+        )}
+        {alertas.length > 0 && (
           <ul className="flex flex-col gap-2">
             {alertas.map((a) => {
               const contenido = (
@@ -257,10 +298,13 @@ export function PanelEmpresa({ user, rutas }: { user: UserAuth | null; rutas: Se
 
 /** Tarjeta de una fuente: esqueleto mientras carga, error con Reintentar, o el contenido. */
 function Kpi<T>({
+  titulo,
   estado,
   onReintentar,
   children,
 }: {
+  /** Va también en el error: sin él, con la red caída, las cuatro tarjetas decían lo mismo sin saber de qué eran. */
+  titulo: string;
   estado: Estado<T>;
   onReintentar: () => void;
   children: (datos: T) => ReactNode;
@@ -269,6 +313,7 @@ function Kpi<T>({
   if (estado.tipo === "error") {
     return (
       <div className="bg-surface border border-ui-200 rounded-2xl p-4 flex flex-col gap-2 min-w-0">
+        <p className="text-xs font-bold text-ui-700 truncate">{titulo}</p>
         <p className="text-xs text-error line-clamp-3">{estado.mensaje}</p>
         <Button variant="outline" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={onReintentar}>
           Reintentar

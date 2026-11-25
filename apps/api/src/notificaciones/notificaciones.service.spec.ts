@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditResult, TipoNotificacion } from '@prisma/client';
 import { NotificacionesService } from './notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -331,8 +331,9 @@ describe('NotificacionesService', () => {
       );
     });
 
-    it('si el upsert falla: FAIL auditado con error_code y lanza 500 (no 404)', async () => {
+    it('si el upsert falla: FAIL auditado con error_code, lanza 500 (no 404) y loguea la causa', async () => {
       prisma.push_suscripciones.upsert.mockRejectedValueOnce(new Error('BD caída'));
+      const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
       await expect(service.suscribirPush(USER_ID, dtoBase)).rejects.toThrow(
         InternalServerErrorException,
       );
@@ -343,6 +344,11 @@ describe('NotificacionesService', () => {
           errorCode: 'PUSH_SUSCRIPCION_FALLIDA',
         }),
       );
+      // Menor 5 revisión PR #23: la causa real va al log antes del FAIL
+      expect(loggerError).toHaveBeenCalledWith(
+        expect.stringContaining('BD caída'),
+      );
+      loggerError.mockRestore();
     });
   });
 
