@@ -19,6 +19,19 @@ import { AsistenciaService } from './asistencia.service';
 
 const TEST_ID = randomUUID().slice(0, 8);
 
+// Reloj fijo para todo el archivo: miércoles 17-jun-2026, 10:00 hora local.
+// Corrección 2026-11-22: con la fecha real, "el residente ve a su equipo" fallaba los domingos. La semana de
+// asistencia va de lunes a sábado y el domingo no cae en ninguna (hallazgo "Nómina 10", pendiente de decisión del
+// cliente), así que la entrada del domingo nunca aparece en el día del equipo. Va antes del describe porque
+// `inicio` se calcula al definirlo. advanceTimers: el reloj sigue corriendo desde ahí (Nest y el pool de Postgres
+// usan timers); nextTick/setImmediate/microtareas quedan reales. No quitarlo sin resolver antes lo del domingo.
+jest.useFakeTimers({
+  now: new Date(2026, 5, 17, 10, 0, 0),
+  advanceTimers: true,
+  doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+});
+afterAll(() => jest.useRealTimers());
+
 describe('Asistencia propia y del equipo (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;

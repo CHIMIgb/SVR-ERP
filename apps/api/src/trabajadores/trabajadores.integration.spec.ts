@@ -172,6 +172,35 @@ describe('Trabajadores Audit (Real DB)', () => {
   const findAudits = (action: AuditAction, entityId: string) =>
     prisma.registro_auditoria.findMany({ where: { action, entity_id: entityId }, orderBy: { timestamp: 'desc' } });
 
+  /** Cuenta del alta (P14) del trabajador con una sesión abierta, como si hubiera entrado a la PWA. */
+  const abrirSesionDe = async (trabajadorId: string): Promise<string> => {
+    const t = await prisma.trabajadores.findUnique({ where: { id: trabajadorId }, select: { usuario_id: true } });
+    expect(t?.usuario_id).toBeTruthy();
+    const cuentaId = t!.usuario_id!;
+    await prisma.sessions.create({
+      data: {
+        id: randomUUID(),
+        user_id: cuentaId,
+        refresh_token_jti: randomUUID(),
+        expira_en: new Date(Date.now() + 86_400_000),
+        actualizado_en: new Date(),
+      },
+    });
+    expect((await prisma.users.findUnique({ where: { id: cuentaId } }))?.activo).toBe(true);
+    return cuentaId;
+  };
+
+  /** Tras la baja: cuenta inactiva, sesiones cerradas con su motivo y la desactivación auditada en la cuenta. */
+  const esperarCuentaCerrada = async (cuentaId: string) => {
+    expect((await prisma.users.findUnique({ where: { id: cuentaId } }))?.activo).toBe(false);
+    const sesiones = await prisma.sessions.findMany({ where: { user_id: cuentaId } });
+    expect(sesiones.length).toBeGreaterThan(0);
+    expect(sesiones.every((s) => !s.activa && s.motivo_cierre === 'trabajador_dado_de_baja' && s.cerrada_en)).toBe(true);
+    const audits = await findAudits(AuditAction.USUARIO_ACTUALIZADO, cuentaId);
+    expect(audits[0]?.result).toBe('SUCCESS');
+    expect(audits[0]?.metadata).toEqual(expect.objectContaining({ campo: 'activo', valor: false, motivo: 'trabajador_dado_de_baja' }));
+  };
+
   describe('TRABAJADOR_CREADO', () => {
     it('debe crear el trabajador y auditar SUCCESS con actor real', async () => {
       const dto = createDto();
@@ -427,6 +456,20 @@ describe('Trabajadores Audit (Real DB)', () => {
       expect(audits[0].result).toBe('SUCCESS');
     });
 
+    it('la baja desactiva la cuenta de la app y cierra sus sesiones (antes seguía entrando con su PIN)', async () => {
+      const trabajador = await service.create(createDto({ nombre: `Baja con cuenta ${TEST_ID}` }), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+      const cuentaId = await abrirSesionDe(trabajador.id);
+
+      await service.liquidar(
+        trabajador.id,
+        { tipoTerminacion: 'Renuncia', diasTrabajadosPeriodo: 2, diasVacacionesPendientes: 0 },
+        ACTOR_USER_ID,
+      );
+
+      await esperarCuentaCerrada(cuentaId);
+    });
+
     it('no debe liquidar sin fecha de ingreso (la antigüedad saldría de una fecha inventada)', async () => {
       const trabajador = await service.create(createDto(), ACTOR_USER_ID);
       createdTrabajadorIds.push(trabajador.id);
@@ -489,6 +532,16 @@ describe('Trabajadores Audit (Real DB)', () => {
       const audits = await findAudits(AuditAction.TRABAJADOR_ELIMINADO, trabajador.id);
       expect(audits.length).toBeGreaterThanOrEqual(1);
       expect(audits[0].result).toBe('SUCCESS');
+    });
+
+    it('eliminar también desactiva la cuenta de la app y cierra sus sesiones', async () => {
+      const trabajador = await service.create(createDto({ nombre: `Eliminado con cuenta ${TEST_ID}` }), ACTOR_USER_ID);
+      createdTrabajadorIds.push(trabajador.id);
+      const cuentaId = await abrirSesionDe(trabajador.id);
+
+      await service.remove(trabajador.id, ACTOR_USER_ID);
+
+      await esperarCuentaCerrada(cuentaId);
     });
   });
 

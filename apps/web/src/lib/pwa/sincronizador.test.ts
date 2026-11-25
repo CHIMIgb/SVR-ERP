@@ -12,9 +12,10 @@ import {
   marcarConflicto,
   marcarRechazada,
   guardarAdjuntosPendientes,
+  usuarioSesionId,
   type ElementoCola,
 } from './offline';
-import { reportesCampoApi } from '@/lib/api';
+import { apiClient, reportesCampoApi } from '@/lib/api';
 
 jest.mock('./offline', () => ({
   pendientes: jest.fn(),
@@ -24,9 +25,15 @@ jest.mock('./offline', () => ({
   marcarRechazada: jest.fn(),
   guardarAdjuntosPendientes: jest.fn(),
   contarPendientes: jest.fn(),
+  usuarioSesionId: jest.fn(),
 }));
 
+const mockedUsuarioSesion = usuarioSesionId as jest.Mock;
+
+const mockedPost = apiClient.post as jest.Mock;
+
 jest.mock('@/lib/api', () => ({
+  apiClient: { post: jest.fn() },
   reportesCampoApi: { adjuntar: jest.fn() },
 }));
 
@@ -41,6 +48,7 @@ function itemConFotos(overrides: Partial<ElementoCola> = {}): ElementoCola {
     creado_en: '2026-11-20T10:00:00.000Z',
     intentos: 0,
     estado: 'pendiente',
+    usuarioId: 'user-1',
     adjuntos: [
       { nombre: 'a.webp', mime: 'image/webp', tamano: 10, datos: 'AAA' },
       { nombre: 'b.webp', mime: 'image/webp', tamano: 10, datos: 'BBB' },
@@ -55,10 +63,11 @@ const puertoOk: PuertoEnvio = async () => ({ ok: true, data: { id: 'reporte-1' }
 beforeEach(() => {
   jest.clearAllMocks();
   mockedAdjuntar.mockResolvedValue({ success: true });
+  mockedUsuarioSesion.mockReturnValue('user-1');
 });
 
 describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
-  it('un adjunto que falla (success:false) NO elimina el item: queda con las fotos faltantes', async () => {
+  it('un adjunto que el server RECHAZA (413) es terminal: item en "rechazado" y NO felicita', async () => {
     // arrange
     const item = itemConFotos();
     mockedPendientes.mockResolvedValue([item]);
@@ -67,11 +76,12 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
       .mockResolvedValueOnce({ success: false, error: { code: 'PAYLOAD_TOO_LARGE' } }); // b.webp NO
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert
     expect(marcarEnviada).not.toHaveBeenCalled();
-    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1]);
+    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1], true);
+    expect(ids).toEqual([]); // el modal no felicita con fotos sin subir
   });
 
   it('error de red en un adjunto (throw) NO elimina el item y conserva lo ya subido', async () => {
@@ -83,23 +93,25 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
       .mockRejectedValueOnce(new Error('Error de conexión con el servidor')); // red cae
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert
     expect(marcarEnviada).not.toHaveBeenCalled();
-    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1]);
+    expect(guardarAdjuntosPendientes).toHaveBeenCalledWith('item-1', [1], false);
+    expect(ids).toEqual([]); // tampoco felicita: falta una foto
   });
 
-  it('cuando TODAS las fotos suben, el item se elimina (marcarEnviada)', async () => {
+  it('cuando TODAS las fotos suben, el item se elimina y el modal felicita', async () => {
     // arrange
     mockedPendientes.mockResolvedValue([itemConFotos()]);
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert
     expect(guardarAdjuntosPendientes).not.toHaveBeenCalled();
     expect(marcarEnviada).toHaveBeenCalledWith('item-1');
+    expect(ids).toEqual(['item-1']);
   });
 
   it('el reenvío solo intenta las fotos FALTANTES (no duplica las ya subidas)', async () => {
@@ -108,12 +120,58 @@ describe('sincronizarAhora — adjuntos del alta (bloqueante 1 PR #23)', () => {
     mockedPendientes.mockResolvedValue([item]);
 
     // act
-    await sincronizarAhora(puertoOk);
+    const ids = await sincronizarAhora(puertoOk);
 
     // assert: una sola llamada, con los datos de b.webp (índice 1)
     expect(mockedAdjuntar).toHaveBeenCalledTimes(1);
     expect(mockedAdjuntar.mock.calls[0][1]).toMatchObject({ nombre: 'b.webp', datos: 'BBB' });
     expect(marcarEnviada).toHaveBeenCalledWith('item-1');
+    expect(ids).toEqual(['item-1']);
+  });
+});
+
+describe('sincronizarAhora — clasificación de códigos (I-1 revisión PR #23)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('401 UNAUTHORIZED NO es rechazo terminal: queda en `error` reintentable', async () => {
+    // arrange: la sesión venció — el reporte es válido y debe reenviarse
+    mockedPost.mockResolvedValue({ success: false, error: { code: 'UNAUTHORIZED' } });
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora();
+
+    // assert
+    expect(marcarError).toHaveBeenCalledWith('item-1');
+    expect(marcarRechazada).not.toHaveBeenCalled();
+  });
+
+  it('429 TOO_MANY_REQUESTS NO es rechazo terminal (el throttler es temporal)', async () => {
+    // arrange
+    mockedPost.mockResolvedValue({ success: false, error: { code: 'TOO_MANY_REQUESTS' } });
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora();
+
+    // assert
+    expect(marcarError).toHaveBeenCalledWith('item-1');
+    expect(marcarRechazada).not.toHaveBeenCalled();
+  });
+
+  it('422 UNPROCESSABLE_ENTITY sí es rechazo terminal (datos inválidos)', async () => {
+    // arrange
+    mockedPost.mockResolvedValue({ success: false, error: { code: 'UNPROCESSABLE_ENTITY' } });
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+
+    // act
+    await sincronizarAhora();
+
+    // assert
+    expect(marcarRechazada).toHaveBeenCalledWith('item-1');
+    expect(marcarError).not.toHaveBeenCalled();
   });
 });
 
@@ -187,6 +245,53 @@ describe('sincronizarAhora — ids devueltos y rechazo terminal (bloqueante 5 PR
     expect(marcarConflicto).toHaveBeenCalledWith('item-1');
     expect(marcarRechazada).not.toHaveBeenCalled();
     expect(marcarError).not.toHaveBeenCalled();
+  });
+});
+
+describe('sincronizarAhora — la cola es del usuario (3a revisión)', () => {
+  it('un item de OTRO usuario no se envía: espera a que vuelva su dueño', async () => {
+    // arrange
+    mockedPendientes.mockResolvedValue([
+      itemConFotos({ usuarioId: 'user-2', adjuntos: undefined }),
+    ]);
+    const puerto = jest.fn();
+
+    // act
+    const ids = await sincronizarAhora(puerto);
+
+    // assert
+    expect(ids).toEqual([]);
+    expect(puerto).not.toHaveBeenCalled();
+    expect(marcarError).not.toHaveBeenCalled();
+    expect(marcarEnviada).not.toHaveBeenCalled();
+  });
+
+  it('un item VIEJO sin usuarioId no se envía solo (podría ser del usuario anterior)', async () => {
+    // arrange
+    const sinDueno = itemConFotos({ adjuntos: undefined, usuarioId: undefined });
+    mockedPendientes.mockResolvedValue([sinDueno]);
+    const puerto = jest.fn();
+
+    // act
+    const ids = await sincronizarAhora(puerto);
+
+    // assert
+    expect(ids).toEqual([]);
+    expect(puerto).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión (null) no envía nada', async () => {
+    // arrange
+    mockedUsuarioSesion.mockReturnValue(null);
+    mockedPendientes.mockResolvedValue([itemConFotos({ adjuntos: undefined })]);
+    const puerto = jest.fn();
+
+    // act
+    const ids = await sincronizarAhora(puerto);
+
+    // assert
+    expect(ids).toEqual([]);
+    expect(puerto).not.toHaveBeenCalled();
   });
 });
 

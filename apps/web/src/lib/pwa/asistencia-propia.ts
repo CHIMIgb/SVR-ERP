@@ -4,8 +4,8 @@
  * Todo lo de aquí es AVISO para el trabajador: quien decide si la entrada fue puntual, si estaba en sitio o
  * si queda en omisión es la API al registrar (asistencia.service.ts). Si cambia una regla allá, se cambia aquí.
  */
-import type { DiaAsistenciaSemanaDTO, RegistroAsistenciaDTO } from '@/lib/api';
-import { formatHora12 } from '@/lib/formatters';
+import { mensajeErrorApi, type DiaAsistenciaSemanaDTO, type RegistroAsistenciaDTO } from '@/lib/api';
+import { APP_TIMEZONE, formatHora12 } from '@/lib/formatters';
 
 /** Igual que TOLERANCIA_RETARDO_MINUTOS de la API: pasada esta tolerancia la entrada queda en omisión. */
 export const TOLERANCIA_RETARDO_MINUTOS = 15;
@@ -70,29 +70,49 @@ export function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: 
 }
 
 /**
- * Minutos tarde respecto a la entrada programada "HH:mm" (negativo = antes). Usa la hora local del
- * teléfono, igual que la API usa la hora local del servidor (ambos en America/Mexico_City).
+ * Hora y minuto de `d` en la zona del negocio. Revisión de chimi (PR #24): la zona sale SOLO de APP_TIMEZONE
+ * (NEXT_PUBLIC_TZ del .env), nunca de `getHours()` del teléfono: con el teléfono en otra zona el aviso
+ * "llegas tarde" se desviaba de lo que decide la API. Sin NEXT_PUBLIC_TZ, Intl usa la zona del dispositivo.
  */
+function horaEnZona(d: Date): { horas: number; minutos: number } {
+  const partes = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: APP_TIMEZONE,
+  }).formatToParts(d);
+  const valor = (tipo: 'hour' | 'minute') => Number(partes.find((p) => p.type === tipo)?.value ?? 0);
+  return { horas: valor('hour') % 24, minutos: valor('minute') };
+}
+
+/** Minutos tarde respecto a la entrada programada "HH:mm" (negativo = antes), en la zona del negocio. */
 export function minutosTarde(entradaProgramada: string | undefined, ahora: Date): number | null {
   if (!entradaProgramada) return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(entradaProgramada);
   if (!m) return null;
-  return ahora.getHours() * 60 + ahora.getMinutes() - (Number(m[1]) * 60 + Number(m[2]));
+  const { horas, minutos } = horaEnZona(ahora);
+  return horas * 60 + minutos - (Number(m[1]) * 60 + Number(m[2]));
 }
 
-/** "domingo 8 de noviembre" en la zona del negocio. */
+/** "domingo, 8 de noviembre" en la zona del negocio (APP_TIMEZONE; nunca una zona fija en el código). */
 export function fechaLarga(d: Date): string {
   return d.toLocaleDateString('es-MX', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
-    timeZone: 'America/Mexico_City',
+    timeZone: APP_TIMEZONE,
   });
 }
 
-/** Hora actual "HH:mm" para mostrarla con formatHora12. */
+/** Hora actual "HH:mm" en la zona del negocio, para mostrarla con formatHora12. */
 export function horaActual(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const { horas, minutos } = horaEnZona(d);
+  return `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
+}
+
+/** Hoy como YYYY-MM-DD en la zona del negocio (mismo patrón que el Dashboard de escritorio). */
+export function fechaHoyEnZona(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: APP_TIMEZONE });
 }
 
 export type VarianteEstado = 'success' | 'warning' | 'error' | 'info' | 'neutral';
@@ -116,11 +136,23 @@ export function varianteEstado(estado: RegistroAsistenciaDTO['estado']): Variant
   }
 }
 
-/** Mensaje para el trabajador de un error de la API al checar o al cargar. */
-export function mensajeDeApi(error: { code?: string; message?: string } | undefined, porDefecto: string): string {
-  if (!error) return porDefecto;
-  if (error.code === 'API_DOWN') return 'Sin conexión con el servidor. Revisa tu señal e intenta de nuevo.';
-  return error.message || porDefecto;
+/**
+ * Texto cuando no hay conexión con el servidor. Sirve para los dos casos: el `API_DOWN` del apiClient (refresh
+ * sin red) y el `catch` de cada llamada, porque el apiClient LANZA cuando fetch falla (API caída / sin señal).
+ */
+export const MENSAJE_SIN_CONEXION = 'Sin conexión con el servidor. Revisa tu señal e intenta de nuevo.';
+
+/**
+ * Mensaje para el trabajador de un error de la API al checar o al cargar. Revisión de chimi (PR #24): la regla
+ * es UN solo helper (mensajeErrorApi, que une los details[] del 422 para decir QUÉ campo falló); aquí solo se
+ * agrega el caso sin conexión. No volver a leer `error.message` directo.
+ */
+export function mensajeDeApi(
+  error: { code?: string; message?: string; details?: unknown[] } | undefined,
+  porDefecto: string,
+): string {
+  if (error?.code === 'API_DOWN') return MENSAJE_SIN_CONEXION;
+  return mensajeErrorApi(error, porDefecto);
 }
 
 /** ¿El usuario ve la asistencia de su equipo? (permiso rrhh.mi_equipo:ver: Residente y Administrador). */
@@ -187,3 +219,23 @@ export function clasificarMiembro(
 
 export const GRUPOS_LLEGARON: GrupoMiembro[] = ['presente', 'tarde'];
 export const GRUPOS_FALTAN: GrupoMiembro[] = ['falta', 'sin-checar', 'pendiente'];
+
+export interface ConteoEquipo {
+  total: number;
+  llegaron: number;
+  tarde: number;
+  faltan: number;
+}
+
+/**
+ * Conteo del equipo del día. Revisión de chimi (PR #24): es la ÚNICA copia; la usan el Inicio ("Mi equipo
+ * hoy") y /m/asistencia ("Mi equipo"), para que los dos números no se separen.
+ */
+export function contarEquipo(grupos: GrupoMiembro[]): ConteoEquipo {
+  return {
+    total: grupos.length,
+    llegaron: grupos.filter((g) => GRUPOS_LLEGARON.includes(g)).length,
+    tarde: grupos.filter((g) => g === 'tarde').length,
+    faltan: grupos.filter((g) => GRUPOS_FALTAN.includes(g)).length,
+  };
+}
