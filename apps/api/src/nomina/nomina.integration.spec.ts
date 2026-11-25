@@ -22,6 +22,21 @@ import { NominaService } from './nomina.service';
 const TEST_ID = randomUUID().slice(0, 8);
 const ACTOR_USER_ID = 'c0000000-0000-0000-0000-000000000001'; // admin seed user
 
+// Reloj fijo para todo el archivo: miércoles 17-jun-2026, 10:00 hora local (2 días antes de "hoy" en la semana,
+// así el prorrateo por ingreso siempre se prueba con monto).
+// Corrección 2026-11-22: con la fecha real, sincronizarAsistencia fallaba los domingos. La semana de nómina va
+// de lunes a sábado y el domingo no cae en ninguna (hallazgo "Nómina 10", pendiente de decisión del cliente), así
+// que la entrada del domingo no contaba como día trabajado. Va antes del describe porque `diasAntesDeHoy` se
+// calcula al definirlo. La semana del 15 al 20 de junio no tiene periodo en la BD local ni en el volcado de CI:
+// el afterAll borra el periodo que use. advanceTimers: el reloj sigue corriendo desde ahí; nextTick,
+// setImmediate y microtareas quedan reales. No quitarlo sin resolver antes lo del domingo.
+jest.useFakeTimers({
+  now: new Date(2026, 5, 17, 10, 0, 0),
+  advanceTimers: true,
+  doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+});
+afterAll(() => jest.useRealTimers());
+
 describe('Nomina Audit (Real DB)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
