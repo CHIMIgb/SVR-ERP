@@ -26,13 +26,19 @@ export interface AvisoSinConexionProps {
 export function AvisoSinConexion({ fechaDatos, sirviendoSnapshot }: AvisoSinConexionProps) {
   if (!sirviendoSnapshot) return null;
 
+  // La hora en es-MX termina en "a.m."/"p.m.": pegarle el punto de la oración daba "11:43 p.m.. La
+  // sincronización…" (visto en las capturas de Flota y obras, 2026-11-24). Solo se agrega el punto si falta.
+  const cuando = fechaDatos
+    ? ` el ${new Date(fechaDatos).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}`
+    : '';
+  const fin = cuando.endsWith('.') ? '' : '.';
+
   return (
     <div role="status" className={c.root}>
       <WifiOff className={c.icono} aria-hidden />
       <p className={c.texto}>
-        Sin conexión — mostrando los datos guardados
-        {fechaDatos ? ` el ${new Date(fechaDatos).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}` : ''}. La
-        sincronización continúa al volver la señal.
+        Sin conexión — mostrando los datos guardados{cuando}
+        {fin} La sincronización continúa al volver la señal.
       </p>
     </div>
   );
