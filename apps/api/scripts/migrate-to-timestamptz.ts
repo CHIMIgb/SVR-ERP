@@ -7,7 +7,11 @@ async function main() {
     process.env.DATABASE_URL ||
     'postgresql://postgres:admin123@localhost:5432/svr_erp';
 
-  const pool = new Pool({ connectionString });
+  // HISTÓRICO: ya corrió y ya no quedan columnas timestamp sin zona; no volver a correrlo. Su
+  // `AT TIME ZONE 'America/Mexico_City'` leyó como hora de México valores que Prisma había guardado en UTC
+  // (parte del desfase de 6 h que corrige la migración 20261123010000_corregir_zona_horaria_utc).
+  // Sesión en UTC como toda conexión (ver src/prisma/prisma.service.ts).
+  const pool = new Pool({ connectionString, options: '-c timezone=UTC' });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
 

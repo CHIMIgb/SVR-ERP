@@ -44,7 +44,8 @@ function distanciaMetros(lat1, lng1, lat2, lng2) {
 }
 
 async function main() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  // Sesión en UTC como la API: sin esto las fechas quedan 6 h adelantadas (ver src/prisma/prisma.service.ts).
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c timezone=UTC' });
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
   try {

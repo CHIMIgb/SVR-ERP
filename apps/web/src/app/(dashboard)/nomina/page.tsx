@@ -286,9 +286,17 @@ export default function NominaPage() {
    */
   const handleExportarDispersion = () => {
     if (!periodo) return;
-    const conTransferencia = items.filter((i) => i.sueldoFiscal > 0);
-    if (conTransferencia.length === 0) {
+    const conSueldoFiscal = items.filter((i) => i.sueldoFiscal > 0);
+    // Solo lo que falta transferir: antes iban también las nóminas ya pagadas y, al exportar después de pagar a
+    // algunos, el banco les volvía a transferir. No quitar el filtro de estado.
+    const conTransferencia = conSueldoFiscal.filter((i) => i.estado !== 'Pagado');
+    const yaPagadas = conSueldoFiscal.length - conTransferencia.length;
+    if (conSueldoFiscal.length === 0) {
       showToast('No hay trabajadores con sueldo por transferencia en este periodo.', 'warning');
+      return;
+    }
+    if (conTransferencia.length === 0) {
+      showToast('Las transferencias de este periodo ya están pagadas: no hay nada que dispersar.', 'info');
       return;
     }
     try {
@@ -311,7 +319,9 @@ export default function NominaPage() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       showToast(
-        `Archivo generado (${conTransferencia.length} trabajadores); revisa tu carpeta de descargas. El sistema aún no tiene sus CLABE: llénalas antes de subirlo al banco.`,
+        `Archivo generado (${conTransferencia.length} trabajadores${
+          yaPagadas > 0 ? `; ${yaPagadas} ya pagada(s) no se incluyeron` : ''
+        }); revisa tu carpeta de descargas. El sistema aún no tiene sus CLABE: llénalas antes de subirlo al banco.`,
         'warning',
       );
     } catch (error) {

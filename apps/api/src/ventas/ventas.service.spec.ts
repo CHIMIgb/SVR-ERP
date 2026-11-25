@@ -433,12 +433,17 @@ describe('VentasService', () => {
   });
 
   describe('createCierre', () => {
-    // Config con cierre=00:00 hace que puedeCerrarCaja() sea siempre true
-    // (nowMin >= 0min), para no depender de la hora real al correr el test.
+    // Turno CONTINUO (apertura === cierre, 00:00): permiteCerrarCaja() siempre
+    // es true, así el test no depende de la hora real. Mismo patrón que
+    // ventas.integration.spec.ts (CIERRE_CAJA_REGISTRADO).
+    // Corrección 2026-11-22: antes era 23:00 → 00:00 con la nota "siempre true",
+    // pero permiteCerrarCaja() lo trata como turno NOCTURNO (solo deja cerrar de
+    // 00:00 a 22:59) y estos tests tronaban de 23:00 a 23:59. No volver a un
+    // horario con ventana: cualquiera deja una franja del día en rojo.
     beforeEach(() => {
       (prisma.configuracion_sistema.findUnique as jest.Mock).mockImplementation(({ where }) => {
         const configs: Record<string, { clave: string; valor: string }> = {
-          turno_apertura: { clave: 'turno_apertura', valor: '23:00' },
+          turno_apertura: { clave: 'turno_apertura', valor: '00:00' },
           turno_cierre: { clave: 'turno_cierre', valor: '00:00' },
         };
         return Promise.resolve(configs[where?.clave] || null);
