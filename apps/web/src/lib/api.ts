@@ -726,10 +726,38 @@ export interface MaquinaCreateInput {
   consumoEsperado: number;
 }
 
+/** Estado de la máquina como lo ve el técnico en la PWA (sale de `maquinas.estado`, la misma regla del panel). */
+export type EstadoMaquinaCampo = 'operando' | 'en_taller' | 'detenida';
+
+/** Una máquina de "Flota y obras" (PWA del Técnico). Solo lo de la pantalla: sin costos ni horómetro. */
+export interface MaquinaCampoDTO {
+  id: string;
+  codigo: string | null;
+  nombre: string;
+  tipo: string;
+  estado: EstadoMaquinaCampo;
+  /** Despacho vigente hoy → su proyecto y la obra 1:1 (null si hoy no tiene despacho). */
+  obraHoy: { proyectoId: string; nombre: string; ubicacion: string | null; lat: number | null; lng: number | null } | null;
+  /** Operador o chofer asignado (null si no tiene). */
+  encargado: { nombre: string; rol: 'Operador' | 'Chofer' } | null;
+  /** Último ping GPS (null si nunca ha mandado uno). `sinSenal`: el ping tiene más de 15 min. */
+  posicion: { lat: number; lng: number; fechaHora: string; sinSenal: boolean } | null;
+}
+
+export interface FlotaCampoDTO {
+  /** Hoy (YYYY-MM-DD) en la zona de la empresa: el día del que es la "obra de hoy". */
+  fecha: string;
+  /** La flota pasó del tope del catálogo y la lista viene cortada. */
+  truncado: boolean;
+  maquinas: MaquinaCampoDTO[];
+}
+
 export const maquinasApi = {
   /** Catálogo de la flota (datos maestros, sin paginar: lo usan los selects de varias vistas). */
   listar: () => apiClient.get<Maquina[]>('/maquinas'),
   crear: (data: MaquinaCreateInput) => apiClient.post<Maquina>('/maquinas', data),
+  /** "Flota y obras" del Técnico (permiso propio maquinaria.flota_campo:ver). Lista completa: se filtra en el teléfono. */
+  campo: () => apiClient.get<FlotaCampoDTO>('/maquinas/campo'),
 };
 
 export interface DespachoCreateInput {
