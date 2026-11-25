@@ -212,7 +212,7 @@ USUARIO HACE CLIC EN "Nuevo Trabajador"
 |--------|----------|----------------------|
 | `dashboard` | dashboard | ver |
 | `rrhh` | trabajadores, asistencia, nomina | ver, crear, editar, eliminar, exportar, procesar |
-| `maquinaria` | flota, horometro, mantenimiento, combustible, gps | ver, crear, editar, eliminar, exportar, aprobar |
+| `maquinaria` | flota, horometro, mantenimiento, combustible, gps, flota_campo (solo ver, PWA) | ver, crear, editar, eliminar, exportar, aprobar |
 | `operaciones` | operaciones, reportes_campo, criba, inventario, proyectos | ver, crear, editar, eliminar, exportar |
 | `comercial` | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
 | `sistema` | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |
@@ -475,7 +475,7 @@ El sidebar de ese supervisor **solo mostrará esas 4 rutas**, con los botones qu
 |--------|----------|----------|
 | `dashboard` | dashboard | ver |
 | `rrhh` | trabajadores, asistencia, nomina | ver, crear, editar, eliminar, exportar, procesar |
-| `maquinaria` | flota, horometro, mantenimiento, combustible, gps | ver, crear, editar, eliminar, exportar, aprobar |
+| `maquinaria` | flota, horometro, mantenimiento, combustible, gps, flota_campo (solo ver, PWA) | ver, crear, editar, eliminar, exportar, aprobar |
 | `operaciones` | operaciones, reportes_campo, criba, inventario, proyectos | ver, crear, editar, eliminar, exportar |
 | `comercial` | clientes, cotizaciones, finanzas, proveedores, ventas, cobranza | ver, crear, editar, eliminar, exportar, cancelar |
 | `sistema` | documentos, reportes, configuracion, usuarios, roles, permisos | ver, crear, editar, eliminar, asignar_rol, exportar |
@@ -491,3 +491,15 @@ El sidebar de ese supervisor **solo mostrará esas 4 rutas**, con los botones qu
 
 En esos endpoints el trabajador sale del token (`trabajadores.usuario_id`); el equipo son las cuentas con
 `users.jefe_user_id` = usuario. Nunca devuelven sueldos.
+
+**Flota en campo de la PWA (migración `20261124010000_flota_campo_permiso`).** Es un permiso aparte de
+`maquinaria.flota:ver`, porque ese abre toda la API de flota (costos, horómetro, combustible, mantenimiento):
+
+| Permiso | Endpoints | Roles |
+|---------|-----------|-------|
+| `maquinaria.flota_campo:ver` | `GET /maquinas/campo` | Tecnico, Administrador |
+
+Devuelve solo lo que usa la pantalla `/m/flota-obras`: máquina, estado, obra de hoy (despacho vigente),
+operador o chofer y última posición GPS. Para que la pestaña funcione, el rol necesita la vista
+`/m/flota-obras` (role_vistas) **y** este permiso: con la vista sin el permiso, la pestaña aparece y la API
+responde 403.

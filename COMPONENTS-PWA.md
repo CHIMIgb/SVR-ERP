@@ -171,6 +171,60 @@ detalle.
 **Cuando USAR:** listados de reportes en vistas `/m/*`. **Cuando NO:** en
 el escritorio (usa la DataTable de `/reportes`) ni para otras entidades.
 
+## 5b. TarjetaMaquina
+
+Tarjeta de máquina para «Flota y obras» (`/m/flota-obras`, rol Técnico):
+nombre con código y tipo, chip de estado (`Operando` / `En taller` /
+`Detenida`), obra de hoy, operador o chofer, cuánto hace del último dato
+GPS y la liga **«Ver ubicación exacta»**, que abre el mapa del teléfono.
+Presentacional: recibe el `MaquinaCampoDTO` de `GET /maquinas/campo` tal
+cual. La API ya clasifica el estado; la tarjeta solo lo pinta con
+`ESTADO_MAQUINA` de `lib/pwa/flota-campo.ts`.
+
+**Archivos:**
+- `src/components/pwa/TarjetaMaquina/TarjetaMaquina.tsx` (+ `.styles.ts`, `index.ts`)
+
+**Importacion:**
+```tsx
+import { TarjetaMaquina } from '@/components/pwa/TarjetaMaquina';
+```
+
+**Props:**
+
+| Prop | Tipo | Default | Descripcion |
+|------|------|---------|-------------|
+| `maquina` | `MaquinaCampoDTO` | *(requerido)* | La máquina a mostrar |
+| `ahora` | `Date` | *(requerido)* | Hora de referencia para «hace X min» y para saber si el ping ya está viejo. La da el padre (la hora de la carga): calcularla dentro haría impuro el render |
+| `ocultarObra` | `boolean` | `false` | Quita la línea de la obra y su liga. En la pestaña Obras, la obra ya va en el encabezado del grupo |
+| `deOtroDia` | `boolean` | `false` | Los datos son una copia de otro día: «Sin obra asignada ese día» en vez de «hoy» |
+
+También exporta `enlaceMapaClase`, la clase de la liga al mapa con cara de botón secundario. La usa el encabezado de cada obra en `/m/flota-obras`, para que las dos ligas se vean igual.
+
+**Ubicación:**
+- Es un `<a target="_blank" rel="noopener noreferrer">` con los estilos de `buttonClasses` (variante `secondary`, `min-h-[44px]`). No se usa `window.open`, porque la PWA de iOS lo bloquea como popup.
+- La URL es `urlMapa()` (`https://www.google.com/maps/search/?api=1&query=lat,lng`): Android e iOS la abren en su app de mapas.
+- Sin ping GPS no hay «ubicación exacta». Si la obra de hoy tiene coordenadas, se ofrece «Ver obra en el mapa».
+- Con el ping viejo (más de 15 min) el pie lo dice en color de aviso y la liga cambia a «Ver última ubicación». Se recalcula con `ahora` además del `sinSenal` del servidor, porque en una copia guardada ese flag quedó congelado.
+- Un estado que el teléfono no conoce se muestra «Sin estado» (`estadoUi`), sin tronar.
+
+**Uso:**
+```tsx
+<ul className="flex flex-col gap-2">
+  {maquinas.map((m) => (
+    <li key={m.id}><TarjetaMaquina maquina={m} ahora={cargadoEn} /></li>
+  ))}
+</ul>
+```
+
+**Cuando USAR:** listados de flota en vistas `/m/*` con datos de
+`/maquinas/campo`. **Cuando NO:** en el escritorio (usa la DataTable de
+`/maquinaria`), ni con el `Maquina` del catálogo (`/maquinas`), que trae
+otro contrato y datos que el técnico no debe ver (costos, horómetro).
+
+**Pendiente del diseño:** el ingeniero de cada obra («Ing. Marcos Salas»)
+no se muestra: todavía no existe en los datos (pregunta al cliente:
+«residente por obra o por persona»).
+
 ## 6. EstadoCola
 
 Resumen de la cola offline dentro de la pantalla de captura. Muestra cada

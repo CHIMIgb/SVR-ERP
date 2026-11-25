@@ -21,6 +21,7 @@ import { BitacorasRentaModule } from './bitacoras-renta/bitacoras-renta.module';
 import { AsistenciaModule } from './asistencia/asistencia.module';
 import { NominaModule } from './nomina/nomina.module';
 import { GpsModule } from './gps/gps.module';
+import { FlotaCampoModule } from './flota-campo/flota-campo.module';
 import { FinanzasModule } from './finanzas/finanzas.module';
 import { ConciliacionBancariaModule } from './conciliacion-bancaria/conciliacion-bancaria.module';
 import { VentasModule } from './ventas/ventas.module';
@@ -79,6 +80,9 @@ function envInt(key: string, defaultValue: number): number {
     AsistenciaModule,
     NominaModule,
     GpsModule,
+    // GET /maquinas/campo (PWA del Técnico). Si MaquinasModule llega a tener GET /maquinas/:id, este
+    // módulo va ANTES que MaquinasModule para que `campo` no se tome como un :id.
+    FlotaCampoModule,
     // Antes que FinanzasModule: /finanzas/bancos|cuentas|movimientos estáticos
     // deben ganar sobre @Get(':id') de FinanzasController.
     ConciliacionBancariaModule,

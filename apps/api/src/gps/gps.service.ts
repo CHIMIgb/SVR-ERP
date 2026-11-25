@@ -14,8 +14,8 @@ const ENTITY_GEOCERCA = 'geocercas';
 const ENTITY_RASTREO = 'rastreo_gps';
 const ENTITY_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 
-/** Un ping más viejo que esto deja a la máquina como "sin señal". */
-const MINUTOS_SIN_SENAL = 15;
+/** Un ping más viejo que esto deja a la máquina como "sin señal". Exportado: la PWA de campo usa el mismo umbral. */
+export const MINUTOS_SIN_SENAL = 15;
 /** Debajo de esta velocidad se considera detenida, no en movimiento. */
 const VELOCIDAD_MINIMA_MOVIMIENTO = 2;
 /** Tope de cruces de geocerca en el historial del día (hay uno por geocerca con movimiento). */
