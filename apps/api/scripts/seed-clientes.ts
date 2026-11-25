@@ -54,7 +54,8 @@ async function main() {
     process.env.DATABASE_URL ||
     'postgresql://postgres:admin123@localhost:5432/svr_erp';
 
-  const pool = new Pool({ connectionString });
+  // Sesión en UTC como la API: sin esto las fechas quedan 6 h adelantadas (ver src/prisma/prisma.service.ts).
+  const pool = new Pool({ connectionString, options: '-c timezone=UTC' });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
 
